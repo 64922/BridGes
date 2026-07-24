@@ -1,0 +1,23 @@
+.projectLayout {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: calc(100vh - var(--topbar-height));
+}
+
+.mainArea {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-6);
+  overflow-x: hidden;
+}
+
+@media (max-width: 1023px) {
+  .projectLayout {
+    flex-direction: column;
+  }
+
+  .mainArea {
+    padding-bottom: calc(var(--space-6) + 4rem);
+  }
+}

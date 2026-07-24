@@ -7,9 +7,10 @@ export type HealthStatus = components["schemas"]["HealthStatus"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
-export async function fetchHealthSummary(): Promise<HealthProjection> {
+export async function fetchHealthSummary(options?: { signal?: AbortSignal }): Promise<HealthProjection> {
   const res = await fetch(`${API_BASE}/health`, {
     cache: "no-store",
+    signal: options?.signal,
   });
   if (!res.ok) {
     throw new Error(`Health fetch failed: ${res.status}`);

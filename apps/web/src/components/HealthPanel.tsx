@@ -9,9 +9,16 @@ export default function HealthPanel() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchHealthSummary()
+    const controller = new AbortController();
+
+    fetchHealthSummary({ signal: controller.signal })
       .then(setProjection)
-      .catch((err) => setError(err instanceof Error ? err.message : String(err)));
+      .catch((err) => {
+        if (controller.signal.aborted) return;
+        setError(err instanceof Error ? err.message : String(err));
+      });
+
+    return () => controller.abort();
   }, []);
 
   if (error) {
@@ -32,7 +39,7 @@ export default function HealthPanel() {
 
   return (
     <section aria-label="系统健康状态">
-      <h1>Science Companion</h1>
+      <h2>系统健康</h2>
       <p>版本：{projection.version}</p>
       <dl>
         <dt>存活</dt>

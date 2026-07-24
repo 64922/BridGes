@@ -15,6 +15,7 @@ node_modules/
 .next/
 out/
 *.tsbuildinfo
+test-results/
 
 # Local env
 .env

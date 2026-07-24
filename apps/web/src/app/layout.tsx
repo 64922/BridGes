@@ -1,4 +1,9 @@
-export const metadata = {
+import type { Metadata } from "next";
+
+import { Providers } from "./providers";
+import "@/styles/globals.css";
+
+export const metadata: Metadata = {
   title: "Science Companion",
   description: "长期科学学习与表达伙伴",
 };
@@ -10,7 +15,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body>
+        <Providers>{children}</Providers>
+      </body>
     </html>
   );
 }
