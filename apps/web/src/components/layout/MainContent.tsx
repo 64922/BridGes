@@ -15,12 +15,11 @@ export function MainContent({ children }: MainContentProps) {
       id="main-content"
       tabIndex={-1}
       data-testid="main-content"
+      className="main-content"
       style={{
         flex: 1,
         minWidth: 0,
         minHeight: "calc(100vh - var(--topbar-height))",
-        padding: "var(--space-6)",
-        overflowX: "hidden",
       }}
     >
       {children}

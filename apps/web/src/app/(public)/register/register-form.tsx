@@ -1,29 +1,34 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { ErrorSummary } from "@/components/design-system/ErrorSummary";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
+import { useAuth } from "@/context/AuthContext";
 
 export default function RegisterForm() {
+  const router = useRouter();
+  const { register } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [agreed, setAgreed] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitted(false);
     const nextErrors: string[] = [];
     if (!email.trim()) {
       nextErrors.push("请输入邮箱地址。");
     }
     if (!password.trim()) {
       nextErrors.push("请输入密码。");
+    }
+    if (password.length < 12) {
+      nextErrors.push("密码长度至少为 12 位。");
     }
     if (password !== confirmPassword) {
       nextErrors.push("两次输入的密码不一致。");
@@ -38,10 +43,14 @@ export default function RegisterForm() {
 
     setErrors([]);
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      await register(email, password, agreed);
+      router.push("/account");
+    } catch (err) {
+      setErrors([err instanceof Error ? err.message : "注册失败，请稍后重试。"]);
+    } finally {
       setIsSubmitting(false);
-      setSubmitted(true);
-    }, 300);
+    }
   };
 
   return (
@@ -72,11 +81,6 @@ export default function RegisterForm() {
         </p>
 
         <ErrorSummary errors={errors} />
-        {submitted && (
-          <p role="status" aria-live="polite" style={{ color: "var(--color-status-success)", marginBottom: "var(--space-4)" }}>
-            注册请求已提交（T003 将连接真实认证服务）。
-          </p>
-        )}
 
         <form onSubmit={handleSubmit} noValidate>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>
@@ -137,16 +141,26 @@ export default function RegisterForm() {
                 }}
               />
             </div>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: "var(--space-2)", minHeight: "var(--target-size)" }}>
               <input
                 id="agree"
                 name="agree"
                 type="checkbox"
                 checked={agreed}
                 onChange={(e) => setAgreed(e.target.checked)}
-                style={{ marginTop: "0.25rem" }}
+                style={{ marginTop: "0.625rem", minWidth: "var(--space-4)", minHeight: "var(--space-4)" }}
               />
-              <label htmlFor="agree" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
+              <label
+                htmlFor="agree"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  minHeight: "var(--target-size)",
+                  fontSize: "var(--text-sm)",
+                  color: "var(--color-text-secondary)",
+                  cursor: "pointer",
+                }}
+              >
                 我已阅读并同意服务条款和隐私政策
               </label>
             </div>

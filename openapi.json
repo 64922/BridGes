@@ -6,6 +6,331 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/auth/register": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Register",
+        "description": "Register a new account and establish a session.",
+        "operationId": "register_auth_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountRegistration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Conflict",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Login",
+        "description": "Authenticate and establish a new session.",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginCredential"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Logout",
+        "description": "Revoke the current session and clear the cookie.",
+        "operationId": "logout_auth_logout_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/recover": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Recover",
+        "description": "Request a credential recovery flow.\n\nThe response is identical whether the email is registered or not, to prevent\naccount enumeration.",
+        "operationId": "recover_auth_recover_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "type": "object",
+                  "title": "Response Recover Auth Recover Post"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/recover/reset": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Recover Reset",
+        "description": "Reset password using a recovery token and establish a new session.",
+        "operationId": "recover_reset_auth_recover_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryReset"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Get Session",
+        "description": "Return the current session and subject context.",
+        "operationId": "get_session_auth_session_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -81,10 +406,230 @@
           }
         }
       }
+    },
+    "/me": {
+      "get": {
+        "summary": "Me",
+        "description": "Protected demo route: returns the resolved subject.\n\nT003 uses this route to prove that API endpoints share the same\nauthentication guard as the Web frontend.",
+        "operationId": "me_me_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Me Me Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_test/recovery-token": {
+      "get": {
+        "summary": "Test Recovery Token",
+        "description": "Test-only endpoint to retrieve a recovery token without email delivery.\n\nThis endpoint is prefixed with `/_test/` and is only safe because the\nT003 identity service is in-memory. It must not be exposed in production.",
+        "operationId": "test_recovery_token__test_recovery_token_get",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Email"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Test Recovery Token  Test Recovery Token Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "Account": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable account identifier (UUIDv7/ULID)."
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Verified email address."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Account creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last account update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Account",
+        "description": "Public account projection."
+      },
+      "AccountRegistration": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Email address to register."
+          },
+          "password": {
+            "type": "string",
+            "minLength": 12,
+            "format": "password",
+            "title": "Password",
+            "description": "Account password.",
+            "writeOnly": true
+          },
+          "agreed_to_terms": {
+            "type": "boolean",
+            "title": "Agreed To Terms",
+            "description": "User has agreed to terms and privacy policy."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "agreed_to_terms"
+        ],
+        "title": "AccountRegistration",
+        "description": "Request to create a new account."
+      },
+      "AuthError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "AuthError",
+        "description": "Uniform authentication error response.\n\nErrors intentionally share the same shape to avoid leaking whether an email\nis registered, whether a password is wrong, or whether a token exists."
+      },
+      "AuthMethod": {
+        "type": "string",
+        "enum": [
+          "password",
+          "recovery",
+          "oidc"
+        ],
+        "title": "AuthMethod",
+        "description": "How the current subject authenticated."
+      },
+      "AuthResponse": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/Account",
+            "description": "Authenticated account."
+          },
+          "session": {
+            "$ref": "#/components/schemas/Session",
+            "description": "Newly created session."
+          },
+          "session_token": {
+            "type": "string",
+            "title": "Session Token",
+            "description": "Opaque session token (one-time exposure)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account",
+          "session",
+          "session_token"
+        ],
+        "title": "AuthResponse",
+        "description": "Response to a successful authentication operation.\n\nThe session_token is delivered only once; callers must store it according to\ntheir client type (browser cookie managed by the API, native secure storage)."
+      },
       "DependencyHealth": {
         "properties": {
           "name": {
@@ -134,6 +679,19 @@
         ],
         "title": "DependencyHealth",
         "description": "Health of one external dependency."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
       },
       "HealthProjection": {
         "properties": {
@@ -194,6 +752,220 @@
         ],
         "title": "HealthStatus",
         "description": "Top-level health verdict."
+      },
+      "LoginCredential": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Registered email address."
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "title": "Password",
+            "description": "Account password.",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginCredential",
+        "description": "Request to authenticate with email and password."
+      },
+      "RecoveryRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email",
+            "title": "Email",
+            "description": "Email address to recover."
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "RecoveryRequest",
+        "description": "Request a credential recovery flow.\n\nThe response is intentionally uniform whether the email is registered or not,\nto prevent account enumeration."
+      },
+      "RecoveryReset": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "Recovery token received through the recovery channel."
+          },
+          "new_password": {
+            "type": "string",
+            "minLength": 12,
+            "format": "password",
+            "title": "New Password",
+            "description": "New account password.",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "new_password"
+        ],
+        "title": "RecoveryReset",
+        "description": "Reset password using a recovery token."
+      },
+      "Session": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable session identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Session creation timestamp."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Session expiration timestamp."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "If set, the session has been revoked and must not be honored."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "account_id",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "Session",
+        "description": "Public session projection.\n\nThe opaque session token is only exposed on creation (login/register/recovery).\nSubsequent requests use the HttpOnly cookie."
+      },
+      "SessionResponse": {
+        "properties": {
+          "account": {
+            "$ref": "#/components/schemas/Account",
+            "description": "Authenticated account."
+          },
+          "session": {
+            "$ref": "#/components/schemas/Session",
+            "description": "Current session."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SubjectContext",
+            "description": "Resolved subject context."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account",
+          "session",
+          "subject"
+        ],
+        "title": "SessionResponse",
+        "description": "Response for an existing session lookup."
+      },
+      "SubjectContext": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Authenticated account identifier."
+          },
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Current session identifier."
+          },
+          "auth_method": {
+            "$ref": "#/components/schemas/AuthMethod",
+            "description": "Authentication method for this session."
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "Device identifier when known."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "session_id",
+          "auth_method"
+        ],
+        "title": "SubjectContext",
+        "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
       }
     }
   }

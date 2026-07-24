@@ -1,3 +1,5 @@
+import { cookies } from "next/headers";
+
 import { ButtonLink } from "@/components/design-system/ButtonLink";
 import HealthPanel from "@/components/HealthPanel";
 
@@ -9,9 +11,12 @@ export const metadata = {
  * Public entry point.
  *
  * Unauthenticated users can view the public product description, system health
- * status, and access authentication flows. No private project data is shown.
+ * status, and access authentication flows. Authenticated users are offered a
+ * direct link to their account shell. No private project data is shown.
  */
 export default function PublicEntryPage() {
+  const hasSession = Boolean(cookies().get("science_companion_session")?.value);
+
   return (
     <div
       style={{
@@ -69,15 +74,20 @@ export default function PublicEntryPage() {
                 marginTop: "var(--space-6)",
               }}
             >
-              <ButtonLink href="/login" size="lg" ariaLabel="登录">
-                登录
-              </ButtonLink>
-              <ButtonLink href="/register" variant="secondary" size="lg" ariaLabel="注册">
-                注册
-              </ButtonLink>
-              <ButtonLink href="/account" variant="secondary" size="lg" ariaLabel="进入账户主壳（演示）">
-                进入账户主壳（演示）
-              </ButtonLink>
+              {hasSession ? (
+                <ButtonLink href="/account" size="lg" ariaLabel="进入账户主壳">
+                  进入账户主壳
+                </ButtonLink>
+              ) : (
+                <>
+                  <ButtonLink href="/login" size="lg" ariaLabel="登录">
+                    登录
+                  </ButtonLink>
+                  <ButtonLink href="/register" variant="secondary" size="lg" ariaLabel="注册">
+                    注册
+                  </ButtonLink>
+                </>
+              )}
             </div>
           </section>
 

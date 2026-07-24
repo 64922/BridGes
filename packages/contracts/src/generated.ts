@@ -4,6 +4,129 @@
  */
 
 export interface paths {
+    "/auth/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register
+         * @description Register a new account and establish a session.
+         */
+        post: operations["register_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Login
+         * @description Authenticate and establish a new session.
+         */
+        post: operations["login_auth_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout
+         * @description Revoke the current session and clear the cookie.
+         */
+        post: operations["logout_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/recover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover
+         * @description Request a credential recovery flow.
+         *
+         *     The response is identical whether the email is registered or not, to prevent
+         *     account enumeration.
+         */
+        post: operations["recover_auth_recover_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/recover/reset": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recover Reset
+         * @description Reset password using a recovery token and establish a new session.
+         */
+        post: operations["recover_reset_auth_recover_reset_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session
+         * @description Return the current session and subject context.
+         */
+        get: operations["get_session_auth_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -84,10 +207,158 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Me
+         * @description Protected demo route: returns the resolved subject.
+         *
+         *     T003 uses this route to prove that API endpoints share the same
+         *     authentication guard as the Web frontend.
+         */
+        get: operations["me_me_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_test/recovery-token": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Test Recovery Token
+         * @description Test-only endpoint to retrieve a recovery token without email delivery.
+         *
+         *     This endpoint is prefixed with `/_test/` and is only safe because the
+         *     T003 identity service is in-memory. It must not be exposed in production.
+         */
+        get: operations["test_recovery_token__test_recovery_token_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Account
+         * @description Public account projection.
+         */
+        Account: {
+            /**
+             * Id
+             * @description Stable account identifier (UUIDv7/ULID).
+             */
+            id: string;
+            /**
+             * Email
+             * Format: email
+             * @description Verified email address.
+             */
+            email: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Account creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last account update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * AccountRegistration
+         * @description Request to create a new account.
+         */
+        AccountRegistration: {
+            /**
+             * Email
+             * Format: email
+             * @description Email address to register.
+             */
+            email: string;
+            /**
+             * Password
+             * Format: password
+             * @description Account password.
+             */
+            password: string;
+            /**
+             * Agreed To Terms
+             * @description User has agreed to terms and privacy policy.
+             */
+            agreed_to_terms: boolean;
+        };
+        /**
+         * AuthError
+         * @description Uniform authentication error response.
+         *
+         *     Errors intentionally share the same shape to avoid leaking whether an email
+         *     is registered, whether a password is wrong, or whether a token exists.
+         */
+        AuthError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * AuthMethod
+         * @description How the current subject authenticated.
+         * @enum {string}
+         */
+        AuthMethod: "password" | "recovery" | "oidc";
+        /**
+         * AuthResponse
+         * @description Response to a successful authentication operation.
+         *
+         *     The session_token is delivered only once; callers must store it according to
+         *     their client type (browser cookie managed by the API, native secure storage).
+         */
+        AuthResponse: {
+            /** @description Authenticated account. */
+            account: components["schemas"]["Account"];
+            /** @description Newly created session. */
+            session: components["schemas"]["Session"];
+            /**
+             * Session Token
+             * @description Opaque session token (one-time exposure).
+             */
+            session_token: string;
+        };
         /**
          * DependencyHealth
          * @description Health of one external dependency.
@@ -115,6 +386,11 @@ export interface components {
              * @description Probe latency in milliseconds if measured.
              */
             latency_ms?: number | null;
+        };
+        /** HTTPValidationError */
+        HTTPValidationError: {
+            /** Detail */
+            detail?: components["schemas"]["ValidationError"][];
         };
         /**
          * HealthProjection
@@ -160,6 +436,143 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "pass" | "fail" | "unknown";
+        /**
+         * LoginCredential
+         * @description Request to authenticate with email and password.
+         */
+        LoginCredential: {
+            /**
+             * Email
+             * Format: email
+             * @description Registered email address.
+             */
+            email: string;
+            /**
+             * Password
+             * Format: password
+             * @description Account password.
+             */
+            password: string;
+        };
+        /**
+         * RecoveryRequest
+         * @description Request a credential recovery flow.
+         *
+         *     The response is intentionally uniform whether the email is registered or not,
+         *     to prevent account enumeration.
+         */
+        RecoveryRequest: {
+            /**
+             * Email
+             * Format: email
+             * @description Email address to recover.
+             */
+            email: string;
+        };
+        /**
+         * RecoveryReset
+         * @description Reset password using a recovery token.
+         */
+        RecoveryReset: {
+            /**
+             * Token
+             * @description Recovery token received through the recovery channel.
+             */
+            token: string;
+            /**
+             * New Password
+             * Format: password
+             * @description New account password.
+             */
+            new_password: string;
+        };
+        /**
+         * Session
+         * @description Public session projection.
+         *
+         *     The opaque session token is only exposed on creation (login/register/recovery).
+         *     Subsequent requests use the HttpOnly cookie.
+         */
+        Session: {
+            /**
+             * Id
+             * @description Stable session identifier.
+             */
+            id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Session creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description Session expiration timestamp.
+             */
+            expires_at: string;
+            /**
+             * Revoked At
+             * @description If set, the session has been revoked and must not be honored.
+             */
+            revoked_at?: string | null;
+        };
+        /**
+         * SessionResponse
+         * @description Response for an existing session lookup.
+         */
+        SessionResponse: {
+            /** @description Authenticated account. */
+            account: components["schemas"]["Account"];
+            /** @description Current session. */
+            session: components["schemas"]["Session"];
+            /** @description Resolved subject context. */
+            subject: components["schemas"]["SubjectContext"];
+        };
+        /**
+         * SubjectContext
+         * @description Resolved subject for an authenticated request.
+         *
+         *     This is the canonical object carried by request state, audit logs, and RLS
+         *     context. It never includes the session secret.
+         */
+        SubjectContext: {
+            /**
+             * Account Id
+             * @description Authenticated account identifier.
+             */
+            account_id: string;
+            /**
+             * Session Id
+             * @description Current session identifier.
+             */
+            session_id: string;
+            /** @description Authentication method for this session. */
+            auth_method: components["schemas"]["AuthMethod"];
+            /**
+             * Device Id
+             * @description Device identifier when known.
+             */
+            device_id?: string | null;
+        };
+        /** ValidationError */
+        ValidationError: {
+            /** Location */
+            loc: (string | number)[];
+            /** Message */
+            msg: string;
+            /** Error Type */
+            type: string;
+            /** Input */
+            input?: unknown;
+            /** Context */
+            ctx?: Record<string, never>;
+        };
     };
     responses: never;
     parameters: never;
@@ -169,6 +582,254 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    register_auth_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountRegistration"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    login_auth_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginCredential"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    logout_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recover_auth_recover_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: string;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    recover_reset_auth_recover_reset_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecoveryReset"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    get_session_auth_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     health_live_health_live_get: {
         parameters: {
             query?: never;
@@ -245,6 +906,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HealthProjection"];
+                };
+            };
+        };
+    };
+    me_me_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_recovery_token__test_recovery_token_get: {
+        parameters: {
+            query: {
+                email: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

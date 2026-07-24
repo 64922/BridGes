@@ -1,21 +1,25 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { ErrorSummary } from "@/components/design-system/ErrorSummary";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
+import { useAuth } from "@/context/AuthContext";
 
 export default function LoginForm() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const returnTo = searchParams.get("return_to") || "/account";
+  const { login } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    setSubmitted(false);
     const nextErrors: string[] = [];
     if (!email.trim()) {
       nextErrors.push("请输入邮箱地址。");
@@ -30,11 +34,14 @@ export default function LoginForm() {
 
     setErrors([]);
     setIsSubmitting(true);
-    // T003 will wire this to the real authentication API.
-    setTimeout(() => {
+    try {
+      await login(email, password);
+      router.push(returnTo);
+    } catch (err) {
+      setErrors([err instanceof Error ? err.message : "登录失败，请稍后重试。"]);
+    } finally {
       setIsSubmitting(false);
-      setSubmitted(true);
-    }, 300);
+    }
   };
 
   return (
@@ -71,11 +78,6 @@ export default function LoginForm() {
         </p>
 
         <ErrorSummary errors={errors} />
-        {submitted && (
-          <p role="status" aria-live="polite" style={{ color: "var(--color-status-success)", marginBottom: "var(--space-4)" }}>
-            登录请求已提交（T003 将连接真实认证服务）。
-          </p>
-        )}
 
         <form onSubmit={handleSubmit} noValidate>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}>

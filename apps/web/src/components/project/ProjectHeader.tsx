@@ -43,8 +43,15 @@ export function ProjectHeader({ projectId }: ProjectHeaderProps) {
           >
             示例项目 #{projectId}
           </h1>
-          <p style={{ color: "var(--color-text-secondary)", marginTop: "var(--space-1)" }}>
-            所有者：演示用户 · 对象域：个人保险库 · 角色：所有者
+          <p
+            style={{
+              color: "var(--color-text-secondary)",
+              marginTop: "var(--space-1)",
+              maxWidth: "100%",
+              overflowWrap: "break-word",
+            }}
+          >
+            所有者：当前用户 · 对象域：个人保险库 · 角色：所有者
           </p>
         </div>
         <div

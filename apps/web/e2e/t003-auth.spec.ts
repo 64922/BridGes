@@ -1,0 +1,66 @@
+import { expect, test } from "@playwright/test";
+
+import { signIn, signOut, signUp } from "./helpers/auth";
+
+test.describe("T003 — 完成账户注册、登录、退出与会话恢复", () => {
+  test("未登录用户无法进入认证首页", async ({ page }) => {
+    await page.goto("/account");
+    await page.waitForURL(/\/login/);
+    await expect(page.getByRole("heading", { name: "登录" })).toBeVisible();
+  });
+
+  test("用户可以注册、登录并进入认证首页", async ({ page }) => {
+    await signUp(page, `t003-register-${Date.now()}@example.com`, "correct-horse-12");
+    await expect(page.getByRole("heading", { name: /欢迎回来/ })).toBeVisible();
+    await expect(page.getByText(/当前账户/)).toBeVisible();
+  });
+
+  test("登录失败显示安全且不泄露信息的错误", async ({ page }) => {
+    await page.goto("/login");
+    await page.getByLabel("邮箱").fill("unknown@example.com");
+    await page.getByLabel("密码").fill("correct-horse-12");
+    await page.getByRole("button", { name: "登录" }).click();
+    await expect(page.getByTestId("error-summary")).toContainText("邮箱或密码不正确");
+  });
+
+  test("退出后原会话立即失效", async ({ page }) => {
+    const email = `t003-logout-${Date.now()}@example.com`;
+    await signUp(page, email, "correct-horse-12");
+    await signOut(page);
+
+    // Attempting to access the protected route redirects back to login.
+    await page.goto("/account");
+    await page.waitForURL(/\/login/);
+  });
+
+  test("凭据恢复后旧会话不可继续使用", async ({ page, request }) => {
+    const email = `t003-recover-${Date.now()}@example.com`;
+    const password = "correct-horse-12";
+    await signUp(page, email, password);
+
+    // Use the backend test helper to obtain a recovery token. In production this
+    // would arrive through email; e2e tests cannot receive email.
+    const apiBase = process.env.API_BASE_URL || "http://127.0.0.1:8000";
+    const tokenResponse = await request.get(`${apiBase}/_test/recovery-token?email=${encodeURIComponent(email)}`);
+    expect(tokenResponse.ok()).toBeTruthy();
+    const { token } = await tokenResponse.json();
+
+    await page.goto("/");
+    // Simulate using the recovery token to reset password.
+    const resetResponse = await request.post(`${apiBase}/auth/recover/reset`, {
+      data: { token, new_password: "new-stable-password-12" },
+    });
+    expect(resetResponse.ok()).toBeTruthy();
+
+    // The existing browser session must be rejected by the API.
+    const sessionResponse = await page.request.get("/api/auth/session");
+    expect(sessionResponse.status()).toBe(401);
+  });
+
+  test("认证用户访问公共登录页被重定向到账户主壳", async ({ page }) => {
+    const email = `t003-redirect-${Date.now()}@example.com`;
+    await signUp(page, email, "correct-horse-12");
+    await page.goto("/login");
+    await page.waitForURL("/account");
+  });
+});

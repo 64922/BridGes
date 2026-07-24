@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+
 import LoginForm from "./login-form";
 
 export const metadata = {
@@ -12,5 +14,9 @@ export const metadata = {
  * components in the App Router.
  */
 export default function LoginPage() {
-  return <LoginForm />;
+  return (
+    <Suspense fallback={<div style={{ minHeight: "100vh" }} />}>
+      <LoginForm />
+    </Suspense>
+  );
 }

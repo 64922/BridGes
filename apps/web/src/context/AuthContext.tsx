@@ -1,38 +1,80 @@
 "use client";
 
-import { createContext, useContext } from "react";
+import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-export interface User {
-  id: string;
-  name: string;
-  email: string;
-}
+import type { components } from "@science-companion/contracts";
+import { fetchSession, login as apiLogin, logout as apiLogout, register as apiRegister } from "@/lib/api";
+
+export type User = components["schemas"]["Account"];
 
 interface AuthContextValue {
-  user: User;
+  user: User | null;
   isAuthenticated: boolean;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, agreedToTerms: boolean) => Promise<void>;
+  logout: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 /**
- * Stub authentication provider for T002.
+ * Real authentication provider for T003.
  *
- * T003 will replace this with real session management. Until then, the shell
- * renders as if a demo user is signed in so the authenticated main shell and
- * project pages can be exercised by accessibility and responsive tests.
+ * Manages session state by calling the backend session endpoint on mount and
+ * after login/register/logout. The session cookie is HttpOnly and managed by
+ * the browser/API, so the frontend never stores the token in JavaScript.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const value: AuthContextValue = {
-    user: {
-      id: "demo-user",
-      name: "演示用户",
-      email: "demo@example.com",
-    },
-    isAuthenticated: true,
-  };
+  const [user, setUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  const checkSession = useCallback(async () => {
+    try {
+      const data = await fetchSession();
+      setUser(data.account);
+    } catch {
+      setUser(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkSession();
+  }, [checkSession]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const data = await apiLogin(email, password);
+    setUser(data.account);
+  }, []);
+
+  const register = useCallback(async (email: string, password: string, agreedToTerms: boolean) => {
+    const data = await apiRegister(email, password, agreedToTerms);
+    setUser(data.account);
+  }, []);
+
+  const logout = useCallback(async () => {
+    await apiLogout();
+    setUser(null);
+  }, []);
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: user !== null,
+        isLoading,
+        login,
+        register,
+        logout,
+        refreshSession: checkSession,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {

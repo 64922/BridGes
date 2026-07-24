@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
@@ -24,8 +25,19 @@ interface AppShellProps {
  * into a drawer toggled from the top bar.
  */
 export function AppShell({ children, mode = "account", projectId }: AppShellProps) {
+  const router = useRouter();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      router.push("/login");
+    } catch {
+      // Logout failures are rare; the session will be rejected on next request.
+      router.push("/login");
+    }
+  };
 
   return (
     <>
@@ -90,12 +102,36 @@ export function AppShell({ children, mode = "account", projectId }: AppShellProp
               gap: "var(--space-2)",
               color: "var(--color-text-secondary)",
               fontSize: "var(--text-sm)",
+              minWidth: 0,
+              flex: "0 1 auto",
             }}
           >
             <Icon name="user" size={18} aria-hidden />
-            <span className="user-name">{user.name}</span>
+            <span
+              className="user-name mobile-hide"
+              style={{
+                maxWidth: "10rem",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {user?.email || "未登录"}
+            </span>
             <VisuallyHidden>，当前账户</VisuallyHidden>
           </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleLogout}
+            aria-label="退出登录"
+            style={{
+              minWidth: "var(--target-size)",
+              minHeight: "var(--target-size)",
+            }}
+          >
+            退出
+          </Button>
         </div>
       </header>
 
