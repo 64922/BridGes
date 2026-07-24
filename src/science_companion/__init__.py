@@ -1,0 +1,3 @@
+"""Science Companion — 长期科学学习与表达伙伴."""
+
+__version__ = "0.1.0"

@@ -1,0 +1,200 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Science Companion API",
+    "description": "长期科学学习与表达伙伴 API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health/live": {
+      "get": {
+        "summary": "Health Live",
+        "description": "Liveness probe: process event loop can respond.",
+        "operationId": "health_live_health_live_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "summary": "Health Ready",
+        "description": "Readiness probe: required dependencies are healthy.",
+        "operationId": "health_ready_health_ready_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health/degraded": {
+      "get": {
+        "summary": "Health Degraded",
+        "description": "Degraded probe: optional dependencies and degradation capability.",
+        "operationId": "health_degraded_health_degraded_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "summary": "Health Summary",
+        "description": "Combined health summary.",
+        "operationId": "health_summary_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthProjection"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DependencyHealth": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Logical dependency name."
+          },
+          "status": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Current dependency status."
+          },
+          "required": {
+            "type": "boolean",
+            "title": "Required",
+            "description": "Whether this dependency is required for the service to be ready."
+          },
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message",
+            "description": "Human-readable detail."
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms",
+            "description": "Probe latency in milliseconds if measured."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "status",
+          "required"
+        ],
+        "title": "DependencyHealth",
+        "description": "Health of one external dependency."
+      },
+      "HealthProjection": {
+        "properties": {
+          "service": {
+            "type": "string",
+            "title": "Service",
+            "description": "Service logical name, e.g. api or web."
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Product version."
+          },
+          "live": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Process liveness."
+          },
+          "ready": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Readiness for traffic."
+          },
+          "degraded": {
+            "$ref": "#/components/schemas/HealthStatus",
+            "description": "Degraded state of optional dependencies."
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/DependencyHealth"
+            },
+            "type": "array",
+            "title": "Dependencies",
+            "description": "Per-dependency status."
+          },
+          "extensions": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Extensions",
+            "description": "Additional opaque telemetry; UI must not depend on undocumented keys."
+          }
+        },
+        "type": "object",
+        "required": [
+          "service",
+          "version",
+          "live",
+          "ready",
+          "degraded"
+        ],
+        "title": "HealthProjection",
+        "description": "Unified health projection exposed by /health/* endpoints and consumed by the Web UI.\n\nlive:   process event loop can respond.\nready:  all required dependencies are healthy.\ndegraded: optional dependencies that are unhealthy or operating in degraded mode."
+      },
+      "HealthStatus": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "fail",
+          "unknown"
+        ],
+        "title": "HealthStatus",
+        "description": "Top-level health verdict."
+      }
+    }
+  }
+}

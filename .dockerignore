@@ -1,0 +1,9 @@
+**/__pycache__
+**/*.pyc
+**/.git
+**/.scratch
+**/node_modules
+**/.next
+**/dist
+**/build
+environment.yml

@@ -1,0 +1,11 @@
+name: agent
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - nodejs>=20
+  - pnpm
+  - git
+  - make
+  # Local development only; not required in production images or runtime.
