@@ -4,11 +4,37 @@
 
 按**任务前沿**实施：任何票据的全部阻塞项完成后即可领取。每张票据使用一个新的上下文运行 `/implement`。
 
+### 统一实施协议
+
+每次实施必须遵循以下顺序：
+
+1. 用户调用 `/implement` 时必须给出本文件中的准确票据标题；不要使用没有目标票据的裸调用。
+2. 开始编码前完整读取根目录 `AGENTS.md`、`CONTEXT.md`、源规格 PRD、本票据、全部阻塞票据，以及本票据“必读资料”指向的详细决策或研究。
+3. 只有当全部阻塞票据的验收项均已勾选、测试通过、代码审查完成并已提交时，当前票据才属于可领取前沿。
+4. 先检查当前代码、测试、迁移和已完成票据产生的公开合同；不得仅依据规划文档猜测现有实现。
+5. 以本票据“建议测试接缝”为最高层测试入口，把验收项先转成失败测试，再按 `/tdd` 完成最小纵向实现。
+6. 测试只断言可观察行为、权限、状态、产物、错误和恢复结果，不依赖模型私有推理、框架私有对象或数据库内部排列。
+7. 实施期间定期运行单测和类型检查；结束前运行受影响集成测试、主接缝测试和完整测试套件。
+8. 不得以 MVP、临时演示、关闭权限或跳过质量门的方式缩减票据。若票据、PRD、规范性章节、当前代码或已完成合同发生冲突，停止实施并明确报告，不得静默选择。
+9. 需要改变稳定合同、数据语义、安全/科学边界或阻塞图时，先按规划书中的变更与重取证流程处理；不要在普通实现票据中顺手改写上游规范。
+
+全局必读资料：[正式规格](.scratch/science-companion-plan/PRD.md)、[完整项目规划书](.scratch/science-companion-plan/科教智能体项目规划书.md)。各票据下面的资料指针是在此基础上的增量阅读。
+
 ## 建立可运行产品骨架与统一契约链
 
 **What to build:** 建立能够同时启动 Web、API 和基础依赖的首条可运行产品接缝；用户可查看系统健康状态，前后端使用同一版本化合同。
 
 **Blocked by:** None — can start immediately.
+
+**关联需求：** REQ-DEV-01、REQ-OPS-01、REQ-SCOPE-01
+
+**规划书章节：** P4-C16、P4-C19、P5-C21
+
+**关键合同：** CONTRACT-RUN-01、健康状态合同、共享前后端类型合同
+
+**必读资料：** [系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)、[成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)
+
+**建议测试接缝：** 从一个受支持启动入口启动 Web 与 API，用户读取同一健康投影，并验证开发与生产合同没有 Conda 依赖泄漏。
 
 - [ ] Web、API 和基础依赖能够在本地开发环境稳定启动和优雅停止。
 - [ ] 健康状态通过用户界面和 API 表达相同的存活、就绪与降级语义。
@@ -21,6 +47,16 @@
 
 **Blocked by:** 建立可运行产品骨架与统一契约链
 
+**关联需求：** REQ-ID-01
+
+**规划书章节：** P2-C04、P2-C10、P4-C18
+
+**关键合同：** CONTRACT-ID-01、Session、SubjectContext、认证守卫
+
+**必读资料：** [产品能力决策](.scratch/science-companion-plan/decisions/02-product-capability-system.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 未登录用户注册并登录后进入认证首页，退出或恢复凭据后原会话立即失效。
+
 - [ ] 用户可以注册、验证并登录，随后进入认证后的安全首页。
 - [ ] 无效登录、账户枚举、重复恢复令牌和已撤销会话得到安全且不泄露信息的响应。
 - [ ] 所有功能路由由服务端与 API 共同执行认证守卫。
@@ -31,6 +67,16 @@
 **What to build:** 让认证用户创建、选择和查看科学项目空间，并始终看到当前账户、项目、对象域、所有者和角色。
 
 **Blocked by:** 完成账户注册、登录、退出与会话恢复
+
+**关联需求：** REQ-ID-01、REQ-PRO-02
+
+**规划书章节：** P2-C04、P2-C06、P2-C10
+
+**关键合同：** CONTRACT-OBJ-01、Project、ObjectRef、对象域与当前项目投影
+
+**必读资料：** [产品能力决策](.scratch/science-companion-plan/decisions/02-product-capability-system.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)
+
+**建议测试接缝：** 认证用户创建项目、刷新深链并重新进入，始终得到同一合法项目、对象域与角色投影。
 
 - [ ] 用户可以创建、重命名、选择和归档自己的科学项目空间。
 - [ ] 每个项目及其对象都有明确账户、对象域、所有者和版本。
@@ -43,6 +89,16 @@
 
 **Blocked by:** 创建带对象归属的科学项目空间
 
+**关联需求：** REQ-PRO-02、REQ-AI-01
+
+**规划书章节：** P2-C05、P2-C10、P3-C13
+
+**关键合同：** CONTRACT-WF-01、WorkOrder、RunContextEnvelope、RunProjection、双状态机
+
+**必读资料：** [智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)
+
+**建议测试接缝：** 认证用户提交 WorkOrder，在任务舞台观察从草拟到合法终态的运行与产物双状态，并可取消或处理人工待办。
+
 - [ ] 用户能确认任务目标、成功标准和风险后启动任务。
 - [ ] 任务舞台分别显示运行状态、产物可信状态和发布资格。
 - [ ] 长任务支持刷新恢复、取消和具名人工待办，不依赖聊天历史作为真相。
@@ -53,6 +109,16 @@
 **What to build:** 让两个账户能够同时使用项目任务生命周期，并证明数据库、API、后台任务、缓存、索引和对象引用不会跨用户或项目泄漏。
 
 **Blocked by:** 打通 WorkOrder 与任务舞台生命周期
+
+**关联需求：** REQ-ID-01、REQ-ID-02、REQ-SAFE-01
+
+**规划书章节：** P2-C04、P3-C15、P4-C17、P4-C18
+
+**关键合同：** CONTRACT-AUTH-01、ScopeEnvelope、RLS、作用域缓存键、后台任务信封
+
+**必读资料：** [协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 用户 A 与用户 B 同时执行项目任务，主动尝试通过 API、深链、缓存、索引和任务引用越权，所有路径均被拒绝且无内容泄漏。
 
 - [ ] 两用户、两项目和两机构的合成场景可重复运行。
 - [ ] 用户无法通过直接请求、深链、缓存键、任务引用或索引命中读取另一用户内容。
@@ -65,6 +131,16 @@
 
 **Blocked by:** 建立可运行产品骨架与统一契约链
 
+**关联需求：** REQ-DEV-01、REQ-OPS-01
+
+**规划书章节：** P4-C19、P5-C21
+
+**关键合同：** CONTRACT-RUN-01、配置 Schema、迁移合同、live/ready/degraded 健康合同
+
+**必读资料：** [Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 用四种运行载体分别执行 doctor、迁移、启动、健康和停止，比较同一外部行为与配置解释。
+
 - [ ] 四种运行方式读取同一配置 Schema 和密钥引用规则。
 - [ ] 统一 CLI 能同时监管并启动 Web 与 API，同时保持独立进程边界。
 - [ ] 四种方式执行相同 doctor、迁移、健康和优雅停止冒烟。
@@ -75,6 +151,16 @@
 **What to build:** 让项目任务通过模型网关调用已注册的 Qwen 逻辑能力，并保存可复现的模型运行锁和诚实降级信息。
 
 **Blocked by:** 打通 WorkOrder 与任务舞台生命周期
+
+**关联需求：** REQ-AI-01、REQ-EVAL-01、REQ-SAFE-01
+
+**规划书章节：** P3-C13、P4-C19、P5-C20
+
+**关键合同：** 能力注册表、模型运行锁、模型网关、工具运行锁
+
+**必读资料：** [Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 用户启动一个需要 Qwen 的任务，随后从运行检查器看到实际能力与模型锁；未注册、限流和区域错误进入规定状态。
 
 - [ ] 任务只使用能力注册表中已验证的逻辑能力和输入输出合同。
 - [ ] 每次调用记录实际模型、区域、参数、提示版本、限制和替代路径。
@@ -87,6 +173,16 @@
 
 **Blocked by:** 打通 WorkOrder 与任务舞台生命周期；接入 Qwen 能力注册表与模型运行锁
 
+**关联需求：** REQ-EVAL-01、REQ-PRO-02
+
+**规划书章节：** P2-C10、P5-C20
+
+**关键合同：** CONTRACT-EVAL-01、EvaluationRunLock、EvaluationResultBundle
+
+**必读资料：** [持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 用户从一个已完成项目任务创建两次同锁评测运行，在评测中心比较相同输入、版本、结果与失败。
+
 - [ ] 评测运行冻结任务输入、代码/环境标识、模型锁、Schema 和工作流版本。
 - [ ] 同一运行锁可重复执行并产生可比较的结果包。
 - [ ] 运行中心显示结果差异、资源使用和失败原因，不暴露私人正文到日志。
@@ -97,6 +193,16 @@
 **What to build:** 让用户向自己的项目导入文本和 PDF，查看结构化解析、来源版本、许可、状态和错误，并阻止未通过输入门的内容进入可信证据。
 
 **Blocked by:** 证明两用户项目任务全链路隔离
+
+**关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-ID-01
+
+**规划书章节：** P3-C11、P4-C17、P4-C18
+
+**关键合同：** CONTRACT-SCI-01、Source、DocumentVersion、ChunkVersion、输入质量门
+
+**必读资料：** [科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 用户向自己的项目上传文本或 PDF，纠正解析并创建新版本；另一账户和未通过输入门的材料均无法进入检索。
 
 - [ ] 用户能上传、解析、纠正和重新版本化文本或 PDF。
 - [ ] 来源、文档版本、结构块、页码和内容哈希可追溯。
@@ -109,6 +215,16 @@
 
 **Blocked by:** 导入并版本化文本与 PDF 科学来源
 
+**关联需求：** REQ-SCI-01、REQ-ID-01
+
+**规划书章节：** P3-C11、P4-C17
+
+**关键合同：** CONTRACT-SCI-01、ScopeEnvelope、EvidenceSet、索引版本合同
+
+**必读资料：** [科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 用户在项目中检索一个科学问题，结果同时包含可见的词法与语义候选，并验证撤权、删除与跨账户材料零召回。
+
 - [ ] 检索前编译用户、项目、对象域、授权版本和密钥时期。
 - [ ] 词法与向量候选经过作用域预过滤、融合、重排和输出后二次鉴权。
 - [ ] 已撤权、删除、失效和其他账户内容不可被召回。
@@ -119,6 +235,16 @@
 **What to build:** 让用户从检索材料得到带支持、反驳、限制和精确引用位置的科学 Claim，并能从产物回到证据。
 
 **Blocked by:** 完成作用域约束的混合检索；接入 Qwen 能力注册表与模型运行锁
+
+**关联需求：** REQ-SCI-01、REQ-SAFE-01
+
+**规划书章节：** P2-C10、P3-C11
+
+**关键合同：** CONTRACT-SCI-01、ClaimGraph、Evidence、Citation、出处图投影
+
+**必读资料：** [科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)
+
+**建议测试接缝：** 用户从任务产物打开引用检查器，逐个 Claim 回到正确来源版本和位置，并观察反驳与限制证据。
 
 - [ ] 每个重要 Claim 关联来源版本、精确位置和 Evidence 关系。
 - [ ] 引用定位在来源版本变化后仍可验证或明确失效。
@@ -131,6 +257,16 @@
 
 **Blocked by:** 生成可定位的 Claim—Evidence—Citation 关系
 
+**关联需求：** REQ-SCI-01、REQ-EXP-01、REQ-SAFE-01
+
+**规划书章节：** P2-C08、P3-C11、P3-C13
+
+**关键合同：** FactLockSet、ClaimGraph、ValidationReport、科学质量门
+
+**必读资料：** [科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)、[有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)
+
+**建议测试接缝：** 对同一问题输入支持、冲突、未知和不足四种证据状态，验证任务舞台、措辞和发布资格进入相应合法状态。
+
 - [ ] 支持、反驳与限制证据并列保留，不通过模型投票或最后写入消除。
 - [ ] 事实锁固定数字、单位、对象、关系、限定、术语、公式和引用。
 - [ ] 措辞强度根据证据状态被确定性限制。
@@ -141,6 +277,16 @@
 **What to build:** 让来源撤回、状态未知或版本失效能够阻止新发布，定位关联 Claim、事实锁、运行和产物，并支持重验证。
 
 **Blocked by:** 完成证据冲突、事实锁与诚实降级；打通 WorkOrder 与任务舞台生命周期
+
+**关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P2-C05、P3-C11、P5-C22
+
+**关键合同：** InvalidationEvent、ImpactSet、重新验证合同
+
+**必读资料：** [科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 将一个已用于发布的来源置为撤回，验证新发布被阻断、既有产物显示失效影响，并能产生新版本重验证。
 
 - [ ] 来源状态变化生成不可变失效事件与影响集。
 - [ ] 新任务和发布不会继续使用失效来源。
@@ -153,6 +299,16 @@
 
 **Blocked by:** 证明两用户项目任务全链路隔离；打通 WorkOrder 与任务舞台生命周期
 
+**关联需求：** REQ-PRO-01、REQ-ID-02
+
+**规划书章节：** P3-C12
+
+**关键合同：** CONTRACT-PROFILE-01、ProfileObservation、ProfileCandidate、HumanDecision
+
+**必读资料：** [画像与记忆研究](.scratch/science-companion-plan/research/04-profile-memory-governance.md)
+
+**建议测试接缝：** 用户完成一段对话后查看候选画像，接受、修改或拒绝；后续任务不得把未确认候选作为稳定事实。
+
 - [ ] 画像观察保留原始来源、场景、授权和内容哈希。
 - [ ] 候选画像不能作为稳定事实进入后续任务。
 - [ ] 单次情绪、示例人物和敏感身份推断不会形成稳定画像。
@@ -163,6 +319,16 @@
 **What to build:** 让用户在一次任务中只使用相关、已授权且可解释的画像与记忆条目，并在上下文检查器查看调用原因。
 
 **Blocked by:** 形成画像观察与候选画像闭环
+
+**关联需求：** REQ-PRO-01、REQ-PRO-02、REQ-ID-02
+
+**规划书章节：** P2-C10、P3-C12、P3-C13
+
+**关键合同：** CONTRACT-PROFILE-01、MemorySlice、ContextSlice、RunContextEnvelope
+
+**必读资料：** [画像与记忆研究](.scratch/science-companion-plan/research/04-profile-memory-governance.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 用户提交一个需要个性化的任务，从画像切片检查器查看实际使用、拒绝和未使用条目，并验证模型只能访问切片。
 
 - [ ] 记忆切片按任务目的、对象域、授权、有效期和敏感级别编译。
 - [ ] 模型和工作节点只能读取切片，不能浏览完整个人保险库。
@@ -175,6 +341,16 @@
 
 **Blocked by:** 编译并解释最小记忆切片；传播来源失效并定位下游影响
 
+**关联需求：** REQ-PRO-01、REQ-PRO-02、REQ-ID-02、REQ-SAFE-01
+
+**规划书章节：** P3-C12、P3-C15、P4-C17
+
+**关键合同：** CONTRACT-PROFILE-01、ProfileAssertionVersion、Tombstone、InvalidationPlan
+
+**必读资料：** [画像与记忆研究](.scratch/science-companion-plan/research/04-profile-memory-governance.md)、[协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)
+
+**建议测试接缝：** 用户对同一画像执行确认、冻结、删除和回滚，再配对运行相同任务，验证切片、回答、索引与审计按预期变化。
+
 - [ ] 用户能逐条确认、修改、冻结、删除、导出和回滚画像版本。
 - [ ] 删除先写墓碑并阻止新召回，再处理索引、缓存和派生影响。
 - [ ] 冻结、删除或回滚前后的配对任务显示预期差异。
@@ -185,6 +361,16 @@
 **What to build:** 让用户定义真实学习使命和成功标准，并获得基于证据而非标签的先备知识与最近发展区判断。
 
 **Blocked by:** 编译并解释最小记忆切片；生成可定位的 Claim—Evidence—Citation 关系
+
+**关联需求：** REQ-SCI-02、REQ-PRO-01、REQ-ID-02
+
+**规划书章节：** P2-C07、P3-C12
+
+**关键合同：** LearningMission、KnowledgeState、TeachingPlan、CONTRACT-PROFILE-01
+
+**必读资料：** [产品能力决策](.scratch/science-companion-plan/decisions/02-product-capability-system.md)、[画像与记忆研究](.scratch/science-companion-plan/research/04-profile-memory-governance.md)
+
+**建议测试接缝：** 两个不同基础的用户建立相同主题使命并完成诊断，得到有证据解释的不同最近发展区。
 
 - [ ] 学习使命记录目标、范围、约束和可观察成功标准。
 - [ ] 诊断问题和结果绑定科学证据、用户回答和版本。
@@ -197,6 +383,16 @@
 
 **Blocked by:** 建立学习使命与先备知识诊断；完成证据冲突、事实锁与诚实降级
 
+**关联需求：** REQ-SCI-01、REQ-SCI-02、REQ-PRO-02
+
+**规划书章节：** P2-C07、P3-C11、P3-C13
+
+**关键合同：** CONTRACT-CREATE-01、TeachingPlan、EvidenceSet、教学质量门
+
+**必读资料：** [产品能力决策](.scratch/science-companion-plan/decisions/02-product-capability-system.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 用户从学习使命开始完成一节短课和检索练习，随后从任务舞台查看证据、反馈与教学门结果。
+
 - [ ] 短课只引入完成当前学习胜利所需的概念。
 - [ ] 讲解、示例、答案与反馈绑定 EvidenceSet 和事实锁。
 - [ ] 练习要求用户回忆、解释、计算、比较或应用，而非只浏览。
@@ -207,6 +403,16 @@
 **What to build:** 让用户完成练习后产生可审查的学习记录候选，并确认或拒绝知识状态和路径的重要变化。
 
 **Blocked by:** 生成可信短课与检索练习；完成画像确认、冻结、删除、导出与回滚
+
+**关联需求：** REQ-PRO-01、REQ-PRO-02、REQ-ID-02
+
+**规划书章节：** P2-C07、P3-C12
+
+**关键合同：** LearningRecord、KnowledgeStateProposal、LearningPath、HumanDecision
+
+**必读资料：** [画像与记忆研究](.scratch/science-companion-plan/research/04-profile-memory-governance.md)、[持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)
+
+**建议测试接缝：** 用户完成、纠错或仅浏览三种学习行为，验证只有前两类合格证据能提出知识状态和路径更新。
 
 - [ ] 学习记录引用具体作答、误区纠正或先备能力证据。
 - [ ] 知识状态保留不确定性、反证、适用范围和下一验证任务。
@@ -219,6 +425,16 @@
 
 **Blocked by:** 由学习证据更新知识状态和学习路径；打通 WorkOrder 与任务舞台生命周期
 
+**关联需求：** REQ-SCI-02、REQ-PRO-01、REQ-ID-02
+
+**规划书章节：** P2-C07、P3-C13
+
+**关键合同：** LearningPath、ReviewSchedule、定时工作流、取消与重编合同
+
+**必读资料：** [产品能力决策](.scratch/science-companion-plan/decisions/02-product-capability-system.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 用户获得一项有理由的间隔复习，延后或完成后更新记录；删除或路径变化会取消或重编未来任务。
+
 - [ ] 调度引用学习记录、知识状态、遗忘证据和学习使命。
 - [ ] 用户能查看原因、延后、调整或取消复习任务。
 - [ ] 复习结果创建新学习证据，不直接覆盖旧状态。
@@ -229,6 +445,16 @@
 **What to build:** 让用户指定目标、受众、体裁、渠道、长度和风险，并得到绑定 Claim、Citation 与事实锁的首个表达草稿。
 
 **Blocked by:** 完成证据冲突、事实锁与诚实降级；编译并解释最小记忆切片；接入 Qwen 能力注册表与模型运行锁
+
+**关联需求：** REQ-SCI-01、REQ-EXP-01、REQ-PRO-01
+
+**规划书章节：** P2-C08、P3-C11、P3-C12
+
+**关键合同：** CONTRACT-CREATE-01、ExpressionBrief、AudienceModel、FactLockSet、ExpressionDraft
+
+**必读资料：** [有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)、[科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)
+
+**建议测试接缝：** 用户创建表达任务契约并生成初稿，随后从引用与画像检查器验证每个重要判断和个性化影响。
 
 - [ ] 表达任务契约包含目标、受众、体裁、风险、必需判断和成功标准。
 - [ ] 草稿每个重要判断能回到 Claim、Evidence、Citation 和事实锁。
@@ -241,6 +467,16 @@
 
 **Blocked by:** 从表达任务契约生成事实锁草稿
 
+**关联需求：** REQ-SCI-02、REQ-EXP-01
+
+**规划书章节：** P2-C07、P2-C08
+
+**关键合同：** GenreContract、ArgumentPlan、ExpressionDraft、ReviewReport
+
+**必读资料：** [有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)、[产品能力决策](.scratch/science-companion-plan/decisions/02-product-capability-system.md)
+
+**建议测试接缝：** 用户把同一事实锁分别生成科普文案和课程讲稿，验证体裁差异、类比边界与教学检查点，同时事实保持不变。
+
 - [ ] 科普文案区分核心概念、类比、类比失效边界和行动相关性。
 - [ ] 课程讲稿包含学习目标、先备要求、理解检查和练习停顿。
 - [ ] 体裁转换不改变事实锁、引用和结论强度。
@@ -251,6 +487,16 @@
 **What to build:** 让用户生成科研汇报或论文辅助内容，明确区分数据、推断、限制、引用与作者责任。
 
 **Blocked by:** 从表达任务契约生成事实锁草稿
+
+**关联需求：** REQ-SCI-01、REQ-SCI-02、REQ-EXP-01
+
+**规划书章节：** P2-C08
+
+**关键合同：** GenreContract、ArgumentPlan、ExpressionDraft、作者责任声明
+
+**必读资料：** [有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)
+
+**建议测试接缝：** 用户把同一证据集分别生成科研汇报和论文辅助版本，验证数据、推断、限制、引用与责任边界。
 
 - [ ] 科研汇报分离观测、分析、解释、限制和下一步。
 - [ ] 论文辅助只支持结构、语言、引用核验和论证建议，不虚构数据或实验。
@@ -263,6 +509,16 @@
 
 **Blocked by:** 完成科普文案与课程讲稿体裁合同；完成科研汇报与论文辅助体裁合同
 
+**关联需求：** REQ-EXP-01、REQ-PRO-02、REQ-EVAL-01
+
+**规划书章节：** P2-C08、P5-C20
+
+**关键合同：** StylePolicy、ReviewReport、RevisionPatch、事实锁差异合同
+
+**必读资料：** [有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)、[持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)
+
+**建议测试接缝：** 用户收到逐条中文表达诊断，选择接受、拒绝和改写不同补丁，验证事实锁不变且反馈进入正确对象。
+
 - [ ] 诊断报告定位具体文本、问题类型、理由和建议补丁。
 - [ ] 补丁应用前后自动比较事实锁、引用与措辞强度。
 - [ ] 用户反馈分别路由到当前版本、候选偏好、学习记录或事实复核。
@@ -273,6 +529,16 @@
 **What to build:** 让用户比较表达版本中的事实、证据、结构、措辞、模型和人工修改，并只发布满足全部资格的版本。
 
 **Blocked by:** 完成人味诊断与逐条修订闭环；传播来源失效并定位下游影响
+
+**关联需求：** REQ-SCI-01、REQ-EXP-01、REQ-SAFE-01
+
+**规划书章节：** P2-C08、P2-C10、P3-C13
+
+**关键合同：** ArtifactVersion、ValidationReport、HumanDecision、发布资格合同
+
+**必读资料：** [有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)
+
+**建议测试接缝：** 用户比较两个表达版本并尝试发布，验证事实、证据、措辞、人工修改和失效状态共同决定发布资格。
 
 - [ ] 版本比较突出事实锁、Claim、引用、结论强度和人工决定变化。
 - [ ] 工作流成功但产物未批准时发布入口保持锁定。
@@ -285,6 +551,16 @@
 
 **Blocked by:** 导入并版本化文本与 PDF 科学来源；完成证据冲突、事实锁与诚实降级
 
+**关联需求：** REQ-MM-01、REQ-SCI-01、REQ-SAFE-01
+
+**规划书章节：** P2-C09、P3-C11
+
+**关键合同：** SourceAsset、DerivedAsset、MediaManifest、结构提取修订合同
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)
+
+**建议测试接缝：** 用户上传含图片、公式和表格的科学材料，纠正一个识别错误并验证派生版本、Claim 和原始资产关系。
+
 - [ ] 图片区域、OCR、图例、尺度和置信度可查看与修正。
 - [ ] 公式保留符号表、结构、变量定义和可访问表示。
 - [ ] 表格保留 Schema、单位、缺失值、来源和原始数据对应。
@@ -295,6 +571,16 @@
 **What to build:** 让用户导入音频和视频，查看并纠正 ASR、时间戳、说话段、字幕、关键帧和科学术语。
 
 **Blocked by:** 导入并版本化文本与 PDF 科学来源；接入 Qwen 能力注册表与模型运行锁
+
+**关联需求：** REQ-MM-01、REQ-AI-01、REQ-ID-01
+
+**规划书章节：** P2-C09、P4-C19
+
+**关键合同：** SourceAsset、时间轴转写合同、模型运行锁、MediaManifest
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)
+
+**建议测试接缝：** 用户上传音频或视频，纠正一个低置信科学术语，验证时间轴、字幕、版本与账户作用域。
 
 - [ ] 音视频解析结果与原始时间轴和资产版本绑定。
 - [ ] 用户能修正术语、说话段、字幕与关键帧解释。
@@ -307,6 +593,16 @@
 
 **Blocked by:** 摄入并校正图片、扫描件、公式和表格；完成证据冲突、事实锁与诚实降级
 
+**关联需求：** REQ-MM-01、REQ-SCI-01、REQ-SCI-02
+
+**规划书章节：** P2-C09
+
+**关键合同：** ScientificMediaObject、EditableSource、FactLockSet、AccessibilityAlternative
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)
+
+**建议测试接缝：** 用户从带单位的数据和 Claim 生成一张可编辑图表，修改源后重新验证数值、事实绑定与等价数据表。
+
 - [ ] 图表数值、轴、单位、聚合和误差表达与源数据一致。
 - [ ] 科学图中的标签和关系绑定 Claim 与事实锁。
 - [ ] 用户能修改可编辑源并重新验证。
@@ -317,6 +613,16 @@
 **What to build:** 让用户先审查结构化分镜和可编辑源，再在强隔离沙箱中运行交互或动画并查看验证结果。
 
 **Blocked by:** 摄入并校正图片、扫描件、公式和表格；建立四种生产运行合同骨架；接入 Qwen 能力注册表与模型运行锁
+
+**关联需求：** REQ-MM-01、REQ-AI-01、REQ-SAFE-01
+
+**规划书章节：** P2-C09、P4-C18、P4-C19
+
+**关键合同：** MediaStoryboard、EditableSource、SandboxRun、ValidationReport
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 用户确认分镜后运行交互或动画，分别验证成功、有限修复和沙箱失败时的可见产物与发布状态。
 
 - [ ] 分镜明确教学目标、对象、布局、状态、时间、旁白和 Claim 绑定。
 - [ ] 生成代码在无生产网络、无密钥和有限资源的隔离环境运行。
@@ -329,6 +635,16 @@
 
 **Blocked by:** 摄入并校正音频与视频材料；生成可编辑静态科学图与数据图表；生成结构化分镜并在沙箱运行交互或动画
 
+**关联需求：** REQ-MM-01、REQ-SCI-02
+
+**规划书章节：** P2-C09、P2-C10
+
+**关键合同：** AccessibilityAlternative、CaptionTrack、Transcript、减少动画与顺序视图合同
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)
+
+**建议测试接缝：** 键盘和屏幕阅读器用户完成同一媒体任务，并在减少动画模式下获得与视觉/听觉成品一致的科学内容。
+
 - [ ] 音频、字幕和文字稿共享同一科学 Claim 与版本。
 - [ ] 交互和媒体核心任务可由键盘与屏幕阅读器完成。
 - [ ] 用户可以暂停、控制时间内容并启用减少动画。
@@ -339,6 +655,16 @@
 **What to build:** 让用户在发布前看到文本、图表、公式、音频、视频和交互的 Claim 一致性、许可、安全与无障碍结果。
 
 **Blocked by:** 完成表达版本比较与发布门；生成朗读、字幕和完整无障碍替代
+
+**关联需求：** REQ-MM-01、REQ-SCI-01、REQ-SAFE-01
+
+**规划书章节：** P2-C09、P3-C13、P5-C20
+
+**关键合同：** ScientificMediaObject、跨媒体 Claim 映射、多模态质量门、发布资格合同
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 用户从同一项目发布包含文本、图表、音频和交互的媒体对象，故意引入跨媒体事实差异并验证发布闭锁。
 
 - [ ] 跨媒体核心事实、数值、术语、限定条件和引用一致。
 - [ ] 许可、真实性、沙箱和无障碍任一必需门失败会阻止发布。
@@ -351,6 +677,16 @@
 
 **Blocked by:** 证明两用户项目任务全链路隔离；完成画像确认、冻结、删除、导出与回滚
 
+**关联需求：** REQ-ID-01、REQ-PRO-01、REQ-SAFE-01
+
+**规划书章节：** P3-C15、P2-C10
+
+**关键合同：** CONTRACT-OBJ-01、SharePreview、ProjectObjectRef、ObjectGrant
+
+**必读资料：** [协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)、[前端信息架构](.scratch/science-companion-plan/decisions/09-frontend-information-architecture.md)
+
+**建议测试接缝：** 用户从个人保险库选择一个对象并完成分享预览，协作者只能看到生成的最小项目副本，原件后续修改不自动同步。
+
 - [ ] 分享预览明确显示包含与排除字段、所有者和后续独立性。
 - [ ] 共享项目只引用项目对象，不挂载个人保险库正文。
 - [ ] 角色和对象授权共同决定查看、编辑、审阅与发布。
@@ -361,6 +697,16 @@
 **What to build:** 让机构管理员管理成员、席位、策略和机构自有项目，同时证明其不能读取成员个人保险库。
 
 **Blocked by:** 完成显式共享项目与最小项目副本
+
+**关联需求：** REQ-ID-01、REQ-SAFE-01
+
+**规划书章节：** P2-C04、P3-C15、P4-C18
+
+**关键合同：** Tenant、Membership、InstitutionOwnedProject、受控正文访问合同
+
+**必读资料：** [协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 同一用户加入两个机构，管理员分别管理成员但无法通过界面、API 或审计旁路读取个人保险库。
 
 - [ ] 账户可加入多个互相不可见的机构。
 - [ ] 管理成员与读取内容是分开的权限和界面操作。
@@ -373,6 +719,16 @@
 
 **Blocked by:** 完成画像确认、冻结、删除、导出与回滚；建立四种生产运行合同骨架
 
+**关联需求：** REQ-PRO-01、REQ-ID-01、REQ-OPS-01
+
+**规划书章节：** P3-C15、P4-C16、P4-C17
+
+**关键合同：** VaultRuntime、DeviceCertificate、KeyEpoch、TemporaryTaskCapsule
+
+**必读资料：** [协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 用户配对设备、保存私人对象并授权一次任务切片，验证设备明文权威、云端最小胶囊和过期失效。
+
 - [ ] 设备证书、密钥时期和配对状态与用户账户绑定。
 - [ ] 设备私钥进入系统密钥库，不写入普通配置或日志。
 - [ ] 个人正文和私人索引默认在设备侧保持明文权威。
@@ -383,6 +739,16 @@
 **What to build:** 让在线与离线设备同步版本化操作，优先应用授权、密钥时期和墓碑，并为科学语义冲突保留人工可裁决分支。
 
 **Blocked by:** 完成显式共享项目与最小项目副本；配对个人保险库并保存加密本地对象；传播来源失效并定位下游影响
+
+**关联需求：** REQ-ID-01、REQ-PRO-01、REQ-SAFE-01
+
+**规划书章节：** P3-C15、P4-C17、P4-C18
+
+**关键合同：** SyncOperation、ConflictBranch、DeviceAck、Tombstone、KeyEpoch
+
+**必读资料：** [协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 离线设备编辑一个随后被删除的对象，上线时先接收墓碑和新密钥时期，旧修改被隔离而不能复活对象。
 
 - [ ] 同步先拉取策略、撤权、密钥时期和墓碑，再提交本地操作。
 - [ ] 旧密钥时期或已撤权设备的提交被拒绝并隔离。
@@ -395,6 +761,16 @@
 
 **Blocked by:** 完成证据冲突、事实锁与诚实降级；接入 Qwen 能力注册表与模型运行锁
 
+**关联需求：** REQ-SCI-01、REQ-AI-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14
+
+**关键合同：** DomainPackManifest、DomainRule、ValidatorRequirement、FixtureCase、PackDependencyLock
+
+**必读资料：** [领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)、[科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)
+
+**建议测试接缝：** 一个数学证明任务装载签名前的数学包候选，运行规则与夹具并显示为何通过、阻塞或需要人工判断。
+
 - [ ] Manifest 声明范围、排除项、来源、规则、能力、夹具、依赖和风险。
 - [ ] 数学包能校验定义、符号、前提、推理步骤和证明状态。
 - [ ] 领域规则不能放宽平台权限、安全、审计和发布下限。
@@ -405,6 +781,16 @@
 **What to build:** 让物理和化学任务正确处理实验条件、测量不确定性、单位、有效数字、物质关系与安全边界。
 
 **Blocked by:** 建立领域包协议并交付数学与形式证明包
+
+**关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14
+
+**关键合同：** DomainPackManifest、测量/单位规则、实验安全门、FixtureCase
+
+**必读资料：** [领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)
+
+**建议测试接缝：** 用户执行包含测量不确定性、单位与危险实验建议的任务，验证领域规则、措辞限制和安全门。
 
 - [ ] 包定义学科来源层级、术语、单位和证据映射。
 - [ ] 测量、实验条件、误差和化学规则有确定性夹具。
@@ -417,6 +803,16 @@
 
 **Blocked by:** 建立领域包协议并交付数学与形式证明包
 
+**关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14、P5-C22
+
+**关键合同：** 高风险 DomainPack、H3 联合门、医学禁止场景、FixtureCase
+
+**必读资料：** [领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)
+
+**建议测试接缝：** 用户提交生命科学教育与医学高风险请求，验证适用范围、证据等级、人工门和诊断/处方禁止规则。
+
 - [ ] 生命科学与医学包分别声明适用和排除范围。
 - [ ] 医学高风险内容不能形成诊断、处方或替代专业决策。
 - [ ] 关键来源状态未知或证据冲突时高置信发布闭锁。
@@ -427,6 +823,16 @@
 **What to build:** 让地球、气候与天文学任务正确表达观测、时间空间尺度、模型依赖、不确定性和数据版本。
 
 **Blocked by:** 建立领域包协议并交付数学与形式证明包
+
+**关联需求：** REQ-SCI-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14
+
+**关键合同：** 观测数据规则、尺度与模型限定合同、DomainPackManifest
+
+**必读资料：** [领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)
+
+**建议测试接缝：** 用户比较观测与模型结论，验证时间空间尺度、数据版本、不确定性和相关因果边界进入 Claim 与措辞。
 
 - [ ] 包能区分观测事实、模型输出、情景和推断。
 - [ ] 时间、空间、仪器和数据版本进入 Claim 限定条件。
@@ -439,6 +845,16 @@
 
 **Blocked by:** 建立领域包协议并交付数学与形式证明包
 
+**关联需求：** REQ-SCI-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14、P4-C19
+
+**关键合同：** 软件/标准版本规则、数据集许可与状态合同、DomainPackManifest
+
+**必读资料：** [领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)、[Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)
+
+**建议测试接缝：** 用户查询一个版本相关的软件或标准问题，验证答案绑定有效一手版本、许可和状态，过时资料不能覆盖。
+
 - [ ] 软件与规范结论绑定明确版本、发布日期和状态。
 - [ ] 数据集来源、许可、切片、更新和撤回信息可追溯。
 - [ ] 过时文档、废弃 API 和非权威博客不会覆盖有效一手规范。
@@ -449,6 +865,16 @@
 **What to build:** 让内容维护者、独立复核者和平台发行者通过阶段控制台、语义 Diff、夹具、资质与职责分离完成领域包灰度发行。
 
 **Blocked by:** 建立领域包协议并交付数学与形式证明包；证明两用户项目任务全链路隔离
+
+**关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14、P2-C10
+
+**关键合同：** 规范化包摘要、ReviewAttestation、QualificationRecord、SemanticDiff、PackRelease
+
+**必读资料：** [专家工作台决策](.scratch/science-companion-plan/decisions/15-domain-pack-expert-workbench.md)、[领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)
+
+**建议测试接缝：** 维护者、独立复核者和发行者分别完成同一包版本的编辑、语义 Diff、夹具、签名和灰度，职责冲突被拒绝。
 
 - [ ] 内容签名、独立验证签名和平台发行签名绑定同一规范化摘要。
 - [ ] 同一自然人不能对同一版本同时充当维护者和独立复核者。
@@ -461,6 +887,16 @@
 
 **Blocked by:** 传播来源失效并定位下游影响；交付物理与化学实验测量领域包；交付生命科学与医学高风险领域包；交付地球、气候与天文学领域包；交付计算机科学、标准与数据集领域包；完成专家工作台、三签与灰度发行
 
+**关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P3-C14、P5-C22
+
+**关键合同：** PackInvalidationEvent、ImpactSet、RevocationEvent、RevalidationReport、受信回滚合同
+
+**必读资料：** [专家工作台决策](.scratch/science-companion-plan/decisions/15-domain-pack-expert-workbench.md)、[领域包治理研究](.scratch/science-companion-plan/research/12-initial-domain-pack-governance.md)
+
+**建议测试接缝：** 撤销一个已被多项目使用的包版本，验证新运行闭锁、影响带完整、重验证推进且回滚不能复活不受信版本。
+
 - [ ] 失效事件按检测、分诊、控制、定位影响、修复、重验证和关闭推进。
 - [ ] 安全管理员可紧急撤销，但不能编辑规则或直接发布替代版本。
 - [ ] 影响集覆盖包、运行、Claim、Evidence、Wording、产物、项目和用户动作。
@@ -471,6 +907,16 @@
 **What to build:** 让评测负责人登记数据卡、案例、切片、裁判、种子、运行锁和结果包，并可通过生产主接缝执行。
 
 **Blocked by:** 从项目任务生成首个可重放评测运行
+
+**关联需求：** REQ-EVAL-01、REQ-SCI-01、REQ-SAFE-01
+
+**规划书章节：** P5-C20
+
+**关键合同：** CONTRACT-EVAL-01、EvaluationSuiteVersion、EvaluationCaseVersion、EvaluationRunLock、EvaluationResultBundle
+
+**必读资料：** [持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)
+
+**建议测试接缝：** 评测负责人登记一套带数据卡和隐藏切片的套件，通过生产主接缝执行并复现签名结果包。
 
 - [ ] 套件和案例记录用户、项目、领域、授权、预期 Claim、合法状态和预算。
 - [ ] 运行锁冻结代码/环境标识、数据、模型、提示、Schema、工作流、工具和裁判。
@@ -483,6 +929,16 @@
 
 **Blocked by:** 完成间隔复习与交错练习调度；完成表达版本比较与发布门；建立版本化评测套件、案例、运行锁和结果包
 
+**关联需求：** REQ-EVAL-01、REQ-SCI-01、REQ-SCI-02、REQ-PRO-01、REQ-EXP-01
+
+**规划书章节：** P5-C20
+
+**关键合同：** BaselineRunPair、AblationDefinition、EvaluationResultBundle、统计分析计划
+
+**必读资料：** [持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)、[画像与记忆研究](.scratch/science-companion-plan/research/04-profile-memory-governance.md)、[有人味表达研究](.scratch/science-companion-plan/research/05-human-scientific-expression.md)
+
+**建议测试接缝：** 对同一隐藏案例集运行完整系统、裸 Qwen、普通 RAG、固定课程、无画像和无事实锁配置，比较配对结果与受损切片。
+
 - [ ] 科学准确、引用、校准、学习增益、画像质量和中文表达都有主要指标。
 - [ ] 基线与候选采用配对输入和相同非目标变量。
 - [ ] 消融分别移除画像切片、证据验证、事实锁和人味诊断。
@@ -493,6 +949,16 @@
 **What to build:** 让团队量化结构化分镜、沙箱、质量门、人工门、类型化编排和领域包相对简化方案的贡献。
 
 **Blocked by:** 完成跨媒体一致性与多模态发布门；完成领域包失效、撤销、重验证与受信回滚；建立版本化评测套件、案例、运行锁和结果包
+
+**关联需求：** REQ-EVAL-01、REQ-MM-01、REQ-SAFE-01
+
+**规划书章节：** P3-C13、P3-C14、P5-C20
+
+**关键合同：** AblationDefinition、WorkflowRunLock、DomainPackLock、MediaValidationResult
+
+**必读资料：** [持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)、[多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 对同一多模态与工作流案例分别移除分镜、沙箱、质量门、人工门和领域包，验证质量差异与硬失败。
 
 - [ ] 多模态评测覆盖科学一致性、可编辑性、安全、许可和无障碍。
 - [ ] 编排评测覆盖非法状态、重试越界、重复副作用、取消、补偿和人工门。
@@ -505,6 +971,16 @@
 
 **Blocked by:** 完成跨媒体一致性与多模态发布门；完成因果同步、冲突分支、撤权和删除墓碑；完成领域包失效、撤销、重验证与受信回滚
 
+**关联需求：** REQ-SAFE-01、REQ-ID-01、REQ-MM-01
+
+**规划书章节：** P4-C18、P5-C20、P5-C22
+
+**关键合同：** ThreatCase、SecurityEvent、ScopeEnvelope、Tombstone、SandboxPolicy
+
+**必读资料：** [系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)、[协作与同步边界](.scratch/science-companion-plan/decisions/13-collaboration-organization-sync-boundaries.md)
+
+**建议测试接缝：** 通过认证项目任务生命周期执行规定攻击集，验证每个攻击的拒绝、用户可见状态、审计和恢复结果。
+
 - [ ] 所有规定威胁都有可复现攻击步骤、预期拒绝和审计证据。
 - [ ] 跨账户泄漏、越权工具、删除复活、秘密泄漏和沙箱逃逸实例为零。
 - [ ] 权限和数据异常不能从缓存、索引、备份或降级模型旁路。
@@ -515,6 +991,16 @@
 **What to build:** 让用户任务能够追踪延迟、成本、队列、模型、工具、重试、质量门和终止原因，并向具名责任人发送可执行告警。
 
 **Blocked by:** 打通 WorkOrder 与任务舞台生命周期；建立四种生产运行合同骨架
+
+**关联需求：** REQ-EVAL-01、REQ-OPS-01、REQ-SAFE-01
+
+**规划书章节：** P4-C16、P4-C19、P5-C21
+
+**关键合同：** RunSummary、审计事件、OpenTelemetry 关联合同、SLI/SLO、AlertOwnership
+
+**必读资料：** [系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)、[成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)
+
+**建议测试接缝：** 用户执行一次成功、一次重试和一次阻塞任务，运维人员能从统一追踪重建过程且观测数据不包含私人正文。
 
 - [ ] trace、metric、log 和审计事件使用统一运行与对象标识关联。
 - [ ] 观测系统不复制私人正文、完整提示、密钥或不必要模型输出。
@@ -527,6 +1013,16 @@
 
 **Blocked by:** 完成跨媒体一致性与多模态发布门；完成科学、教学、画像与表达基线和消融；完成多模态、编排与领域包基线和消融；建立全链路观测、SLO 与告警责任
 
+**关联需求：** REQ-EVAL-01、REQ-OPS-01
+
+**规划书章节：** P4-C19、P5-C20、P5-C21
+
+**关键合同：** WorkloadProfile、CapacityResult、BackpressurePolicy、CostResult
+
+**必读资料：** [成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)
+
+**建议测试接缝：** 在代表性交互、摄入、媒体、评测和治理负载下运行主生命周期，观察尾延迟、背压、成本与合法降级。
+
 - [ ] 分别测量交互、摄入、检索、表达、多模态、评测和治理工作负载。
 - [ ] 报告 P50/P95/P99、吞吐、等待、Token、CPU/GPU、内存、存储、失败与单位成功任务成本。
 - [ ] 背压优先保护认证、授权、交互和安全治理任务。
@@ -537,6 +1033,16 @@
 **What to build:** 让 PostgreSQL、持久工作流、Redis、对象存储、Qwen、沙箱和网络故障进入合法降级，并能恢复授权、墓碑、任务和产物状态。
 
 **Blocked by:** 完成因果同步、冲突分支、撤权和删除墓碑；完成领域包失效、撤销、重验证与受信回滚；建立全链路观测、SLO 与告警责任
+
+**关联需求：** REQ-OPS-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P4-C17、P4-C19、P5-C21
+
+**关键合同：** BackupManifest、RecoveryRun、WorkflowReplay、FailureInjection、RecoveryPoint
+
+**必读资料：** [系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)、[成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)
+
+**建议测试接缝：** 在用户任务执行和离线撤权期间注入基础设施故障，恢复后验证无重复副作用、墓碑优先和合法任务终态。
 
 - [ ] 每类故障有可复现注入条件、预期状态、告警和恢复步骤。
 - [ ] 恢复后先重放撤权、密钥时期和删除墓碑，再开放私人访问。
@@ -549,6 +1055,16 @@
 
 **Blocked by:** 建立四种生产运行合同骨架；完成专家工作台、三签与灰度发行
 
+**关联需求：** REQ-OPS-01、REQ-SAFE-01、REQ-EVAL-01
+
+**规划书章节：** P4-C18、P4-C19、P5-C21
+
+**关键合同：** SBOM、ArtifactDigest、SignatureRecord、VulnerabilityDecision、SecretReference
+
+**必读资料：** [系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)、[成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)
+
+**建议测试接缝：** 构建候选产物并故意加入未知来源或高危依赖，验证摘要、SBOM、签名、秘密扫描和候选闭锁。
+
 - [ ] 发布候选生成完整 SBOM、许可证清单和漏洞裁决记录。
 - [ ] 构建产物和镜像固定 digest 并验证签名。
 - [ ] 生产进程使用非 root、最小能力、只读基础和受控秘密引用。
@@ -560,6 +1076,16 @@
 
 **Blocked by:** 建立全链路观测、SLO 与告警责任；完成故障注入、备份恢复与状态重放；完成供应链、SBOM、签名与秘密治理
 
+**关联需求：** REQ-DEV-01、REQ-OPS-01、REQ-EVAL-01
+
+**规划书章节：** P4-C19、P5-C21
+
+**关键合同：** CONTRACT-RUN-01、DeploymentRunLock、迁移/健康/备份/恢复等价合同
+
+**必读资料：** [Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)、[系统架构决策](.scratch/science-companion-plan/decisions/11-system-architecture-and-governance.md)、[成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)
+
+**建议测试接缝：** 在四个全新环境中执行完全相同的认证项目任务、故障与恢复脚本，比较状态、数据、审计和复现结果。
+
 - [ ] 四种路径都验证安装摘要、doctor、迁移、启动和优雅停止。
 - [ ] 四种路径都通过注册、登录、项目、任务、队列、对象存储和隔离冒烟。
 - [ ] 四种路径都完成备份、恢复、升级、回滚或前滚修复。
@@ -570,6 +1096,16 @@
 **What to build:** 让产品、科学、教学、安全、数据、无障碍、工程和运营责任人基于锁定候选完成 G0—G5 裁决，形成首个成熟发行资格。
 
 **Blocked by:** 完成科学、教学、画像与表达基线和消融；完成多模态、编排与领域包基线和消融；完成全产品安全与隐私红队；完成容量、背压、长稳与单位任务成本验证；证明四种生产部署完全等价
+
+**关联需求：** REQ-SCOPE-01、REQ-EVAL-01、REQ-SAFE-01、REQ-OPS-01
+
+**规划书章节：** P5-C20、P5-C21、P5-C22
+
+**关键合同：** MatureReleaseBaseline、ReleaseDecision、G0—G5 证据门、风险关闭合同
+
+**必读资料：** [成熟开发路线](.scratch/science-companion-plan/decisions/14-development-roadmap-and-stage-acceptance.md)、[持续评测研究](.scratch/science-companion-plan/research/10-continuous-evaluation.md)
+
+**建议测试接缝：** 对锁定发行候选重放六条黄金路径、硬门、故障恢复和四部署等价证据，只有所有独立责任人合法签字后形成成熟发行基线。
 
 - [ ] G0 证明代码、依赖、数据、模型、领域包、迁移、镜像和文档完整可复现。
 - [ ] G1 与 G2 证明确定性不变量、权限、引用、删除、安全和科学硬门全部通过。
