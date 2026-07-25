@@ -5,10 +5,11 @@ from typing import Any
 from fastapi import FastAPI
 
 from science_companion import __version__
-from science_companion.api import auth
+from science_companion.api import auth, projects
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
+from science_companion.projects import ProjectService
 
 
 def create_app() -> FastAPI:
@@ -23,7 +24,12 @@ def create_app() -> FastAPI:
     # persistent adapter while keeping the same interface.
     app.state.identity_service = IdentityService()
 
+    # T004: attach the in-memory project service. Later tickets will switch to a
+    # persistent adapter while keeping the same interface.
+    app.state.project_service = ProjectService()
+
     app.include_router(auth.router)
+    app.include_router(projects.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

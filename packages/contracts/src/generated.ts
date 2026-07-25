@@ -127,6 +127,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects
+         * @description List active and archived projects for the current account.
+         */
+        get: operations["list_projects_projects_get"];
+        put?: never;
+        /**
+         * Create Project
+         * @description Create a new scientific project space owned by the current account.
+         */
+        post: operations["create_project_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project
+         * @description Get a single project projection by deep-link identifier.
+         */
+        get: operations["get_project_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Project
+         * @description Rename or update a project description.
+         */
+        patch: operations["update_project_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/projects/{project_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Project
+         * @description Archive a project.
+         */
+        post: operations["archive_project_projects__project_id__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -453,6 +521,211 @@ export interface components {
              * @description Account password.
              */
             password: string;
+        };
+        /**
+         * ObjectDomain
+         * @description Authority domain that owns the object.
+         *
+         *     - PERSONAL_VAULT: owned by an individual account; not visible to collaborators
+         *       or admins by default.
+         *     - SHARED_PROJECT: owned by a project, created from an explicit share decision.
+         *     - INSTITUTION_OWNED: owned by an institution management domain.
+         * @enum {string}
+         */
+        ObjectDomain: "personal_vault" | "shared_project" | "institution_owned";
+        /**
+         * ObjectRef
+         * @description Stable reference to an owned object.
+         *
+         *     ObjectRef carries enough context to re-authenticate and re-authorize a deep
+         *     link without relying on ambient session state alone.
+         */
+        ObjectRef: {
+            /** @description Authority domain of the object. */
+            domain: components["schemas"]["ObjectDomain"];
+            /**
+             * Owner Id
+             * @description Identifier of the owning account, project, or institution.
+             */
+            owner_id: string;
+            /**
+             * Object Id
+             * @description Stable object identifier.
+             */
+            object_id: string;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * Project
+         * @description Public project projection.
+         *
+         *     Every project is owned by an account, lives in an object domain, and carries
+         *     a monotonic version for optimistic concurrency.
+         */
+        Project: {
+            /**
+             * Id
+             * @description Stable project identifier.
+             */
+            id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Name
+             * @description Human-readable project name.
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional project purpose or goal.
+             */
+            description?: string | null;
+            /** @description Authority domain for the project and its objects. */
+            object_domain: components["schemas"]["ObjectDomain"];
+            /** @description Current subject's role in the project. */
+            role: components["schemas"]["ProjectRole"];
+            /** @description Lifecycle status. */
+            status: components["schemas"]["ProjectStatus"];
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Project creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last project update timestamp.
+             */
+            updated_at: string;
+            /**
+             * Archived At
+             * @description If set, the project is archived.
+             */
+            archived_at?: string | null;
+        };
+        /**
+         * ProjectCreateRequest
+         * @description Request to create a new scientific project space.
+         */
+        ProjectCreateRequest: {
+            /**
+             * Name
+             * @description Project name.
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional project goal.
+             */
+            description?: string | null;
+        };
+        /**
+         * ProjectError
+         * @description Uniform project error response.
+         */
+        ProjectError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ProjectListProjection
+         * @description Collection of projects visible to the current subject.
+         */
+        ProjectListProjection: {
+            /**
+             * Active
+             * @description Active projects.
+             */
+            active?: components["schemas"]["ProjectSummary"][];
+            /**
+             * Archived
+             * @description Archived projects.
+             */
+            archived?: components["schemas"]["ProjectSummary"][];
+            /**
+             * Selected Project Id
+             * @description Currently selected project, if any.
+             */
+            selected_project_id?: string | null;
+        };
+        /**
+         * ProjectRole
+         * @description Role of the current subject inside a project.
+         * @enum {string}
+         */
+        ProjectRole: "owner" | "editor" | "reviewer" | "viewer";
+        /**
+         * ProjectStatus
+         * @description Lifecycle status of a project.
+         * @enum {string}
+         */
+        ProjectStatus: "active" | "archived";
+        /**
+         * ProjectSummary
+         * @description List item for the project selector.
+         */
+        ProjectSummary: {
+            /** @description Owned object reference. */
+            ref: components["schemas"]["ObjectRef"];
+            /**
+             * Name
+             * @description Project name.
+             */
+            name: string;
+            /** @description Lifecycle status. */
+            status: components["schemas"]["ProjectStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * ProjectUpdateRequest
+         * @description Request to rename or update a project.
+         */
+        ProjectUpdateRequest: {
+            /**
+             * Name
+             * @description New project name.
+             */
+            name?: string | null;
+            /**
+             * Description
+             * @description New project goal.
+             */
+            description?: string | null;
         };
         /**
          * RecoveryRequest
@@ -817,6 +1090,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_projects_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_project_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+        };
+    };
+    get_project_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_project_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+        };
+    };
+    archive_project_projects__project_id__archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProjectError"];
                 };
             };
             /** @description Validation Error */

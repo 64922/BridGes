@@ -14,7 +14,7 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
-def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
+def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     # Explicit env overrides the parent environment so tests can simulate
     # production runtimes without Conda variables.
     merged = {**os.environ, **(env or {})}

@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { signUp } from "./helpers/auth";
+import { createProject } from "./helpers/projects";
 
 test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基线", () => {
   test("公共入口显示健康状态、跳转链接和地标", async ({ page }) => {
@@ -48,13 +49,14 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
   });
 
   test("项目主壳显示项目头部、任务舞台、工作台标签和上下文检查器", async ({ page, isMobile }) => {
-    test.skip(isMobile, "Mobile inspector is a drawer; covered by dedicated mobile tests.");
+    test.skip(isMobile, "Mobile inspector is inside a drawer; covered by dedicated mobile tests.");
     const email = `t002-project-${Date.now()}@example.com`;
     await signUp(page, email, "correct-horse-12");
 
-    await page.goto("/projects/demo-id");
+    const projectName = `T002 示例项目 ${Date.now()}`;
+    await createProject(page, projectName);
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: /示例项目/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     await expect(page.getByText("任务舞台")).toBeVisible();
     await expect(page.getByRole("navigation", { name: "项目工作台" })).toBeVisible();
     await expect(page.getByTestId("main-content").getByRole("link", { name: "学习实验室" })).toBeVisible();
@@ -68,10 +70,11 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
     const email = `t002-tabs-${Date.now()}@example.com`;
     await signUp(page, email, "correct-horse-12");
 
-    await page.goto("/projects/demo-id");
+    const projectName = `T002 标签项目 ${Date.now()}`;
+    const projectId = await createProject(page, projectName);
     const learningTab = page.getByTestId("main-content").getByRole("link", { name: "学习实验室" });
     await learningTab.click();
-    await page.waitForURL("/projects/demo-id/learning");
+    await page.waitForURL(`/projects/${projectId}/learning`);
     await expect(page.getByRole("heading", { name: "学习实验室" })).toBeVisible();
     await expect(learningTab).toHaveAttribute("aria-current", "page");
   });
@@ -80,9 +83,9 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
     const email = `t002-mobile-${Date.now()}@example.com`;
     await signUp(page, email, "correct-horse-12");
 
+    const projectName = `T002 移动项目 ${Date.now()}`;
+    await createProject(page, projectName);
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto("/projects/demo-id");
-    await page.waitForLoadState("networkidle");
 
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     const viewportWidth = await page.evaluate(() => window.innerWidth);
@@ -102,8 +105,9 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
     const email = `t002-motion-${Date.now()}@example.com`;
     await signUp(page, email, "correct-horse-12");
 
+    const projectName = `T002 动画项目 ${Date.now()}`;
+    await createProject(page, projectName);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/projects/demo-id");
     const transition = await page.evaluate(() => {
       const button = document.querySelector('[data-testid="sc-button"]') as HTMLElement | null;
       if (!button) return null;
@@ -119,8 +123,9 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
     const email = `t002-zoom-${Date.now()}@example.com`;
     await signUp(page, email, "correct-horse-12");
 
+    const projectName = `T002 缩放项目 ${Date.now()}`;
+    await createProject(page, projectName);
     await page.setViewportSize({ width: 1920, height: 1080 });
-    await page.goto("/projects/demo-id");
     await page.waitForLoadState("networkidle");
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "32px";
@@ -137,8 +142,9 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
     const email = `t002-inspector-${Date.now()}@example.com`;
     await signUp(page, email, "correct-horse-12");
 
+    const projectName = `T002 检查器项目 ${Date.now()}`;
+    await createProject(page, projectName);
     await page.setViewportSize({ width: 375, height: 667 });
-    await page.goto("/projects/demo-id");
     await page.waitForLoadState("networkidle");
     await page.evaluate(() => {
       document.documentElement.style.fontSize = "32px";

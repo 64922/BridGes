@@ -97,7 +97,7 @@ def test_recovery_revokes_existing_session(client: TestClient) -> None:
     original_cookies = dict(client.cookies)
 
     # Simulate receiving a recovery token out of band.
-    service = client.app.state.identity_service
+    service = client.app.state.identity_service  # type: ignore[attr-defined]
     token = service.test_create_recovery_token("user@example.com")
 
     response = client.post(

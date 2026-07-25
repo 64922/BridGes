@@ -1,27 +1,78 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { ButtonLink } from "@/components/design-system/ButtonLink";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
 import { MainContent } from "@/components/layout/MainContent";
 import { useAuth } from "@/context/AuthContext";
+import { listProjects, type ProjectSummary } from "@/lib/api";
+
+function ProjectCard({ project }: { project: ProjectSummary }) {
+  const statusText = project.status === "archived" ? "已归档" : "活跃";
+  return (
+    <li>
+      <article
+        className="sc-card"
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-3)",
+          minHeight: "8rem",
+        }}
+      >
+        <div>
+          <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "var(--text-base)", fontWeight: 600 }}>
+            {project.name}
+          </h3>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)", marginTop: "var(--space-1)" }}>
+            {statusText} · 版本 {project.ref.version}
+          </p>
+        </div>
+        <div style={{ marginTop: "auto" }}>
+          <ButtonLink href={`/projects/${project.ref.object_id}`} ariaLabel={`打开项目 ${project.name}`}>
+            打开项目
+          </ButtonLink>
+        </div>
+      </article>
+    </li>
+  );
+}
 
 /**
  * Account-level main shell (client component).
  */
 export default function AccountPageClient() {
   const router = useRouter();
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [isProjectsLoading, setIsProjectsLoading] = useState(true);
 
   useEffect(() => {
-    if (!isLoading && user === null) {
+    if (!isAuthLoading && user === null) {
       router.replace("/login");
     }
-  }, [isLoading, user, router]);
+  }, [isAuthLoading, user, router]);
 
-  if (isLoading) {
+  const loadProjects = useCallback(async () => {
+    try {
+      const data = await listProjects();
+      setProjects(data.active ?? []);
+    } catch {
+      setProjects([]);
+    } finally {
+      setIsProjectsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      loadProjects();
+    }
+  }, [user, loadProjects]);
+
+  if (isAuthLoading) {
     return (
       <MainContent>
         <LoadingStatus message="正在恢复会话…" />
@@ -76,22 +127,31 @@ export default function AccountPageClient() {
               gap: "var(--space-4)",
             }}
           >
-            <li>
-              <article
-                className="sc-card"
-                style={{
-                  borderStyle: "dashed",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  minHeight: "8rem",
-                }}
-              >
-                <ButtonLink href="/account/projects" variant="secondary" ariaLabel="创建新项目">
-                  + 创建新项目
-                </ButtonLink>
-              </article>
-            </li>
+            {isProjectsLoading ? (
+              <LoadingStatus message="正在加载项目…" />
+            ) : (
+              <>
+                {projects.map((project) => (
+                  <ProjectCard key={project.ref.object_id} project={project} />
+                ))}
+                <li>
+                  <article
+                    className="sc-card"
+                    style={{
+                      borderStyle: "dashed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: "8rem",
+                    }}
+                  >
+                    <ButtonLink href="/account/projects" variant="secondary" ariaLabel="创建新项目">
+                      + 创建新项目
+                    </ButtonLink>
+                  </article>
+                </li>
+              </>
+            )}
           </ul>
         </section>
 

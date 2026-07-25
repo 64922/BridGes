@@ -8,6 +8,11 @@ export type Account = components["schemas"]["Account"];
 export type AuthResponse = components["schemas"]["AuthResponse"];
 export type SessionResponse = components["schemas"]["SessionResponse"];
 export type AuthError = components["schemas"]["AuthError"];
+export type Project = components["schemas"]["Project"];
+export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
+export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
+export type ProjectSummary = components["schemas"]["ProjectSummary"];
+export type ProjectError = components["schemas"]["ProjectError"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -80,6 +85,41 @@ export async function logout(): Promise<void> {
   if (!res.ok) {
     throw new Error(await parseAuthError(res));
   }
+}
+
+export async function createProject(request: ProjectCreateRequest): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) {
+    throw new Error(await parseAuthError(res));
+  }
+  return res.json();
+}
+
+export async function listProjects(): Promise<ProjectListProjection> {
+  const res = await fetch(`${API_BASE}/projects`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(await parseAuthError(res));
+  }
+  return res.json();
+}
+
+export async function getProject(projectId: string): Promise<Project> {
+  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw new Error(await parseAuthError(res));
+  }
+  return res.json();
 }
 
 export function statusText(status: HealthStatus): string {

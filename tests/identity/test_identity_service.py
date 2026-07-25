@@ -6,7 +6,7 @@ revokes prior sessions.
 """
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from science_companion.contracts.identity import (
     AccountRegistration,
@@ -26,7 +26,7 @@ def service() -> IdentityService:
 def _registration(email: str = "user@example.com", password: str = "correct-horse-12") -> AccountRegistration:
     return AccountRegistration(
         email=email,
-        password=password,
+        password=SecretStr(password),
         agreed_to_terms=True,
     )
 
@@ -34,7 +34,7 @@ def _registration(email: str = "user@example.com", password: str = "correct-hors
 def _credentials(
     email: str = "user@example.com", password: str = "correct-horse-12"
 ) -> LoginCredential:
-    return LoginCredential(email=email, password=password)
+    return LoginCredential(email=email, password=SecretStr(password))
 
 
 def test_register_creates_account_and_session(service: IdentityService) -> None:
@@ -48,7 +48,7 @@ def test_register_creates_account_and_session(service: IdentityService) -> None:
 
 
 def test_register_requires_terms(service: IdentityService) -> None:
-    request = AccountRegistration(email="user@example.com", password="correct-horse-12", agreed_to_terms=False)
+    request = AccountRegistration(email="user@example.com", password=SecretStr("correct-horse-12"), agreed_to_terms=False)
     with pytest.raises(IdentityError, match="必须同意"):
         service.register(request)
 
@@ -57,7 +57,7 @@ def test_register_rejects_short_password(service: IdentityService) -> None:
     # The contract rejects passwords shorter than 12 characters before the service
     # even sees them, providing a clear 422 to API consumers.
     with pytest.raises(ValidationError, match="too_short"):
-        AccountRegistration(email="user@example.com", password="short", agreed_to_terms=True)
+        AccountRegistration(email="user@example.com", password=SecretStr("short"), agreed_to_terms=True)
 
 
 def test_register_prevents_duplicate_email(service: IdentityService) -> None:
@@ -135,7 +135,7 @@ def test_recovery_flow_resets_password_and_revokes_sessions(service: IdentitySer
     recovery_token = service.test_create_recovery_token("user@example.com")
 
     response = service.reset_password_with_recovery(
-        RecoveryReset(token=recovery_token, new_password="new-stable-password-12")
+        RecoveryReset(token=recovery_token, new_password=SecretStr("new-stable-password-12"))
     )
 
     assert response.account.id == registered.account.id
@@ -165,8 +165,8 @@ def test_recovery_rejects_expired_or_reused_token(service: IdentityService) -> N
     token = service.test_create_recovery_token("user@example.com")
 
     # First use consumes the token.
-    service.reset_password_with_recovery(RecoveryReset(token=token, new_password="new-stable-password-12"))
+    service.reset_password_with_recovery(RecoveryReset(token=token, new_password=SecretStr("new-stable-password-12")))
 
     # Reuse fails.
     with pytest.raises(IdentityError, match="恢复链接已过期或无效"):
-        service.reset_password_with_recovery(RecoveryReset(token=token, new_password="another-password-12"))
+        service.reset_password_with_recovery(RecoveryReset(token=token, new_password=SecretStr("another-password-12")))
