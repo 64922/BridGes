@@ -714,6 +714,643 @@
         }
       }
     },
+    "/vault/objects": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Create Object",
+        "description": "Create a private vault object owned by the current account.",
+        "operationId": "create_object_vault_objects_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultObjectCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "List Objects",
+        "description": "List vault object summaries for the current account.",
+        "operationId": "list_objects_vault_objects_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/VaultObjectSummary"
+                  },
+                  "title": "Response List Objects Vault Objects Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/objects/{object_id}": {
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Get Object",
+        "description": "Get a vault object projection by deep-link identifier.",
+        "operationId": "get_object_vault_objects__object_id__get",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/objects/{object_id}/content": {
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Get Content",
+        "description": "Request plaintext content for a vault object.\n\nIf the authoritative device is unavailable, the endpoint returns 202 Accepted\nwith a DeviceUnavailableState instead of silently uploading full text.",
+        "operationId": "get_content_vault_objects__object_id__content_get",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {}
+            }
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceUnavailableState"
+                }
+              }
+            },
+            "description": "Accepted"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/objects/{object_id}/capsules": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Issue Task Capsule",
+        "description": "Issue a temporary task capsule for a vault object.",
+        "operationId": "issue_task_capsule_vault_objects__object_id__capsules_post",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CapsuleIssueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporaryTaskCapsule"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/vault/capsules/{capsule_id}/revoke": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Revoke Capsule",
+        "description": "Revoke a previously issued task capsule.",
+        "operationId": "revoke_capsule_vault_capsules__capsule_id__revoke_post",
+        "parameters": [
+          {
+            "name": "capsule_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Capsule Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemporaryTaskCapsule"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/objects/{object_id}/share": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Share As Project Copy",
+        "description": "Share a personal vault object as an independent minimized project copy.",
+        "operationId": "share_as_project_copy_vault_objects__object_id__share_post",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VaultShareRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Share As Project Copy Vault Objects  Object Id  Share Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/vault/objects/{object_id}/projection": {
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Get Cloud Projection",
+        "description": "Get the cloud control projection for a vault object.",
+        "operationId": "get_cloud_projection_vault_objects__object_id__projection_get",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CloudControlProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -1013,6 +1650,154 @@
         "title": "AuthResponse",
         "description": "Response to a successful authentication operation.\n\nThe session_token is delivered only once; callers must store it according to\ntheir client type (browser cookie managed by the API, native secure storage)."
       },
+      "CapsuleIssueRequest": {
+        "properties": {
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "Vault object identifier."
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Run to which the capsule is bound."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared processing purpose."
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Ttl Seconds",
+            "description": "Time-to-live in seconds.",
+            "default": 3600
+          }
+        },
+        "type": "object",
+        "required": [
+          "owner_account_id",
+          "object_id",
+          "run_id",
+          "purpose"
+        ],
+        "title": "CapsuleIssueRequest",
+        "description": "Request to issue a temporary task capsule for a vault object."
+      },
+      "CapsuleStatus": {
+        "type": "string",
+        "enum": [
+          "issued",
+          "revoked",
+          "expired",
+          "consumed"
+        ],
+        "title": "CapsuleStatus",
+        "description": "Lifecycle status of a temporary task capsule."
+      },
+      "CloudControlProjection": {
+        "properties": {
+          "projection_id": {
+            "type": "string",
+            "title": "Projection Id",
+            "description": "Stable projection identifier."
+          },
+          "object_ref": {
+            "$ref": "#/components/schemas/VaultObjectRef",
+            "description": "Reference to the vault object."
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "Cryptographic hash of the authoritative content (sha256)."
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "Length of the authoritative content in bytes."
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch under which the object is protected."
+          },
+          "authorization_version": {
+            "type": "string",
+            "title": "Authorization Version",
+            "description": "Authorization policy version that governs this projection."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CloudProjectionStatus",
+            "description": "Current projection status."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Projection creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last projection update timestamp."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "If set, the projection becomes invalid after this time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "projection_id",
+          "object_ref",
+          "content_hash",
+          "content_length",
+          "key_epoch",
+          "authorization_version",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CloudControlProjection",
+        "description": "Minimal cloud-side projection of a vault object.\n\nThe cloud control projection intentionally does not store the full plaintext.\nIt carries only enough metadata to authorize, scope, sync, and audit the\nobject without exposing private content."
+      },
+      "CloudProjectionStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "pending_device",
+          "revoked",
+          "expired"
+        ],
+        "title": "CloudProjectionStatus",
+        "description": "Lifecycle status of a cloud control projection."
+      },
+      "ContentAuthority": {
+        "type": "string",
+        "enum": [
+          "device_local",
+          "server_replica",
+          "project_copy"
+        ],
+        "title": "ContentAuthority",
+        "description": "Where the authoritative plaintext of a vault object resides.\n\n- DEVICE_LOCAL: the full content is authoritative on the user's device. The\n  cloud only holds a control projection (hash and metadata).\n- SERVER_REPLICA: the server holds an encrypted replica for synchronization;\n  the device is not required for every read.\n- PROJECT_COPY: a minimized copy owned by a shared project, detached from the\n  personal vault original."
+      },
       "DependencyHealth": {
         "properties": {
           "name": {
@@ -1062,6 +1847,39 @@
         ],
         "title": "DependencyHealth",
         "description": "Health of one external dependency."
+      },
+      "DeviceUnavailableState": {
+        "properties": {
+          "object_ref": {
+            "$ref": "#/components/schemas/VaultObjectRef",
+            "description": "Reference to the affected object."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason for unavailability."
+          },
+          "can_retry_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Retry At",
+            "description": "If known, the earliest time the device may be reachable again."
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_ref",
+          "reason"
+        ],
+        "title": "DeviceUnavailableState",
+        "description": "Legal wait state when the authoritative device is not available.\n\nThe system returns this instead of silently uploading full text from another\nsource or falling back to a stale replica."
       },
       "HTTPValidationError": {
         "properties": {
@@ -1617,6 +2435,73 @@
         "title": "SubjectContext",
         "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret."
       },
+      "TemporaryTaskCapsule": {
+        "properties": {
+          "capsule_id": {
+            "type": "string",
+            "title": "Capsule Id",
+            "description": "Stable capsule identifier."
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Run to which the capsule is bound."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared processing purpose."
+          },
+          "object_refs": {
+            "items": {
+              "$ref": "#/components/schemas/VaultObjectRef"
+            },
+            "type": "array",
+            "title": "Object Refs",
+            "description": "Vault objects authorized for this run."
+          },
+          "authorization_snapshot": {
+            "type": "string",
+            "title": "Authorization Snapshot",
+            "description": "Opaque authorization snapshot digest/version."
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch used to wrap the capsule."
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Issued At",
+            "description": "Capsule issuance timestamp."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Capsule expiration timestamp."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CapsuleStatus",
+            "description": "Current capsule status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "capsule_id",
+          "run_id",
+          "purpose",
+          "object_refs",
+          "authorization_snapshot",
+          "key_epoch",
+          "issued_at",
+          "expires_at",
+          "status"
+        ],
+        "title": "TemporaryTaskCapsule",
+        "description": "Encrypted minimal context for a single task run.\n\nA temporary task capsule binds subject, purpose, objects, run, authorization\nversion, key epoch, and TTL. It is the only long-information carrier that may\nbe sent to cloud workers or model gateways."
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -1656,6 +2541,250 @@
           "type"
         ],
         "title": "ValidationError"
+      },
+      "VaultError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "VaultError",
+        "description": "Uniform vault error response."
+      },
+      "VaultObject": {
+        "properties": {
+          "ref": {
+            "$ref": "#/components/schemas/VaultObjectRef",
+            "description": "Stable object reference."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "content_authority": {
+            "$ref": "#/components/schemas/ContentAuthority",
+            "description": "Where the authoritative plaintext resides."
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "Device identifier when content authority is device-local."
+          },
+          "projection": {
+            "$ref": "#/components/schemas/CloudControlProjection",
+            "description": "Cloud control projection for this object."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CloudProjectionStatus",
+            "description": "Current object status."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Object creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last object update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ref",
+          "owner_account_id",
+          "content_authority",
+          "projection",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VaultObject",
+        "description": "Full vault object projection.\n\nThe projection never includes the full content when the content authority is\nDEVICE_LOCAL; callers must use the vault port to request content, which may\nreturn DeviceUnavailableState."
+      },
+      "VaultObjectCreateRequest": {
+        "properties": {
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "content_authority": {
+            "$ref": "#/components/schemas/ContentAuthority",
+            "description": "Where the authoritative plaintext will reside."
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "Base64-encoded authoritative content bytes."
+          },
+          "device_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Device Id",
+            "description": "Device identifier when content authority is device-local."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared purpose for creating the object.",
+            "default": "general"
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch under which the object is protected.",
+            "default": "epoch-0"
+          },
+          "authorization_version": {
+            "type": "string",
+            "title": "Authorization Version",
+            "description": "Authorization policy version.",
+            "default": "authz-1.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "owner_account_id",
+          "content_authority",
+          "content"
+        ],
+        "title": "VaultObjectCreateRequest",
+        "description": "Request to create a private vault object.\n\nThe content is transmitted as a base64-encoded string so that the same\ncontract works across JSON APIs and port implementations without relying on\nframework-specific binary handling."
+      },
+      "VaultObjectDomain": {
+        "type": "string",
+        "enum": [
+          "personal_vault",
+          "shared_project",
+          "institution_owned"
+        ],
+        "title": "VaultObjectDomain",
+        "description": "Authority domain that owns the vault object.\n\n- PERSONAL_VAULT: owned by an individual account; not visible to collaborators\n  or admins by default.\n- SHARED_PROJECT: owned by a project, created from an explicit share decision.\n- INSTITUTION_OWNED: owned by an institution management domain."
+      },
+      "VaultObjectRef": {
+        "properties": {
+          "domain": {
+            "$ref": "#/components/schemas/VaultObjectDomain",
+            "description": "Authority domain of the object."
+          },
+          "owner_id": {
+            "type": "string",
+            "title": "Owner Id",
+            "description": "Identifier of the owning account, project, or institution."
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "Stable object identifier."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "domain",
+          "owner_id",
+          "object_id"
+        ],
+        "title": "VaultObjectRef",
+        "description": "Stable reference to a vault-owned object.\n\nVaultObjectRef carries enough context to re-authenticate and re-authorize a\ndeep link without relying on ambient session state alone."
+      },
+      "VaultObjectSummary": {
+        "properties": {
+          "ref": {
+            "$ref": "#/components/schemas/VaultObjectRef",
+            "description": "Stable object reference."
+          },
+          "content_authority": {
+            "$ref": "#/components/schemas/ContentAuthority",
+            "description": "Content authority."
+          },
+          "status": {
+            "$ref": "#/components/schemas/CloudProjectionStatus",
+            "description": "Current object status."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "ref",
+          "content_authority",
+          "status",
+          "updated_at"
+        ],
+        "title": "VaultObjectSummary",
+        "description": "List item for the vault object selector."
+      },
+      "VaultShareRequest": {
+        "properties": {
+          "source_object_id": {
+            "type": "string",
+            "title": "Source Object Id",
+            "description": "Personal vault object to share."
+          },
+          "target_project_id": {
+            "type": "string",
+            "title": "Target Project Id",
+            "description": "Project that will receive the copy."
+          },
+          "grant_purpose": {
+            "type": "string",
+            "title": "Grant Purpose",
+            "description": "Declared purpose of the share."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_object_id",
+          "target_project_id",
+          "grant_purpose"
+        ],
+        "title": "VaultShareRequest",
+        "description": "Request to share a personal vault object as a minimized project copy."
       }
     }
   }

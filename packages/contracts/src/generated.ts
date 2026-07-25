@@ -195,6 +195,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Objects
+         * @description List vault object summaries for the current account.
+         */
+        get: operations["list_objects_vault_objects_get"];
+        put?: never;
+        /**
+         * Create Object
+         * @description Create a private vault object owned by the current account.
+         */
+        post: operations["create_object_vault_objects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/objects/{object_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Object
+         * @description Get a vault object projection by deep-link identifier.
+         */
+        get: operations["get_object_vault_objects__object_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/objects/{object_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Content
+         * @description Request plaintext content for a vault object.
+         *
+         *     If the authoritative device is unavailable, the endpoint returns 202 Accepted
+         *     with a DeviceUnavailableState instead of silently uploading full text.
+         */
+        get: operations["get_content_vault_objects__object_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/objects/{object_id}/capsules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Issue Task Capsule
+         * @description Issue a temporary task capsule for a vault object.
+         */
+        post: operations["issue_task_capsule_vault_objects__object_id__capsules_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/capsules/{capsule_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Capsule
+         * @description Revoke a previously issued task capsule.
+         */
+        post: operations["revoke_capsule_vault_capsules__capsule_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/objects/{object_id}/share": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Share As Project Copy
+         * @description Share a personal vault object as an independent minimized project copy.
+         */
+        post: operations["share_as_project_copy_vault_objects__object_id__share_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/objects/{object_id}/projection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Cloud Projection
+         * @description Get the cloud control projection for a vault object.
+         */
+        get: operations["get_cloud_projection_vault_objects__object_id__projection_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -428,6 +575,119 @@ export interface components {
             session_token: string;
         };
         /**
+         * CapsuleIssueRequest
+         * @description Request to issue a temporary task capsule for a vault object.
+         */
+        CapsuleIssueRequest: {
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Object Id
+             * @description Vault object identifier.
+             */
+            object_id: string;
+            /**
+             * Run Id
+             * @description Run to which the capsule is bound.
+             */
+            run_id: string;
+            /**
+             * Purpose
+             * @description Declared processing purpose.
+             */
+            purpose: string;
+            /**
+             * Ttl Seconds
+             * @description Time-to-live in seconds.
+             * @default 3600
+             */
+            ttl_seconds: number;
+        };
+        /**
+         * CapsuleStatus
+         * @description Lifecycle status of a temporary task capsule.
+         * @enum {string}
+         */
+        CapsuleStatus: "issued" | "revoked" | "expired" | "consumed";
+        /**
+         * CloudControlProjection
+         * @description Minimal cloud-side projection of a vault object.
+         *
+         *     The cloud control projection intentionally does not store the full plaintext.
+         *     It carries only enough metadata to authorize, scope, sync, and audit the
+         *     object without exposing private content.
+         */
+        CloudControlProjection: {
+            /**
+             * Projection Id
+             * @description Stable projection identifier.
+             */
+            projection_id: string;
+            /** @description Reference to the vault object. */
+            object_ref: components["schemas"]["VaultObjectRef"];
+            /**
+             * Content Hash
+             * @description Cryptographic hash of the authoritative content (sha256).
+             */
+            content_hash: string;
+            /**
+             * Content Length
+             * @description Length of the authoritative content in bytes.
+             */
+            content_length: number;
+            /**
+             * Key Epoch
+             * @description Key epoch under which the object is protected.
+             */
+            key_epoch: string;
+            /**
+             * Authorization Version
+             * @description Authorization policy version that governs this projection.
+             */
+            authorization_version: string;
+            /** @description Current projection status. */
+            status: components["schemas"]["CloudProjectionStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Projection creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last projection update timestamp.
+             */
+            updated_at: string;
+            /**
+             * Expires At
+             * @description If set, the projection becomes invalid after this time.
+             */
+            expires_at?: string | null;
+        };
+        /**
+         * CloudProjectionStatus
+         * @description Lifecycle status of a cloud control projection.
+         * @enum {string}
+         */
+        CloudProjectionStatus: "active" | "pending_device" | "revoked" | "expired";
+        /**
+         * ContentAuthority
+         * @description Where the authoritative plaintext of a vault object resides.
+         *
+         *     - DEVICE_LOCAL: the full content is authoritative on the user's device. The
+         *       cloud only holds a control projection (hash and metadata).
+         *     - SERVER_REPLICA: the server holds an encrypted replica for synchronization;
+         *       the device is not required for every read.
+         *     - PROJECT_COPY: a minimized copy owned by a shared project, detached from the
+         *       personal vault original.
+         * @enum {string}
+         */
+        ContentAuthority: "device_local" | "server_replica" | "project_copy";
+        /**
          * DependencyHealth
          * @description Health of one external dependency.
          */
@@ -454,6 +714,27 @@ export interface components {
              * @description Probe latency in milliseconds if measured.
              */
             latency_ms?: number | null;
+        };
+        /**
+         * DeviceUnavailableState
+         * @description Legal wait state when the authoritative device is not available.
+         *
+         *     The system returns this instead of silently uploading full text from another
+         *     source or falling back to a stale replica.
+         */
+        DeviceUnavailableState: {
+            /** @description Reference to the affected object. */
+            object_ref: components["schemas"]["VaultObjectRef"];
+            /**
+             * Reason
+             * @description Human-readable reason for unavailability.
+             */
+            reason: string;
+            /**
+             * Can Retry At
+             * @description If known, the earliest time the device may be reachable again.
+             */
+            can_retry_at?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -833,6 +1114,60 @@ export interface components {
              */
             device_id?: string | null;
         };
+        /**
+         * TemporaryTaskCapsule
+         * @description Encrypted minimal context for a single task run.
+         *
+         *     A temporary task capsule binds subject, purpose, objects, run, authorization
+         *     version, key epoch, and TTL. It is the only long-information carrier that may
+         *     be sent to cloud workers or model gateways.
+         */
+        TemporaryTaskCapsule: {
+            /**
+             * Capsule Id
+             * @description Stable capsule identifier.
+             */
+            capsule_id: string;
+            /**
+             * Run Id
+             * @description Run to which the capsule is bound.
+             */
+            run_id: string;
+            /**
+             * Purpose
+             * @description Declared processing purpose.
+             */
+            purpose: string;
+            /**
+             * Object Refs
+             * @description Vault objects authorized for this run.
+             */
+            object_refs: components["schemas"]["VaultObjectRef"][];
+            /**
+             * Authorization Snapshot
+             * @description Opaque authorization snapshot digest/version.
+             */
+            authorization_snapshot: string;
+            /**
+             * Key Epoch
+             * @description Key epoch used to wrap the capsule.
+             */
+            key_epoch: string;
+            /**
+             * Issued At
+             * Format: date-time
+             * @description Capsule issuance timestamp.
+             */
+            issued_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description Capsule expiration timestamp.
+             */
+            expires_at: string;
+            /** @description Current capsule status. */
+            status: components["schemas"]["CapsuleStatus"];
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -845,6 +1180,191 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * VaultError
+         * @description Uniform vault error response.
+         */
+        VaultError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * VaultObject
+         * @description Full vault object projection.
+         *
+         *     The projection never includes the full content when the content authority is
+         *     DEVICE_LOCAL; callers must use the vault port to request content, which may
+         *     return DeviceUnavailableState.
+         */
+        VaultObject: {
+            /** @description Stable object reference. */
+            ref: components["schemas"]["VaultObjectRef"];
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /** @description Where the authoritative plaintext resides. */
+            content_authority: components["schemas"]["ContentAuthority"];
+            /**
+             * Device Id
+             * @description Device identifier when content authority is device-local.
+             */
+            device_id?: string | null;
+            /** @description Cloud control projection for this object. */
+            projection: components["schemas"]["CloudControlProjection"];
+            /** @description Current object status. */
+            status: components["schemas"]["CloudProjectionStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Object creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last object update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * VaultObjectCreateRequest
+         * @description Request to create a private vault object.
+         *
+         *     The content is transmitted as a base64-encoded string so that the same
+         *     contract works across JSON APIs and port implementations without relying on
+         *     framework-specific binary handling.
+         */
+        VaultObjectCreateRequest: {
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /** @description Where the authoritative plaintext will reside. */
+            content_authority: components["schemas"]["ContentAuthority"];
+            /**
+             * Content
+             * @description Base64-encoded authoritative content bytes.
+             */
+            content: string;
+            /**
+             * Device Id
+             * @description Device identifier when content authority is device-local.
+             */
+            device_id?: string | null;
+            /**
+             * Purpose
+             * @description Declared purpose for creating the object.
+             * @default general
+             */
+            purpose: string;
+            /**
+             * Key Epoch
+             * @description Key epoch under which the object is protected.
+             * @default epoch-0
+             */
+            key_epoch: string;
+            /**
+             * Authorization Version
+             * @description Authorization policy version.
+             * @default authz-1.0
+             */
+            authorization_version: string;
+        };
+        /**
+         * VaultObjectDomain
+         * @description Authority domain that owns the vault object.
+         *
+         *     - PERSONAL_VAULT: owned by an individual account; not visible to collaborators
+         *       or admins by default.
+         *     - SHARED_PROJECT: owned by a project, created from an explicit share decision.
+         *     - INSTITUTION_OWNED: owned by an institution management domain.
+         * @enum {string}
+         */
+        VaultObjectDomain: "personal_vault" | "shared_project" | "institution_owned";
+        /**
+         * VaultObjectRef
+         * @description Stable reference to a vault-owned object.
+         *
+         *     VaultObjectRef carries enough context to re-authenticate and re-authorize a
+         *     deep link without relying on ambient session state alone.
+         */
+        VaultObjectRef: {
+            /** @description Authority domain of the object. */
+            domain: components["schemas"]["VaultObjectDomain"];
+            /**
+             * Owner Id
+             * @description Identifier of the owning account, project, or institution.
+             */
+            owner_id: string;
+            /**
+             * Object Id
+             * @description Stable object identifier.
+             */
+            object_id: string;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * VaultObjectSummary
+         * @description List item for the vault object selector.
+         */
+        VaultObjectSummary: {
+            /** @description Stable object reference. */
+            ref: components["schemas"]["VaultObjectRef"];
+            /** @description Content authority. */
+            content_authority: components["schemas"]["ContentAuthority"];
+            /** @description Current object status. */
+            status: components["schemas"]["CloudProjectionStatus"];
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * VaultShareRequest
+         * @description Request to share a personal vault object as a minimized project copy.
+         */
+        VaultShareRequest: {
+            /**
+             * Source Object Id
+             * @description Personal vault object to share.
+             */
+            source_object_id: string;
+            /**
+             * Target Project Id
+             * @description Project that will receive the copy.
+             */
+            target_project_id: string;
+            /**
+             * Grant Purpose
+             * @description Declared purpose of the share.
+             */
+            grant_purpose: string;
         };
     };
     responses: never;
@@ -1340,6 +1860,416 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_objects_vault_objects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultObjectSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_object_vault_objects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultObjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+        };
+    };
+    get_object_vault_objects__object_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_content_vault_objects__object_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceUnavailableState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    issue_task_capsule_vault_objects__object_id__capsules_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CapsuleIssueRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemporaryTaskCapsule"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+        };
+    };
+    revoke_capsule_vault_capsules__capsule_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                capsule_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemporaryTaskCapsule"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    share_as_project_copy_vault_objects__object_id__share_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultShareRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+        };
+    };
+    get_cloud_projection_vault_objects__object_id__projection_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CloudControlProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
                 };
             };
             /** @description Validation Error */

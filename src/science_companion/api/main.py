@@ -5,11 +5,16 @@ from typing import Any
 from fastapi import FastAPI
 
 from science_companion import __version__
-from science_companion.api import auth, projects
+from science_companion.api import auth, projects, vault
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.projects import ProjectService
+from science_companion.vault import (
+    InMemoryVaultRepository,
+    MemoryDeviceVaultPort,
+    VaultService,
+)
 
 
 def create_app() -> FastAPI:
@@ -28,8 +33,16 @@ def create_app() -> FastAPI:
     # persistent adapter while keeping the same interface.
     app.state.project_service = ProjectService()
 
+    # T005: attach the in-memory vault service and device port.
+    vault_repository = InMemoryVaultRepository()
+    app.state.vault_service = VaultService(
+        repository=vault_repository,
+        device_port=MemoryDeviceVaultPort(vault_repository),
+    )
+
     app.include_router(auth.router)
     app.include_router(projects.router)
+    app.include_router(vault.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:
