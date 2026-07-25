@@ -3,9 +3,11 @@
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
 from science_companion.api import auth, projects, scope, vault, workflows
+from science_companion.config import get_settings
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
@@ -44,6 +46,15 @@ def create_app() -> FastAPI:
         version=__version__,
         description="长期科学学习与表达伙伴 API",
     )
+
+    # T008: load the unified runtime configuration. All carriers (manual,
+    # unified CLI, Docker, Podman) resolve the same schema and secret rules.
+    # If configuration fails (e.g. missing secret file), the health probe
+    # reports FAIL rather than crashing the process outright.
+    try:
+        app.state.settings = get_settings()
+    except (PydanticValidationError, ValueError):
+        app.state.settings = None
 
     # T007: attach the shared scope enforcer. All services, routes and background
     # task validators use the same interpreter so isolation rules do not drift.

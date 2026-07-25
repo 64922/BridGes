@@ -6,14 +6,17 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
+      - SCIENCE_COMPANION_ENVIRONMENT=production
+      - SCIENCE_COMPANION_API_HOST=0.0.0.0
+      - SCIENCE_COMPANION_API_PORT=8000
+      - SCIENCE_COMPANION_WEB_DEV=false
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/live')"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
+    stop_signal: SIGTERM
 
   web:
     build:
@@ -23,9 +26,12 @@ services:
       - "3000:3000"
     environment:
       - API_BASE_URL=http://api:8000
+      - SCIENCE_COMPANION_WEB_DEV=false
+      - SCIENCE_COMPANION_WEB_PORT=3000
     depends_on:
       api:
         condition: service_healthy
+    stop_signal: SIGTERM
 
 # Podman-compatible: podman-compose -f infra/compose/docker-compose.yml up
 # Production images use standard Python and Node.js runtimes.

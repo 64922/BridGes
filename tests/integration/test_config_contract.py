@@ -1,0 +1,132 @@
+"""Configuration contract tests.
+
+The seam under test: all four production runtimes read the same config schema
+and secret-reference rules (direct env var or ``<NAME>_FILE``).
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from science_companion.config import ENV_PREFIX, Settings, get_settings
+
+
+@pytest.fixture(autouse=True)
+def _clear_settings_cache() -> None:
+    """Settings are cached; clear between tests so env changes take effect."""
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_direct_environment_variables_are_loaded() -> None:
+    env = {
+        f"{ENV_PREFIX}ENVIRONMENT": "test",
+        f"{ENV_PREFIX}API_HOST": "0.0.0.0",
+        f"{ENV_PREFIX}API_PORT": "9000",
+    }
+    for key, value in env.items():
+        os.environ[key] = value
+    try:
+        settings = Settings()
+        assert settings.environment == "test"
+        assert settings.api_host == "0.0.0.0"
+        assert settings.api_port == 9000
+    finally:
+        for key in env:
+            os.environ.pop(key, None)
+
+
+def test_secret_key_file_reference_is_resolved(tmp_path: Path) -> None:
+    secret_file = tmp_path / "secret.key"
+    secret_file.write_text("file-secret-value", encoding="utf-8")
+
+    env_key = f"{ENV_PREFIX}SECRET_KEY_FILE"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = str(secret_file)
+    try:
+        settings = Settings()
+        assert settings.secret_key is not None
+        assert settings.secret_key.get_secret_value() == "file-secret-value"
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old
+
+
+def test_secret_direct_value_and_file_reference_are_equivalent(tmp_path: Path) -> None:
+    value = "equivalent-secret"
+    secret_file = tmp_path / "secret2.key"
+    secret_file.write_text(value, encoding="utf-8")
+
+    direct = Settings(secret_key=value)
+    assert direct.secret_key is not None
+    assert direct.secret_key.get_secret_value() == value
+
+    env_key = f"{ENV_PREFIX}SECRET_KEY_FILE"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = str(secret_file)
+    try:
+        from_file = Settings()
+        assert from_file.secret_key is not None
+        assert from_file.secret_key.get_secret_value() == value
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old
+
+
+def test_invalid_value_raises_validation_error() -> None:
+    env_key = f"{ENV_PREFIX}API_PORT"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = "not-a-port"
+    try:
+        with pytest.raises(ValidationError) as exc_info:
+            Settings()
+        assert "api_port" in str(exc_info.value)
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old
+
+
+def test_settings_repr_does_not_expose_secrets(tmp_path: Path) -> None:
+    secret_file = tmp_path / "secret3.key"
+    secret_file.write_text("leak-test", encoding="utf-8")
+
+    env_key = f"{ENV_PREFIX}SECRET_KEY_FILE"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = str(secret_file)
+    try:
+        settings = Settings()
+        representation = repr(settings)
+        assert "leak-test" not in representation
+        assert "**********" in representation or "SecretStr" in representation
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old
+
+
+def test_missing_secret_file_raises_clear_error(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.key"
+    env_key = f"{ENV_PREFIX}SECRET_KEY_FILE"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = str(missing)
+    try:
+        with pytest.raises(ValueError) as exc_info:
+            Settings()
+        assert "SECRET_KEY_FILE" in str(exc_info.value)
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old

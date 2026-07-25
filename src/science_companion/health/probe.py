@@ -7,7 +7,10 @@ are implemented in later tickets.
 
 from typing import Callable
 
+from pydantic import ValidationError
+
 from science_companion import __version__
+from science_companion.config import get_settings
 from science_companion.contracts.health import DependencyHealth, HealthProjection, HealthStatus
 
 
@@ -16,11 +19,20 @@ OPTIONAL_DEPENDENCIES: list[str] = []
 
 
 def _probe_configuration() -> DependencyHealth:
+    try:
+        settings = get_settings()
+    except (ValidationError, ValueError) as exc:
+        return DependencyHealth(
+            name="configuration",
+            status=HealthStatus.FAIL,
+            required=True,
+            message=f"Configuration load failed: {exc}",
+        )
     return DependencyHealth(
         name="configuration",
         status=HealthStatus.PASS,
         required=True,
-        message="Configuration schema loaded with safe defaults.",
+        message=f"Configuration loaded: environment={settings.environment}",
     )
 
 

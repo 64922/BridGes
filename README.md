@@ -44,6 +44,19 @@ curl http://127.0.0.1:8000/health
 
 Web UI 首页读取同一健康投影并展示存活、就绪与降级语义。
 
+## 配置与密钥引用
+
+所有生产运行方式共享同一配置 Schema，环境变量前缀为 `SCIENCE_COMPANION_`：
+
+```bash
+export SCIENCE_COMPANION_ENVIRONMENT=production
+export SCIENCE_COMPANION_API_HOST=127.0.0.1
+export SCIENCE_COMPANION_API_PORT=8000
+export SCIENCE_COMPANION_SECRET_KEY_FILE=/run/secrets/secret_key
+```
+
+密钥字段支持直接环境变量或 `<NAME>_FILE` 文件引用。详见 `infra/manual/README.md`。
+
 ## 测试
 
 ```bash
@@ -55,5 +68,6 @@ cd apps/web && npm run typecheck
 ## 生产运行合同
 
 - 生产支持手动分进程、统一 CLI、Docker、Podman 四种路径。
+- 四种路径读取同一配置 Schema 和密钥引用规则。
 - 生产镜像使用标准 Python / Node.js，不检测或要求 Conda。
 - `environment.yml` 仅用于本地开发。

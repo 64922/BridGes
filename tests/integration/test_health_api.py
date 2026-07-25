@@ -4,11 +4,15 @@ The seam under test: a user (or the Web UI) can read the same health projection
 from the API, and the projection carries live/ready/degraded semantics.
 """
 
+import os
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from science_companion import __version__
 from science_companion.api.main import create_app
+from science_companion.config import get_settings
 
 
 @pytest.fixture
@@ -60,3 +64,23 @@ def test_health_degraded_reports_optional_dependencies(client: TestClient) -> No
 
     assert body["live"] == "pass"
     assert body["degraded"] == "pass"
+
+
+def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
+    """Configuration failure (e.g. missing secret file) returns fail, not 500."""
+    env_key = "SCIENCE_COMPANION_SECRET_KEY_FILE"
+    missing = tmp_path / "nonexistent-secret.key"
+    os.environ[env_key] = str(missing)
+    get_settings.cache_clear()
+    try:
+        failing_client = TestClient(create_app())
+        response = failing_client.get("/health/ready")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ready"] == "fail"
+        config_dep = [d for d in body["dependencies"] if d["name"] == "configuration"]
+        assert len(config_dep) == 1
+        assert config_dep[0]["status"] == "fail"
+    finally:
+        os.environ.pop(env_key, None)
+        get_settings.cache_clear()
