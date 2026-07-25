@@ -1094,6 +1094,123 @@ export interface components {
             password: string;
         };
         /**
+         * ModelCallStatus
+         * @description Outcome of a single model-gateway invocation.
+         * @enum {string}
+         */
+        ModelCallStatus: "success" | "degraded" | "blocked" | "retryable_fail";
+        /**
+         * ModelRunLock
+         * @description Immutable snapshot of one model invocation.
+         *
+         *     The lock records the exact capability, model, region, parameters, prompt
+         *     version and contract that were used, so the call can be replayed and audited.
+         */
+        ModelRunLock: {
+            /**
+             * Lock Id
+             * @description Stable lock identifier.
+             */
+            lock_id: string;
+            /**
+             * Run Id
+             * @description Workflow run that requested the invocation.
+             */
+            run_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the run.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project within which the run is scoped.
+             */
+            project_id: string;
+            /**
+             * Capability Name
+             * @description Logical capability name.
+             */
+            capability_name: string;
+            /**
+             * Capability Version
+             * @description Logical capability version.
+             */
+            capability_version: string;
+            /**
+             * Actual Model Id
+             * @description Actual vendor model id or alias used.
+             */
+            actual_model_id: string | null;
+            /**
+             * Region
+             * @description Region where the invocation was routed.
+             */
+            region: string;
+            /**
+             * Parameters
+             * @description Non-secret invocation parameters such as temperature and max_tokens.
+             */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Prompt Version
+             * @description Prompt/template version used.
+             */
+            prompt_version: string;
+            /**
+             * Input Output Contract
+             * @description Identifier of the input/output contract that was honored.
+             */
+            input_output_contract: string;
+            /**
+             * Fallback Path
+             * @description Capability names that were attempted, including the primary.
+             */
+            fallback_path?: string[];
+            /** @description Final outcome of the invocation. */
+            status: components["schemas"]["ModelCallStatus"];
+            /**
+             * Retry Count
+             * @description Number of retries consumed.
+             * @default 0
+             */
+            retry_count: number;
+            /** Degradation Reason */
+            degradation_reason?: string | null;
+            /**
+             * Error Code
+             * @description Stable error code when the invocation did not succeed.
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description Human-readable, non-leaking error message.
+             */
+            error_message?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the lock was produced.
+             */
+            created_at: string;
+            /**
+             * Usage
+             * @description Token/cache usage metadata if returned by the adapter.
+             */
+            usage?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Cost Estimate
+             * @description Cost estimate metadata; not a billing truth.
+             */
+            cost_estimate?: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /**
          * NodeProgress
          * @description Progress of a single workflow node as shown on the task stage.
          */
@@ -1110,6 +1227,11 @@ export interface components {
             node_name: string;
             /** @description Current node status. */
             status: components["schemas"]["NodeStatus"];
+            /**
+             * Capability Ref
+             * @description Logical capability reference used by this node, if any.
+             */
+            capability_ref?: string | null;
             /** Started At */
             started_at?: string | null;
             /** Completed At */
@@ -1521,6 +1643,11 @@ export interface components {
              * @description Open and resolved human decisions for the run.
              */
             human_todos?: components["schemas"]["HumanTodoItem"][];
+            /**
+             * Model Run Locks
+             * @description Immutable model invocation locks produced during the run.
+             */
+            model_run_locks?: components["schemas"]["ModelRunLock"][];
             /** Run Started At */
             run_started_at?: string | null;
             /** Run Ended At */

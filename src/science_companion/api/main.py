@@ -6,8 +6,10 @@ from fastapi import Depends, FastAPI, HTTPException, Request, status
 from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
+from science_companion.ai import CapabilityRegistry, ModelGateway, StubQwenAdapter
 from science_companion.api import auth, projects, scope, vault, workflows
 from science_companion.config import get_settings
+from science_companion.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus, FallbackPolicy, RetryPolicy
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
@@ -22,14 +24,79 @@ from science_companion.vault import (
 from science_companion.workflows import WorkflowError, WorkflowService
 
 
+def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
+    """Register the Qwen capabilities used by built-in workflows at T009."""
+    registry.register(
+        CapabilityRecord(
+            name="qwen_text_chat",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.7-plus",
+            input_schema_version="chat-messages-v1",
+            output_schema_version="chat-completion-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
+            fallback_policy=FallbackPolicy(
+                fallback_capability_name="qwen_text_chat_fallback",
+                fallback_capability_version="1",
+            ),
+            prompt_version="2026-07-24",
+        )
+    )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_text_chat_fallback",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.6-flash",
+            input_schema_version="chat-messages-v1",
+            output_schema_version="chat-completion-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_structured_output",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.6-flash",
+            input_schema_version="structured-messages-v1",
+            output_schema_version="json-schema-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+
+
 def _register_builtin_workflows(service: WorkflowService) -> None:
-    """Register the minimal workflow templates available at T006."""
+    """Register the minimal workflow templates available at T006/T009."""
     service.register_workflow(
         name="generic_science_task",
         version="1",
         nodes=[
-            {"node_id": "compile_context", "node_name": "编译上下文", "human_gate": False},
-            {"node_id": "produce_output", "node_name": "生成产物", "human_gate": False},
+            {
+                "node_id": "compile_context",
+                "node_name": "编译上下文",
+                "human_gate": False,
+                "capability_name": "qwen_text_chat",
+                "capability_version": "1",
+            },
+            {
+                "node_id": "produce_output",
+                "node_name": "生成产物",
+                "human_gate": False,
+                "capability_name": "qwen_structured_output",
+                "capability_version": "1",
+            },
         ],
         terminal_states=[
             WorkflowRunStatus.SUCCEEDED,
@@ -78,8 +145,21 @@ def create_app() -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
     )
 
-    # T006: attach the in-memory workflow service and register the first workflow.
-    workflow_service = WorkflowService(scope_enforcer=app.state.scope_enforcer)
+    # T009: attach the capability registry, model gateway and stub adapter.
+    capability_registry = CapabilityRegistry()
+    _register_builtin_capabilities(capability_registry)
+    model_gateway = ModelGateway(capability_registry)
+    stub_adapter = StubQwenAdapter()
+    for capability in capability_registry.list_active():
+        model_gateway.register_adapter(capability.name, capability.version, stub_adapter)
+    app.state.capability_registry = capability_registry
+    app.state.model_gateway = model_gateway
+
+    # T006/T009: attach the in-memory workflow service and register workflows.
+    workflow_service = WorkflowService(
+        scope_enforcer=app.state.scope_enforcer,
+        model_gateway=model_gateway,
+    )
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service
 

@@ -2962,6 +2962,186 @@
         "title": "LoginCredential",
         "description": "Request to authenticate with email and password."
       },
+      "ModelCallStatus": {
+        "type": "string",
+        "enum": [
+          "success",
+          "degraded",
+          "blocked",
+          "retryable_fail"
+        ],
+        "title": "ModelCallStatus",
+        "description": "Outcome of a single model-gateway invocation."
+      },
+      "ModelRunLock": {
+        "properties": {
+          "lock_id": {
+            "type": "string",
+            "title": "Lock Id",
+            "description": "Stable lock identifier."
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Workflow run that requested the invocation."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that owns the run."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the run is scoped."
+          },
+          "capability_name": {
+            "type": "string",
+            "title": "Capability Name",
+            "description": "Logical capability name."
+          },
+          "capability_version": {
+            "type": "string",
+            "title": "Capability Version",
+            "description": "Logical capability version."
+          },
+          "actual_model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Model Id",
+            "description": "Actual vendor model id or alias used."
+          },
+          "region": {
+            "type": "string",
+            "title": "Region",
+            "description": "Region where the invocation was routed."
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters",
+            "description": "Non-secret invocation parameters such as temperature and max_tokens."
+          },
+          "prompt_version": {
+            "type": "string",
+            "title": "Prompt Version",
+            "description": "Prompt/template version used."
+          },
+          "input_output_contract": {
+            "type": "string",
+            "title": "Input Output Contract",
+            "description": "Identifier of the input/output contract that was honored."
+          },
+          "fallback_path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fallback Path",
+            "description": "Capability names that were attempted, including the primary."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ModelCallStatus",
+            "description": "Final outcome of the invocation."
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "description": "Number of retries consumed.",
+            "default": 0
+          },
+          "degradation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degradation Reason"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "Stable error code when the invocation did not succeed."
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "Human-readable, non-leaking error message."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the lock was produced."
+          },
+          "usage": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usage",
+            "description": "Token/cache usage metadata if returned by the adapter."
+          },
+          "cost_estimate": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Estimate",
+            "description": "Cost estimate metadata; not a billing truth."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lock_id",
+          "run_id",
+          "account_id",
+          "project_id",
+          "capability_name",
+          "capability_version",
+          "actual_model_id",
+          "region",
+          "prompt_version",
+          "input_output_contract",
+          "status",
+          "created_at"
+        ],
+        "title": "ModelRunLock",
+        "description": "Immutable snapshot of one model invocation.\n\nThe lock records the exact capability, model, region, parameters, prompt\nversion and contract that were used, so the call can be replayed and audited."
+      },
       "NodeProgress": {
         "properties": {
           "node_id": {
@@ -2977,6 +3157,18 @@
           "status": {
             "$ref": "#/components/schemas/NodeStatus",
             "description": "Current node status."
+          },
+          "capability_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Capability Ref",
+            "description": "Logical capability reference used by this node, if any."
           },
           "started_at": {
             "anyOf": [
@@ -3591,6 +3783,14 @@
             "type": "array",
             "title": "Human Todos",
             "description": "Open and resolved human decisions for the run."
+          },
+          "model_run_locks": {
+            "items": {
+              "$ref": "#/components/schemas/ModelRunLock"
+            },
+            "type": "array",
+            "title": "Model Run Locks",
+            "description": "Immutable model invocation locks produced during the run."
           },
           "run_started_at": {
             "anyOf": [

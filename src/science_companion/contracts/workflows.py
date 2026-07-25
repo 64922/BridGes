@@ -14,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from science_companion.contracts.projects import ObjectDomain
+from science_companion.contracts.ai import ModelRunLock
 
 
 class WorkflowRunStatus(str, Enum):
@@ -186,6 +187,10 @@ class NodeProgress(BaseModel):
     node_id: str = Field(description="Stable node identifier within the workflow.")
     node_name: str = Field(description="Human-readable node name.")
     status: NodeStatus = Field(description="Current node status.")
+    capability_ref: str | None = Field(
+        default=None,
+        description="Logical capability reference used by this node, if any.",
+    )
     started_at: datetime | None = Field(default=None)
     completed_at: datetime | None = Field(default=None)
     output_ref: str | None = Field(
@@ -243,6 +248,10 @@ class RunProjection(BaseModel):
     human_todos: list[HumanTodoItem] = Field(
         default_factory=list,
         description="Open and resolved human decisions for the run.",
+    )
+    model_run_locks: list[ModelRunLock] = Field(
+        default_factory=list,
+        description="Immutable model invocation locks produced during the run.",
     )
     run_started_at: datetime | None = Field(default=None)
     run_ended_at: datetime | None = Field(default=None)

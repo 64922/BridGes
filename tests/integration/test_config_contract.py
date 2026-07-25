@@ -7,16 +7,17 @@ and secret-reference rules (direct env var or ``<NAME>_FILE``).
 from __future__ import annotations
 
 import os
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from science_companion.config import ENV_PREFIX, Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
-def _clear_settings_cache() -> None:
+def _clear_settings_cache() -> Generator[None, None, None]:
     """Settings are cached; clear between tests so env changes take effect."""
     get_settings.cache_clear()
     yield
@@ -64,7 +65,7 @@ def test_secret_direct_value_and_file_reference_are_equivalent(tmp_path: Path) -
     secret_file = tmp_path / "secret2.key"
     secret_file.write_text(value, encoding="utf-8")
 
-    direct = Settings(secret_key=value)
+    direct = Settings(secret_key=SecretStr(value))
     assert direct.secret_key is not None
     assert direct.secret_key.get_secret_value() == value
 

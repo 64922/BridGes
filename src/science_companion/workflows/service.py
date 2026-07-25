@@ -15,6 +15,7 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
@@ -30,6 +31,7 @@ from science_companion.contracts.workflows import (
     WorkflowRunStatus,
 )
 from science_companion.scope import ScopeEnforcer
+from science_companion.ai import ModelGateway
 
 
 class WorkflowError(Exception):
@@ -45,6 +47,8 @@ class _NodeDefinition:
     node_id: str
     node_name: str
     human_gate: bool = False
+    capability_name: str | None = None
+    capability_version: str | None = None
 
 
 @dataclass
@@ -64,6 +68,7 @@ class _RunRecord:
     artifact_trust_status: ArtifactTrustStatus
     nodes: list[NodeProgress] = field(default_factory=list)
     human_todos: list[HumanTodoItem] = field(default_factory=list)
+    model_run_locks: list[ModelRunLock] = field(default_factory=list)
     current_node_index: int | None = None
     run_started_at: datetime | None = None
     run_ended_at: datetime | None = None
@@ -77,10 +82,15 @@ class WorkflowService:
     so that later tickets can swap the implementation without changing callers.
     """
 
-    def __init__(self, scope_enforcer: ScopeEnforcer | None = None) -> None:
+    def __init__(
+        self,
+        scope_enforcer: ScopeEnforcer | None = None,
+        model_gateway: ModelGateway | None = None,
+    ) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
+        self._model_gateway = model_gateway
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -116,11 +126,15 @@ class WorkflowService:
 
         parsed_nodes: list[_NodeDefinition] = []
         for node in nodes:
+            cap_name = node.get("capability_name")
+            cap_version = node.get("capability_version")
             parsed_nodes.append(
                 _NodeDefinition(
                     node_id=str(node["node_id"]),
                     node_name=str(node["node_name"]),
                     human_gate=bool(node.get("human_gate", False)),
+                    capability_name=str(cap_name) if cap_name is not None else None,
+                    capability_version=str(cap_version) if cap_version is not None else None,
                 )
             )
         self._workflows[(name, version)] = _WorkflowDefinition(
@@ -183,6 +197,7 @@ class WorkflowService:
             current_node_id=current_node_id,
             nodes=list(record.nodes),
             human_todos=list(record.human_todos),
+            model_run_locks=list(record.model_run_locks),
             run_started_at=record.run_started_at,
             run_ended_at=record.run_ended_at,
             cancel_reason=record.cancel_reason,
@@ -257,6 +272,11 @@ class WorkflowService:
             NodeProgress(
                 node_id=node.node_id,
                 node_name=node.node_name,
+                capability_ref=(
+                    f"{node.capability_name}@{node.capability_version}"
+                    if node.capability_name
+                    else None
+                ),
                 status=NodeStatus.PENDING,
             )
             for node in definition.nodes
@@ -297,6 +317,29 @@ class WorkflowService:
         record = self._require_record(account_id, run_id)
         return self._build_projection(record)
 
+    def _invoke_node_capability(
+        self, record: _RunRecord, node_def: _NodeDefinition
+    ) -> ModelRunLock | None:
+        """Invoke the capability required by a node and record the run lock.
+
+        Raises ``WorkflowError`` when the gateway is missing, which is treated as
+        a deterministic blocking condition.
+        """
+        if self._model_gateway is None:
+            raise WorkflowError("模型网关未配置，无法调用能力。")
+        if node_def.capability_name is None:
+            raise WorkflowError("节点未声明能力。")
+
+        result = self._model_gateway.invoke(
+            capability_name=node_def.capability_name,
+            capability_version=node_def.capability_version or "1",
+            run_context=record.context,
+            payload={"node_id": node_def.node_id},
+        )
+        if result.lock is not None:
+            record.model_run_locks.append(result.lock)
+        return result.lock
+
     def advance_run(self, account_id: str, run_id: str) -> RunProjection:
         """Deterministically advance the run by one node.
 
@@ -311,9 +354,30 @@ class WorkflowService:
 
         now = self._now()
         current = record.nodes[record.current_node_index]
-        current.status = NodeStatus.COMPLETED
-        current.completed_at = now
-        current.output_ref = f"artifact://{record.run_id}/{current.node_id}"
+        definition = self._lookup_workflow(
+            record.work_order.workflow_name,
+            record.work_order.workflow_version,
+        )
+        current_def = definition.nodes[record.current_node_index]
+
+        if current_def.capability_name is not None:
+            lock = self._invoke_node_capability(record, current_def)
+            if lock is None or lock.status in {
+                ModelCallStatus.BLOCKED,
+                ModelCallStatus.RETRYABLE_FAIL,
+            }:
+                current.status = NodeStatus.FAILED
+                current.failure_reason = lock.degradation_reason if lock else "模型调用失败"
+                record.status = WorkflowRunStatus.BLOCKED
+                record.run_ended_at = now
+                return self._build_projection(record)
+            current.status = NodeStatus.COMPLETED
+            current.completed_at = now
+            current.output_ref = lock.lock_id
+        else:
+            current.status = NodeStatus.COMPLETED
+            current.completed_at = now
+            current.output_ref = f"artifact://{record.run_id}/{current.node_id}"
 
         return self._advance_to_next(record, now)
 
