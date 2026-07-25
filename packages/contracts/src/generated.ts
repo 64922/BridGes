@@ -342,6 +342,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/work-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Work Order
+         * @description Submit a WorkOrder within a project and return a draft task-stage projection.
+         */
+        post: operations["submit_work_order_projects__project_id__work_orders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Work Order
+         * @description Confirm the WorkOrder and compile/start the run.
+         */
+        post: operations["confirm_work_order_projects__project_id__runs__run_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Run Projection
+         * @description Return the current task-stage projection for a run.
+         */
+        get: operations["get_run_projection_projects__project_id__runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Run
+         * @description Cancel a run that has not reached a terminal state.
+         */
+        post: operations["cancel_run_projects__project_id__runs__run_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/runs/{run_id}/todos/{todo_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Human Todo
+         * @description Resolve a named human todo and continue past its gate.
+         */
+        post: operations["resolve_human_todo_projects__project_id__runs__run_id__todos__todo_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -468,6 +568,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/_test/runs/{run_id}/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Advance Run
+         * @description Test-only endpoint to deterministically advance a run by one node.
+         */
+        post: operations["test_advance_run__test_runs__run_id__advance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -524,6 +644,12 @@ export interface components {
              */
             agreed_to_terms: boolean;
         };
+        /**
+         * ArtifactTrustStatus
+         * @description Lifecycle status of the scientific artifact produced by a run.
+         * @enum {string}
+         */
+        ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
         /**
          * AuthError
          * @description Uniform authentication error response.
@@ -786,6 +912,48 @@ export interface components {
          */
         HealthStatus: "pass" | "fail" | "unknown";
         /**
+         * HumanTodoItem
+         * @description A named human decision attached to a run.
+         */
+        HumanTodoItem: {
+            /**
+             * Todo Id
+             * @description Stable todo identifier.
+             */
+            todo_id: string;
+            /**
+             * Title
+             * @description Short title shown in the task stage.
+             */
+            title: string;
+            /**
+             * Description
+             * @description Detailed explanation of what is needed.
+             */
+            description: string;
+            /** @description Current todo status. */
+            status: components["schemas"]["HumanTodoStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the todo was created.
+             */
+            created_at: string;
+            /** Resolved At */
+            resolved_at?: string | null;
+            /**
+             * Resolution
+             * @description How the todo was resolved.
+             */
+            resolution?: string | null;
+        };
+        /**
+         * HumanTodoStatus
+         * @description Status of a named human decision attached to a run.
+         * @enum {string}
+         */
+        HumanTodoStatus: "open" | "resolved" | "blocked";
+        /**
          * LoginCredential
          * @description Request to authenticate with email and password.
          */
@@ -803,6 +971,41 @@ export interface components {
              */
             password: string;
         };
+        /**
+         * NodeProgress
+         * @description Progress of a single workflow node as shown on the task stage.
+         */
+        NodeProgress: {
+            /**
+             * Node Id
+             * @description Stable node identifier within the workflow.
+             */
+            node_id: string;
+            /**
+             * Node Name
+             * @description Human-readable node name.
+             */
+            node_name: string;
+            /** @description Current node status. */
+            status: components["schemas"]["NodeStatus"];
+            /** Started At */
+            started_at?: string | null;
+            /** Completed At */
+            completed_at?: string | null;
+            /**
+             * Output Ref
+             * @description Reference to the typed artifact produced by the node, if any.
+             */
+            output_ref?: string | null;
+            /** Failure Reason */
+            failure_reason?: string | null;
+        };
+        /**
+         * NodeStatus
+         * @description Status of a single workflow node attempt.
+         * @enum {string}
+         */
+        NodeStatus: "pending" | "running" | "completed" | "failed" | "skipped";
         /**
          * ObjectDomain
          * @description Authority domain that owns the object.
@@ -1039,6 +1242,161 @@ export interface components {
              * @description New account password.
              */
             new_password: string;
+        };
+        /**
+         * RunContextEnvelope
+         * @description Immutable execution context carried by a run and every node.
+         *
+         *     The envelope binds the run to a subject, project, authorization snapshot,
+         *     key epoch, and declared object scope. It is the source of truth for refresh,
+         *     recovery, and audit; it does not depend on chat history.
+         */
+        RunContextEnvelope: {
+            /**
+             * Run Id
+             * @description Stable run identifier.
+             */
+            run_id: string;
+            /**
+             * Account Id
+             * @description Authenticated account that owns the run.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project within which the run is scoped.
+             */
+            project_id: string;
+            /**
+             * Workflow Name
+             * @description Compiled workflow template name.
+             */
+            workflow_name: string;
+            /**
+             * Workflow Version
+             * @description Compiled workflow template version.
+             */
+            workflow_version: string;
+            /**
+             * Authorization Snapshot
+             * @description Authorization policy version snapshot at compile time.
+             * @default authz-1.0
+             */
+            authorization_snapshot: string;
+            /**
+             * Key Epoch
+             * @description Key epoch under which run secrets and capsules are bound.
+             * @default epoch-0
+             */
+            key_epoch: string;
+            /**
+             * Object Refs
+             * @description Authorized object identifiers.
+             */
+            object_refs?: string[];
+            /**
+             * Memory Slice Refs
+             * @description Memory slice identifiers compiled for this run.
+             */
+            memory_slice_refs?: string[];
+            /**
+             * Domain Pack Refs
+             * @description Domain packs the run must respect.
+             */
+            domain_pack_refs?: string[];
+            /**
+             * Submitted At
+             * Format: date-time
+             * @description When the WorkOrder was first submitted.
+             */
+            submitted_at: string;
+            /**
+             * Confirmed At
+             * @description When the user confirmed the WorkOrder and compilation completed.
+             */
+            confirmed_at?: string | null;
+            /**
+             * Terminal States
+             * @description States that legally end this workflow.
+             */
+            terminal_states?: components["schemas"]["WorkflowRunStatus"][];
+        };
+        /**
+         * RunProjection
+         * @description Task-stage projection of a workflow run.
+         *
+         *     It separates workflow execution status from artifact trust status and
+         *     publish eligibility, so that users do not confuse "finished running" with
+         *     "scientifically approved" or "ready to publish".
+         */
+        RunProjection: {
+            /**
+             * Run Id
+             * @description Stable run identifier.
+             */
+            run_id: string;
+            /**
+             * Project Id
+             * @description Project within which the run is scoped.
+             */
+            project_id: string;
+            /**
+             * Workflow Name
+             * @description Compiled workflow template name.
+             */
+            workflow_name: string;
+            /**
+             * Workflow Version
+             * @description Compiled workflow template version.
+             */
+            workflow_version: string;
+            /** @description Workflow execution state. */
+            run_status: components["schemas"]["WorkflowRunStatus"];
+            /** @description Scientific trust state of the run's primary artifact. */
+            artifact_trust_status: components["schemas"]["ArtifactTrustStatus"];
+            /**
+             * Publish Eligible
+             * @description Whether all current conditions allow publishing the artifact.
+             */
+            publish_eligible: boolean;
+            /**
+             * Objective
+             * @description Confirmed task goal.
+             */
+            objective: string;
+            /**
+             * Success Criteria
+             * @description Confirmed success criteria.
+             */
+            success_criteria: string;
+            /**
+             * Risk Statement
+             * @description Confirmed risk statement.
+             */
+            risk_statement: string;
+            /**
+             * Current Node Id
+             * @description Node currently executing or waiting for input.
+             */
+            current_node_id?: string | null;
+            /**
+             * Nodes
+             * @description All nodes in the compiled workflow.
+             */
+            nodes?: components["schemas"]["NodeProgress"][];
+            /**
+             * Human Todos
+             * @description Open and resolved human decisions for the run.
+             */
+            human_todos?: components["schemas"]["HumanTodoItem"][];
+            /** Run Started At */
+            run_started_at?: string | null;
+            /** Run Ended At */
+            run_ended_at?: string | null;
+            /** Cancel Reason */
+            cancel_reason?: string | null;
+            /** @description Immutable execution context for refresh and audit. */
+            context_envelope: components["schemas"]["RunContextEnvelope"];
         };
         /**
          * Session
@@ -1365,6 +1723,126 @@ export interface components {
              * @description Declared purpose of the share.
              */
             grant_purpose: string;
+        };
+        /**
+         * WorkOrder
+         * @description A task submitted by the global science companion for compilation into a run.
+         *
+         *     The user must confirm the objective, success criteria, and risk statement
+         *     before the run leaves the draft state.
+         */
+        WorkOrder: {
+            /**
+             * Workflow Name
+             * @description Logical workflow template name.
+             */
+            workflow_name: string;
+            /**
+             * Workflow Version
+             * @description Version of the workflow template to compile.
+             * @default 1
+             */
+            workflow_version: string;
+            /**
+             * Project Id
+             * @description Project within which the run is scoped.
+             */
+            project_id: string;
+            /**
+             * Objective
+             * @description Human-readable task goal.
+             */
+            objective: string;
+            /**
+             * Success Criteria
+             * @description Observable criteria that decide whether the task succeeds.
+             */
+            success_criteria: string;
+            /**
+             * Risk Statement
+             * @description Known risks, limits, or required human oversight.
+             */
+            risk_statement: string;
+            /**
+             * Object Refs
+             * @description Object identifiers the run is authorized to access.
+             */
+            object_refs?: string[];
+            /**
+             * Memory Slice Refs
+             * @description Memory slice identifiers compiled for this run.
+             */
+            memory_slice_refs?: string[];
+            /**
+             * Domain Pack Refs
+             * @description Domain packs the run must respect.
+             */
+            domain_pack_refs?: string[];
+        };
+        /**
+         * WorkOrderConfirmRequest
+         * @description Explicit user confirmation that starts the compiled run.
+         *
+         *     The ``confirmed`` field is required (no default) so that an empty request
+         *     body is rejected with a clear validation error instead of silently accepted.
+         */
+        WorkOrderConfirmRequest: {
+            /**
+             * Confirmed
+             * @description Must be true to leave the draft state — omitting this field is rejected so that accidental confirmation cannot happen.
+             */
+            confirmed: boolean;
+        };
+        /**
+         * WorkflowErrorResponse
+         * @description Uniform workflow error response.
+         */
+        WorkflowErrorResponse: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * WorkflowRunStatus
+         * @description Lifecycle status of the workflow orchestration itself.
+         * @enum {string}
+         */
+        WorkflowRunStatus: "draft" | "compiled" | "running" | "waiting_human" | "retrying" | "succeeded" | "blocked" | "cancelled";
+        /**
+         * _CancelRequest
+         * @description Request body for cancelling a run.
+         */
+        _CancelRequest: {
+            /**
+             * Reason
+             * @description Reason recorded for the cancellation.
+             */
+            reason: string;
+        };
+        /**
+         * _TodoResolveRequest
+         * @description Request body for resolving a human todo.
+         */
+        _TodoResolveRequest: {
+            /**
+             * Resolution
+             * @description How the todo is resolved.
+             */
+            resolution: string;
         };
     };
     responses: never;
@@ -2283,6 +2761,318 @@ export interface operations {
             };
         };
     };
+    submit_work_order_projects__project_id__work_orders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrder"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+        };
+    };
+    confirm_work_order_projects__project_id__runs__run_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkOrderConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+        };
+    };
+    get_run_projection_projects__project_id__runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_run_projects__project_id__runs__run_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_CancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+        };
+    };
+    resolve_human_todo_projects__project_id__runs__run_id__todos__todo_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+                todo_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_TodoResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+        };
+    };
     health_live_health_live_get: {
         parameters: {
             query?: never;
@@ -2416,6 +3206,39 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_advance_run__test_runs__run_id__advance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
                 };
             };
             /** @description Validation Error */

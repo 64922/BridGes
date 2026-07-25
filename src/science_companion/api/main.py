@@ -1,12 +1,13 @@
 """FastAPI application for the Science Companion API."""
 
-from typing import Any
+from typing import Annotated, Any
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 
 from science_companion import __version__
-from science_companion.api import auth, projects, vault
+from science_companion.api import auth, projects, vault, workflows
 from science_companion.contracts.health import HealthProjection, HealthStatus
+from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.projects import ProjectService
@@ -15,6 +16,24 @@ from science_companion.vault import (
     MemoryDeviceVaultPort,
     VaultService,
 )
+from science_companion.workflows import WorkflowError, WorkflowService
+
+
+def _register_builtin_workflows(service: WorkflowService) -> None:
+    """Register the minimal workflow templates available at T006."""
+    service.register_workflow(
+        name="generic_science_task",
+        version="1",
+        nodes=[
+            {"node_id": "compile_context", "node_name": "编译上下文", "human_gate": False},
+            {"node_id": "produce_output", "node_name": "生成产物", "human_gate": False},
+        ],
+        terminal_states=[
+            WorkflowRunStatus.SUCCEEDED,
+            WorkflowRunStatus.BLOCKED,
+            WorkflowRunStatus.CANCELLED,
+        ],
+    )
 
 
 def create_app() -> FastAPI:
@@ -40,9 +59,15 @@ def create_app() -> FastAPI:
         device_port=MemoryDeviceVaultPort(vault_repository),
     )
 
+    # T006: attach the in-memory workflow service and register the first workflow.
+    workflow_service = WorkflowService()
+    _register_builtin_workflows(workflow_service)
+    app.state.workflow_service = workflow_service
+
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
+    app.include_router(workflows.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:
@@ -92,5 +117,26 @@ def create_app() -> FastAPI:
         except IdentityError as exc:
             return {"error": str(exc)}
         return {"token": token}
+
+    def _get_workflow_service(request: Request) -> WorkflowService:
+        service: WorkflowService | None = getattr(request.app.state, "workflow_service", None)
+        if service is None:
+            raise RuntimeError("WorkflowService not attached to application state.")
+        return service
+
+    @app.post("/_test/runs/{run_id}/advance", response_model=RunProjection)
+    async def test_advance_run(
+        run_id: str,
+        service: Annotated[WorkflowService, Depends(_get_workflow_service)],
+        subject: auth.SubjectDep,
+    ) -> RunProjection:
+        """Test-only endpoint to deterministically advance a run by one node."""
+        try:
+            return service.advance_run(subject.account_id, run_id)
+        except WorkflowError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "workflow_transition_failed", "message": str(exc)},
+            ) from exc
 
     return app

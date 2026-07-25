@@ -1351,6 +1351,526 @@
         }
       }
     },
+    "/projects/{project_id}/work-orders": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Submit Work Order",
+        "description": "Submit a WorkOrder within a project and return a draft task-stage projection.",
+        "operationId": "submit_work_order_projects__project_id__work_orders_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrder"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}/confirm": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Confirm Work Order",
+        "description": "Confirm the WorkOrder and compile/start the run.",
+        "operationId": "confirm_work_order_projects__project_id__runs__run_id__confirm_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkOrderConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Get Run Projection",
+        "description": "Return the current task-stage projection for a run.",
+        "operationId": "get_run_projection_projects__project_id__runs__run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}/cancel": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Cancel Run",
+        "description": "Cancel a run that has not reached a terminal state.",
+        "operationId": "cancel_run_projects__project_id__runs__run_id__cancel_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_CancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/runs/{run_id}/todos/{todo_id}/resolve": {
+      "post": {
+        "tags": [
+          "workflows"
+        ],
+        "summary": "Resolve Human Todo",
+        "description": "Resolve a named human todo and continue past its gate.",
+        "operationId": "resolve_human_todo_projects__project_id__runs__run_id__todos__todo_id__resolve_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "todo_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Todo Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_TodoResolveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -1517,6 +2037,62 @@
           }
         }
       }
+    },
+    "/_test/runs/{run_id}/advance": {
+      "post": {
+        "summary": "Test Advance Run",
+        "description": "Test-only endpoint to deterministically advance a run by one node.",
+        "operationId": "test_advance_run__test_runs__run_id__advance_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1587,6 +2163,21 @@
         ],
         "title": "AccountRegistration",
         "description": "Request to create a new account."
+      },
+      "ArtifactTrustStatus": {
+        "type": "string",
+        "enum": [
+          "not_created",
+          "draft",
+          "evidence_bound",
+          "qualified",
+          "approved",
+          "conflicted",
+          "quarantined",
+          "invalidated"
+        ],
+        "title": "ArtifactTrustStatus",
+        "description": "Lifecycle status of the scientific artifact produced by a run."
       },
       "AuthError": {
         "properties": {
@@ -1954,6 +2545,79 @@
         "title": "HealthStatus",
         "description": "Top-level health verdict."
       },
+      "HumanTodoItem": {
+        "properties": {
+          "todo_id": {
+            "type": "string",
+            "title": "Todo Id",
+            "description": "Stable todo identifier."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Short title shown in the task stage."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "Detailed explanation of what is needed."
+          },
+          "status": {
+            "$ref": "#/components/schemas/HumanTodoStatus",
+            "description": "Current todo status."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the todo was created."
+          },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
+          "resolution": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution",
+            "description": "How the todo was resolved."
+          }
+        },
+        "type": "object",
+        "required": [
+          "todo_id",
+          "title",
+          "description",
+          "status",
+          "created_at"
+        ],
+        "title": "HumanTodoItem",
+        "description": "A named human decision attached to a run."
+      },
+      "HumanTodoStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "resolved",
+          "blocked"
+        ],
+        "title": "HumanTodoStatus",
+        "description": "Status of a named human decision attached to a run."
+      },
       "LoginCredential": {
         "properties": {
           "email": {
@@ -1977,6 +2641,91 @@
         ],
         "title": "LoginCredential",
         "description": "Request to authenticate with email and password."
+      },
+      "NodeProgress": {
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "title": "Node Id",
+            "description": "Stable node identifier within the workflow."
+          },
+          "node_name": {
+            "type": "string",
+            "title": "Node Name",
+            "description": "Human-readable node name."
+          },
+          "status": {
+            "$ref": "#/components/schemas/NodeStatus",
+            "description": "Current node status."
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "output_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Ref",
+            "description": "Reference to the typed artifact produced by the node, if any."
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_id",
+          "node_name",
+          "status"
+        ],
+        "title": "NodeProgress",
+        "description": "Progress of a single workflow node as shown on the task stage."
+      },
+      "NodeStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "skipped"
+        ],
+        "title": "NodeStatus",
+        "description": "Status of a single workflow node attempt."
       },
       "ObjectDomain": {
         "type": "string",
@@ -2324,6 +3073,244 @@
         ],
         "title": "RecoveryReset",
         "description": "Reset password using a recovery token."
+      },
+      "RunContextEnvelope": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Stable run identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Authenticated account that owns the run."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the run is scoped."
+          },
+          "workflow_name": {
+            "type": "string",
+            "title": "Workflow Name",
+            "description": "Compiled workflow template name."
+          },
+          "workflow_version": {
+            "type": "string",
+            "title": "Workflow Version",
+            "description": "Compiled workflow template version."
+          },
+          "authorization_snapshot": {
+            "type": "string",
+            "title": "Authorization Snapshot",
+            "description": "Authorization policy version snapshot at compile time.",
+            "default": "authz-1.0"
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch under which run secrets and capsules are bound.",
+            "default": "epoch-0"
+          },
+          "object_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Object Refs",
+            "description": "Authorized object identifiers."
+          },
+          "memory_slice_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Memory Slice Refs",
+            "description": "Memory slice identifiers compiled for this run."
+          },
+          "domain_pack_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Domain Pack Refs",
+            "description": "Domain packs the run must respect."
+          },
+          "submitted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Submitted At",
+            "description": "When the WorkOrder was first submitted."
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At",
+            "description": "When the user confirmed the WorkOrder and compilation completed."
+          },
+          "terminal_states": {
+            "items": {
+              "$ref": "#/components/schemas/WorkflowRunStatus"
+            },
+            "type": "array",
+            "title": "Terminal States",
+            "description": "States that legally end this workflow."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "account_id",
+          "project_id",
+          "workflow_name",
+          "workflow_version",
+          "submitted_at"
+        ],
+        "title": "RunContextEnvelope",
+        "description": "Immutable execution context carried by a run and every node.\n\nThe envelope binds the run to a subject, project, authorization snapshot,\nkey epoch, and declared object scope. It is the source of truth for refresh,\nrecovery, and audit; it does not depend on chat history."
+      },
+      "RunProjection": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Stable run identifier."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the run is scoped."
+          },
+          "workflow_name": {
+            "type": "string",
+            "title": "Workflow Name",
+            "description": "Compiled workflow template name."
+          },
+          "workflow_version": {
+            "type": "string",
+            "title": "Workflow Version",
+            "description": "Compiled workflow template version."
+          },
+          "run_status": {
+            "$ref": "#/components/schemas/WorkflowRunStatus",
+            "description": "Workflow execution state."
+          },
+          "artifact_trust_status": {
+            "$ref": "#/components/schemas/ArtifactTrustStatus",
+            "description": "Scientific trust state of the run's primary artifact."
+          },
+          "publish_eligible": {
+            "type": "boolean",
+            "title": "Publish Eligible",
+            "description": "Whether all current conditions allow publishing the artifact."
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective",
+            "description": "Confirmed task goal."
+          },
+          "success_criteria": {
+            "type": "string",
+            "title": "Success Criteria",
+            "description": "Confirmed success criteria."
+          },
+          "risk_statement": {
+            "type": "string",
+            "title": "Risk Statement",
+            "description": "Confirmed risk statement."
+          },
+          "current_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Node Id",
+            "description": "Node currently executing or waiting for input."
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeProgress"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "description": "All nodes in the compiled workflow."
+          },
+          "human_todos": {
+            "items": {
+              "$ref": "#/components/schemas/HumanTodoItem"
+            },
+            "type": "array",
+            "title": "Human Todos",
+            "description": "Open and resolved human decisions for the run."
+          },
+          "run_started_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Started At"
+          },
+          "run_ended_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Ended At"
+          },
+          "cancel_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancel Reason"
+          },
+          "context_envelope": {
+            "$ref": "#/components/schemas/RunContextEnvelope",
+            "description": "Immutable execution context for refresh and audit."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "project_id",
+          "workflow_name",
+          "workflow_version",
+          "run_status",
+          "artifact_trust_status",
+          "publish_eligible",
+          "objective",
+          "success_criteria",
+          "risk_statement",
+          "context_envelope"
+        ],
+        "title": "RunProjection",
+        "description": "Task-stage projection of a workflow run.\n\nIt separates workflow execution status from artifact trust status and\npublish eligibility, so that users do not confuse \"finished running\" with\n\"scientifically approved\" or \"ready to publish\"."
       },
       "Session": {
         "properties": {
@@ -2785,6 +3772,169 @@
         ],
         "title": "VaultShareRequest",
         "description": "Request to share a personal vault object as a minimized project copy."
+      },
+      "WorkOrder": {
+        "properties": {
+          "workflow_name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Workflow Name",
+            "description": "Logical workflow template name."
+          },
+          "workflow_version": {
+            "type": "string",
+            "title": "Workflow Version",
+            "description": "Version of the workflow template to compile.",
+            "default": "1"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the run is scoped."
+          },
+          "objective": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Objective",
+            "description": "Human-readable task goal."
+          },
+          "success_criteria": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Success Criteria",
+            "description": "Observable criteria that decide whether the task succeeds."
+          },
+          "risk_statement": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Risk Statement",
+            "description": "Known risks, limits, or required human oversight."
+          },
+          "object_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Object Refs",
+            "description": "Object identifiers the run is authorized to access."
+          },
+          "memory_slice_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Memory Slice Refs",
+            "description": "Memory slice identifiers compiled for this run."
+          },
+          "domain_pack_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Domain Pack Refs",
+            "description": "Domain packs the run must respect."
+          }
+        },
+        "type": "object",
+        "required": [
+          "workflow_name",
+          "project_id",
+          "objective",
+          "success_criteria",
+          "risk_statement"
+        ],
+        "title": "WorkOrder",
+        "description": "A task submitted by the global science companion for compilation into a run.\n\nThe user must confirm the objective, success criteria, and risk statement\nbefore the run leaves the draft state."
+      },
+      "WorkOrderConfirmRequest": {
+        "properties": {
+          "confirmed": {
+            "type": "boolean",
+            "title": "Confirmed",
+            "description": "Must be true to leave the draft state — omitting this field is rejected so that accidental confirmation cannot happen."
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmed"
+        ],
+        "title": "WorkOrderConfirmRequest",
+        "description": "Explicit user confirmation that starts the compiled run.\n\nThe ``confirmed`` field is required (no default) so that an empty request\nbody is rejected with a clear validation error instead of silently accepted."
+      },
+      "WorkflowErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "WorkflowErrorResponse",
+        "description": "Uniform workflow error response."
+      },
+      "WorkflowRunStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "compiled",
+          "running",
+          "waiting_human",
+          "retrying",
+          "succeeded",
+          "blocked",
+          "cancelled"
+        ],
+        "title": "WorkflowRunStatus",
+        "description": "Lifecycle status of the workflow orchestration itself."
+      },
+      "_CancelRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Reason recorded for the cancellation."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "_CancelRequest",
+        "description": "Request body for cancelling a run."
+      },
+      "_TodoResolveRequest": {
+        "properties": {
+          "resolution": {
+            "type": "string",
+            "title": "Resolution",
+            "description": "How the todo is resolved."
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolution"
+        ],
+        "title": "_TodoResolveRequest",
+        "description": "Request body for resolving a human todo."
       }
     }
   }
