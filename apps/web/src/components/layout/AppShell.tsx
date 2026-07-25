@@ -64,8 +64,8 @@ export function AppShell({ children, mode = "account", projectId }: AppShellProp
               size="sm"
               aria-expanded={mobileNavOpen}
               aria-controls="primary-navigation"
-              aria-label="打开主导航"
-              onClick={() => setMobileNavOpen(true)}
+              aria-label={mobileNavOpen ? "关闭导航" : "打开主导航"}
+              onClick={() => setMobileNavOpen(!mobileNavOpen)}
               style={{
                 minWidth: "var(--target-size)",
                 minHeight: "var(--target-size)",

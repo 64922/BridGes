@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import { StatusBadge } from "@/components/design-system/StatusBadge";
 import { fetchHealthSummary, statusText, type HealthProjection } from "@/lib/api";
 
 export default function HealthPanel() {
@@ -41,13 +42,13 @@ export default function HealthPanel() {
     <section aria-label="系统健康状态">
       <h2>系统健康</h2>
       <p>版本：{projection.version}</p>
-      <dl>
-        <dt>存活</dt>
-        <dd>{statusText(projection.live)}</dd>
-        <dt>就绪</dt>
-        <dd>{statusText(projection.ready)}</dd>
-        <dt>降级</dt>
-        <dd>{statusText(projection.degraded)}</dd>
+      <dl style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", marginTop: "var(--space-3)" }}>
+        <dt style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>存活</dt>
+        <dd><StatusBadge status={projection.live} label={statusText(projection.live)} /></dd>
+        <dt style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)", marginTop: "var(--space-1)" }}>就绪</dt>
+        <dd><StatusBadge status={projection.ready} label={statusText(projection.ready)} /></dd>
+        <dt style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)", marginTop: "var(--space-1)" }}>降级</dt>
+        <dd><StatusBadge status={projection.degraded} label={statusText(projection.degraded)} /></dd>
       </dl>
       {projection.dependencies && projection.dependencies.length > 0 && (
         <>
