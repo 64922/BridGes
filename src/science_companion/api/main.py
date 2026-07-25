@@ -14,6 +14,7 @@ from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
+from science_companion.observability.service import ObservabilityService
 from science_companion.projects import ProjectService
 from science_companion.scope import ScopeEnforcer
 from science_companion.vault import (
@@ -155,10 +156,16 @@ def create_app() -> FastAPI:
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
 
+    # T010: attach the observability service. It is passed to services so that
+    # trace/metric/log/audit events share the same run/subject/project/object
+    # correlation and never copy private body, full prompts or keys.
+    app.state.observability_service = ObservabilityService()
+
     # T006/T009: attach the in-memory workflow service and register workflows.
     workflow_service = WorkflowService(
         scope_enforcer=app.state.scope_enforcer,
         model_gateway=model_gateway,
+        observability_service=app.state.observability_service,
     )
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service

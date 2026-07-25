@@ -12,10 +12,11 @@ from pydantic import ValidationError
 from science_companion import __version__
 from science_companion.config import get_settings
 from science_companion.contracts.health import DependencyHealth, HealthProjection, HealthStatus
+from science_companion.contracts.observability import SLIMetricKind, SLISeverity
 
 
 REQUIRED_DEPENDENCIES = ["configuration"]
-OPTIONAL_DEPENDENCIES: list[str] = []
+OPTIONAL_DEPENDENCIES: list[str] = ["observability"]
 
 
 def _probe_configuration() -> DependencyHealth:
@@ -36,8 +37,44 @@ def _probe_configuration() -> DependencyHealth:
     )
 
 
+def _probe_observability() -> DependencyHealth:
+    """T010: verify the observability contract modules are importable and sane."""
+    try:
+        from science_companion.observability.service import ObservabilityService
+
+        service = ObservabilityService()
+        sli = service.register_sli(
+            workload_name="health_probe",
+            metric_kind=SLIMetricKind.AVAILABILITY,
+            description="Health probe availability check",
+            unit="ratio",
+            window="1m",
+            owner="platform",
+        )
+        service.register_slo(
+            sli_id=sli.sli_id,
+            target=0.99,
+            alert_threshold=0.95,
+            severity=SLISeverity.HIGH,
+        )
+    except Exception as exc:  # noqa: BLE001
+        return DependencyHealth(
+            name="observability",
+            status=HealthStatus.FAIL,
+            required=False,
+            message=f"Observability contract failed: {exc}",
+        )
+    return DependencyHealth(
+        name="observability",
+        status=HealthStatus.PASS,
+        required=False,
+        message="Observability contract loaded and SLI/SLO registration works",
+    )
+
+
 _DEPENDENCY_PROBES: dict[str, Callable[[], DependencyHealth]] = {
     "configuration": _probe_configuration,
+    "observability": _probe_observability,
 }
 
 

@@ -14,11 +14,13 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
+from science_companion.contracts.observability import AuditAction, AuditResult
 from science_companion.contracts.workflows import (
     ArtifactTrustStatus,
     HumanTodoItem,
@@ -32,6 +34,9 @@ from science_companion.contracts.workflows import (
 )
 from science_companion.scope import ScopeEnforcer
 from science_companion.ai import ModelGateway
+
+if TYPE_CHECKING:
+    from science_companion.observability.service import ObservabilityService
 
 
 class WorkflowError(Exception):
@@ -86,11 +91,13 @@ class WorkflowService:
         self,
         scope_enforcer: ScopeEnforcer | None = None,
         model_gateway: ModelGateway | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
         self._model_gateway = model_gateway
+        self._observability = observability_service
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -204,6 +211,63 @@ class WorkflowService:
             context_envelope=record.context,
         )
 
+    def _emit_audit(
+        self,
+        record: _RunRecord,
+        action: AuditAction,
+        result: AuditResult,
+        *,
+        reason: str | None = None,
+        details: dict[str, object] | None = None,
+    ) -> None:
+        """Emit an audit event for a run if observability is attached."""
+        if self._observability is None:
+            return
+        ctx = record.context
+        from science_companion.observability.telemetry_context import build_correlation, get_correlation
+
+        existing = get_correlation()
+        correlation = build_correlation(
+            trace_id=existing.trace_id if existing else None,
+            span_id=existing.span_id if existing else None,
+            run_id=ctx.run_id,
+            account_id=ctx.account_id,
+            project_id=ctx.project_id,
+            tenant_id=ctx.tenant_id,
+            object_domain=ctx.object_domain,
+            workflow_name=ctx.workflow_name,
+            workflow_version=ctx.workflow_version,
+            authorization_version=ctx.authorization_snapshot,
+            key_epoch=ctx.key_epoch,
+        )
+        self._observability.log_audit(
+            actor_account_id=ctx.account_id,
+            action=action,
+            result=result,
+            object_refs=list(ctx.object_refs),
+            reason=reason,
+            details=details or {},
+            correlation=correlation,
+        )
+
+    def _maybe_summarize(self, record: _RunRecord, terminal_reason: str | None = None) -> None:
+        """Build a run summary when the run reaches a terminal state.
+
+        The summary is only materialized when observability is attached; callers
+        can also build summaries explicitly from RunProjections.
+        """
+        if self._observability is None:
+            return
+        if record.status not in record.context.terminal_states:
+            return
+        projection = self._build_projection(record)
+        audit_events = self._observability.get_run_audit_events(record.run_id)
+        self._observability.summarize_run(
+            projection,
+            audit_event_refs=[e.event_id for e in audit_events],
+            terminal_reason=terminal_reason,
+        )
+
     def submit_work_order(self, account_id: str, order: WorkOrder) -> RunProjection:
         """Submit a WorkOrder and return a draft task-stage projection."""
         subject = self._subject(account_id)
@@ -240,6 +304,12 @@ class WorkflowService:
             artifact_trust_status=ArtifactTrustStatus.NOT_CREATED,
         )
         self._runs[run_id] = record
+        self._emit_audit(
+            record,
+            AuditAction.WORKORDER_SUBMIT,
+            AuditResult.SUCCESS,
+            details={"workflow_name": order.workflow_name, "workflow_version": order.workflow_version},
+        )
         return self._build_projection(record)
 
     def confirm_work_order(
@@ -306,7 +376,15 @@ class WorkflowService:
             record.artifact_trust_status = ArtifactTrustStatus.QUALIFIED
             record.run_ended_at = now
 
-        return self._build_projection(record)
+        projection = self._build_projection(record)
+        self._emit_audit(
+            record,
+            AuditAction.WORKORDER_CONFIRM,
+            AuditResult.SUCCESS,
+            details={"run_status": record.status.value},
+        )
+        self._maybe_summarize(record, terminal_reason="empty_workflow")
+        return projection
 
     def get_run(self, account_id: str, run_id: str) -> RunProjection:
         """Return the current task-stage projection for a run.
@@ -362,6 +440,23 @@ class WorkflowService:
 
         if current_def.capability_name is not None:
             lock = self._invoke_node_capability(record, current_def)
+            self._emit_audit(
+                record,
+                AuditAction.MODEL_INVOCATION,
+                (
+                    AuditResult.SUCCESS
+                    if lock is not None and lock.status == ModelCallStatus.SUCCESS
+                    else AuditResult.BLOCKED
+                    if lock is not None and lock.status == ModelCallStatus.BLOCKED
+                    else AuditResult.RETRYABLE_FAIL
+                ),
+                details={
+                    "node_id": current_def.node_id,
+                    "capability_ref": f"{current_def.capability_name}@{current_def.capability_version}",
+                    "model_call_status": lock.status.value if lock else "none",
+                    "retry_count": lock.retry_count if lock else 0,
+                },
+            )
             if lock is None or lock.status in {
                 ModelCallStatus.BLOCKED,
                 ModelCallStatus.RETRYABLE_FAIL,
@@ -370,7 +465,9 @@ class WorkflowService:
                 current.failure_reason = lock.degradation_reason if lock else "模型调用失败"
                 record.status = WorkflowRunStatus.BLOCKED
                 record.run_ended_at = now
-                return self._build_projection(record)
+                projection = self._build_projection(record)
+                self._maybe_summarize(record, terminal_reason=current.failure_reason)
+                return projection
             current.status = NodeStatus.COMPLETED
             current.completed_at = now
             current.output_ref = lock.lock_id
@@ -379,7 +476,15 @@ class WorkflowService:
             current.completed_at = now
             current.output_ref = f"artifact://{record.run_id}/{current.node_id}"
 
-        return self._advance_to_next(record, now)
+        projection = self._advance_to_next(record, now)
+        self._emit_audit(
+            record,
+            AuditAction.RUN_ADVANCE,
+            AuditResult.SUCCESS,
+            details={"node_id": current_def.node_id, "run_status": record.status.value},
+        )
+        self._maybe_summarize(record)
+        return projection
 
     def _advance_to_next(self, record: _RunRecord, now: datetime) -> RunProjection:
         definition = self._lookup_workflow(
@@ -398,7 +503,9 @@ class WorkflowService:
             record.artifact_trust_status = ArtifactTrustStatus.QUALIFIED
             record.run_ended_at = now
             record.current_node_index = None
-            return self._build_projection(record)
+            projection = self._build_projection(record)
+            self._maybe_summarize(record, terminal_reason="all_nodes_completed")
+            return projection
 
         record.current_node_index = next_index
         next_node_def = definition.nodes[next_index]
@@ -438,7 +545,15 @@ class WorkflowService:
         record.status = WorkflowRunStatus.CANCELLED
         record.cancel_reason = reason
         record.run_ended_at = now
-        return self._build_projection(record)
+        projection = self._build_projection(record)
+        self._emit_audit(
+            record,
+            AuditAction.RUN_CANCEL,
+            AuditResult.SUCCESS,
+            details={"reason": reason},
+        )
+        self._maybe_summarize(record, terminal_reason=f"cancelled:{reason}")
+        return projection
 
     def resolve_human_todo(
         self,
@@ -466,4 +581,10 @@ class WorkflowService:
             current.completed_at = now
             current.output_ref = f"artifact://{record.run_id}/{current.node_id}"
 
+        self._emit_audit(
+            record,
+            AuditAction.HUMAN_TODO_RESOLVE,
+            AuditResult.SUCCESS,
+            details={"todo_id": todo_id, "resolution": resolution},
+        )
         return self._advance_to_next(record, now)
