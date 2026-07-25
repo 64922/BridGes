@@ -1871,6 +1871,249 @@
         }
       }
     },
+    "/scope/context": {
+      "get": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Get Scope Context",
+        "description": "Return the compiled scope envelope and RLS context for the current request.\n\nThis endpoint is read-only and is used by storage, index and cache layers to\nalign their own scope checks with the API's authorization interpreter.",
+        "operationId": "get_scope_context_scope_context_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Scope Context Scope Context Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Get Scope Context Scope Context Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/scope/validate-task": {
+      "post": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Validate Background Task",
+        "description": "Validate that a background task carries all required scope fields.\n\nMissing subject, object domain, authorization version or key epoch causes a\ndeterministic failure closure rather than running with guessed context.",
+        "operationId": "validate_background_task_scope_validate_task_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackgroundTaskEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Validate Background Task Scope Validate Task Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Validate Background Task Scope Validate Task Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 403 Validate Background Task Scope Validate Task Post"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 422 Validate Background Task Scope Validate Task Post"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/scope/report-violation": {
+      "post": {
+        "tags": [
+          "scope"
+        ],
+        "summary": "Report Scope Violation",
+        "description": "Accept an audit-safe scope violation report.\n\nThe report intentionally does not include private content or keys.",
+        "operationId": "report_scope_violation_scope_report_violation_post",
+        "parameters": [
+          {
+            "name": "action",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ScopeAction"
+            }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScopeEnvelope"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScopeViolationReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Report Scope Violation Scope Report Violation Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 422 Report Scope Violation Scope Report Violation Post"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -2240,6 +2483,83 @@
         ],
         "title": "AuthResponse",
         "description": "Response to a successful authentication operation.\n\nThe session_token is delivered only once; callers must store it according to\ntheir client type (browser cookie managed by the API, native secure storage)."
+      },
+      "BackgroundTaskEnvelope": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id",
+            "description": "Stable background task identifier."
+          },
+          "task_type": {
+            "type": "string",
+            "title": "Task Type",
+            "description": "Logical task type, e.g. ingestion, index."
+          },
+          "subject": {
+            "$ref": "#/components/schemas/SubjectContext",
+            "description": "Subject that authorized the task."
+          },
+          "object_domain": {
+            "$ref": "#/components/schemas/ObjectDomain",
+            "description": "Domain in which the task runs."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope when the task belongs to a project."
+          },
+          "authorization_version": {
+            "type": "string",
+            "title": "Authorization Version",
+            "description": "Authorization policy version at task creation."
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch under which task secrets are bound."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared purpose of the task."
+          },
+          "object_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Object Refs",
+            "description": "Object identifiers the task is authorized to touch."
+          },
+          "memory_slice_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Memory Slice Refs",
+            "description": "Memory slice identifiers compiled for the task."
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "task_type",
+          "subject",
+          "object_domain",
+          "authorization_version",
+          "key_epoch",
+          "purpose"
+        ],
+        "title": "BackgroundTaskEnvelope",
+        "description": "Required context for every background task.\n\nA background task must carry a subject, object domain, project, authorization\nversion and key epoch. Missing any of these causes deterministic failure\nclosure rather than running with ambient or guessed context."
       },
       "CapsuleIssueRequest": {
         "properties": {
@@ -3086,6 +3406,18 @@
             "title": "Account Id",
             "description": "Authenticated account that owns the run."
           },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id",
+            "description": "Institution/organization tenant when applicable."
+          },
           "project_id": {
             "type": "string",
             "title": "Project Id",
@@ -3100,6 +3432,11 @@
             "type": "string",
             "title": "Workflow Version",
             "description": "Compiled workflow template version."
+          },
+          "object_domain": {
+            "$ref": "#/components/schemas/ObjectDomain",
+            "description": "Authority domain in which the run executes.",
+            "default": "personal_vault"
           },
           "authorization_snapshot": {
             "type": "string",
@@ -3175,7 +3512,7 @@
           "submitted_at"
         ],
         "title": "RunContextEnvelope",
-        "description": "Immutable execution context carried by a run and every node.\n\nThe envelope binds the run to a subject, project, authorization snapshot,\nkey epoch, and declared object scope. It is the source of truth for refresh,\nrecovery, and audit; it does not depend on chat history."
+        "description": "Immutable execution context carried by a run and every node.\n\nThe envelope binds the run to a subject, tenant, project, object domain,\nauthorization snapshot, key epoch, and declared object scope. It is the source\nof truth for refresh, recovery, and audit; it does not depend on chat history."
       },
       "RunProjection": {
         "properties": {
@@ -3311,6 +3648,147 @@
         ],
         "title": "RunProjection",
         "description": "Task-stage projection of a workflow run.\n\nIt separates workflow execution status from artifact trust status and\npublish eligibility, so that users do not confuse \"finished running\" with\n\"scientifically approved\" or \"ready to publish\"."
+      },
+      "ScopeAction": {
+        "type": "string",
+        "enum": [
+          "create",
+          "read",
+          "update",
+          "delete",
+          "share",
+          "execute"
+        ],
+        "title": "ScopeAction",
+        "description": "Actions that scope isolation can authorize or deny."
+      },
+      "ScopeEnvelope": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Authenticated account identifier."
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id",
+            "description": "Institution/organization tenant when applicable."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project within which the operation is scoped."
+          },
+          "object_domain": {
+            "$ref": "#/components/schemas/ObjectDomain",
+            "description": "Authority domain that owns the target objects.",
+            "default": "personal_vault"
+          },
+          "authorization_version": {
+            "type": "string",
+            "title": "Authorization Version",
+            "description": "Authorization policy version at compile time.",
+            "default": "authz-1.0"
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch under which secrets and capsules are bound.",
+            "default": "epoch-0"
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared purpose for the operation.",
+            "default": "general"
+          },
+          "requested_object_refs": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectRef"
+            },
+            "type": "array",
+            "title": "Requested Object Refs",
+            "description": "Object references the operation requests to touch."
+          },
+          "requested_vault_refs": {
+            "items": {
+              "$ref": "#/components/schemas/VaultObjectRef"
+            },
+            "type": "array",
+            "title": "Requested Vault Refs",
+            "description": "Vault object references the operation requests to touch."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id"
+        ],
+        "title": "ScopeEnvelope",
+        "description": "Immutable scope snapshot carried by requests, runs, cache keys and RLS.\n\nThe envelope binds an operation to a subject, tenant, project, object domain,\nauthorization version and key epoch. Services must compile it before touching\nstorage, cache, index or model context."
+      },
+      "ScopeViolationReport": {
+        "properties": {
+          "actor_account_id": {
+            "type": "string",
+            "title": "Actor Account Id",
+            "description": "Account that attempted the action."
+          },
+          "actor_session_id": {
+            "type": "string",
+            "title": "Actor Session Id",
+            "description": "Session that attempted the action."
+          },
+          "action": {
+            "$ref": "#/components/schemas/ScopeAction",
+            "description": "Action that was denied."
+          },
+          "requested_scope": {
+            "$ref": "#/components/schemas/ScopeEnvelope",
+            "description": "Scope that was denied."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable, non-leaking reason."
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At",
+            "description": "When the violation was detected."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor_account_id",
+          "actor_session_id",
+          "action",
+          "requested_scope",
+          "reason",
+          "occurred_at"
+        ],
+        "title": "ScopeViolationReport",
+        "description": "Audit-safe report when a scope check fails.\n\nThe report intentionally does not include private content, full prompts or\nkeys; it records only the subject, requested scope, reason and timestamp."
       },
       "Session": {
         "properties": {

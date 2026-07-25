@@ -442,6 +442,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/scope/context": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Scope Context
+         * @description Return the compiled scope envelope and RLS context for the current request.
+         *
+         *     This endpoint is read-only and is used by storage, index and cache layers to
+         *     align their own scope checks with the API's authorization interpreter.
+         */
+        get: operations["get_scope_context_scope_context_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scope/validate-task": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Background Task
+         * @description Validate that a background task carries all required scope fields.
+         *
+         *     Missing subject, object domain, authorization version or key epoch causes a
+         *     deterministic failure closure rather than running with guessed context.
+         */
+        post: operations["validate_background_task_scope_validate_task_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/scope/report-violation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Scope Violation
+         * @description Accept an audit-safe scope violation report.
+         *
+         *     The report intentionally does not include private content or keys.
+         */
+        post: operations["report_scope_violation_scope_report_violation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -699,6 +767,60 @@ export interface components {
              * @description Opaque session token (one-time exposure).
              */
             session_token: string;
+        };
+        /**
+         * BackgroundTaskEnvelope
+         * @description Required context for every background task.
+         *
+         *     A background task must carry a subject, object domain, project, authorization
+         *     version and key epoch. Missing any of these causes deterministic failure
+         *     closure rather than running with ambient or guessed context.
+         */
+        BackgroundTaskEnvelope: {
+            /**
+             * Task Id
+             * @description Stable background task identifier.
+             */
+            task_id: string;
+            /**
+             * Task Type
+             * @description Logical task type, e.g. ingestion, index.
+             */
+            task_type: string;
+            /** @description Subject that authorized the task. */
+            subject: components["schemas"]["SubjectContext"];
+            /** @description Domain in which the task runs. */
+            object_domain: components["schemas"]["ObjectDomain"];
+            /**
+             * Project Id
+             * @description Project scope when the task belongs to a project.
+             */
+            project_id?: string | null;
+            /**
+             * Authorization Version
+             * @description Authorization policy version at task creation.
+             */
+            authorization_version: string;
+            /**
+             * Key Epoch
+             * @description Key epoch under which task secrets are bound.
+             */
+            key_epoch: string;
+            /**
+             * Purpose
+             * @description Declared purpose of the task.
+             */
+            purpose: string;
+            /**
+             * Object Refs
+             * @description Object identifiers the task is authorized to touch.
+             */
+            object_refs?: string[];
+            /**
+             * Memory Slice Refs
+             * @description Memory slice identifiers compiled for the task.
+             */
+            memory_slice_refs?: string[];
         };
         /**
          * CapsuleIssueRequest
@@ -1247,9 +1369,9 @@ export interface components {
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.
          *
-         *     The envelope binds the run to a subject, project, authorization snapshot,
-         *     key epoch, and declared object scope. It is the source of truth for refresh,
-         *     recovery, and audit; it does not depend on chat history.
+         *     The envelope binds the run to a subject, tenant, project, object domain,
+         *     authorization snapshot, key epoch, and declared object scope. It is the source
+         *     of truth for refresh, recovery, and audit; it does not depend on chat history.
          */
         RunContextEnvelope: {
             /**
@@ -1262,6 +1384,11 @@ export interface components {
              * @description Authenticated account that owns the run.
              */
             account_id: string;
+            /**
+             * Tenant Id
+             * @description Institution/organization tenant when applicable.
+             */
+            tenant_id?: string | null;
             /**
              * Project Id
              * @description Project within which the run is scoped.
@@ -1277,6 +1404,11 @@ export interface components {
              * @description Compiled workflow template version.
              */
             workflow_version: string;
+            /**
+             * @description Authority domain in which the run executes.
+             * @default personal_vault
+             */
+            object_domain: components["schemas"]["ObjectDomain"];
             /**
              * Authorization Snapshot
              * @description Authorization policy version snapshot at compile time.
@@ -1397,6 +1529,111 @@ export interface components {
             cancel_reason?: string | null;
             /** @description Immutable execution context for refresh and audit. */
             context_envelope: components["schemas"]["RunContextEnvelope"];
+        };
+        /**
+         * ScopeAction
+         * @description Actions that scope isolation can authorize or deny.
+         * @enum {string}
+         */
+        ScopeAction: "create" | "read" | "update" | "delete" | "share" | "execute";
+        /**
+         * ScopeEnvelope
+         * @description Immutable scope snapshot carried by requests, runs, cache keys and RLS.
+         *
+         *     The envelope binds an operation to a subject, tenant, project, object domain,
+         *     authorization version and key epoch. Services must compile it before touching
+         *     storage, cache, index or model context.
+         */
+        ScopeEnvelope: {
+            /**
+             * Account Id
+             * @description Authenticated account identifier.
+             */
+            account_id: string;
+            /**
+             * Tenant Id
+             * @description Institution/organization tenant when applicable.
+             */
+            tenant_id?: string | null;
+            /**
+             * Project Id
+             * @description Project within which the operation is scoped.
+             */
+            project_id?: string | null;
+            /**
+             * @description Authority domain that owns the target objects.
+             * @default personal_vault
+             */
+            object_domain: components["schemas"]["ObjectDomain"];
+            /**
+             * Authorization Version
+             * @description Authorization policy version at compile time.
+             * @default authz-1.0
+             */
+            authorization_version: string;
+            /**
+             * Key Epoch
+             * @description Key epoch under which secrets and capsules are bound.
+             * @default epoch-0
+             */
+            key_epoch: string;
+            /**
+             * Purpose
+             * @description Declared purpose for the operation.
+             * @default general
+             */
+            purpose: string;
+            /**
+             * Requested Object Refs
+             * @description Object references the operation requests to touch.
+             */
+            requested_object_refs?: components["schemas"]["ObjectRef"][];
+            /**
+             * Requested Vault Refs
+             * @description Vault object references the operation requests to touch.
+             */
+            requested_vault_refs?: components["schemas"]["VaultObjectRef"][];
+        };
+        /**
+         * ScopeViolationReport
+         * @description Audit-safe report when a scope check fails.
+         *
+         *     The report intentionally does not include private content, full prompts or
+         *     keys; it records only the subject, requested scope, reason and timestamp.
+         */
+        ScopeViolationReport: {
+            /**
+             * Actor Account Id
+             * @description Account that attempted the action.
+             */
+            actor_account_id: string;
+            /**
+             * Actor Session Id
+             * @description Session that attempted the action.
+             */
+            actor_session_id: string;
+            /** @description Action that was denied. */
+            action: components["schemas"]["ScopeAction"];
+            /** @description Scope that was denied. */
+            requested_scope: components["schemas"]["ScopeEnvelope"];
+            /**
+             * Reason
+             * @description Human-readable, non-leaking reason.
+             */
+            reason: string;
+            /**
+             * Occurred At
+             * Format: date-time
+             * @description When the violation was detected.
+             */
+            occurred_at: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * Session
@@ -3069,6 +3306,162 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
+                };
+            };
+        };
+    };
+    get_scope_context_scope_context_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_background_task_scope_validate_task_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackgroundTaskEnvelope"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    report_scope_violation_scope_report_violation_post: {
+        parameters: {
+            query: {
+                action: components["schemas"]["ScopeAction"];
+                reason: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScopeEnvelope"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScopeViolationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

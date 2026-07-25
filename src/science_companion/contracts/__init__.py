@@ -14,6 +14,15 @@ from .identity import (
     SessionResponse,
     SubjectContext,
 )
+from .scope import (
+    BackgroundTaskEnvelope,
+    RLSContext,
+    ScopeAction,
+    ScopeCacheKey,
+    ScopeEnvelope,
+    ScopeIsolationError,
+    ScopeViolationReport,
+)
 
 __all__ = [
     "Account",
@@ -21,12 +30,19 @@ __all__ = [
     "AuthError",
     "AuthMethod",
     "AuthResponse",
+    "BackgroundTaskEnvelope",
     "DependencyHealth",
     "HealthProjection",
     "HealthStatus",
     "LoginCredential",
     "RecoveryRequest",
     "RecoveryReset",
+    "RLSContext",
+    "ScopeAction",
+    "ScopeCacheKey",
+    "ScopeEnvelope",
+    "ScopeIsolationError",
+    "ScopeViolationReport",
     "Session",
     "SessionResponse",
     "SubjectContext",

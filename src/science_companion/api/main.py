@@ -5,12 +5,13 @@ from typing import Annotated, Any
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 
 from science_companion import __version__
-from science_companion.api import auth, projects, vault, workflows
+from science_companion.api import auth, projects, scope, vault, workflows
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.projects import ProjectService
+from science_companion.scope import ScopeEnforcer
 from science_companion.vault import (
     InMemoryVaultRepository,
     MemoryDeviceVaultPort,
@@ -44,23 +45,30 @@ def create_app() -> FastAPI:
         description="长期科学学习与表达伙伴 API",
     )
 
+    # T007: attach the shared scope enforcer. All services, routes and background
+    # task validators use the same interpreter so isolation rules do not drift.
+    app.state.scope_enforcer = ScopeEnforcer()
+
     # T003: attach the in-memory identity service. Later tickets will switch to a
     # persistent adapter while keeping the same interface.
     app.state.identity_service = IdentityService()
 
     # T004: attach the in-memory project service. Later tickets will switch to a
     # persistent adapter while keeping the same interface.
-    app.state.project_service = ProjectService()
+    app.state.project_service = ProjectService(
+        scope_enforcer=app.state.scope_enforcer,
+    )
 
     # T005: attach the in-memory vault service and device port.
     vault_repository = InMemoryVaultRepository()
     app.state.vault_service = VaultService(
         repository=vault_repository,
         device_port=MemoryDeviceVaultPort(vault_repository),
+        scope_enforcer=app.state.scope_enforcer,
     )
 
     # T006: attach the in-memory workflow service and register the first workflow.
-    workflow_service = WorkflowService()
+    workflow_service = WorkflowService(scope_enforcer=app.state.scope_enforcer)
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service
 
@@ -68,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(vault.router)
     app.include_router(workflows.router)
+    app.include_router(scope.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

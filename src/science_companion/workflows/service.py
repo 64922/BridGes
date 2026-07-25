@@ -15,6 +15,9 @@ import secrets
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
+from science_companion.contracts.identity import SubjectContext
+from science_companion.contracts.projects import ObjectDomain, ObjectRef
+from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
 from science_companion.contracts.workflows import (
     ArtifactTrustStatus,
     HumanTodoItem,
@@ -26,6 +29,7 @@ from science_companion.contracts.workflows import (
     WorkOrder,
     WorkflowRunStatus,
 )
+from science_companion.scope import ScopeEnforcer
 
 
 class WorkflowError(Exception):
@@ -73,9 +77,20 @@ class WorkflowService:
     so that later tickets can swap the implementation without changing callers.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, scope_enforcer: ScopeEnforcer | None = None) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
+        self._scope_enforcer = scope_enforcer or ScopeEnforcer()
+
+    def _subject(self, account_id: str) -> SubjectContext:
+        """Build a minimal subject context from an account id for scope checks."""
+        from science_companion.contracts.identity import AuthMethod
+
+        return SubjectContext(
+            account_id=account_id,
+            session_id="service-session",
+            auth_method=AuthMethod.PASSWORD,
+        )
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
@@ -119,6 +134,17 @@ class WorkflowService:
         record = self._runs.get(run_id)
         if record is None or record.context.account_id != account_id:
             raise WorkflowError("运行不存在或没有访问权限。")
+        subject = self._subject(account_id)
+        project_ref = ObjectRef(
+            domain=record.context.object_domain,
+            owner_id=account_id,
+            object_id=record.context.project_id,
+            version=1,
+        )
+        try:
+            self._scope_enforcer.authorize(subject, ScopeAction.READ, project_ref)
+        except ScopeIsolationError as exc:
+            raise WorkflowError(str(exc)) from exc
         return record
 
     def _lookup_workflow(self, name: str, version: str) -> _WorkflowDefinition:
@@ -165,6 +191,18 @@ class WorkflowService:
 
     def submit_work_order(self, account_id: str, order: WorkOrder) -> RunProjection:
         """Submit a WorkOrder and return a draft task-stage projection."""
+        subject = self._subject(account_id)
+        project_ref = ObjectRef(
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=account_id,
+            object_id=order.project_id,
+            version=1,
+        )
+        try:
+            self._scope_enforcer.authorize(subject, ScopeAction.EXECUTE, project_ref)
+        except ScopeIsolationError as exc:
+            raise WorkflowError(str(exc)) from exc
+
         now = self._now()
         run_id = secrets.token_urlsafe(16)
         context = RunContextEnvelope(
@@ -173,6 +211,7 @@ class WorkflowService:
             project_id=order.project_id,
             workflow_name=order.workflow_name,
             workflow_version=order.workflow_version,
+            object_domain=ObjectDomain.PERSONAL_VAULT,
             object_refs=list(order.object_refs),
             memory_slice_refs=list(order.memory_slice_refs),
             domain_pack_refs=list(order.domain_pack_refs),

@@ -12,7 +12,9 @@ import base64
 import secrets
 from datetime import datetime, timezone
 
-from science_companion.contracts.projects import ObjectDomain, ObjectRef, ProjectRole
+from science_companion.contracts.identity import SubjectContext
+from science_companion.contracts.projects import ObjectDomain, ObjectRef
+from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
 from science_companion.contracts.vault import (
     CapsuleIssueRequest,
     CloudControlProjection,
@@ -26,6 +28,7 @@ from science_companion.contracts.vault import (
     VaultObjectSummary,
     VaultShareRequest,
 )
+from science_companion.scope import ScopeEnforcer
 from science_companion.vault.adapters import VaultError
 from science_companion.vault.ports import DeviceVaultPort, VaultRepository
 
@@ -41,9 +44,21 @@ class VaultService:
         self,
         repository: VaultRepository,
         device_port: DeviceVaultPort,
+        scope_enforcer: ScopeEnforcer | None = None,
     ) -> None:
         self._repository = repository
         self._device_port = device_port
+        self._scope_enforcer = scope_enforcer or ScopeEnforcer()
+
+    def _subject(self, account_id: str) -> SubjectContext:
+        """Build a minimal subject context from an account id for scope checks."""
+        from science_companion.contracts.identity import AuthMethod
+
+        return SubjectContext(
+            account_id=account_id,
+            session_id="service-session",
+            auth_method=AuthMethod.PASSWORD,
+        )
 
     def create_private_object(
         self,
@@ -75,7 +90,15 @@ class VaultService:
 
         This returns metadata only; use get_content to request plaintext.
         """
-        return self._repository.get_object(owner_id, object_id)
+        obj = self._repository.get_object(owner_id, object_id)
+        if isinstance(obj, DeviceUnavailableState):
+            return obj
+        subject = self._subject(owner_id)
+        try:
+            self._scope_enforcer.authorize_vault(subject, ScopeAction.READ, obj.ref)
+        except ScopeIsolationError as exc:
+            raise VaultError(str(exc)) from exc
+        return obj
 
     def get_content(
         self, owner_id: str, object_id: str
@@ -89,6 +112,12 @@ class VaultService:
         obj = self._repository.get_object(owner_id, object_id)
         if isinstance(obj, DeviceUnavailableState):
             return obj
+
+        subject = self._subject(owner_id)
+        try:
+            self._scope_enforcer.authorize_vault(subject, ScopeAction.READ, obj.ref)
+        except ScopeIsolationError as exc:
+            raise VaultError(str(exc)) from exc
 
         if obj.content_authority == ContentAuthority.DEVICE_LOCAL:
             if obj.device_id is None:
@@ -106,7 +135,20 @@ class VaultService:
 
     def list_objects(self, owner_id: str) -> list[VaultObjectSummary]:
         """List vault object summaries for the owner."""
-        return self._repository.list_objects(owner_id)
+        subject = self._subject(owner_id)
+        summaries = self._repository.list_objects(owner_id)
+        # Explicitly authorize each summary against the compiled scope to mirror
+        # RLS: even in memory we fail closed on any mismatch.
+        authorized: list[VaultObjectSummary] = []
+        for summary in summaries:
+            try:
+                self._scope_enforcer.authorize_vault(
+                    subject, ScopeAction.READ, summary.ref
+                )
+                authorized.append(summary)
+            except ScopeIsolationError:
+                continue
+        return authorized
 
     def issue_task_capsule(
         self,
@@ -118,6 +160,17 @@ class VaultService:
         ttl_seconds: int = 3600,
     ) -> TemporaryTaskCapsule:
         """Issue a temporary task capsule bound to a run and purpose."""
+        obj = self._repository.get_object(owner_account_id, object_id)
+        if isinstance(obj, DeviceUnavailableState):
+            raise VaultError(str(obj.reason))
+        subject = self._subject(owner_account_id)
+        try:
+            self._scope_enforcer.authorize_vault(
+                subject, ScopeAction.EXECUTE, obj.ref
+            )
+        except ScopeIsolationError as exc:
+            raise VaultError(str(exc)) from exc
+
         request = CapsuleIssueRequest(
             owner_account_id=owner_account_id,
             object_id=object_id,
@@ -131,13 +184,32 @@ class VaultService:
         self, owner_id: str, capsule_id: str
     ) -> TemporaryTaskCapsule:
         """Revoke a previously issued capsule."""
-        return self._repository.revoke_capsule(owner_id, capsule_id)
+        capsule = self._repository.revoke_capsule(owner_id, capsule_id)
+        subject = self._subject(owner_id)
+        for ref in capsule.object_refs:
+            try:
+                self._scope_enforcer.authorize_vault(
+                    subject, ScopeAction.DELETE, ref
+                )
+            except ScopeIsolationError as exc:
+                raise VaultError(str(exc)) from exc
+        return capsule
 
     def get_cloud_projection(
         self, owner_id: str, object_id: str
     ) -> CloudControlProjection | None:
         """Return the cloud control projection for a vault object."""
-        return self._repository.get_cloud_projection(owner_id, object_id)
+        projection = self._repository.get_cloud_projection(owner_id, object_id)
+        if projection is None:
+            return None
+        subject = self._subject(owner_id)
+        try:
+            self._scope_enforcer.authorize_vault(
+                subject, ScopeAction.READ, projection.object_ref
+            )
+        except ScopeIsolationError:
+            return None
+        return projection
 
     def share_as_project_copy(
         self,
@@ -155,6 +227,14 @@ class VaultService:
         )
         if isinstance(source, DeviceUnavailableState):
             raise VaultError("源对象当前不可用。")
+
+        subject = self._subject(owner_account_id)
+        try:
+            self._scope_enforcer.authorize_vault(
+                subject, ScopeAction.SHARE, source.ref
+            )
+        except ScopeIsolationError as exc:
+            raise VaultError(str(exc)) from exc
 
         # Create a minimized project copy. The full content is not duplicated here;
         # instead the copy references the same content hash and receives its own

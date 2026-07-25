@@ -85,16 +85,19 @@ def test_project_lifecycle_through_api(client: TestClient) -> None:
 
 
 def test_cross_account_project_access_is_rejected(client: TestClient) -> None:
-    alice = _register(client, "alice-project@example.com", "correct-horse-12")
-    alice_cookies = dict(client.cookies)
+    # T007: account switching revokes prior sessions and clears site data, so
+    # cross-account tests must use separate browser sessions (TestClient instances)
+    # to keep both subjects authenticated at the same time.
+    alice_client = TestClient(client.app)
+    _register(alice_client, "alice-project@example.com", "correct-horse-12")
 
-    bob = _register(client, "bob-project@example.com", "correct-horse-12")
-    create_response = client.post("/projects", json={"name": "Bob 私有项目"})
+    bob_client = TestClient(client.app)
+    _register(bob_client, "bob-project@example.com", "correct-horse-12")
+    create_response = bob_client.post("/projects", json={"name": "Bob 私有项目"})
     bob_project_id = create_response.json()["id"]
 
     # Alice's session cannot access Bob's project deep link.
-    client.cookies = alice_cookies
-    response = client.get(f"/projects/{bob_project_id}")
+    response = alice_client.get(f"/projects/{bob_project_id}")
     assert response.status_code == 404
 
 

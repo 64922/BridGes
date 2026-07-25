@@ -13,6 +13,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from science_companion.contracts.projects import ObjectDomain
+
 
 class WorkflowRunStatus(str, Enum):
     """Lifecycle status of the workflow orchestration itself."""
@@ -129,16 +131,24 @@ class WorkOrderConfirmRequest(BaseModel):
 class RunContextEnvelope(BaseModel):
     """Immutable execution context carried by a run and every node.
 
-    The envelope binds the run to a subject, project, authorization snapshot,
-    key epoch, and declared object scope. It is the source of truth for refresh,
-    recovery, and audit; it does not depend on chat history.
+    The envelope binds the run to a subject, tenant, project, object domain,
+    authorization snapshot, key epoch, and declared object scope. It is the source
+    of truth for refresh, recovery, and audit; it does not depend on chat history.
     """
 
     run_id: str = Field(description="Stable run identifier.")
     account_id: str = Field(description="Authenticated account that owns the run.")
+    tenant_id: str | None = Field(
+        default=None,
+        description="Institution/organization tenant when applicable.",
+    )
     project_id: str = Field(description="Project within which the run is scoped.")
     workflow_name: str = Field(description="Compiled workflow template name.")
     workflow_version: str = Field(description="Compiled workflow template version.")
+    object_domain: ObjectDomain = Field(
+        default=ObjectDomain.PERSONAL_VAULT,
+        description="Authority domain in which the run executes.",
+    )
     authorization_snapshot: str = Field(
         default="authz-1.0",
         description="Authorization policy version snapshot at compile time.",

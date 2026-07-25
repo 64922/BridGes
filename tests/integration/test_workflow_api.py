@@ -177,17 +177,19 @@ def test_cancel_run_through_api(client: TestClient) -> None:
 
 
 def test_cross_account_run_access_is_rejected(client: TestClient) -> None:
-    alice = _register(client, "alice-run@example.com", "correct-horse-12")
-    alice_cookies = dict(client.cookies)
+    # T007: use separate browser sessions so account-switch cleanup does not
+    # revoke Alice's session while Bob is being registered.
+    alice_client = TestClient(client.app)
+    _register(alice_client, "alice-run@example.com", "correct-horse-12")
 
-    bob = _register(client, "bob-run@example.com", "correct-horse-12")
-    bob_project = _create_project(client, "Bob 项目")
-    bob_draft = _submit_work_order(client, bob_project)
+    bob_client = TestClient(client.app)
+    _register(bob_client, "bob-run@example.com", "correct-horse-12")
+    bob_project = _create_project(bob_client, "Bob 项目")
+    bob_draft = _submit_work_order(bob_client, bob_project)
     run_id = bob_draft["run_id"]
 
     # Alice's session cannot access Bob's run deep link.
-    client.cookies = alice_cookies
-    response = client.get(f"/projects/{bob_project}/runs/{run_id}")
+    response = alice_client.get(f"/projects/{bob_project}/runs/{run_id}")
     assert response.status_code == 404
 
 

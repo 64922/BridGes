@@ -22,6 +22,7 @@ from science_companion.contracts.identity import (
     SubjectContext,
 )
 from science_companion.identity import IdentityError, IdentityService
+from science_companion.scope import ScopeEnforcer
 
 SESSION_COOKIE_NAME = "science_companion_session"
 
@@ -56,6 +57,33 @@ def _clear_session_cookie(response: Response) -> None:
     response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
 
 
+def _clear_site_data(response: Response) -> None:
+    """Tell the browser to drop cached state when switching accounts.
+
+    T007 uses this to ensure that pages, suggestions, notifications and task
+    state from a previous account do not leak into a new session.
+    """
+    response.headers["Clear-Site-Data"] = '"cache"'
+
+
+def _revoke_existing_session_if_present(
+    service: IdentityService,
+    request: Request,
+) -> None:
+    """Revoke the old session cookie when a new authentication starts.
+
+    This prevents stale sessions from remaining active across account switches.
+    """
+    old_token: str | None = request.cookies.get(SESSION_COOKIE_NAME)
+    if not old_token:
+        return
+    try:
+        resolved = service.resolve_session(old_token)
+    except IdentityError:
+        return
+    service.revoke_session(resolved.subject.session_id)
+
+
 def _auth_error(status_code: int, error: str, message: str) -> HTTPException:
     return HTTPException(
         status_code=status_code,
@@ -70,8 +98,9 @@ async def require_subject(
 ) -> SubjectContext:
     """FastAPI dependency that resolves the current subject from the session cookie.
 
-    Attaches the resolved SubjectContext to request.state.subject so that route
-    handlers and downstream dependencies can access it without re-resolving.
+    Attaches the resolved SubjectContext, compiled scope envelope and RLS context
+    to request.state so that route handlers and downstream dependencies can reuse
+    them without re-resolving.
     """
     if session_token is None:
         raise _auth_error(
@@ -90,6 +119,15 @@ async def require_subject(
         ) from exc
 
     request.state.subject = resolved.subject
+
+    # Compile the base scope envelope and RLS context for every authenticated
+    # request. Later routes can narrow the scope with project/object domain.
+    enforcer: ScopeEnforcer | None = getattr(request.app.state, "scope_enforcer", None)
+    if enforcer is not None:
+        scope = enforcer.compile_scope(resolved.subject)
+        request.state.scope_envelope = scope
+        request.state.rls_context = enforcer.set_rls_context(resolved.subject, scope)
+
     return resolved.subject
 
 
@@ -113,6 +151,9 @@ async def register(
     registration: AccountRegistration,
 ) -> AuthResponse:
     """Register a new account and establish a session."""
+    _revoke_existing_session_if_present(service, request)
+    _clear_site_data(response)
+
     try:
         result = service.register(registration)
     except IdentityError as exc:
@@ -144,6 +185,9 @@ async def login(
     credentials: LoginCredential,
 ) -> AuthResponse:
     """Authenticate and establish a new session."""
+    _revoke_existing_session_if_present(service, request)
+    _clear_site_data(response)
+
     try:
         result = service.authenticate(credentials)
     except IdentityError as exc:
@@ -210,6 +254,9 @@ async def recover_reset(
     reset: RecoveryReset,
 ) -> AuthResponse:
     """Reset password using a recovery token and establish a new session."""
+    _revoke_existing_session_if_present(service, request)
+    _clear_site_data(response)
+
     try:
         result = service.reset_password_with_recovery(reset)
     except IdentityError as exc:
