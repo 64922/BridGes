@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
+from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.contracts.vault import (
     CapsuleIssueRequest,
     CloudControlProjection,
@@ -25,6 +26,7 @@ from science_companion.contracts.vault import (
     VaultObject,
     VaultObjectCreateRequest,
     VaultObjectDomain,
+    VaultObjectRef,
     VaultObjectSummary,
     VaultShareRequest,
 )
@@ -45,10 +47,12 @@ class VaultService:
         repository: VaultRepository,
         device_port: DeviceVaultPort,
         scope_enforcer: ScopeEnforcer | None = None,
+        invalidation_service: InvalidationService | None = None,
     ) -> None:
         self._repository = repository
         self._device_port = device_port
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
+        self._invalidation = invalidation_service
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -59,6 +63,27 @@ class VaultService:
             session_id="service-session",
             auth_method=AuthMethod.PASSWORD,
         )
+
+    def _require_active(self, vault_ref: VaultObjectRef) -> None:
+        """Fail closed if the vault object is revoked or tombstoned.
+
+        T011: new reads, cache lookups and task capsules must check current
+        invalidation state before using an object.
+        """
+        if self._invalidation is None:
+            return
+        from science_companion.contracts.projects import ObjectRef
+
+        object_ref = ObjectRef(
+            domain=ObjectDomain(vault_ref.domain.value),
+            owner_id=vault_ref.owner_id,
+            object_id=vault_ref.object_id,
+            version=vault_ref.version,
+        )
+        try:
+            self._invalidation.require_active(object_ref)
+        except InvalidationError as exc:
+            raise VaultError(str(exc)) from exc
 
     def create_private_object(
         self,
@@ -98,6 +123,7 @@ class VaultService:
             self._scope_enforcer.authorize_vault(subject, ScopeAction.READ, obj.ref)
         except ScopeIsolationError as exc:
             raise VaultError(str(exc)) from exc
+        self._require_active(obj.ref)
         return obj
 
     def get_content(
@@ -118,6 +144,7 @@ class VaultService:
             self._scope_enforcer.authorize_vault(subject, ScopeAction.READ, obj.ref)
         except ScopeIsolationError as exc:
             raise VaultError(str(exc)) from exc
+        self._require_active(obj.ref)
 
         if obj.content_authority == ContentAuthority.DEVICE_LOCAL:
             if obj.device_id is None:
@@ -170,6 +197,7 @@ class VaultService:
             )
         except ScopeIsolationError as exc:
             raise VaultError(str(exc)) from exc
+        self._require_active(obj.ref)
 
         request = CapsuleIssueRequest(
             owner_account_id=owner_account_id,
@@ -229,6 +257,7 @@ class VaultService:
             raise VaultError("源对象当前不可用。")
 
         subject = self._subject(owner_account_id)
+        self._require_active(source.ref)
         try:
             self._scope_enforcer.authorize_vault(
                 subject, ScopeAction.SHARE, source.ref

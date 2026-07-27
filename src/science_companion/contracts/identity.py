@@ -18,6 +18,7 @@ class AuthMethod(str, Enum):
     PASSWORD = "password"
     RECOVERY = "recovery"
     OIDC = "oidc"
+    SERVICE = "service"
 
 
 class Account(BaseModel):

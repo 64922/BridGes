@@ -14,6 +14,7 @@ from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
+from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.observability.service import ObservabilityService
 from science_companion.projects import ProjectService
 from science_companion.scope import ScopeEnforcer
@@ -107,6 +108,65 @@ def _register_builtin_workflows(service: WorkflowService) -> None:
     )
 
 
+def _register_builtin_invalidation_resolvers(service: InvalidationService) -> None:
+    """Register generic impact resolvers for cache, index, runs and vault capsules.
+
+    T011 foundation provides these resolvers so that any object invalidation
+    produces a scope-correct impact set covering the most common downstream
+    consumers. Domain modules register additional resolvers later without
+    changing tombstone priority, history retention or failure lockout.
+    """
+
+    def _cache_resolver(event: Any) -> list[AffectedDownstream]:
+        return [
+            AffectedDownstream(
+                downstream_id=f"cache:{event.object_ref.object_id}",
+                downstream_type="cache",
+                object_refs=[event.object_ref.object_id],
+                scope_envelope=event.scope_envelope,
+                action="invalidate",
+            )
+        ]
+
+    def _index_resolver(event: Any) -> list[AffectedDownstream]:
+        return [
+            AffectedDownstream(
+                downstream_id=f"index:{event.object_ref.object_id}",
+                downstream_type="index_projection",
+                object_refs=[event.object_ref.object_id],
+                scope_envelope=event.scope_envelope,
+                action="revalidate",
+            )
+        ]
+
+    def _run_resolver(event: Any) -> list[AffectedDownstream]:
+        return [
+            AffectedDownstream(
+                downstream_id=f"run:{event.object_ref.object_id}",
+                downstream_type="workflow_run",
+                object_refs=[event.object_ref.object_id],
+                scope_envelope=event.scope_envelope,
+                action="block_new_use",
+            )
+        ]
+
+    def _vault_capsule_resolver(event: Any) -> list[AffectedDownstream]:
+        return [
+            AffectedDownstream(
+                downstream_id=f"vault_capsule:{event.object_ref.object_id}",
+                downstream_type="vault_capsule",
+                object_refs=[event.object_ref.object_id],
+                scope_envelope=event.scope_envelope,
+                action="revoke",
+            )
+        ]
+
+    service.register_impact_resolver("cache", _cache_resolver)
+    service.register_impact_resolver("index_projection", _index_resolver)
+    service.register_impact_resolver("workflow_run", _run_resolver)
+    service.register_impact_resolver("vault_capsule", _vault_capsule_resolver)
+
+
 def create_app() -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
@@ -128,6 +188,14 @@ def create_app() -> FastAPI:
     # task validators use the same interpreter so isolation rules do not drift.
     app.state.scope_enforcer = ScopeEnforcer()
 
+    # T011: attach the shared invalidation service and register generic downstream
+    # resolvers before any consumer is constructed.
+    invalidation_service = InvalidationService(
+        scope_enforcer=app.state.scope_enforcer,
+    )
+    _register_builtin_invalidation_resolvers(invalidation_service)
+    app.state.invalidation_service = invalidation_service
+
     # T003: attach the in-memory identity service. Later tickets will switch to a
     # persistent adapter while keeping the same interface.
     app.state.identity_service = IdentityService()
@@ -144,6 +212,7 @@ def create_app() -> FastAPI:
         repository=vault_repository,
         device_port=MemoryDeviceVaultPort(vault_repository),
         scope_enforcer=app.state.scope_enforcer,
+        invalidation_service=invalidation_service,
     )
 
     # T009: attach the capability registry, model gateway and stub adapter.
@@ -166,6 +235,7 @@ def create_app() -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
         model_gateway=model_gateway,
         observability_service=app.state.observability_service,
+        invalidation_service=invalidation_service,
     )
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service

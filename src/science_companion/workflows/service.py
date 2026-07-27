@@ -32,6 +32,7 @@ from science_companion.contracts.workflows import (
     WorkOrder,
     WorkflowRunStatus,
 )
+from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.scope import ScopeEnforcer
 from science_companion.ai import ModelGateway
 
@@ -92,12 +93,14 @@ class WorkflowService:
         scope_enforcer: ScopeEnforcer | None = None,
         model_gateway: ModelGateway | None = None,
         observability_service: ObservabilityService | None = None,
+        invalidation_service: InvalidationService | None = None,
     ) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
         self._model_gateway = model_gateway
         self._observability = observability_service
+        self._invalidation = invalidation_service
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -111,6 +114,26 @@ class WorkflowService:
 
     def _now(self) -> datetime:
         return datetime.now(timezone.utc)
+
+    def _require_objects_active(self, object_refs: list[str], account_id: str) -> None:
+        """Fail closed if any referenced object is revoked or tombstoned.
+
+        T011: new reads and new runs must check current invalidation state before
+        touching storage, cache, index or models.
+        """
+        if self._invalidation is None:
+            return
+        for object_id in object_refs:
+            ref = ObjectRef(
+                domain=ObjectDomain.PERSONAL_VAULT,
+                owner_id=account_id,
+                object_id=object_id,
+                version=1,
+            )
+            try:
+                self._invalidation.require_active(ref)
+            except InvalidationError as exc:
+                raise WorkflowError(str(exc)) from exc
 
     def register_workflow(
         self,
@@ -282,6 +305,8 @@ class WorkflowService:
         except ScopeIsolationError as exc:
             raise WorkflowError(str(exc)) from exc
 
+        self._require_objects_active(list(order.object_refs), account_id)
+
         now = self._now()
         run_id = secrets.token_urlsafe(16)
         context = RunContextEnvelope(
@@ -322,6 +347,7 @@ class WorkflowService:
         """Confirm the WorkOrder goal, success criteria, and risk, then compile and start the run."""
         record = self._require_record(account_id, run_id)
         self._assert_transition(record, {WorkflowRunStatus.DRAFT})
+        self._require_objects_active(list(record.work_order.object_refs), account_id)
         if not confirmed:
             raise WorkflowError("必须明确确认任务目标、成功标准和风险后才能启动。")
 
@@ -426,6 +452,7 @@ class WorkflowService:
         """
         record = self._require_record(account_id, run_id)
         self._assert_transition(record, {WorkflowRunStatus.RUNNING, WorkflowRunStatus.RETRYING})
+        self._require_objects_active(list(record.work_order.object_refs), account_id)
 
         if record.current_node_index is None:
             raise WorkflowError("当前没有可执行的节点。")

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Science Companion API",
-    "description": "长期科学学习与表达伙伴 API",
+    "description": "\u957f\u671f\u79d1\u5b66\u5b66\u4e60\u4e0e\u8868\u8fbe\u4f19\u4f34 API",
     "version": "0.1.0"
   },
   "paths": {
@@ -2454,7 +2454,8 @@
         "enum": [
           "password",
           "recovery",
-          "oidc"
+          "oidc",
+          "service"
         ],
         "title": "AuthMethod",
         "description": "How the current subject authenticated."
@@ -4532,7 +4533,7 @@
           "confirmed": {
             "type": "boolean",
             "title": "Confirmed",
-            "description": "Must be true to leave the draft state — omitting this field is rejected so that accidental confirmation cannot happen."
+            "description": "Must be true to leave the draft state \u2014 omitting this field is rejected so that accidental confirmation cannot happen."
           }
         },
         "type": "object",
