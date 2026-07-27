@@ -1288,6 +1288,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/expression/drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Expression Draft
+         * @description Generate a fact-lock-bound expression draft from a brief and claim graph.
+         */
+        post: operations["create_expression_draft_expression_drafts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Expression Draft
+         * @description Retrieve a previously generated expression draft.
+         */
+        get: operations["get_expression_draft_expression_drafts__draft_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}/inspector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect Expression Draft
+         * @description Inspect an expression draft: claims, citations and fact locks per span.
+         *
+         *     The inspector is the citation/profile-checker seam referenced by T025.
+         */
+        get: operations["inspect_expression_draft_expression_drafts__draft_id__inspector_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/learning/missions": {
         parameters: {
             query?: never;
@@ -1759,7 +1821,7 @@ export interface paths {
         put?: never;
         /**
          * Cancel Review Task
-         * @description Cancel a review task.
+         * @description Cancel a review task and, if materialized, its workflow run.
          */
         post: operations["cancel_review_task_learning_review_tasks__task_id__cancel_post"];
         delete?: never;
@@ -2016,6 +2078,78 @@ export interface components {
          * @enum {string}
          */
         AnswerEvaluatedState: "correct" | "partial" | "incorrect" | "needs_review";
+        /**
+         * ArgumentNode
+         * @description A single node in the argument plan.
+         */
+        ArgumentNode: {
+            /**
+             * Argument Node Id
+             * @description Stable node identifier.
+             */
+            argument_node_id: string;
+            /** @description Role of the node. */
+            role: components["schemas"]["ArgumentNodeRole"];
+            /**
+             * Claim Ids
+             * @description Claims this node carries.
+             */
+            claim_ids?: string[];
+            /**
+             * Depends On
+             * @description Node ids this node depends on.
+             */
+            depends_on?: string[];
+            /**
+             * Audience Purpose
+             * @description Why this node exists for the audience.
+             */
+            audience_purpose?: string | null;
+            /**
+             * Order
+             * @description Order in the argument plan.
+             * @default 0
+             */
+            order: number;
+            /**
+             * Omission Policy
+             * @description Whether the node may be omitted: required, optional, context_dependent.
+             * @default required
+             */
+            omission_policy: string;
+        };
+        /**
+         * ArgumentNodeRole
+         * @description Role of a node in the argument plan.
+         * @enum {string}
+         */
+        ArgumentNodeRole: "question" | "claim" | "evidence" | "explanation" | "example" | "limitation" | "counterpoint" | "transition" | "action";
+        /**
+         * ArgumentPlan
+         * @description Ordered plan that structures the draft before wording is chosen.
+         */
+        ArgumentPlan: {
+            /**
+             * Plan Id
+             * @description Stable plan identifier.
+             */
+            plan_id: string;
+            /**
+             * Brief Id
+             * @description Brief this plan serves.
+             */
+            brief_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph the plan is built from.
+             */
+            graph_id: string;
+            /**
+             * Nodes
+             * @description Plan nodes.
+             */
+            nodes?: components["schemas"]["ArgumentNode"][];
+        };
         /**
          * ArtifactTrustStatus
          * @description Lifecycle status of the scientific artifact produced by a run.
@@ -3264,6 +3398,56 @@ export interface components {
             created_at: string;
         };
         /**
+         * DraftSpan
+         * @description A single text span in the expression draft.
+         *
+         *     Each span binds to claims, evidence, citations and fact locks so that every
+         *     important judgment can be traced back to its scientific justification.
+         */
+        DraftSpan: {
+            /**
+             * Span Id
+             * @description Stable span identifier.
+             */
+            span_id: string;
+            /**
+             * Text
+             * @description Span text content.
+             */
+            text: string;
+            /**
+             * Argument Node Ids
+             * @description Argument nodes this span realizes.
+             */
+            argument_node_ids?: string[];
+            /**
+             * Claim Ids
+             * @description Claims this span expresses.
+             */
+            claim_ids?: string[];
+            /**
+             * Citation Ids
+             * @description Citations rendered in this span.
+             */
+            citation_ids?: string[];
+            /**
+             * Fact Lock Ids
+             * @description Fact locks that constrain this span.
+             */
+            fact_lock_ids?: string[];
+            /**
+             * Generated By Run
+             * @description Run id of the generator that produced the span.
+             */
+            generated_by_run?: string | null;
+            /**
+             * Style Policy Version
+             * @description Style policy version.
+             * @default 1
+             */
+            style_policy_version: string;
+        };
+        /**
          * EvaluationCreateRequest
          * @description Request to create an evaluation run from a completed project task run.
          */
@@ -3958,6 +4142,254 @@ export interface components {
             response_text: string;
         };
         /**
+         * ExpressionBrief
+         * @description Expression task brief: the contract between user and expression engine.
+         */
+        ExpressionBrief: {
+            /**
+             * Brief Id
+             * @description Stable brief identifier.
+             */
+            brief_id: string;
+            /**
+             * Task Goal
+             * @description What the expression must achieve.
+             */
+            task_goal: string;
+            /**
+             * Deliverable Type
+             * @description Concrete deliverable, e.g. article, slides, script.
+             */
+            deliverable_type: string;
+            /** @description Genre contract to apply. */
+            genre: components["schemas"]["Genre"];
+            /**
+             * Audience Id
+             * @description Audience identifier if known.
+             */
+            audience_id?: string | null;
+            /**
+             * Channel
+             * @description Publication or presentation channel.
+             */
+            channel: string;
+            /**
+             * Length Or Duration
+             * @description Target length or duration.
+             */
+            length_or_duration?: string | null;
+            /**
+             * Language Locale
+             * @description Output language and locale.
+             * @default zh-CN
+             */
+            language_locale: string;
+            /**
+             * @description Risk tier.
+             * @default low
+             */
+            risk_tier: components["schemas"]["RiskTier"];
+            /**
+             * Required Claim Ids
+             * @description Claims that must appear in the draft.
+             */
+            required_claim_ids?: string[];
+            /**
+             * Optional Claim Ids
+             * @description Claims that may appear if space and evidence allow.
+             */
+            optional_claim_ids?: string[];
+            /**
+             * Forbidden Content
+             * @description Content or approaches explicitly forbidden by the user.
+             */
+            forbidden_content?: string[];
+            /**
+             * Success Criteria
+             * @description Observable criteria that decide success.
+             */
+            success_criteria?: string[];
+            /**
+             * Deadline And Context
+             * @description Deadline and situational context.
+             */
+            deadline_and_context?: string | null;
+            /**
+             * Memory Slice Id
+             * @description Memory slice bound to this expression task.
+             */
+            memory_slice_id?: string | null;
+        };
+        /**
+         * ExpressionDraft
+         * @description A fact-lock-bound expression draft.
+         */
+        ExpressionDraft: {
+            /**
+             * Draft Id
+             * @description Stable draft identifier.
+             */
+            draft_id: string;
+            /**
+             * Brief Id
+             * @description Brief this draft serves.
+             */
+            brief_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph the draft is built from.
+             */
+            graph_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /** @description Draft lifecycle status. */
+            status: components["schemas"]["ExpressionDraftStatus"];
+            /**
+             * Status Reason
+             * @description Why the draft has this status.
+             */
+            status_reason?: string | null;
+            /** @description Argument plan for the draft. */
+            argument_plan: components["schemas"]["ArgumentPlan"];
+            /**
+             * Spans
+             * @description Draft spans.
+             */
+            spans?: components["schemas"]["DraftSpan"][];
+            /**
+             * Fact Lock Set Id
+             * @description Fact lock set constraining the draft.
+             */
+            fact_lock_set_id: string;
+            /**
+             * Memory Slice Id
+             * @description Memory slice used for personalization.
+             */
+            memory_slice_id?: string | null;
+            /**
+             * Personalization Note
+             * @description How personalization influenced presentation, without changing facts.
+             */
+            personalization_note?: string | null;
+            /**
+             * @description Global wording strength ceiling derived from evidence.
+             * @default unassessable
+             */
+            wording_strength_ceiling: components["schemas"]["WordingStrength"];
+            /** @description Model run lock for the generator. */
+            model_run_lock?: components["schemas"]["ModelRunLock"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Draft creation timestamp.
+             */
+            created_at: string;
+        };
+        /**
+         * ExpressionDraftRequest
+         * @description Request to generate a fact-lock-bound expression draft.
+         */
+        ExpressionDraftRequest: {
+            /** @description Expression task brief. */
+            brief: components["schemas"]["ExpressionBrief"];
+            /**
+             * Graph Id
+             * @description Claim graph to base the draft on.
+             */
+            graph_id: string;
+            /**
+             * Project Id
+             * @description Project scope.
+             */
+            project_id?: string | null;
+            /**
+             * Memory Slice Id
+             * @description Optional memory slice for personalization.
+             */
+            memory_slice_id?: string | null;
+        };
+        /**
+         * ExpressionDraftResult
+         * @description Result of generating an expression draft.
+         */
+        ExpressionDraftResult: {
+            /** @description Generated draft. */
+            draft: components["schemas"]["ExpressionDraft"];
+            /** @description Expression quality gate result. */
+            gate: components["schemas"]["ExpressionGateResult"];
+            /** @description Model run lock for the generator. */
+            model_run_lock?: components["schemas"]["ModelRunLock"] | null;
+        };
+        /**
+         * ExpressionDraftStatus
+         * @description Lifecycle status of an expression draft.
+         * @enum {string}
+         */
+        ExpressionDraftStatus: "drafted" | "blocked" | "waiting_human";
+        /**
+         * ExpressionError
+         * @description Uniform expression error response.
+         */
+        ExpressionError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ExpressionGateCheck
+         * @description Named checks performed by the expression quality gate.
+         * @enum {string}
+         */
+        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review";
+        /**
+         * ExpressionGateResult
+         * @description Result of running the expression quality gate over a draft.
+         */
+        ExpressionGateResult: {
+            /**
+             * Passed
+             * @description Whether the draft may proceed.
+             */
+            passed: boolean;
+            /** @description Derived draft status. */
+            draft_status: components["schemas"]["ExpressionDraftStatus"];
+            /** Checks */
+            checks?: {
+                [key: string]: boolean;
+            };
+            /** Failed Checks */
+            failed_checks?: components["schemas"]["ExpressionGateCheck"][];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /**
+             * Reason
+             * @description Human-readable gate summary.
+             */
+            reason?: string | null;
+        };
+        /**
          * FactLock
          * @description A single locked fact derived from a claim and its evidence.
          *
@@ -4075,6 +4507,12 @@ export interface components {
             /** @description Optional evidence and fact-lock bundle from T016. */
             evidence_bundle?: components["schemas"]["LessonEvidenceBundle"] | null;
         };
+        /**
+         * Genre
+         * @description Supported scientific expression genres.
+         * @enum {string}
+         */
+        Genre: "popular_science" | "lecture_script" | "research_report" | "paper_assist";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -6550,6 +6988,12 @@ export interface components {
          * @enum {string}
          */
         ReviewTaskType: "spaced_repetition" | "interleaved_practice";
+        /**
+         * RiskTier
+         * @description Risk tier of an expression task.
+         * @enum {string}
+         */
+        RiskTier: "low" | "medium" | "high";
         /**
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.
@@ -11646,6 +12090,161 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_expression_draft_expression_drafts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExpressionDraftRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionDraftResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    get_expression_draft_expression_drafts__draft_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionDraft"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_expression_draft_expression_drafts__draft_id__inspector_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionDraft"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
                 };
             };
             /** @description Validation Error */

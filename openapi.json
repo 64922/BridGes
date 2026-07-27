@@ -5733,6 +5733,244 @@
         }
       }
     },
+    "/expression/drafts": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Create Expression Draft",
+        "description": "Generate a fact-lock-bound expression draft from a brief and claim graph.",
+        "operationId": "create_expression_draft_expression_drafts_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpressionDraftRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionDraftResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/expression/drafts/{draft_id}": {
+      "get": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Get Expression Draft",
+        "description": "Retrieve a previously generated expression draft.",
+        "operationId": "get_expression_draft_expression_drafts__draft_id__get",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/expression/drafts/{draft_id}/inspector": {
+      "get": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Inspect Expression Draft",
+        "description": "Inspect an expression draft: claims, citations and fact locks per span.\n\nThe inspector is the citation/profile-checker seam referenced by T025.",
+        "operationId": "inspect_expression_draft_expression_drafts__draft_id__inspector_get",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionDraft"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/missions": {
       "post": {
         "tags": [
@@ -8413,6 +8651,117 @@
         "title": "AnswerEvaluatedState",
         "description": "Result of evaluating a single diagnostic answer."
       },
+      "ArgumentNode": {
+        "properties": {
+          "argument_node_id": {
+            "type": "string",
+            "title": "Argument Node Id",
+            "description": "Stable node identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/ArgumentNodeRole",
+            "description": "Role of the node."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "Claims this node carries."
+          },
+          "depends_on": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Depends On",
+            "description": "Node ids this node depends on."
+          },
+          "audience_purpose": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Purpose",
+            "description": "Why this node exists for the audience."
+          },
+          "order": {
+            "type": "integer",
+            "title": "Order",
+            "description": "Order in the argument plan.",
+            "default": 0
+          },
+          "omission_policy": {
+            "type": "string",
+            "title": "Omission Policy",
+            "description": "Whether the node may be omitted: required, optional, context_dependent.",
+            "default": "required"
+          }
+        },
+        "type": "object",
+        "required": [
+          "argument_node_id",
+          "role"
+        ],
+        "title": "ArgumentNode",
+        "description": "A single node in the argument plan."
+      },
+      "ArgumentNodeRole": {
+        "type": "string",
+        "enum": [
+          "question",
+          "claim",
+          "evidence",
+          "explanation",
+          "example",
+          "limitation",
+          "counterpoint",
+          "transition",
+          "action"
+        ],
+        "title": "ArgumentNodeRole",
+        "description": "Role of a node in the argument plan."
+      },
+      "ArgumentPlan": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id",
+            "description": "Stable plan identifier."
+          },
+          "brief_id": {
+            "type": "string",
+            "title": "Brief Id",
+            "description": "Brief this plan serves."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph the plan is built from."
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/ArgumentNode"
+            },
+            "type": "array",
+            "title": "Nodes",
+            "description": "Plan nodes."
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "brief_id",
+          "graph_id"
+        ],
+        "title": "ArgumentPlan",
+        "description": "Ordered plan that structures the draft before wording is chosen."
+      },
       "ArtifactTrustStatus": {
         "type": "string",
         "enum": [
@@ -10571,6 +10920,77 @@
         "title": "DocumentVersion",
         "description": "Immutable content snapshot of a source.\n\nEach new upload, correction or re-parse creates a new DocumentVersion; older\nversions remain addressable so citations can be verified against the exact\nsnapshot that produced them."
       },
+      "DraftSpan": {
+        "properties": {
+          "span_id": {
+            "type": "string",
+            "title": "Span Id",
+            "description": "Stable span identifier."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Span text content."
+          },
+          "argument_node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Argument Node Ids",
+            "description": "Argument nodes this span realizes."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "Claims this span expresses."
+          },
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citation Ids",
+            "description": "Citations rendered in this span."
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids",
+            "description": "Fact locks that constrain this span."
+          },
+          "generated_by_run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated By Run",
+            "description": "Run id of the generator that produced the span."
+          },
+          "style_policy_version": {
+            "type": "string",
+            "title": "Style Policy Version",
+            "description": "Style policy version.",
+            "default": "1"
+          }
+        },
+        "type": "object",
+        "required": [
+          "span_id",
+          "text"
+        ],
+        "title": "DraftSpan",
+        "description": "A single text span in the expression draft.\n\nEach span binds to claims, evidence, citations and fact locks so that every\nimportant judgment can be traced back to its scientific justification."
+      },
       "EvaluationCreateRequest": {
         "properties": {
           "suite_id": {
@@ -11557,6 +11977,447 @@
         "title": "ExerciseAttemptRequest",
         "description": "Request to submit an exercise attempt."
       },
+      "ExpressionBrief": {
+        "properties": {
+          "brief_id": {
+            "type": "string",
+            "title": "Brief Id",
+            "description": "Stable brief identifier."
+          },
+          "task_goal": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Task Goal",
+            "description": "What the expression must achieve."
+          },
+          "deliverable_type": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Deliverable Type",
+            "description": "Concrete deliverable, e.g. article, slides, script."
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "Genre contract to apply."
+          },
+          "audience_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience Id",
+            "description": "Audience identifier if known."
+          },
+          "channel": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Channel",
+            "description": "Publication or presentation channel."
+          },
+          "length_or_duration": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Or Duration",
+            "description": "Target length or duration."
+          },
+          "language_locale": {
+            "type": "string",
+            "title": "Language Locale",
+            "description": "Output language and locale.",
+            "default": "zh-CN"
+          },
+          "risk_tier": {
+            "$ref": "#/components/schemas/RiskTier",
+            "description": "Risk tier.",
+            "default": "low"
+          },
+          "required_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Claim Ids",
+            "description": "Claims that must appear in the draft."
+          },
+          "optional_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Optional Claim Ids",
+            "description": "Claims that may appear if space and evidence allow."
+          },
+          "forbidden_content": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Forbidden Content",
+            "description": "Content or approaches explicitly forbidden by the user."
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Success Criteria",
+            "description": "Observable criteria that decide success."
+          },
+          "deadline_and_context": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deadline And Context",
+            "description": "Deadline and situational context."
+          },
+          "memory_slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Slice Id",
+            "description": "Memory slice bound to this expression task."
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief_id",
+          "task_goal",
+          "deliverable_type",
+          "genre",
+          "channel"
+        ],
+        "title": "ExpressionBrief",
+        "description": "Expression task brief: the contract between user and expression engine."
+      },
+      "ExpressionDraft": {
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Stable draft identifier."
+          },
+          "brief_id": {
+            "type": "string",
+            "title": "Brief Id",
+            "description": "Brief this draft serves."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph the draft is built from."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ExpressionDraftStatus",
+            "description": "Draft lifecycle status."
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason",
+            "description": "Why the draft has this status."
+          },
+          "argument_plan": {
+            "$ref": "#/components/schemas/ArgumentPlan",
+            "description": "Argument plan for the draft."
+          },
+          "spans": {
+            "items": {
+              "$ref": "#/components/schemas/DraftSpan"
+            },
+            "type": "array",
+            "title": "Spans",
+            "description": "Draft spans."
+          },
+          "fact_lock_set_id": {
+            "type": "string",
+            "title": "Fact Lock Set Id",
+            "description": "Fact lock set constraining the draft."
+          },
+          "memory_slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Slice Id",
+            "description": "Memory slice used for personalization."
+          },
+          "personalization_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personalization Note",
+            "description": "How personalization influenced presentation, without changing facts."
+          },
+          "wording_strength_ceiling": {
+            "$ref": "#/components/schemas/WordingStrength",
+            "description": "Global wording strength ceiling derived from evidence.",
+            "default": "unassessable"
+          },
+          "model_run_lock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRunLock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model run lock for the generator."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Draft creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft_id",
+          "brief_id",
+          "graph_id",
+          "account_id",
+          "status",
+          "argument_plan",
+          "fact_lock_set_id",
+          "created_at"
+        ],
+        "title": "ExpressionDraft",
+        "description": "A fact-lock-bound expression draft."
+      },
+      "ExpressionDraftRequest": {
+        "properties": {
+          "brief": {
+            "$ref": "#/components/schemas/ExpressionBrief",
+            "description": "Expression task brief."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph to base the draft on."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope."
+          },
+          "memory_slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Memory Slice Id",
+            "description": "Optional memory slice for personalization."
+          }
+        },
+        "type": "object",
+        "required": [
+          "brief",
+          "graph_id"
+        ],
+        "title": "ExpressionDraftRequest",
+        "description": "Request to generate a fact-lock-bound expression draft."
+      },
+      "ExpressionDraftResult": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/ExpressionDraft",
+            "description": "Generated draft."
+          },
+          "gate": {
+            "$ref": "#/components/schemas/ExpressionGateResult",
+            "description": "Expression quality gate result."
+          },
+          "model_run_lock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRunLock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model run lock for the generator."
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft",
+          "gate"
+        ],
+        "title": "ExpressionDraftResult",
+        "description": "Result of generating an expression draft."
+      },
+      "ExpressionDraftStatus": {
+        "type": "string",
+        "enum": [
+          "drafted",
+          "blocked",
+          "waiting_human"
+        ],
+        "title": "ExpressionDraftStatus",
+        "description": "Lifecycle status of an expression draft."
+      },
+      "ExpressionError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ExpressionError",
+        "description": "Uniform expression error response."
+      },
+      "ExpressionGateCheck": {
+        "type": "string",
+        "enum": [
+          "brief_complete",
+          "required_claims_present",
+          "key_claims_fact_locked",
+          "memory_slice_usable",
+          "genre_duty_known",
+          "source_evidence_present",
+          "risk_tier_human_review"
+        ],
+        "title": "ExpressionGateCheck",
+        "description": "Named checks performed by the expression quality gate."
+      },
+      "ExpressionGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether the draft may proceed."
+          },
+          "draft_status": {
+            "$ref": "#/components/schemas/ExpressionDraftStatus",
+            "description": "Derived draft status."
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/ExpressionGateCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/ExpressionGateCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Human-readable gate summary."
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "draft_status"
+        ],
+        "title": "ExpressionGateResult",
+        "description": "Result of running the expression quality gate over a draft."
+      },
       "FactLock": {
         "properties": {
           "lock_id": {
@@ -11733,6 +12594,17 @@
         "type": "object",
         "title": "GenerateLessonRequest",
         "description": "Request to generate a short lesson from a teaching plan."
+      },
+      "Genre": {
+        "type": "string",
+        "enum": [
+          "popular_science",
+          "lecture_script",
+          "research_report",
+          "paper_assist"
+        ],
+        "title": "Genre",
+        "description": "Supported scientific expression genres."
       },
       "HTTPValidationError": {
         "properties": {
@@ -15537,6 +16409,16 @@
         ],
         "title": "ReviewTaskType",
         "description": "Kind of review task: spaced repetition or interleaved practice."
+      },
+      "RiskTier": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "RiskTier",
+        "description": "Risk tier of an expression task."
       },
       "RunContextEnvelope": {
         "properties": {

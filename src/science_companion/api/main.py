@@ -7,7 +7,16 @@ from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
 from science_companion.ai import CapabilityRegistry, ModelGateway, StubQwenAdapter
-from science_companion.api import auth, evaluation, projects, science, scope, vault, workflows
+from science_companion.api import (
+    auth,
+    evaluation,
+    expression,
+    projects,
+    science,
+    scope,
+    vault,
+    workflows,
+)
 from science_companion.config import get_settings
 from science_companion.contracts.ai import (
     CapabilityKind,
@@ -19,6 +28,7 @@ from science_companion.contracts.ai import (
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.evaluation import EvaluationService
+from science_companion.expression import ExpressionService
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
@@ -99,6 +109,23 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             model_id="qwen3.6-flash",
             input_schema_version="structured-messages-v1",
             output_schema_version="json-schema-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+    # T025: expression draft generation capability; deterministic generator owns
+    # fact-lock binding, but the capability records an immutable run lock.
+    registry.register(
+        CapabilityRecord(
+            name="expression_draft_generation",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.6-flash",
+            input_schema_version="expression-brief-v1",
+            output_schema_version="draft-spans-v1",
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
@@ -367,6 +394,15 @@ def create_app() -> FastAPI:
         "claim_graph", ClaimGraphRevalidationHandler(claim_evidence_service)
     )
 
+    # T025: attach the expression service. It consumes claim graphs and fact locks
+    # from T016, memory slices from T019, and records model run locks from T009.
+    expression_service = ExpressionService(
+        claim_service=claim_evidence_service,
+        profile_service=app.state.profile_service,
+        model_gateway=model_gateway,
+    )
+    app.state.expression_service = expression_service
+
     # T021: attach the in-memory learning service for missions and diagnosis.
     learning_repository = InMemoryLearningRepository()
     learning_service = LearningService(repository=learning_repository)
@@ -397,6 +433,7 @@ def create_app() -> FastAPI:
     app.include_router(scope.router)
     app.include_router(evaluation.router)
     app.include_router(science.router)
+    app.include_router(expression.router)
     app.include_router(learning_router)
 
     @app.get("/health/live", response_model=HealthProjection)
