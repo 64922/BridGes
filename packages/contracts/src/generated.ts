@@ -1350,6 +1350,285 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/expression/drafts/{draft_id}/style-diagnostic": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Style Diagnostic
+         * @description Run or re-run the Chinese human-flavor diagnostic on a draft.
+         */
+        post: operations["run_style_diagnostic_expression_drafts__draft_id__style_diagnostic_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}/patches/{patch_id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Revision Patch
+         * @description Accept, reject or rewrite a single revision patch.
+         */
+        post: operations["apply_revision_patch_expression_drafts__draft_id__patches__patch_id__apply_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Expression Feedback
+         * @description Submit user feedback for an expression draft.
+         *
+         *     Feedback is routed to the current version, a candidate preference, a learning
+         *     record, or a fact review according to its content.
+         */
+        post: operations["submit_expression_feedback_expression_drafts__draft_id__feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Expression Artifact
+         * @description Approve, reject or request changes for an expression artifact.
+         *
+         *     Approval separates workflow success from scientific trust status and is
+         *     required before publication.
+         */
+        post: operations["approve_expression_artifact_expression_drafts__draft_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}/release-eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Release Eligibility
+         * @description Evaluate whether an expression artifact is eligible for publication.
+         *
+         *     Eligibility depends on the expression gate, human approval, linked workflow
+         *     run success, open human todos, and active upstream objects.
+         */
+        get: operations["get_release_eligibility_expression_drafts__draft_id__release_eligibility_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/{draft_id}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Expression Artifact
+         * @description Publish an expression artifact when it passes the release gate.
+         *
+         *     The publish event is bound to the exact draft version, the authorizing
+         *     account, the release gate result and the approval decision.
+         */
+        post: operations["publish_expression_artifact_expression_drafts__draft_id__publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/expression/drafts/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Expression Versions
+         * @description Compare two expression drafts and report semantic differences.
+         *
+         *     The comparison highlights changes to fact locks, claims, citations, wording
+         *     strength, argument structure, span text, model locks, applied patches and
+         *     artifact trust status, plus the release eligibility of each version.
+         */
+        post: operations["compare_expression_versions_expression_drafts_compare_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/projects/{project_id}/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Media To Project
+         * @description Upload a media asset into a project.
+         */
+        post: operations["upload_media_to_project_media_projects__project_id__assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/assets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Media
+         * @description Upload a personal media asset (not bound to a project).
+         */
+        post: operations["upload_media_media_assets_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Media Asset
+         * @description Get a media projection with source asset, manifest and derived assets.
+         */
+        get: operations["get_media_asset_media_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/assets/{asset_id}/derived": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Derived Asset
+         * @description Apply a human correction to a derived asset and create a new version.
+         */
+        post: operations["correct_derived_asset_media_assets__asset_id__derived_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/assets/{asset_id}/claim-graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Media Claim Graph
+         * @description Generate a ClaimGraph from a media asset's derived structures.
+         *
+         *     The media service ensures the asset is accessible and active; the existing
+         *     claim-evidence service produces the locatable claim graph.
+         */
+        post: operations["generate_media_claim_graph_media_assets__asset_id__claim_graph_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/assets/{asset_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Media Asset
+         * @description Revoke a media asset so it cannot be used in new evidence.
+         */
+        post: operations["revoke_media_asset_media_assets__asset_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/learning/missions": {
         parameters: {
             query?: never;
@@ -2079,6 +2358,60 @@ export interface components {
          */
         AnswerEvaluatedState: "correct" | "partial" | "incorrect" | "needs_review";
         /**
+         * ApplyRevisionPatchRequest
+         * @description Request to accept, reject or rewrite a revision patch.
+         */
+        ApplyRevisionPatchRequest: {
+            /** @description User action. */
+            action: components["schemas"]["PatchAction"];
+            /**
+             * Rewrite Text
+             * @description User rewrite when action is REWRITE.
+             */
+            rewrite_text?: string | null;
+        };
+        /**
+         * ApplyRevisionPatchResult
+         * @description Result of applying a revision patch.
+         */
+        ApplyRevisionPatchResult: {
+            /**
+             * Patch Id
+             * @description Patch identifier.
+             */
+            patch_id: string;
+            /** @description Draft after the action. */
+            draft: components["schemas"]["ExpressionDraft"];
+            /** @description Invariance evidence. */
+            invariance: components["schemas"]["FactLockInvariance"];
+        };
+        /**
+         * ApproveArtifactRequest
+         * @description Request to approve, reject or request changes for an expression artifact.
+         */
+        ApproveArtifactRequest: {
+            /** @default approve */
+            decision: components["schemas"]["science_companion__contracts__expression__HumanDecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+        };
+        /**
+         * ApproveArtifactResult
+         * @description Result of recording a human decision on an expression artifact.
+         */
+        ApproveArtifactResult: {
+            /**
+             * Decision Id
+             * @description Decision identifier.
+             */
+            decision_id: string;
+            /** @description Draft after the decision. */
+            draft: components["schemas"]["ExpressionDraft"];
+        };
+        /**
          * ArgumentNode
          * @description A single node in the argument plan.
          */
@@ -2151,17 +2484,34 @@ export interface components {
             nodes?: components["schemas"]["ArgumentNode"][];
         };
         /**
-         * ArtifactTrustStatus
-         * @description Lifecycle status of the scientific artifact produced by a run.
-         * @enum {string}
-         */
-        ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
-        /**
          * AssertionStatus
          * @description Lifecycle status of a promoted profile assertion.
          * @enum {string}
          */
         AssertionStatus: "active" | "frozen" | "stale" | "deleted";
+        /**
+         * AssetRegion
+         * @description A detected region inside an image or scan.
+         */
+        AssetRegion: {
+            /**
+             * Region Id
+             * @description Stable region identifier.
+             */
+            region_id: string;
+            /**
+             * Label
+             * @description Semantic label, e.g. figure, axis, label, curve.
+             */
+            label: string;
+            /** @description Region location. */
+            bbox: components["schemas"]["BoundingBox"];
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+        };
         /**
          * AuthError
          * @description Uniform authentication error response.
@@ -2314,6 +2664,38 @@ export interface components {
              * @description Memory slice identifiers compiled for the task.
              */
             memory_slice_refs?: string[];
+        };
+        /**
+         * BoundingBox
+         * @description Normalized or pixel bounding box within an image.
+         */
+        BoundingBox: {
+            /**
+             * X
+             * @description Left coordinate.
+             */
+            x: number;
+            /**
+             * Y
+             * @description Top coordinate.
+             */
+            y: number;
+            /**
+             * Width
+             * @description Box width.
+             */
+            width: number;
+            /**
+             * Height
+             * @description Box height.
+             */
+            height: number;
+            /**
+             * Unit
+             * @description Coordinate unit: pixel or normalized.
+             * @default pixel
+             */
+            unit: string;
         };
         /**
          * CandidateDecision
@@ -2713,6 +3095,33 @@ export interface components {
             model_run_lock_id?: string | null;
         };
         /**
+         * ClaimBinding
+         * @description Binding from a media element to a Claim / Evidence / FactLock.
+         */
+        ClaimBinding: {
+            /**
+             * Binding Id
+             * @description Stable binding identifier.
+             */
+            binding_id: string;
+            /**
+             * Derived Asset Id
+             * @description Derived asset that carries the element.
+             */
+            derived_asset_id: string;
+            /**
+             * Element Ref
+             * @description Region, token, cell or formula element reference.
+             */
+            element_ref: string;
+            /** Claim Id */
+            claim_id?: string | null;
+            /** Evidence Id */
+            evidence_id?: string | null;
+            /** Fact Lock Id */
+            fact_lock_id?: string | null;
+        };
+        /**
          * ClaimGraph
          * @description A versioned collection of claims, evidence and citations for one answer.
          */
@@ -2922,6 +3331,22 @@ export interface components {
          */
         CloudProjectionStatus: "active" | "pending_device" | "revoked" | "expired";
         /**
+         * CompareVersionsRequest
+         * @description Request to compare two expression artifact versions.
+         */
+        CompareVersionsRequest: {
+            /**
+             * Draft Id A
+             * @description First draft identifier.
+             */
+            draft_id_a: string;
+            /**
+             * Draft Id B
+             * @description Second draft identifier.
+             */
+            draft_id_b: string;
+        };
+        /**
          * Conflict
          * @description An explicit, user-visible evidence conflict.
          *
@@ -3008,12 +3433,41 @@ export interface components {
             detail?: string | null;
         };
         /**
+         * DataBinding
+         * @description Binding from a table/chart to a dataset version and transformation.
+         */
+        DataBinding: {
+            /**
+             * Binding Id
+             * @description Stable binding identifier.
+             */
+            binding_id: string;
+            /**
+             * Derived Asset Id
+             * @description Derived asset that carries the data.
+             */
+            derived_asset_id: string;
+            /** Source Data Ref */
+            source_data_ref?: string | null;
+            /** Transformation */
+            transformation?: string | null;
+            /** Units */
+            units?: {
+                [key: string]: string | null;
+            };
+            /**
+             * Missing Value Policy
+             * @default explicit
+             */
+            missing_value_policy: string;
+        };
+        /**
          * DecideKnowledgeStateProposalRequest
          * @description Request to accept, reject or modify a knowledge-state proposal.
          */
         DecideKnowledgeStateProposalRequest: {
             /** @description Decision type. */
-            decision: components["schemas"]["HumanDecisionType"];
+            decision: components["schemas"]["science_companion__contracts__learning__HumanDecisionType"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -3057,6 +3511,80 @@ export interface components {
              * @description Probe latency in milliseconds if measured.
              */
             latency_ms?: number | null;
+        };
+        /**
+         * DerivedAsset
+         * @description Any extraction, OCR, structure parse or human correction result.
+         *
+         *     DerivedAssets are immutable. A human correction creates a new DerivedAsset
+         *     that points to the previous one via `derived_from_asset_id`, preserving the
+         *     full correction chain.
+         */
+        DerivedAsset: {
+            /**
+             * Derived Asset Id
+             * @description Stable derived asset identifier.
+             */
+            derived_asset_id: string;
+            /**
+             * Source Asset Id
+             * @description Original SourceAsset identifier.
+             */
+            source_asset_id: string;
+            /**
+             * Derived From Asset Id
+             * @description Previous derived asset when this is a correction.
+             */
+            derived_from_asset_id?: string | null;
+            /** @description Kind of derivation. */
+            derivation_type: components["schemas"]["MediaAssetKind"];
+            /**
+             * Tool
+             * @description Tool/model that produced the derivation.
+             */
+            tool: string;
+            /**
+             * Tool Version
+             * @description Tool/model version.
+             */
+            tool_version: string;
+            /** Parameters */
+            parameters?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Content Hash
+             * @description SHA-256 hash of canonical payload.
+             */
+            content_hash: string;
+            /**
+             * Payload
+             * @description Domain-specific structured payload, e.g. formula or table asset.
+             */
+            payload?: {
+                [key: string]: unknown;
+            };
+            locator?: components["schemas"]["SpatialTemporalLocator"] | null;
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+            /**
+             * Human Corrected
+             * @default false
+             */
+            human_corrected: boolean;
+            /** @default parsed */
+            status: components["schemas"]["MediaAssetStatus"];
+            /** Correction Reason */
+            correction_reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Derived asset creation timestamp.
+             */
+            created_at: string;
         };
         /**
          * DeviceUnavailableState
@@ -4309,6 +4837,11 @@ export interface components {
              * @description Project scope if any.
              */
             project_id?: string | null;
+            /**
+             * Run Id
+             * @description Workflow run this artifact belongs to, if any.
+             */
+            run_id?: string | null;
             /** @description Draft lifecycle status. */
             status: components["schemas"]["ExpressionDraftStatus"];
             /**
@@ -4346,6 +4879,16 @@ export interface components {
             /** @description Model run lock for the generator. */
             model_run_lock?: components["schemas"]["ModelRunLock"] | null;
             /**
+             * @description Scientific trust state of the artifact.
+             * @default draft
+             */
+            artifact_trust_status: components["schemas"]["science_companion__contracts__expression__ArtifactTrustStatus"];
+            /**
+             * Approval Decisions
+             * @description Human decisions recorded for this artifact.
+             */
+            approval_decisions?: components["schemas"]["science_companion__contracts__expression__HumanDecision"][];
+            /**
              * Popular Science Elements
              * @description Genre-specific elements for popular science (T026).
              */
@@ -4369,6 +4912,30 @@ export interface components {
             author_responsibility_statement?: components["schemas"]["AuthorResponsibilityStatement"] | null;
             /** @description Genre-rule compliance review report (T026/T027). */
             review_report?: components["schemas"]["ReviewReport"] | null;
+            /** @description Style policy synthesized for this draft. */
+            style_policy?: components["schemas"]["StylePolicy"] | null;
+            /** @description Chinese expression diagnostic report. */
+            style_diagnostic_report?: components["schemas"]["StyleDiagnosticReport"] | null;
+            /**
+             * Pending Patches
+             * @description Suggested revision patches awaiting user decision.
+             */
+            pending_patches?: components["schemas"]["RevisionPatch"][];
+            /**
+             * Applied Patches
+             * @description Revision patches that have been applied to this draft.
+             */
+            applied_patches?: components["schemas"]["RevisionPatch"][];
+            /**
+             * Rejected Patches
+             * @description Revision patches the user explicitly rejected.
+             */
+            rejected_patches?: components["schemas"]["RevisionPatch"][];
+            /**
+             * Feedback Log
+             * @description User feedback submitted for this draft and its routing.
+             */
+            feedback_log?: components["schemas"]["UserFeedback"][];
             /**
              * Created At
              * Format: date-time
@@ -4398,6 +4965,11 @@ export interface components {
              * @description Optional memory slice for personalization.
              */
             memory_slice_id?: string | null;
+            /**
+             * Run Id
+             * @description Optional workflow run this artifact belongs to.
+             */
+            run_id?: string | null;
         };
         /**
          * ExpressionDraftResult
@@ -4445,7 +5017,7 @@ export interface components {
          * @description Named checks performed by the expression quality gate.
          * @enum {string}
          */
-        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review" | "strength_escalation_human_review" | "popular_science_elements_present" | "lecture_script_elements_present" | "research_report_elements_present" | "paper_assist_elements_present" | "author_responsibility_present" | "paper_assist_author_confirmation_required";
+        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review" | "strength_escalation_human_review" | "popular_science_elements_present" | "lecture_script_elements_present" | "research_report_elements_present" | "paper_assist_elements_present" | "author_responsibility_present" | "paper_assist_author_confirmation_required" | "style_diagnostic_complete" | "ai_detector_not_gate";
         /**
          * ExpressionGateResult
          * @description Result of running the expression quality gate over a draft.
@@ -4537,6 +5109,65 @@ export interface components {
             verification_method: string;
         };
         /**
+         * FactLockInvariance
+         * @description Evidence that a patch or rewrite preserved scientific boundaries.
+         *
+         *     The comparison covers fact locks, claim ids, citation ids and the evidence-
+         *     derived wording strength ceiling.
+         */
+        FactLockInvariance: {
+            /**
+             * Original Span Text
+             * @description Span text before the change.
+             */
+            original_span_text: string;
+            /**
+             * Patched Span Text
+             * @description Span text after the change.
+             */
+            patched_span_text: string;
+            /**
+             * Claim Ids Preserved
+             * @description Claim ids unchanged.
+             */
+            claim_ids_preserved: boolean;
+            /**
+             * Citation Ids Preserved
+             * @description Citation ids unchanged.
+             */
+            citation_ids_preserved: boolean;
+            /**
+             * Fact Lock Ids Preserved
+             * @description Fact lock ids unchanged.
+             */
+            fact_lock_ids_preserved: boolean;
+            /**
+             * Wording Strength Ceiling Preserved
+             * @description Wording strength ceiling unchanged.
+             */
+            wording_strength_ceiling_preserved: boolean;
+            /**
+             * Numeric Values Preserved
+             * @description Numeric values unchanged.
+             */
+            numeric_values_preserved: boolean;
+            /**
+             * Units Preserved
+             * @description Units unchanged.
+             */
+            units_preserved: boolean;
+            /**
+             * Qualifiers Preserved
+             * @description Qualifiers and limitations unchanged.
+             */
+            qualifiers_preserved: boolean;
+            /**
+             * Passed
+             * @description Whether all invariance checks hold.
+             */
+            passed: boolean;
+        };
+        /**
          * FactLockSet
          * @description Collection of fact locks compiled from a claim graph.
          */
@@ -4576,6 +5207,29 @@ export interface components {
          * @enum {string}
          */
         FactLockType: "identifier" | "exact_value" | "relation" | "condition" | "strength" | "term_formula";
+        /**
+         * FormulaBinding
+         * @description Binding from a formula asset to its scientific context.
+         */
+        FormulaBinding: {
+            /**
+             * Binding Id
+             * @description Stable binding identifier.
+             */
+            binding_id: string;
+            /**
+             * Derived Asset Id
+             * @description Derived formula asset.
+             */
+            derived_asset_id: string;
+            /**
+             * Source Asset Id
+             * @description Original source asset.
+             */
+            source_asset_id: string;
+            /** Definition Refs */
+            definition_refs?: string[];
+        };
         /**
          * GateResult
          * @description Result of a single input quality gate.
@@ -4658,12 +5312,6 @@ export interface components {
          * @enum {string}
          */
         HealthStatus: "pass" | "fail" | "unknown";
-        /**
-         * HumanDecisionType
-         * @description Named human decision on a proposed knowledge-state or path change.
-         * @enum {string}
-         */
-        HumanDecisionType: "accept" | "reject" | "modify";
         /**
          * HumanTodoItem
          * @description A named human decision attached to a run.
@@ -5471,11 +6119,233 @@ export interface components {
             password: string;
         };
         /**
-         * MediaType
-         * @description Media type of an imported document.
+         * MediaAssetKind
+         * @description Kind of derived media asset.
          * @enum {string}
          */
-        MediaType: "text/plain" | "application/pdf";
+        MediaAssetKind: "image_regions" | "image_ocr" | "image_legend" | "image_scale" | "formula" | "table" | "correction" | "audio_transcript" | "audio_segment" | "video_keyframe" | "caption_track";
+        /**
+         * MediaAssetStatus
+         * @description Lifecycle status of a media asset or derived asset.
+         * @enum {string}
+         */
+        MediaAssetStatus: "discovered" | "parsing" | "parsed" | "quarantined" | "blocked" | "corrected" | "revoked";
+        /**
+         * MediaCorrectionRequest
+         * @description Request to correct a derived asset and produce a new version.
+         */
+        MediaCorrectionRequest: {
+            /**
+             * Derived Asset Id
+             * @description Derived asset to correct.
+             */
+            derived_asset_id: string;
+            /** @description Kind of correction. */
+            correction_type: components["schemas"]["MediaCorrectionType"];
+            /**
+             * Target Ref
+             * @description Reference to the corrected element: token id, region id, cell coordinate, etc.
+             */
+            target_ref: string;
+            /**
+             * Corrected Value
+             * @description New value.
+             */
+            corrected_value: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * MediaCorrectionType
+         * @description Kind of human correction applied to a derived asset.
+         * @enum {string}
+         */
+        MediaCorrectionType: "ocr_text" | "region_label" | "formula_latex" | "formula_symbol" | "table_cell" | "table_schema" | "scale" | "legend" | "transcript_term" | "speaker_segment" | "caption_text" | "keyframe_interpretation";
+        /**
+         * MediaError
+         * @description Uniform media error response.
+         */
+        MediaError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * MediaGateResult
+         * @description Result of a single media input quality gate.
+         * @enum {string}
+         */
+        MediaGateResult: "pass" | "wait" | "fail";
+        /**
+         * MediaIngestionRunRef
+         * @description Reference to an asynchronous media ingestion run.
+         */
+        MediaIngestionRunRef: {
+            /**
+             * Run Id
+             * @description Ingestion run identifier.
+             */
+            run_id: string;
+            /** Asset Id */
+            asset_id?: string | null;
+            /** @default pending */
+            status: components["schemas"]["MediaIngestionStatus"];
+            /** Gate Results */
+            gate_results?: {
+                [key: string]: components["schemas"]["MediaGateResult"];
+            };
+            /** Error */
+            error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Run creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last run update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * MediaIngestionStatus
+         * @description Status of a media ingestion run.
+         * @enum {string}
+         */
+        MediaIngestionStatus: "pending" | "running" | "completed" | "failed" | "quarantined";
+        /**
+         * MediaManifest
+         * @description Unified manifest for one scientific media object.
+         *
+         *     The manifest links the original SourceAsset to its DerivedAssets and to any
+         *     scientific bindings. It is versioned; corrections update the manifest without
+         *     overwriting the previous version.
+         */
+        MediaManifest: {
+            /**
+             * Manifest Id
+             * @description Stable manifest identifier.
+             */
+            manifest_id: string;
+            /**
+             * Version
+             * @description Monotonic manifest version.
+             */
+            version: number;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /**
+             * Source Asset Id
+             * @description Original source asset.
+             */
+            source_asset_id: string;
+            /** Derived Asset Ids */
+            derived_asset_ids?: string[];
+            /** Claim Bindings */
+            claim_bindings?: components["schemas"]["ClaimBinding"][];
+            /** Data Bindings */
+            data_bindings?: components["schemas"]["DataBinding"][];
+            /** Formula Bindings */
+            formula_bindings?: components["schemas"]["FormulaBinding"][];
+            /** Validation Report Ids */
+            validation_report_ids?: string[];
+            /**
+             * Publication State
+             * @default draft
+             */
+            publication_state: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Manifest creation timestamp.
+             */
+            created_at: string;
+        };
+        /**
+         * MediaProjection
+         * @description Public projection of a media asset with its manifest and derived assets.
+         */
+        MediaProjection: {
+            /** @description Original source asset. */
+            source_asset: components["schemas"]["SourceAsset"];
+            /** @description Current media manifest. */
+            manifest: components["schemas"]["MediaManifest"];
+            /**
+             * Derived Assets
+             * @description Derived assets referenced by the manifest.
+             */
+            derived_assets?: components["schemas"]["DerivedAsset"][];
+            /**
+             * Version Count
+             * @description Number of manifest versions.
+             * @default 1
+             */
+            version_count: number;
+            /**
+             * Can Enter Evidence
+             * @description Whether the asset passed all input quality gates.
+             * @default false
+             */
+            can_enter_evidence: boolean;
+            /** Gate Results */
+            gate_results?: {
+                [key: string]: components["schemas"]["MediaGateResult"];
+            };
+        };
+        /**
+         * MediaQualityGate
+         * @description Named gates that imported media must pass before entering evidence.
+         * @enum {string}
+         */
+        MediaQualityGate: "mime_type" | "magic_number" | "size_limit" | "malicious_content" | "license" | "parse" | "scope";
+        /**
+         * MediaType
+         * @description Media type of an imported document or asset.
+         * @enum {string}
+         */
+        MediaType: "text/plain" | "application/pdf" | "image/png" | "image/jpeg" | "image/svg+xml" | "image/webp" | "application/x-latex" | "text/csv" | "application/x-tex" | "audio/mpeg" | "audio/wav" | "audio/ogg" | "video/mp4" | "video/webm" | "video/ogg";
+        /**
+         * MediaUploadRequest
+         * @description Request to upload a scientific media asset.
+         */
+        MediaUploadRequest: {
+            /**
+             * Filename
+             * @description Original filename.
+             */
+            filename: string;
+            /** @description Declared media type. */
+            media_type: components["schemas"]["MediaType"];
+            /**
+             * Content
+             * @description Base64-encoded raw content bytes.
+             */
+            content: string;
+            license_state?: components["schemas"]["LicenseState"] | null;
+            /** Title */
+            title?: string | null;
+        };
         /**
          * ModelCallStatus
          * @description Outcome of a single model-gateway invocation.
@@ -5725,6 +6595,12 @@ export interface components {
              */
             requires_author_confirm: boolean;
         };
+        /**
+         * PatchAction
+         * @description User decision on a single revision patch.
+         * @enum {string}
+         */
+        PatchAction: "accept" | "reject" | "rewrite";
         /**
          * PopularScienceElement
          * @description A structural element required by the popular-science genre contract.
@@ -6772,6 +7648,71 @@ export interface components {
             record_ids?: string[] | null;
         };
         /**
+         * PublishArtifactRequest
+         * @description Request to publish an expression artifact.
+         */
+        PublishArtifactRequest: {
+            /**
+             * Run Id
+             * @description Workflow run whose success is required for release.
+             */
+            run_id?: string | null;
+        };
+        /**
+         * PublishArtifactResult
+         * @description Result of publishing an expression artifact.
+         */
+        PublishArtifactResult: {
+            /** @description Published event. */
+            event: components["schemas"]["PublishEvent"];
+            /** @description Draft after publication. */
+            draft: components["schemas"]["ExpressionDraft"];
+        };
+        /**
+         * PublishEvent
+         * @description Immutable record that an expression artifact was published.
+         */
+        PublishEvent: {
+            /**
+             * Event Id
+             * @description Stable publish event identifier.
+             */
+            event_id: string;
+            /**
+             * Draft Id
+             * @description Draft that was published.
+             */
+            draft_id: string;
+            /**
+             * Version Id
+             * @description Artifact version id at publish time.
+             */
+            version_id: string;
+            /**
+             * Account Id
+             * @description Account that authorized publication.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /**
+             * Published At
+             * Format: date-time
+             * @description Publication timestamp.
+             */
+            published_at: string;
+            /** @description Release gate result that authorized publication. */
+            release_gate_result: components["schemas"]["ReleaseGateResult"];
+            /**
+             * Human Decision Id
+             * @description Approval decision that authorized publication.
+             */
+            human_decision_id: string;
+        };
+        /**
          * PublishGateCheck
          * @description Named checks performed by the publish gate.
          * @enum {string}
@@ -6860,6 +7801,49 @@ export interface components {
              * @description Why the candidate was not used.
              */
             rejection_reason: string;
+        };
+        /**
+         * ReleaseEligibilityStatus
+         * @description High-level release eligibility state derived from release gate checks.
+         * @enum {string}
+         */
+        ReleaseEligibilityStatus: "eligible" | "waiting_approval" | "waiting_workflow" | "waiting_human_todo" | "upstream_invalidated" | "blocked";
+        /**
+         * ReleaseGateCheck
+         * @description Named checks performed by the expression release gate.
+         * @enum {string}
+         */
+        ReleaseGateCheck: "expression_gate_passed" | "artifact_approved" | "workflow_succeeded" | "no_open_human_todos" | "upstream_objects_active" | "required_human_confirmations_present" | "no_blocking_style_findings";
+        /**
+         * ReleaseGateResult
+         * @description Result of running the expression release gate over a draft.
+         */
+        ReleaseGateResult: {
+            /**
+             * Passed
+             * @description Whether the artifact may be published.
+             */
+            passed: boolean;
+            /** @description Derived eligibility status. */
+            status: components["schemas"]["ReleaseEligibilityStatus"];
+            /** Checks */
+            checks?: {
+                [key: string]: boolean;
+            };
+            /** Failed Checks */
+            failed_checks?: components["schemas"]["ReleaseGateCheck"][];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /**
+             * Reason
+             * @description Human-readable gate summary.
+             */
+            reason?: string | null;
+            /**
+             * Upstream Invalid Object Refs
+             * @description Upstream object refs that are revoked or tombstoned.
+             */
+            upstream_invalid_object_refs?: components["schemas"]["ObjectRef"][];
         };
         /**
          * ResearchReportElement
@@ -7352,6 +8336,71 @@ export interface components {
          */
         ReviewTaskType: "spaced_repetition" | "interleaved_practice";
         /**
+         * RevisionPatch
+         * @description A local wording patch that must preserve fact locks and citations.
+         *
+         *     Each patch records the original span text, the patched text, the diagnostic
+         *     finding that motivated it, and an explicit fact-lock invariance check.
+         */
+        RevisionPatch: {
+            /**
+             * Patch Id
+             * @description Stable patch identifier.
+             */
+            patch_id: string;
+            /**
+             * Finding Id
+             * @description Diagnostic finding this patch addresses.
+             */
+            finding_id?: string | null;
+            /**
+             * Target Span Id
+             * @description Span the patch applies to.
+             */
+            target_span_id: string;
+            /**
+             * Original Text
+             * @description Text before the patch.
+             */
+            original_text: string;
+            /**
+             * Patched Text
+             * @description Text after the patch.
+             */
+            patched_text: string;
+            /** @description Category of issue being fixed. */
+            issue_type: components["schemas"]["StyleIssueType"];
+            /**
+             * Reason
+             * @description Why the patch is suggested.
+             */
+            reason: string;
+            /** @description Fact-lock comparison before and after the patch. */
+            fact_lock_invariance?: components["schemas"]["FactLockInvariance"] | null;
+            /**
+             * Applied
+             * @description Whether the patch is applied.
+             * @default false
+             */
+            applied: boolean;
+            /**
+             * Applied At
+             * @description When the patch was applied.
+             */
+            applied_at?: string | null;
+            /**
+             * Rejected
+             * @description Whether the user rejected the patch.
+             * @default false
+             */
+            rejected: boolean;
+            /**
+             * User Rewrite
+             * @description User-provided alternative to the suggested patch.
+             */
+            user_rewrite?: string | null;
+        };
+        /**
          * RiskTier
          * @description Risk tier of an expression task.
          * @enum {string}
@@ -7477,7 +8526,7 @@ export interface components {
             /** @description Workflow execution state. */
             run_status: components["schemas"]["WorkflowRunStatus"];
             /** @description Scientific trust state of the run's primary artifact. */
-            artifact_trust_status: components["schemas"]["ArtifactTrustStatus"];
+            artifact_trust_status: components["schemas"]["science_companion__contracts__workflows__ArtifactTrustStatus"];
             /**
              * Publish Eligible
              * @description Whether all current conditions allow publishing the artifact.
@@ -7959,6 +9008,73 @@ export interface components {
             updated_at: string;
         };
         /**
+         * SourceAsset
+         * @description Original, immutable media input.
+         *
+         *     A SourceAsset is the raw uploaded image, scan fragment, formula image or table
+         *     file. Its bytes are hashed and its status is tracked independently of any
+         *     derived extraction result.
+         */
+        SourceAsset: {
+            /**
+             * Asset Id
+             * @description Stable asset identifier.
+             */
+            asset_id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope when owned by a project.
+             */
+            project_id?: string | null;
+            /** @description Declared media type. */
+            media_type: components["schemas"]["MediaType"];
+            /** Detected Format */
+            detected_format?: string | null;
+            /**
+             * Original Filename
+             * @description Original filename.
+             */
+            original_filename: string;
+            /** Byte Size */
+            byte_size: number;
+            /**
+             * Content Hash
+             * @description SHA-256 hash of raw content bytes.
+             */
+            content_hash: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Asset creation timestamp.
+             */
+            created_at: string;
+            /** Acquired At */
+            acquired_at?: string | null;
+            license?: components["schemas"]["SourceLicense"];
+            /** @default discovered */
+            status: components["schemas"]["MediaAssetStatus"];
+            /**
+             * Integrity Status
+             * @default ok
+             */
+            integrity_status: string;
+            /** Object Storage Ref */
+            object_storage_ref?: string | null;
+            /** Provenance Bundle Id */
+            provenance_bundle_id?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last asset update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
          * SourceError
          * @description Uniform source error response.
          */
@@ -8136,6 +9252,200 @@ export interface components {
             reason: string;
         };
         /**
+         * SpatialTemporalLocator
+         * @description Locator of a derived asset within its source asset.
+         */
+        SpatialTemporalLocator: {
+            /** Page */
+            page?: number | null;
+            region?: components["schemas"]["AssetRegion"] | null;
+            /** Start Time */
+            start_time?: number | null;
+            /** End Time */
+            end_time?: number | null;
+        };
+        /**
+         * StyleDiagnosticFinding
+         * @description A single Chinese expression issue with a suggested local patch.
+         *
+         *     Findings anchor to a concrete span and text fragment so the user can review
+         *     them one by one. They explain why the fragment may hurt the current genre
+         *     and offer a non-binding patch that must still preserve fact locks.
+         */
+        StyleDiagnosticFinding: {
+            /**
+             * Finding Id
+             * @description Stable finding identifier.
+             */
+            finding_id: string;
+            /**
+             * Span Id
+             * @description Span containing the flagged text.
+             */
+            span_id?: string | null;
+            /** @description Category of expression issue. */
+            issue_type: components["schemas"]["StyleIssueType"];
+            /** @description Severity of the issue. */
+            severity: components["schemas"]["StyleDiagnosticSeverity"];
+            /**
+             * Original Text
+             * @description Concrete flagged text fragment.
+             */
+            original_text: string;
+            /**
+             * Reason
+             * @description Why this fragment is flagged for the genre.
+             */
+            reason: string;
+            /**
+             * Suggested Patch
+             * @description Suggested wording that preserves fact locks.
+             */
+            suggested_patch?: string | null;
+            /**
+             * Genre Rule
+             * @description Genre or style rule motivating the finding.
+             */
+            genre_rule?: string | null;
+        };
+        /**
+         * StyleDiagnosticReport
+         * @description Report from the Chinese human-flavor diagnostic engine (T028).
+         *
+         *     The report lists concrete text fragments, issue types and reasons. It never
+         *     uses an AI-detector score as a pass/fail gate.
+         */
+        StyleDiagnosticReport: {
+            /**
+             * Report Id
+             * @description Stable report identifier.
+             */
+            report_id: string;
+            /**
+             * Draft Id
+             * @description Draft this report diagnoses.
+             */
+            draft_id: string;
+            /**
+             * Findings
+             * @description Diagnostic findings.
+             */
+            findings?: components["schemas"]["StyleDiagnosticFinding"][];
+            /**
+             * Ai Detector Score
+             * @description Optional detector score recorded for transparency only.
+             */
+            ai_detector_score?: number | null;
+            /**
+             * Ai Detector Used As Gate
+             * @description Always false: AI detector scores are not used as gates.
+             * @default false
+             */
+            ai_detector_used_as_gate: boolean;
+            /**
+             * Passed
+             * @description True when no blocking findings remain and the diagnostic is complete.
+             */
+            passed: boolean;
+        };
+        /**
+         * StyleDiagnosticRequest
+         * @description Request to run the Chinese expression diagnostic on a draft.
+         */
+        StyleDiagnosticRequest: {
+            /**
+             * Draft Id
+             * @description Draft to diagnose.
+             */
+            draft_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+        };
+        /**
+         * StyleDiagnosticResult
+         * @description Result of running the Chinese expression diagnostic.
+         */
+        StyleDiagnosticResult: {
+            /** @description Draft with diagnostic report attached. */
+            draft: components["schemas"]["ExpressionDraft"];
+            /** @description Diagnostic report. */
+            report: components["schemas"]["StyleDiagnosticReport"];
+            /** @description Re-evaluated gate result after diagnostic. */
+            gate?: components["schemas"]["ExpressionGateResult"] | null;
+        };
+        /**
+         * StyleDiagnosticSeverity
+         * @description Severity of a style diagnostic finding.
+         * @enum {string}
+         */
+        StyleDiagnosticSeverity: "info" | "suggestion" | "warning" | "blocking";
+        /**
+         * StyleIssueType
+         * @description Categories of Chinese expression issues diagnosed by T028.
+         *
+         *     These map to the six observable dimensions of human-flavored expression:
+         *     task truth, audience fit, argument clarity, Chinese naturalness, restraint,
+         *     and accountability. The diagnostic engine never emits an "AI probability".
+         * @enum {string}
+         */
+        StyleIssueType: "template_pattern" | "translation_pattern" | "rhythm_issue" | "tone_boundary" | "vague_content" | "mechanical_argument" | "stiff_language" | "format_imbalance" | "conversation_residue" | "scientific_overreach";
+        /**
+         * StylePolicy
+         * @description Style policy synthesized for a single expression task.
+         *
+         *     The policy constrains wording without changing fact locks. It is built from
+         *     the genre contract, project vocabulary, public rules and the authorized
+         *     memory slice.
+         */
+        StylePolicy: {
+            /**
+             * Policy Id
+             * @description Stable policy identifier.
+             */
+            policy_id: string;
+            /**
+             * Draft Id
+             * @description Draft this policy serves.
+             */
+            draft_id?: string | null;
+            /** @description Genre the policy applies to. */
+            genre: components["schemas"]["Genre"];
+            /**
+             * Locale
+             * @description Target language and locale.
+             * @default zh-CN
+             */
+            locale: string;
+            /**
+             * Max Sentence Length
+             * @description Suggested maximum sentence length in characters.
+             */
+            max_sentence_length?: number | null;
+            /**
+             * Preferred Term Style
+             * @description Term familiarity level for this audience.
+             */
+            preferred_term_style?: string | null;
+            /**
+             * Forbidden Phrases
+             * @description Phrases explicitly forbidden by genre or project rules.
+             */
+            forbidden_phrases?: string[];
+            /**
+             * Required Qualifier Style
+             * @description How uncertainty and limitations must be expressed.
+             */
+            required_qualifier_style?: string | null;
+            /**
+             * Personalization Note
+             * @description How the memory slice may influence presentation.
+             */
+            personalization_note?: string | null;
+        };
+        /**
          * SubjectContext
          * @description Resolved subject for an authenticated request.
          *
@@ -8160,6 +9470,38 @@ export interface components {
              * @description Device identifier when known.
              */
             device_id?: string | null;
+        };
+        /**
+         * SubmitExpressionFeedbackRequest
+         * @description Request to submit user feedback for an expression draft.
+         */
+        SubmitExpressionFeedbackRequest: {
+            /** @description Routing target. */
+            target: components["schemas"]["UserFeedbackTarget"];
+            /**
+             * Message
+             * @description Feedback text.
+             */
+            message: string;
+            /** Referenced Span Id */
+            referenced_span_id?: string | null;
+            /** Referenced Claim Id */
+            referenced_claim_id?: string | null;
+        };
+        /**
+         * SubmitExpressionFeedbackResult
+         * @description Result of submitting user feedback.
+         */
+        SubmitExpressionFeedbackResult: {
+            /**
+             * Feedback Id
+             * @description Feedback identifier.
+             */
+            feedback_id: string;
+            /** @description Draft with feedback logged. */
+            draft: components["schemas"]["ExpressionDraft"];
+            /** @description Confirmed routing target. */
+            routed_to: components["schemas"]["UserFeedbackTarget"];
         };
         /**
          * TeachingPlan
@@ -8351,6 +9693,61 @@ export interface components {
              */
             exclusion_reason: string;
         };
+        /**
+         * UserFeedback
+         * @description A single piece of user feedback with explicit routing.
+         *
+         *     Feedback is first applied to the current artifact; only stable, authorized
+         *     signals are routed to long-term preference or learning record. Factual
+         *     corrections always go to fact review and never become style preferences.
+         */
+        UserFeedback: {
+            /**
+             * Feedback Id
+             * @description Stable feedback identifier.
+             */
+            feedback_id: string;
+            /**
+             * Draft Id
+             * @description Draft the feedback relates to.
+             */
+            draft_id: string;
+            /** @description Where the feedback is routed. */
+            target: components["schemas"]["UserFeedbackTarget"];
+            /**
+             * Message
+             * @description User-facing feedback text.
+             */
+            message: string;
+            /**
+             * Referenced Span Id
+             * @description Span the feedback refers to, if any.
+             */
+            referenced_span_id?: string | null;
+            /**
+             * Referenced Claim Id
+             * @description Claim the feedback refers to, if any.
+             */
+            referenced_claim_id?: string | null;
+            /**
+             * Creates Candidate Preference
+             * @description Whether this feedback may form a candidate preference.
+             * @default false
+             */
+            creates_candidate_preference: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Timestamp.
+             */
+            created_at?: string;
+        };
+        /**
+         * UserFeedbackTarget
+         * @description Routing target for user feedback on an expression draft.
+         * @enum {string}
+         */
+        UserFeedbackTarget: "current_version" | "candidate_preference" | "learning_record" | "fact_review";
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -8624,6 +10021,71 @@ export interface components {
             grant_purpose: string;
         };
         /**
+         * VersionComparisonResult
+         * @description Result of comparing two expression artifact versions.
+         */
+        VersionComparisonResult: {
+            /**
+             * Comparison Id
+             * @description Stable comparison identifier.
+             */
+            comparison_id: string;
+            /**
+             * Draft Id A
+             * @description First draft.
+             */
+            draft_id_a: string;
+            /**
+             * Draft Id B
+             * @description Second draft.
+             */
+            draft_id_b: string;
+            /**
+             * Differences
+             * @description Semantic differences between versions.
+             */
+            differences?: components["schemas"]["VersionDifference"][];
+            /** @description Release gate result for the first version. */
+            release_eligibility_a: components["schemas"]["ReleaseGateResult"];
+            /** @description Release gate result for the second version. */
+            release_eligibility_b: components["schemas"]["ReleaseGateResult"];
+            /**
+             * Only B Is Publishable
+             * @description True when version B is eligible and version A is not; used by the upgrade-or-publish seam.
+             * @default false
+             */
+            only_b_is_publishable: boolean;
+        };
+        /**
+         * VersionDifference
+         * @description A single semantic difference between two artifact versions.
+         */
+        VersionDifference: {
+            /** @description What changed. */
+            field: components["schemas"]["VersionDifferenceField"];
+            /**
+             * Before
+             * @description Value in the first version.
+             */
+            before: unknown;
+            /**
+             * After
+             * @description Value in the second version.
+             */
+            after: unknown;
+            /**
+             * Reason
+             * @description Why the difference matters.
+             */
+            reason?: string | null;
+        };
+        /**
+         * VersionDifferenceField
+         * @description Fields that can differ between two expression artifact versions.
+         * @enum {string}
+         */
+        VersionDifferenceField: "fact_lock_set" | "claim_ids" | "citation_ids" | "wording_strength_ceiling" | "argument_plan" | "span_text" | "genre" | "model_run_lock" | "applied_patches" | "artifact_trust_status" | "human_decisions";
+        /**
          * WordingStrength
          * @description Deterministic ceiling on how strongly a claim may be worded.
          *
@@ -8769,6 +10231,52 @@ export interface components {
             resolution: string;
         };
         /**
+         * ArtifactTrustStatus
+         * @description Scientific trust state of an expression artifact (draft).
+         * @enum {string}
+         */
+        science_companion__contracts__expression__ArtifactTrustStatus: "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "invalidated";
+        /**
+         * HumanDecision
+         * @description A named, auditable human decision to approve, reject or revise an artifact.
+         */
+        science_companion__contracts__expression__HumanDecision: {
+            /**
+             * Decision Id
+             * @description Stable decision identifier.
+             */
+            decision_id: string;
+            /**
+             * Target Artifact Id
+             * @description Draft this decision applies to.
+             */
+            target_artifact_id: string;
+            /**
+             * Account Id
+             * @description Account that made the decision.
+             */
+            account_id: string;
+            /** @description Decision type. */
+            decision: components["schemas"]["science_companion__contracts__expression__HumanDecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Timestamp.
+             */
+            created_at?: string;
+        };
+        /**
+         * HumanDecisionType
+         * @description Named human decision on an expression artifact.
+         * @enum {string}
+         */
+        science_companion__contracts__expression__HumanDecisionType: "approve" | "reject" | "request_changes";
+        /**
          * HumanDecision
          * @description A named, auditable human decision on a knowledge-state proposal.
          */
@@ -8789,7 +10297,7 @@ export interface components {
              */
             account_id: string;
             /** @description Decision type. */
-            decision: components["schemas"]["HumanDecisionType"];
+            decision: components["schemas"]["science_companion__contracts__learning__HumanDecisionType"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -8807,6 +10315,12 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * HumanDecisionType
+         * @description Named human decision on a proposed knowledge-state or path change.
+         * @enum {string}
+         */
+        science_companion__contracts__learning__HumanDecisionType: "accept" | "reject" | "modify";
         /**
          * HumanDecision
          * @description Named human decision on a candidate profile.
@@ -8851,6 +10365,12 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * ArtifactTrustStatus
+         * @description Lifecycle status of the scientific artifact produced by a run.
+         * @enum {string}
+         */
+        science_companion__contracts__workflows__ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
     };
     responses: never;
     parameters: never;
@@ -12608,6 +14128,710 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_style_diagnostic_expression_drafts__draft_id__style_diagnostic_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StyleDiagnosticRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StyleDiagnosticResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    apply_revision_patch_expression_drafts__draft_id__patches__patch_id__apply_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+                patch_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyRevisionPatchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApplyRevisionPatchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    submit_expression_feedback_expression_drafts__draft_id__feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitExpressionFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SubmitExpressionFeedbackResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    approve_expression_artifact_expression_drafts__draft_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveArtifactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApproveArtifactResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    get_release_eligibility_expression_drafts__draft_id__release_eligibility_get: {
+        parameters: {
+            query?: {
+                run_id?: string | null;
+            };
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseGateResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_expression_artifact_expression_drafts__draft_id__publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                draft_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PublishArtifactRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishArtifactResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    compare_expression_versions_expression_drafts_compare_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompareVersionsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionComparisonResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExpressionError"];
+                };
+            };
+        };
+    };
+    upload_media_to_project_media_projects__project_id__assets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaIngestionRunRef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    upload_media_media_assets_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaIngestionRunRef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    get_media_asset_media_assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_derived_asset_media_assets__asset_id__derived_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaCorrectionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DerivedAsset"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    generate_media_claim_graph_media_assets__asset_id__claim_graph_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimGraphResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    revoke_media_asset_media_assets__asset_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                asset_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
                 };
             };
             /** @description Validation Error */

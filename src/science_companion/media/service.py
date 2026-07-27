@@ -24,6 +24,7 @@ from science_companion.contracts.invalidation import (
     InvalidationEventType,
 )
 from science_companion.contracts.media import (
+    AudioVideoDerivedData,
     DerivedAsset,
     FormulaAsset,
     ImageDerivedData,
@@ -39,8 +40,10 @@ from science_companion.contracts.media import (
     MediaQualityGate,
     MediaUploadRequest,
     SourceAsset,
+    SpeakerSegment,
     TableAsset,
     TableCell,
+    TranscriptSegment,
 )
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
@@ -458,6 +461,10 @@ class MediaIngestionService:
             MediaCorrectionType.FORMULA_SYMBOL: MediaAssetKind.FORMULA,
             MediaCorrectionType.TABLE_CELL: MediaAssetKind.TABLE,
             MediaCorrectionType.TABLE_SCHEMA: MediaAssetKind.TABLE,
+            MediaCorrectionType.TRANSCRIPT_TERM: MediaAssetKind.AUDIO_TRANSCRIPT,
+            MediaCorrectionType.SPEAKER_SEGMENT: MediaAssetKind.AUDIO_SEGMENT,
+            MediaCorrectionType.CAPTION_TEXT: MediaAssetKind.CAPTION_TRACK,
+            MediaCorrectionType.KEYFRAME_INTERPRETATION: MediaAssetKind.VIDEO_KEYFRAME,
         }
         return mapping.get(correction_type, MediaAssetKind.CORRECTION)
 
@@ -522,6 +529,57 @@ class MediaIngestionService:
                             )
                             table.rows[row_idx].cells = cells
             payload = table.model_dump(mode="json")
+        elif request.correction_type == MediaCorrectionType.TRANSCRIPT_TERM:
+            av_data = AudioVideoDerivedData(**payload)
+            new_segments: list[TranscriptSegment] = []
+            for segment in av_data.transcript_segments:
+                if segment.segment_id == request.target_ref:
+                    new_segments.append(
+                        segment.model_copy(
+                            update={
+                                "text": request.corrected_value,
+                                "low_confidence": False,
+                                "confidence": 1.0,
+                                "words": [],
+                            }
+                        )
+                    )
+                else:
+                    new_segments.append(segment)
+            av_data.transcript_segments = new_segments
+            payload = av_data.model_dump(mode="json")
+        elif request.correction_type == MediaCorrectionType.SPEAKER_SEGMENT:
+            av_data = AudioVideoDerivedData(**payload)
+            new_speakers: list[SpeakerSegment] = []
+            for speaker in av_data.speaker_segments:
+                if speaker.segment_id == request.target_ref:
+                    new_speakers.append(
+                        speaker.model_copy(update={"speaker_id": request.corrected_value})
+                    )
+                else:
+                    new_speakers.append(speaker)
+            av_data.speaker_segments = new_speakers
+            payload = av_data.model_dump(mode="json")
+        elif request.correction_type == MediaCorrectionType.CAPTION_TEXT:
+            av_data = AudioVideoDerivedData(**payload)
+            new_captions = [
+                caption.model_copy(update={"text": request.corrected_value})
+                if caption.caption_id == request.target_ref
+                else caption
+                for caption in av_data.captions
+            ]
+            av_data.captions = new_captions
+            payload = av_data.model_dump(mode="json")
+        elif request.correction_type == MediaCorrectionType.KEYFRAME_INTERPRETATION:
+            av_data = AudioVideoDerivedData(**payload)
+            new_keyframes = [
+                keyframe.model_copy(update={"interpretation": request.corrected_value})
+                if keyframe.keyframe_id == request.target_ref
+                else keyframe
+                for keyframe in av_data.keyframes
+            ]
+            av_data.keyframes = new_keyframes
+            payload = av_data.model_dump(mode="json")
 
         return payload
 

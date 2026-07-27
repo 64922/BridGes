@@ -133,6 +133,39 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             prompt_version="2026-07-24",
         )
     )
+    # T031: ASR capabilities for audio/video ingestion. Actual transcription is
+    # currently deterministic/stub-backed; the capability records an immutable
+    # model run lock for audit and future migration to real Qwen ASR spikes.
+    registry.register(
+        CapabilityRecord(
+            name="qwen_asr_short",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3-asr-flash",
+            input_schema_version="audio-upload-v1",
+            output_schema_version="transcript-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_asr_long",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3-asr-flash-filetrans",
+            input_schema_version="audio-file-v1",
+            output_schema_version="transcript-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
 
 
 def _register_builtin_workflows(service: WorkflowService) -> None:

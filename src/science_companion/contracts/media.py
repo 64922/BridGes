@@ -43,6 +43,10 @@ class MediaAssetKind(StrEnum):
     FORMULA = "formula"
     TABLE = "table"
     CORRECTION = "correction"
+    AUDIO_TRANSCRIPT = "audio_transcript"
+    AUDIO_SEGMENT = "audio_segment"
+    VIDEO_KEYFRAME = "video_keyframe"
+    CAPTION_TRACK = "caption_track"
 
 
 class MediaIngestionStatus(StrEnum):
@@ -189,6 +193,86 @@ class SpatialTemporalLocator(BaseModel):
     end_time: float | None = Field(default=None)
 
 
+class TranscriptWord(BaseModel):
+    """A single word inside a transcript segment."""
+
+    text: str = Field(description="Recognized word.")
+    start_time: float = Field(description="Start time in seconds.")
+    end_time: float = Field(description="End time in seconds.")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class TranscriptSegment(BaseModel):
+    """A timed transcript segment with optional word-level alignment."""
+
+    segment_id: str = Field(description="Stable segment identifier.")
+    start_time: float = Field(description="Start time in seconds.")
+    end_time: float = Field(description="End time in seconds.")
+    text: str = Field(description="Transcribed text.")
+    language: str | None = Field(default=None, description="Detected or declared language.")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+    low_confidence: bool = Field(default=False, description="Whether the segment needs review.")
+    words: list[TranscriptWord] = Field(default_factory=list)
+
+
+class SpeakerSegment(BaseModel):
+    """A speaker diarization segment."""
+
+    segment_id: str = Field(description="Stable segment identifier.")
+    speaker_id: str = Field(description="Speaker identifier, e.g. SPEAKER_00.")
+    start_time: float = Field(description="Start time in seconds.")
+    end_time: float = Field(description="End time in seconds.")
+
+
+class Caption(BaseModel):
+    """A single subtitle/caption cue."""
+
+    caption_id: str = Field(description="Stable caption identifier.")
+    start_time: float = Field(description="Start time in seconds.")
+    end_time: float = Field(description="End time in seconds.")
+    text: str = Field(description="Caption text.")
+    language: str | None = Field(default=None)
+
+
+class CaptionTrack(BaseModel):
+    """Timed caption track for an audio or video asset."""
+
+    track_id: str = Field(description="Stable track identifier.")
+    language: str | None = Field(default=None)
+    captions: list[Caption] = Field(default_factory=list)
+
+
+class Keyframe(BaseModel):
+    """A keyframe interpretation inside a video asset."""
+
+    keyframe_id: str = Field(description="Stable keyframe identifier.")
+    time: float = Field(description="Time in seconds.")
+    interpretation: str = Field(description="Visual/scientific interpretation.")
+    confidence: float = Field(default=1.0, ge=0.0, le=1.0)
+
+
+class AudioVideoDerivedData(BaseModel):
+    """Structured payload for audio/video-derived assets.
+
+    Wraps ASR transcripts, speaker diarization, captions and video keyframe
+    interpretations. All timed elements are bound to the original asset timeline.
+    """
+
+    transcript_segments: list[TranscriptSegment] = Field(default_factory=list)
+    speaker_segments: list[SpeakerSegment] = Field(default_factory=list)
+    captions: list[Caption] = Field(default_factory=list)
+    keyframes: list[Keyframe] = Field(default_factory=list)
+    language: str | None = Field(default=None, description="Primary detected/declared language.")
+    multi_language: bool = Field(
+        default=False,
+        description="Whether multiple languages were detected.",
+    )
+    missing_audio_track: bool = Field(
+        default=False,
+        description="True when the video has no usable audio track.",
+    )
+
+
 class SourceAsset(BaseModel):
     """Original, immutable media input.
 
@@ -323,6 +407,10 @@ class MediaCorrectionType(StrEnum):
     TABLE_SCHEMA = "table_schema"
     SCALE = "scale"
     LEGEND = "legend"
+    TRANSCRIPT_TERM = "transcript_term"
+    SPEAKER_SEGMENT = "speaker_segment"
+    CAPTION_TEXT = "caption_text"
+    KEYFRAME_INTERPRETATION = "keyframe_interpretation"
 
 
 class MediaCorrectionRequest(BaseModel):

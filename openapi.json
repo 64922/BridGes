@@ -6600,6 +6600,513 @@
         }
       }
     },
+    "/media/projects/{project_id}/assets": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Upload Media To Project",
+        "description": "Upload a media asset into a project.",
+        "operationId": "upload_media_to_project_media_projects__project_id__assets_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaIngestionRunRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/assets": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Upload Media",
+        "description": "Upload a personal media asset (not bound to a project).",
+        "operationId": "upload_media_media_assets_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaIngestionRunRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Media Asset",
+        "description": "Get a media projection with source asset, manifest and derived assets.",
+        "operationId": "get_media_asset_media_assets__asset_id__get",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/assets/{asset_id}/derived": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Correct Derived Asset",
+        "description": "Apply a human correction to a derived asset and create a new version.",
+        "operationId": "correct_derived_asset_media_assets__asset_id__derived_post",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaCorrectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DerivedAsset"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/assets/{asset_id}/claim-graph": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Generate Media Claim Graph",
+        "description": "Generate a ClaimGraph from a media asset's derived structures.\n\nThe media service ensures the asset is accessible and active; the existing\nclaim-evidence service produces the locatable claim graph.",
+        "operationId": "generate_media_claim_graph_media_assets__asset_id__claim_graph_post",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimGraphResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/assets/{asset_id}/revoke": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Revoke Media Asset",
+        "description": "Revoke a media asset so it cannot be used in new evidence.",
+        "operationId": "revoke_media_asset_media_assets__asset_id__revoke_post",
+        "parameters": [
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Revoke Media Asset Media Assets  Asset Id  Revoke Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/learning/missions": {
       "post": {
         "tags": [
@@ -9496,6 +10003,39 @@
         "title": "AssertionStatus",
         "description": "Lifecycle status of a promoted profile assertion."
       },
+      "AssetRegion": {
+        "properties": {
+          "region_id": {
+            "type": "string",
+            "title": "Region Id",
+            "description": "Stable region identifier."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Semantic label, e.g. figure, axis, label, curve."
+          },
+          "bbox": {
+            "$ref": "#/components/schemas/BoundingBox",
+            "description": "Region location."
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "region_id",
+          "label",
+          "bbox"
+        ],
+        "title": "AssetRegion",
+        "description": "A detected region inside an image or scan."
+      },
       "AuthError": {
         "properties": {
           "error": {
@@ -9704,6 +10244,45 @@
         ],
         "title": "BackgroundTaskEnvelope",
         "description": "Required context for every background task.\n\nA background task must carry a subject, object domain, project, authorization\nversion and key epoch. Missing any of these causes deterministic failure\nclosure rather than running with ambient or guessed context."
+      },
+      "BoundingBox": {
+        "properties": {
+          "x": {
+            "type": "number",
+            "title": "X",
+            "description": "Left coordinate."
+          },
+          "y": {
+            "type": "number",
+            "title": "Y",
+            "description": "Top coordinate."
+          },
+          "width": {
+            "type": "number",
+            "title": "Width",
+            "description": "Box width."
+          },
+          "height": {
+            "type": "number",
+            "title": "Height",
+            "description": "Box height."
+          },
+          "unit": {
+            "type": "string",
+            "title": "Unit",
+            "description": "Coordinate unit: pixel or normalized.",
+            "default": "pixel"
+          }
+        },
+        "type": "object",
+        "required": [
+          "x",
+          "y",
+          "width",
+          "height"
+        ],
+        "title": "BoundingBox",
+        "description": "Normalized or pixel bounding box within an image."
       },
       "CandidateDecision": {
         "properties": {
@@ -10453,6 +11032,66 @@
         "title": "Claim",
         "description": "A single scientific proposition produced from retrieval and validation."
       },
+      "ClaimBinding": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id",
+            "description": "Stable binding identifier."
+          },
+          "derived_asset_id": {
+            "type": "string",
+            "title": "Derived Asset Id",
+            "description": "Derived asset that carries the element."
+          },
+          "element_ref": {
+            "type": "string",
+            "title": "Element Ref",
+            "description": "Region, token, cell or formula element reference."
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "fact_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "binding_id",
+          "derived_asset_id",
+          "element_ref"
+        ],
+        "title": "ClaimBinding",
+        "description": "Binding from a media element to a Claim / Evidence / FactLock."
+      },
       "ClaimGraph": {
         "properties": {
           "graph_id": {
@@ -10986,6 +11625,68 @@
         "title": "CoverageGap",
         "description": "A coverage or recall gap reported to the caller."
       },
+      "DataBinding": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id",
+            "description": "Stable binding identifier."
+          },
+          "derived_asset_id": {
+            "type": "string",
+            "title": "Derived Asset Id",
+            "description": "Derived asset that carries the data."
+          },
+          "source_data_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Data Ref"
+          },
+          "transformation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transformation"
+          },
+          "units": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Units"
+          },
+          "missing_value_policy": {
+            "type": "string",
+            "title": "Missing Value Policy",
+            "default": "explicit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "binding_id",
+          "derived_asset_id"
+        ],
+        "title": "DataBinding",
+        "description": "Binding from a table/chart to a dataset version and transformation."
+      },
       "DecideKnowledgeStateProposalRequest": {
         "properties": {
           "decision": {
@@ -11088,6 +11789,117 @@
         ],
         "title": "DependencyHealth",
         "description": "Health of one external dependency."
+      },
+      "DerivedAsset": {
+        "properties": {
+          "derived_asset_id": {
+            "type": "string",
+            "title": "Derived Asset Id",
+            "description": "Stable derived asset identifier."
+          },
+          "source_asset_id": {
+            "type": "string",
+            "title": "Source Asset Id",
+            "description": "Original SourceAsset identifier."
+          },
+          "derived_from_asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived From Asset Id",
+            "description": "Previous derived asset when this is a correction."
+          },
+          "derivation_type": {
+            "$ref": "#/components/schemas/MediaAssetKind",
+            "description": "Kind of derivation."
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool",
+            "description": "Tool/model that produced the derivation."
+          },
+          "tool_version": {
+            "type": "string",
+            "title": "Tool Version",
+            "description": "Tool/model version."
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Parameters"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "SHA-256 hash of canonical payload."
+          },
+          "payload": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Payload",
+            "description": "Domain-specific structured payload, e.g. formula or table asset."
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SpatialTemporalLocator"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          },
+          "human_corrected": {
+            "type": "boolean",
+            "title": "Human Corrected",
+            "default": false
+          },
+          "status": {
+            "$ref": "#/components/schemas/MediaAssetStatus",
+            "default": "parsed"
+          },
+          "correction_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Correction Reason"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Derived asset creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "derived_asset_id",
+          "source_asset_id",
+          "derivation_type",
+          "tool",
+          "tool_version",
+          "content_hash",
+          "created_at"
+        ],
+        "title": "DerivedAsset",
+        "description": "Any extraction, OCR, structure parse or human correction result.\n\nDerivedAssets are immutable. A human correction creates a new DerivedAsset\nthat points to the previous one via `derived_from_asset_id`, preserving the\nfull correction chain."
       },
       "DeviceUnavailableState": {
         "properties": {
@@ -13604,6 +14416,40 @@
         "title": "FactLockType",
         "description": "Kind of fact locked for a claim."
       },
+      "FormulaBinding": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id",
+            "description": "Stable binding identifier."
+          },
+          "derived_asset_id": {
+            "type": "string",
+            "title": "Derived Asset Id",
+            "description": "Derived formula asset."
+          },
+          "source_asset_id": {
+            "type": "string",
+            "title": "Source Asset Id",
+            "description": "Original source asset."
+          },
+          "definition_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Definition Refs"
+          }
+        },
+        "type": "object",
+        "required": [
+          "binding_id",
+          "derived_asset_id",
+          "source_asset_id"
+        ],
+        "title": "FormulaBinding",
+        "description": "Binding from a formula asset to its scientific context."
+      },
       "GateResult": {
         "type": "string",
         "enum": [
@@ -14996,14 +15842,441 @@
         "title": "LoginCredential",
         "description": "Request to authenticate with email and password."
       },
+      "MediaAssetKind": {
+        "type": "string",
+        "enum": [
+          "image_regions",
+          "image_ocr",
+          "image_legend",
+          "image_scale",
+          "formula",
+          "table",
+          "correction",
+          "audio_transcript",
+          "audio_segment",
+          "video_keyframe",
+          "caption_track"
+        ],
+        "title": "MediaAssetKind",
+        "description": "Kind of derived media asset."
+      },
+      "MediaAssetStatus": {
+        "type": "string",
+        "enum": [
+          "discovered",
+          "parsing",
+          "parsed",
+          "quarantined",
+          "blocked",
+          "corrected",
+          "revoked"
+        ],
+        "title": "MediaAssetStatus",
+        "description": "Lifecycle status of a media asset or derived asset."
+      },
+      "MediaCorrectionRequest": {
+        "properties": {
+          "derived_asset_id": {
+            "type": "string",
+            "title": "Derived Asset Id",
+            "description": "Derived asset to correct."
+          },
+          "correction_type": {
+            "$ref": "#/components/schemas/MediaCorrectionType",
+            "description": "Kind of correction."
+          },
+          "target_ref": {
+            "type": "string",
+            "title": "Target Ref",
+            "description": "Reference to the corrected element: token id, region id, cell coordinate, etc."
+          },
+          "corrected_value": {
+            "type": "string",
+            "title": "Corrected Value",
+            "description": "New value."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "derived_asset_id",
+          "correction_type",
+          "target_ref",
+          "corrected_value"
+        ],
+        "title": "MediaCorrectionRequest",
+        "description": "Request to correct a derived asset and produce a new version."
+      },
+      "MediaCorrectionType": {
+        "type": "string",
+        "enum": [
+          "ocr_text",
+          "region_label",
+          "formula_latex",
+          "formula_symbol",
+          "table_cell",
+          "table_schema",
+          "scale",
+          "legend",
+          "transcript_term",
+          "speaker_segment",
+          "caption_text",
+          "keyframe_interpretation"
+        ],
+        "title": "MediaCorrectionType",
+        "description": "Kind of human correction applied to a derived asset."
+      },
+      "MediaError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "MediaError",
+        "description": "Uniform media error response."
+      },
+      "MediaGateResult": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "wait",
+          "fail"
+        ],
+        "title": "MediaGateResult",
+        "description": "Result of a single media input quality gate."
+      },
+      "MediaIngestionRunRef": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Ingestion run identifier."
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MediaIngestionStatus",
+            "default": "pending"
+          },
+          "gate_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MediaGateResult"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/MediaQualityGate"
+            },
+            "type": "object",
+            "title": "Gate Results"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Run creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last run update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MediaIngestionRunRef",
+        "description": "Reference to an asynchronous media ingestion run."
+      },
+      "MediaIngestionStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "quarantined"
+        ],
+        "title": "MediaIngestionStatus",
+        "description": "Status of a media ingestion run."
+      },
+      "MediaManifest": {
+        "properties": {
+          "manifest_id": {
+            "type": "string",
+            "title": "Manifest Id",
+            "description": "Stable manifest identifier."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Monotonic manifest version."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "source_asset_id": {
+            "type": "string",
+            "title": "Source Asset Id",
+            "description": "Original source asset."
+          },
+          "derived_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Derived Asset Ids"
+          },
+          "claim_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimBinding"
+            },
+            "type": "array",
+            "title": "Claim Bindings"
+          },
+          "data_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/DataBinding"
+            },
+            "type": "array",
+            "title": "Data Bindings"
+          },
+          "formula_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/FormulaBinding"
+            },
+            "type": "array",
+            "title": "Formula Bindings"
+          },
+          "validation_report_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validation Report Ids"
+          },
+          "publication_state": {
+            "type": "string",
+            "title": "Publication State",
+            "default": "draft"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Manifest creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "manifest_id",
+          "version",
+          "account_id",
+          "source_asset_id",
+          "created_at"
+        ],
+        "title": "MediaManifest",
+        "description": "Unified manifest for one scientific media object.\n\nThe manifest links the original SourceAsset to its DerivedAssets and to any\nscientific bindings. It is versioned; corrections update the manifest without\noverwriting the previous version."
+      },
+      "MediaProjection": {
+        "properties": {
+          "source_asset": {
+            "$ref": "#/components/schemas/SourceAsset",
+            "description": "Original source asset."
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/MediaManifest",
+            "description": "Current media manifest."
+          },
+          "derived_assets": {
+            "items": {
+              "$ref": "#/components/schemas/DerivedAsset"
+            },
+            "type": "array",
+            "title": "Derived Assets",
+            "description": "Derived assets referenced by the manifest."
+          },
+          "version_count": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version Count",
+            "description": "Number of manifest versions.",
+            "default": 1
+          },
+          "can_enter_evidence": {
+            "type": "boolean",
+            "title": "Can Enter Evidence",
+            "description": "Whether the asset passed all input quality gates.",
+            "default": false
+          },
+          "gate_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MediaGateResult"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/MediaQualityGate"
+            },
+            "type": "object",
+            "title": "Gate Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_asset",
+          "manifest"
+        ],
+        "title": "MediaProjection",
+        "description": "Public projection of a media asset with its manifest and derived assets."
+      },
+      "MediaQualityGate": {
+        "type": "string",
+        "enum": [
+          "mime_type",
+          "magic_number",
+          "size_limit",
+          "malicious_content",
+          "license",
+          "parse",
+          "scope"
+        ],
+        "title": "MediaQualityGate",
+        "description": "Named gates that imported media must pass before entering evidence."
+      },
       "MediaType": {
         "type": "string",
         "enum": [
           "text/plain",
-          "application/pdf"
+          "application/pdf",
+          "image/png",
+          "image/jpeg",
+          "image/svg+xml",
+          "image/webp",
+          "application/x-latex",
+          "text/csv",
+          "application/x-tex",
+          "audio/mpeg",
+          "audio/wav",
+          "audio/ogg",
+          "video/mp4",
+          "video/webm",
+          "video/ogg"
         ],
         "title": "MediaType",
-        "description": "Media type of an imported document."
+        "description": "Media type of an imported document or asset."
+      },
+      "MediaUploadRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Filename",
+            "description": "Original filename."
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType",
+            "description": "Declared media type."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content",
+            "description": "Base64-encoded raw content bytes."
+          },
+          "license_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "media_type",
+          "content"
+        ],
+        "title": "MediaUploadRequest",
+        "description": "Request to upload a scientific media asset."
       },
       "ModelCallStatus": {
         "type": "string",
@@ -19179,6 +20452,133 @@
         "title": "Source",
         "description": "A source entry: the identity and ownership of one scientific work.\n\nA Source is not a specific content version; it owns the version history and\ncurrent pointer. The actual content snapshots are DocumentVersion objects."
       },
+      "SourceAsset": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id",
+            "description": "Stable asset identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope when owned by a project."
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType",
+            "description": "Declared media type."
+          },
+          "detected_format": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detected Format"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename",
+            "description": "Original filename."
+          },
+          "byte_size": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Byte Size"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "SHA-256 hash of raw content bytes."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Asset creation timestamp."
+          },
+          "acquired_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquired At"
+          },
+          "license": {
+            "$ref": "#/components/schemas/SourceLicense"
+          },
+          "status": {
+            "$ref": "#/components/schemas/MediaAssetStatus",
+            "default": "discovered"
+          },
+          "integrity_status": {
+            "type": "string",
+            "title": "Integrity Status",
+            "default": "ok"
+          },
+          "object_storage_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Storage Ref"
+          },
+          "provenance_bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance Bundle Id"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last asset update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "account_id",
+          "media_type",
+          "original_filename",
+          "byte_size",
+          "content_hash",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SourceAsset",
+        "description": "Original, immutable media input.\n\nA SourceAsset is the raw uploaded image, scan fragment, formula image or table\nfile. Its bytes are hashed and its status is tracked independently of any\nderived extraction result."
+      },
       "SourceError": {
         "properties": {
           "error": {
@@ -19516,6 +20916,56 @@
         ],
         "title": "SourceVersionRequest",
         "description": "Request to create a new document version from a corrected source."
+      },
+      "SpatialTemporalLocator": {
+        "properties": {
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AssetRegion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "start_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Time"
+          },
+          "end_time": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Time"
+          }
+        },
+        "type": "object",
+        "title": "SpatialTemporalLocator",
+        "description": "Locator of a derived asset within its source asset."
       },
       "StyleDiagnosticFinding": {
         "properties": {

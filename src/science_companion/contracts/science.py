@@ -43,6 +43,12 @@ class MediaType(str, Enum):
     APPLICATION_X_LATEX = "application/x-latex"
     TEXT_CSV = "text/csv"
     APPLICATION_X_TEX = "application/x-tex"
+    AUDIO_MPEG = "audio/mpeg"
+    AUDIO_WAV = "audio/wav"
+    AUDIO_OGG = "audio/ogg"
+    VIDEO_MP4 = "video/mp4"
+    VIDEO_WEBM = "video/webm"
+    VIDEO_OGG = "video/ogg"
 
 
 class LifecycleStatus(str, Enum):

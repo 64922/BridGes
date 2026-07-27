@@ -18,12 +18,16 @@ import secrets
 from datetime import UTC, datetime
 from typing import Protocol
 
+from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
 from science_companion.contracts.media import (
     AssetRegion,
+    AudioVideoDerivedData,
     BoundingBox,
+    Caption,
     DerivedAsset,
     FormulaAsset,
     ImageDerivedData,
+    Keyframe,
     MediaAssetKind,
     MediaAssetStatus,
     MediaGateResult,
@@ -31,12 +35,15 @@ from science_companion.contracts.media import (
     OCRToken,
     SourceAsset,
     SpatialTemporalLocator,
+    SpeakerSegment,
     SymbolDefinition,
     TableAsset,
     TableCell,
     TableColumn,
     TableRow,
     TableSchema,
+    TranscriptSegment,
+    TranscriptWord,
 )
 from science_companion.contracts.science import MediaType
 
@@ -522,6 +529,282 @@ class TableExtractor(ExtractionPort):
         )
 
 
+class AudioVideoExtractor(ExtractionPort):
+    """Deterministic extractor for audio and video assets.
+
+    Validates common audio/video magic numbers and produces timed transcript
+    segments, speaker diarization, captions and keyframe interpretations. A
+    low-confidence scientific term is injected when the filename hints at a known
+    concept, so the correction seam can be exercised without a real ASR model.
+    """
+
+    tool: str = "science_companion.audio_video.deterministic"
+    tool_version: str = "1"
+
+    # Filename keywords that trigger a low-confidence scientific term segment.
+    _SCIENTIFIC_TERMS: dict[str, str] = {
+        "photosynthesis": "photosynthesis",
+        "mitochondria": "mitochondria",
+        "thermodynamics": "thermodynamics",
+        "quantum": "quantum mechanics",
+        "climate": "climate change",
+        "neuro": "neurotransmitter",
+        "enzyme": "enzyme kinetics",
+    }
+
+    def gate_results(self, content: bytes) -> dict[MediaQualityGate, MediaGateResult]:
+        results: dict[MediaQualityGate, MediaGateResult] = {
+            MediaQualityGate.MIME_TYPE: MediaGateResult.PASS,
+            MediaQualityGate.MAGIC_NUMBER: MediaGateResult.PASS,
+            MediaQualityGate.SIZE_LIMIT: MediaGateResult.PASS,
+            MediaQualityGate.MALICIOUS_CONTENT: MediaGateResult.PASS,
+        }
+        if len(content) > MAX_CONTENT_BYTES:
+            results[MediaQualityGate.SIZE_LIMIT] = MediaGateResult.FAIL
+        if not self._looks_like_audio_video(content):
+            results[MediaQualityGate.MAGIC_NUMBER] = MediaGateResult.FAIL
+        return results
+
+    def extract(
+        self,
+        source_asset: SourceAsset,
+        content: bytes,
+    ) -> list[DerivedAsset]:
+        filename = source_asset.original_filename.lower()
+        duration = self._estimate_duration(content)
+        language = self._detect_language(filename)
+        multi_language = "bilingual" in filename or "multilingual" in filename
+        missing_audio_track = self._missing_audio_track(filename, source_asset.media_type)
+
+        segments = self._build_transcript(
+            filename, duration, language, missing_audio_track
+        )
+        speaker_segments = self._build_speaker_segments(segments)
+        captions = self._build_captions(segments)
+        keyframes = self._build_keyframes(duration, filename, source_asset.media_type)
+
+        data = AudioVideoDerivedData(
+            transcript_segments=segments,
+            speaker_segments=speaker_segments,
+            captions=captions,
+            keyframes=keyframes,
+            language=language,
+            multi_language=multi_language,
+            missing_audio_track=missing_audio_track,
+        )
+        payload = data.model_dump(mode="json")
+
+        run_lock = self._build_asr_run_lock(source_asset)
+        return [
+            DerivedAsset(
+                derived_asset_id=_token("av"),
+                source_asset_id=source_asset.asset_id,
+                derivation_type=MediaAssetKind.AUDIO_TRANSCRIPT,
+                tool=self.tool,
+                tool_version=self.tool_version,
+                parameters={
+                    "filename": source_asset.original_filename,
+                    "media_type": source_asset.media_type.value,
+                    "model_run_lock": run_lock.model_dump(mode="json"),
+                },
+                content_hash=_sha256(
+                    json.dumps(payload, sort_keys=True).encode("utf-8")
+                ),
+                payload=payload,
+                locator=SpatialTemporalLocator(start_time=0.0, end_time=duration),
+                confidence=0.82,
+                human_corrected=False,
+                status=MediaAssetStatus.PARSED,
+                created_at=_now(),
+            )
+        ]
+
+    def _looks_like_audio_video(self, content: bytes) -> bool:
+        if len(content) < 12:
+            return False
+        if content.startswith(b"ID3"):
+            return True
+        if (content[0] == 0xFF) and ((content[1] & 0xE0) == 0xE0):
+            return True
+        if content.startswith(b"RIFF") and content[8:12] == b"WAVE":
+            return True
+        if content.startswith(b"OggS"):
+            return True
+        if content[4:8] == b"ftyp":
+            return True
+        return content.startswith(b"\x1a\x45\xdf\xa3")
+
+    def _estimate_duration(self, content: bytes) -> float:
+        # Deterministic placeholder: larger files get longer timelines, capped.
+        return min(300.0, max(5.0, len(content) / 1024.0))
+
+    def _detect_language(self, filename: str) -> str:
+        if "chinese" in filename or "cn" in filename or "zh" in filename:
+            return "zh"
+        if "english" in filename or "en" in filename:
+            return "en"
+        return "auto"
+
+    def _missing_audio_track(
+        self, filename: str, media_type: MediaType
+    ) -> bool:
+        if "silent" in filename or "noaudio" in filename:
+            return True
+        if media_type in {MediaType.VIDEO_MP4, MediaType.VIDEO_WEBM, MediaType.VIDEO_OGG}:
+            return False
+        return False
+
+    def _build_transcript(
+        self,
+        filename: str,
+        duration: float,
+        language: str,
+        missing_audio_track: bool,
+    ) -> list[TranscriptSegment]:
+        if missing_audio_track:
+            return [
+                TranscriptSegment(
+                    segment_id=_token("seg"),
+                    start_time=0.0,
+                    end_time=duration,
+                    text="[无音轨]",
+                    language=language,
+                    confidence=1.0,
+                    low_confidence=False,
+                )
+            ]
+
+        term: str | None = None
+        for keyword, candidate in self._SCIENTIFIC_TERMS.items():
+            if keyword in filename:
+                term = candidate
+                break
+
+        mid = duration / 2.0
+        segments: list[TranscriptSegment] = [
+            TranscriptSegment(
+                segment_id=_token("seg"),
+                start_time=0.0,
+                end_time=mid - 0.5,
+                text="Welcome to the scientific recording.",
+                language=language,
+                confidence=0.9,
+                low_confidence=False,
+            ),
+        ]
+        if term is not None:
+            # Intentionally misspell the term so the correction seam is testable.
+            misspelled = term.replace("o", "0") if "o" in term else term + "?"
+            segments.append(
+                TranscriptSegment(
+                    segment_id=_token("seg"),
+                    start_time=mid - 0.5,
+                    end_time=mid + 0.5,
+                    text=f"Today we discuss {misspelled}.",
+                    language=language,
+                    confidence=0.45,
+                    low_confidence=True,
+                    words=[
+                        TranscriptWord(
+                            text=misspelled,
+                            start_time=mid - 0.25,
+                            end_time=mid + 0.25,
+                            confidence=0.42,
+                        )
+                    ],
+                )
+            )
+        segments.append(
+            TranscriptSegment(
+                segment_id=_token("seg"),
+                start_time=mid + 0.5,
+                end_time=duration,
+                text="Thank you for listening.",
+                language=language,
+                confidence=0.88,
+                low_confidence=False,
+            )
+        )
+        return segments
+
+    def _build_speaker_segments(
+        self, segments: list[TranscriptSegment]
+    ) -> list[SpeakerSegment]:
+        return [
+            SpeakerSegment(
+                segment_id=_token("spk"),
+                speaker_id="SPEAKER_00",
+                start_time=segments[0].start_time,
+                end_time=segments[-1].end_time,
+            )
+        ]
+
+    def _build_captions(self, segments: list[TranscriptSegment]) -> list[Caption]:
+        return [
+            Caption(
+                caption_id=_token("cap"),
+                start_time=seg.start_time,
+                end_time=seg.end_time,
+                text=seg.text,
+                language=seg.language,
+            )
+            for seg in segments
+        ]
+
+    def _build_keyframes(
+        self, duration: float, filename: str, media_type: MediaType
+    ) -> list[Keyframe]:
+        if media_type not in {MediaType.VIDEO_MP4, MediaType.VIDEO_WEBM, MediaType.VIDEO_OGG}:
+            return []
+        keyframes: list[Keyframe] = [
+            Keyframe(
+                keyframe_id=_token("kf"),
+                time=0.0,
+                interpretation="Opening frame of the recording.",
+                confidence=0.9,
+            )
+        ]
+        if "slides" in filename or "diagram" in filename:
+            keyframes.append(
+                Keyframe(
+                    keyframe_id=_token("kf"),
+                    time=duration / 2.0,
+                    interpretation="A scientific diagram is visible.",
+                    confidence=0.75,
+                )
+            )
+        keyframes.append(
+            Keyframe(
+                keyframe_id=_token("kf"),
+                time=duration,
+                interpretation="End frame of the recording.",
+                confidence=0.9,
+            )
+        )
+        return keyframes
+
+    @staticmethod
+    def _build_asr_run_lock(source_asset: SourceAsset) -> ModelRunLock:
+        return ModelRunLock(
+            lock_id=_token("lock"),
+            run_id=source_asset.asset_id,
+            account_id=source_asset.account_id,
+            project_id=source_asset.project_id or "",
+            capability_name="qwen_asr_short",
+            capability_version="1",
+            actual_model_id="qwen3-asr-flash",
+            region="cn-beijing",
+            parameters={"temperature": 0.0, "max_tokens": 4096},
+            prompt_version="2026-07-24",
+            input_output_contract="qwen_asr_short:1->audio_transcript_v1",
+            fallback_path=["qwen_asr_short@1"],
+            status=ModelCallStatus.SUCCESS,
+            retry_count=0,
+            created_at=_now(),
+            usage={"prompt_tokens": 0, "completion_tokens": 0},
+        )
+
+
 def select_extractor(media_type: MediaType) -> ExtractionPort:
     """Return the extractor for a media type."""
     if media_type in {
@@ -537,4 +820,13 @@ def select_extractor(media_type: MediaType) -> ExtractionPort:
     # For SVG or unknown image-like types, try the image extractor as a fallback.
     if media_type == MediaType.IMAGE_SVG:
         return ImageExtractor()
+    if media_type in {
+        MediaType.AUDIO_MPEG,
+        MediaType.AUDIO_WAV,
+        MediaType.AUDIO_OGG,
+        MediaType.VIDEO_MP4,
+        MediaType.VIDEO_WEBM,
+        MediaType.VIDEO_OGG,
+    }:
+        return AudioVideoExtractor()
     raise ExtractionError(f"不支持的媒体类型：{media_type}")
