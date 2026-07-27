@@ -22,6 +22,8 @@ from science_companion.evaluation import EvaluationService
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
+from science_companion.learning import InMemoryLearningRepository, LearningService
+from science_companion.learning.api import router as learning_router
 from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
 from science_companion.profiles.api import router as profiles_router
@@ -340,6 +342,11 @@ def create_app() -> FastAPI:
         "claim_graph", ClaimGraphRevalidationHandler(claim_evidence_service)
     )
 
+    # T021: attach the in-memory learning service for missions and diagnosis.
+    learning_repository = InMemoryLearningRepository()
+    learning_service = LearningService(repository=learning_repository)
+    app.state.learning_service = learning_service
+
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
@@ -348,6 +355,7 @@ def create_app() -> FastAPI:
     app.include_router(scope.router)
     app.include_router(evaluation.router)
     app.include_router(science.router)
+    app.include_router(learning_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

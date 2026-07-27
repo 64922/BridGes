@@ -5733,6 +5733,829 @@
         }
       }
     },
+    "/learning/missions": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Create Mission",
+        "description": "Create a learning mission for the current user.",
+        "operationId": "create_mission_learning_missions_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningMissionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMission"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "List Missions",
+        "description": "List learning missions for the current user.",
+        "operationId": "list_missions_learning_missions_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LearningMission"
+                  },
+                  "title": "Response List Missions Learning Missions Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Mission",
+        "description": "Get a learning mission by ID.",
+        "operationId": "get_mission_learning_missions__mission_id__get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningMission"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/runs": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Create Diagnostic Run",
+        "description": "Create a diagnostic run for a mission.",
+        "operationId": "create_diagnostic_run_learning_missions__mission_id__runs_post",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/DiagnosticQuestionCreateRequest"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Questions"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/learning/runs/{run_id}": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Diagnostic Run",
+        "description": "Get a diagnostic run by ID.",
+        "operationId": "get_diagnostic_run_learning_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/runs/{run_id}/answers": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Record Answer",
+        "description": "Record a diagnostic answer and return the updated run.",
+        "operationId": "record_answer_learning_runs__run_id__answers_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DiagnosticAnswerCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticRun"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/runs/{run_id}/complete": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Complete Diagnostic",
+        "description": "Complete a diagnostic run and compute evidence-backed knowledge states.",
+        "operationId": "complete_diagnostic_learning_runs__run_id__complete_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/results/{result_id}": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Diagnostic Result",
+        "description": "Get a diagnostic result by ID.",
+        "operationId": "get_diagnostic_result_learning_results__result_id__get",
+        "parameters": [
+          {
+            "name": "result_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Result Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DiagnosticResult"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/states": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "List Knowledge States",
+        "description": "List knowledge states for a mission.",
+        "operationId": "list_knowledge_states_learning_missions__mission_id__states_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeState"
+                  },
+                  "title": "Response List Knowledge States Learning Missions  Mission Id  States Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/states/correct": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Correct Knowledge State",
+        "description": "Correct a knowledge state with a user-supplied judgement.",
+        "operationId": "correct_knowledge_state_learning_missions__mission_id__states_correct_post",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KnowledgeStateCorrection"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeState"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/teaching-plan": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Compile Teaching Plan",
+        "description": "Compile a minimal teaching plan from the mission and current states.",
+        "operationId": "compile_teaching_plan_learning_missions__mission_id__teaching_plan_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TeachingPlan"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -6025,6 +6848,17 @@
         ],
         "title": "AccountRegistration",
         "description": "Request to create a new account."
+      },
+      "AnswerEvaluatedState": {
+        "type": "string",
+        "enum": [
+          "correct",
+          "partial",
+          "incorrect",
+          "needs_review"
+        ],
+        "title": "AnswerEvaluatedState",
+        "description": "Result of evaluating a single diagnostic answer."
       },
       "ArtifactTrustStatus": {
         "type": "string",
@@ -7545,6 +8379,401 @@
         "title": "DeviceUnavailableState",
         "description": "Legal wait state when the authoritative device is not available.\n\nThe system returns this instead of silently uploading full text from another\nsource or falling back to a stale replica."
       },
+      "DiagnosticAnswer": {
+        "properties": {
+          "answer_id": {
+            "type": "string",
+            "title": "Answer Id",
+            "description": "Stable answer identifier."
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Diagnostic run this answer belongs to."
+          },
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "Question being answered."
+          },
+          "response_text": {
+            "type": "string",
+            "title": "Response Text",
+            "description": "User's response."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence the user cited to support the answer."
+          },
+          "evaluated_state": {
+            "$ref": "#/components/schemas/AnswerEvaluatedState",
+            "description": "Evaluated result."
+          },
+          "evaluator": {
+            "type": "string",
+            "title": "Evaluator",
+            "description": "Agent that evaluated the answer: rule, model, human."
+          },
+          "evaluation_reason": {
+            "type": "string",
+            "title": "Evaluation Reason",
+            "description": "Transparent reason for the evaluation."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the answer was recorded."
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer_id",
+          "run_id",
+          "question_id",
+          "response_text",
+          "evaluated_state",
+          "evaluator",
+          "evaluation_reason",
+          "created_at"
+        ],
+        "title": "DiagnosticAnswer",
+        "description": "A user's answer to one diagnostic question, with evidence-backed evaluation."
+      },
+      "DiagnosticAnswerCreateRequest": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "Question being answered."
+          },
+          "response_text": {
+            "type": "string",
+            "title": "Response Text",
+            "description": "User's response."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence the user cited to support the answer."
+          },
+          "evaluated_state": {
+            "$ref": "#/components/schemas/AnswerEvaluatedState",
+            "description": "Evaluated result."
+          },
+          "evaluator": {
+            "type": "string",
+            "title": "Evaluator",
+            "description": "Agent that evaluated the answer: rule, model, human."
+          },
+          "evaluation_reason": {
+            "type": "string",
+            "title": "Evaluation Reason",
+            "description": "Transparent reason for the evaluation."
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "response_text",
+          "evaluated_state",
+          "evaluator",
+          "evaluation_reason"
+        ],
+        "title": "DiagnosticAnswerCreateRequest",
+        "description": "Request to record a user's answer to a diagnostic question."
+      },
+      "DiagnosticQuestion": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "Stable question identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission this question belongs to."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being diagnosed."
+          },
+          "question_text": {
+            "type": "string",
+            "title": "Question Text",
+            "description": "Question text."
+          },
+          "question_type": {
+            "$ref": "#/components/schemas/DiagnosticQuestionType",
+            "description": "Kind of question."
+          },
+          "expected_answer_hints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Answer Hints",
+            "description": "Hints for what a correct answer must contain; not the only truth."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Scientific evidence that grounds the question."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Question version.",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "mission_id",
+          "concept_id",
+          "question_text",
+          "question_type"
+        ],
+        "title": "DiagnosticQuestion",
+        "description": "A single diagnostic question bound to evidence and a concept."
+      },
+      "DiagnosticQuestionCreateRequest": {
+        "properties": {
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being diagnosed."
+          },
+          "question_text": {
+            "type": "string",
+            "title": "Question Text",
+            "description": "Question text."
+          },
+          "question_type": {
+            "$ref": "#/components/schemas/DiagnosticQuestionType",
+            "description": "Kind of question."
+          },
+          "expected_answer_hints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Answer Hints",
+            "description": "Hints for a correct answer."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Scientific evidence grounding the question."
+          }
+        },
+        "type": "object",
+        "required": [
+          "concept_id",
+          "question_text",
+          "question_type"
+        ],
+        "title": "DiagnosticQuestionCreateRequest",
+        "description": "Request to add a question to a diagnostic run."
+      },
+      "DiagnosticQuestionType": {
+        "type": "string",
+        "enum": [
+          "recall",
+          "explanation",
+          "comparison",
+          "application",
+          "computation",
+          "meta_cognitive"
+        ],
+        "title": "DiagnosticQuestionType",
+        "description": "Kind of diagnostic question."
+      },
+      "DiagnosticResult": {
+        "properties": {
+          "result_id": {
+            "type": "string",
+            "title": "Result Id",
+            "description": "Stable result identifier."
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Diagnostic run that produced the result."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission the result belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "knowledge_states": {
+            "items": {
+              "$ref": "#/components/schemas/KnowledgeState"
+            },
+            "type": "array",
+            "title": "Knowledge States",
+            "description": "Computed states per concept."
+          },
+          "zpd_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Zpd Concepts",
+            "description": "Concepts within the zone of proximal development."
+          },
+          "ready_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ready Concepts",
+            "description": "Concepts judged robust or supported."
+          },
+          "unknown_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Unknown Concepts",
+            "description": "Concepts with no evidence or judged unknown."
+          },
+          "evidence_based_explanation": {
+            "type": "string",
+            "title": "Evidence Based Explanation",
+            "description": "Human-readable explanation grounded in diagnostic evidence."
+          },
+          "next_recommended_task": {
+            "type": "string",
+            "title": "Next Recommended Task",
+            "description": "Next task to advance the mission."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Result timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "result_id",
+          "run_id",
+          "mission_id",
+          "owner_account_id",
+          "knowledge_states",
+          "evidence_based_explanation",
+          "next_recommended_task",
+          "created_at"
+        ],
+        "title": "DiagnosticResult",
+        "description": "Outcome of completing a diagnostic run, including ZPD and explanation."
+      },
+      "DiagnosticRun": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Stable run identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission being diagnosed."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "status": {
+            "$ref": "#/components/schemas/DiagnosticRunStatus",
+            "default": "draft"
+          },
+          "questions": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticQuestion"
+            },
+            "type": "array",
+            "title": "Questions"
+          },
+          "answers": {
+            "items": {
+              "$ref": "#/components/schemas/DiagnosticAnswer"
+            },
+            "type": "array",
+            "title": "Answers"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Run version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "Completion timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "mission_id",
+          "owner_account_id",
+          "created_at"
+        ],
+        "title": "DiagnosticRun",
+        "description": "A versioned diagnostic session for a learning mission."
+      },
+      "DiagnosticRunStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "running",
+          "completed",
+          "cancelled"
+        ],
+        "title": "DiagnosticRunStatus",
+        "description": "Lifecycle status of a diagnostic run."
+      },
       "DocumentVersion": {
         "properties": {
           "document_id": {
@@ -8567,6 +9796,69 @@
         "title": "Evidence",
         "description": "A source fragment's relationship to a claim.\n\nEvidence is not the literature itself; it records how one or more chunks\nfrom a specific document version relate to a claim (support, refute, limit,\ncontextualize) and why that relationship was assessed."
       },
+      "EvidenceRef": {
+        "properties": {
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id",
+            "description": "Claim identifier."
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id",
+            "description": "Evidence identifier."
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id",
+            "description": "Source entry identifier."
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id",
+            "description": "Document version identifier."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why this evidence grounds the question or answer."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "EvidenceRef",
+        "description": "Reference to a scientific evidence item that grounds a question or answer.\n\nEvidence refs point into the claim--evidence--citation graph (T015) or into\nimported sources (T013). They carry enough identity to audit the grounding\nwithout copying private source body."
+      },
       "EvidenceRelation": {
         "type": "string",
         "enum": [
@@ -9059,6 +10351,350 @@
         ],
         "title": "InputQualityGate",
         "description": "Named gates that imported content must pass before entering evidence."
+      },
+      "KnowledgeConfidence": {
+        "type": "string",
+        "enum": [
+          "low",
+          "moderate",
+          "high"
+        ],
+        "title": "KnowledgeConfidence",
+        "description": "Calibration of the knowledge-state judgement, not a percentage."
+      },
+      "KnowledgeState": {
+        "properties": {
+          "state_id": {
+            "type": "string",
+            "title": "State Id",
+            "description": "Stable state identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission this state belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being judged."
+          },
+          "status": {
+            "$ref": "#/components/schemas/KnowledgeStateStatus",
+            "description": "Current knowledge state."
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/KnowledgeConfidence",
+            "description": "Calibration of the judgement.",
+            "default": "low"
+          },
+          "supporting_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Record Ids",
+            "description": "Answer/record ids that support the state."
+          },
+          "refuting_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Refuting Record Ids",
+            "description": "Answer/record ids that refute or limit it."
+          },
+          "uncertainty_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Reason",
+            "description": "Why confidence is not higher, or why state is unknown."
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "Scope within which the state applies."
+          },
+          "next_validation_task": {
+            "type": "string",
+            "title": "Next Validation Task",
+            "description": "Next task to validate or refine the state."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "superseded_by_state_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By State Id",
+            "description": "Newer state version that replaces this one."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "state_id",
+          "mission_id",
+          "owner_account_id",
+          "concept_id",
+          "status",
+          "scope",
+          "next_validation_task",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "KnowledgeState",
+        "description": "A revocable judgement of a user's current mastery of one concept.\n\nKnowledge states are updated only by observable learning evidence. They carry\nuncertainty, supporting and refuting records, scope, and the next task that\nwould best validate the state."
+      },
+      "KnowledgeStateCorrection": {
+        "properties": {
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being corrected."
+          },
+          "corrected_state": {
+            "$ref": "#/components/schemas/KnowledgeStateStatus",
+            "description": "Corrected state."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the correction is being made."
+          }
+        },
+        "type": "object",
+        "required": [
+          "concept_id",
+          "corrected_state",
+          "reason"
+        ],
+        "title": "KnowledgeStateCorrection",
+        "description": "User correction of a knowledge-state judgement."
+      },
+      "KnowledgeStateStatus": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "emerging",
+          "supported",
+          "robust",
+          "stale"
+        ],
+        "title": "KnowledgeStateStatus",
+        "description": "Current judgement of knowledge for a single concept."
+      },
+      "LearningError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "LearningError",
+        "description": "Uniform learning-domain error response."
+      },
+      "LearningMission": {
+        "properties": {
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Stable mission identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Short human-readable title."
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "Real learning goal."
+          },
+          "scope_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Concepts",
+            "description": "Concepts covered by the mission."
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Constraints",
+            "description": "Constraints and scope limits."
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Success Criteria",
+            "description": "Observable success criteria."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "mission_id",
+          "owner_account_id",
+          "title",
+          "goal",
+          "scope_concepts",
+          "success_criteria",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LearningMission",
+        "description": "A user's real learning goal and the contract that teaching must serve."
+      },
+      "LearningMissionCreateRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title",
+            "description": "Short human-readable title."
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Goal",
+            "description": "Real learning goal."
+          },
+          "scope_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Scope Concepts",
+            "description": "Concepts covered by the mission."
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Constraints",
+            "description": "Constraints and scope limits."
+          },
+          "success_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Success Criteria",
+            "description": "Observable success criteria."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Optional project scope."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "goal",
+          "scope_concepts",
+          "success_criteria"
+        ],
+        "title": "LearningMissionCreateRequest",
+        "description": "Request to create a learning mission."
       },
       "LicenseState": {
         "type": "string",
@@ -9744,7 +11380,7 @@
           "change_reason"
         ],
         "title": "ProfileAssertionVersion",
-        "description": "Immutable snapshot of a profile assertion at a point in its history.\n\nRollback creates a new active version from a prior snapshot without erasing\nthe audit chain. Each version retains only the hash of the value, not the\nfull provenance body, so deleted content is not kept in the audit trail."
+        "description": "Immutable snapshot of a profile assertion at a point in its history.\n\nRollback creates a new active version from a prior snapshot without erasing\nthe audit chain. Each version stores the value and metadata at that point so\nthat rollback is possible, but audit events and exports retain only the\ncontent hash rather than the full value, ensuring deleted content body is not\npreserved in the governance audit trail."
       },
       "ProfileCandidate": {
         "properties": {
@@ -12409,6 +14045,105 @@
         ],
         "title": "SubjectContext",
         "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret."
+      },
+      "TeachingPlan": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id",
+            "description": "Stable plan identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission the plan serves."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Plan title."
+          },
+          "learning_objective": {
+            "type": "string",
+            "title": "Learning Objective",
+            "description": "Single learning victory."
+          },
+          "target_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Concepts",
+            "description": "Concepts to address next."
+          },
+          "prerequisites": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prerequisites",
+            "description": "Concepts assumed or to review first."
+          },
+          "validation_task": {
+            "type": "string",
+            "title": "Validation Task",
+            "description": "Task that will validate the learning objective."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence grounding the plan."
+          },
+          "status": {
+            "$ref": "#/components/schemas/TeachingPlanStatus",
+            "default": "draft"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Plan version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "mission_id",
+          "owner_account_id",
+          "title",
+          "learning_objective",
+          "target_concepts",
+          "prerequisites",
+          "validation_task",
+          "created_at"
+        ],
+        "title": "TeachingPlan",
+        "description": "A minimal teaching plan derived from a mission and its knowledge states.\n\nT022 will expand this into short lessons, examples and retrieval exercises.\nT021 only needs the plan as a stable contract that traces back to the mission\nand evidence."
+      },
+      "TeachingPlanStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "qualified",
+          "blocked"
+        ],
+        "title": "TeachingPlanStatus",
+        "description": "Lifecycle status of a teaching plan."
       },
       "TemporaryTaskCapsule": {
         "properties": {
