@@ -488,6 +488,259 @@ class ReviewReport(BaseModel):
     )
 
 
+class StyleIssueType(StrEnum):
+    """Categories of Chinese expression issues diagnosed by T028.
+
+    These map to the six observable dimensions of human-flavored expression:
+    task truth, audience fit, argument clarity, Chinese naturalness, restraint,
+    and accountability. The diagnostic engine never emits an "AI probability".
+    """
+
+    TEMPLATE_PATTERN = "template_pattern"
+    TRANSLATION_PATTERN = "translation_pattern"
+    RHYTHM_ISSUE = "rhythm_issue"
+    TONE_BOUNDARY = "tone_boundary"
+    VAGUE_CONTENT = "vague_content"
+    MECHANICAL_ARGUMENT = "mechanical_argument"
+    STIFF_LANGUAGE = "stiff_language"
+    FORMAT_IMBALANCE = "format_imbalance"
+    CONVERSATION_RESIDUE = "conversation_residue"
+    SCIENTIFIC_OVERREACH = "scientific_overreach"
+
+
+class StyleDiagnosticSeverity(StrEnum):
+    """Severity of a style diagnostic finding."""
+
+    INFO = "info"
+    SUGGESTION = "suggestion"
+    WARNING = "warning"
+    BLOCKING = "blocking"
+
+
+class StylePolicy(BaseModel):
+    """Style policy synthesized for a single expression task.
+
+    The policy constrains wording without changing fact locks. It is built from
+    the genre contract, project vocabulary, public rules and the authorized
+    memory slice.
+    """
+
+    policy_id: str = Field(description="Stable policy identifier.")
+    draft_id: str | None = Field(default=None, description="Draft this policy serves.")
+    genre: Genre = Field(description="Genre the policy applies to.")
+    locale: str = Field(default="zh-CN", description="Target language and locale.")
+    max_sentence_length: int | None = Field(
+        default=None, description="Suggested maximum sentence length in characters."
+    )
+    preferred_term_style: str | None = Field(
+        default=None, description="Term familiarity level for this audience."
+    )
+    forbidden_phrases: list[str] = Field(
+        default_factory=list,
+        description="Phrases explicitly forbidden by genre or project rules.",
+    )
+    required_qualifier_style: str | None = Field(
+        default=None,
+        description="How uncertainty and limitations must be expressed.",
+    )
+    personalization_note: str | None = Field(
+        default=None,
+        description="How the memory slice may influence presentation.",
+    )
+
+
+class StyleDiagnosticFinding(BaseModel):
+    """A single Chinese expression issue with a suggested local patch.
+
+    Findings anchor to a concrete span and text fragment so the user can review
+    them one by one. They explain why the fragment may hurt the current genre
+    and offer a non-binding patch that must still preserve fact locks.
+    """
+
+    finding_id: str = Field(description="Stable finding identifier.")
+    span_id: str | None = Field(
+        default=None, description="Span containing the flagged text."
+    )
+    issue_type: StyleIssueType = Field(description="Category of expression issue.")
+    severity: StyleDiagnosticSeverity = Field(description="Severity of the issue.")
+    original_text: str = Field(description="Concrete flagged text fragment.")
+    reason: str = Field(description="Why this fragment is flagged for the genre.")
+    suggested_patch: str | None = Field(
+        default=None, description="Suggested wording that preserves fact locks."
+    )
+    genre_rule: str | None = Field(
+        default=None, description="Genre or style rule motivating the finding."
+    )
+
+
+class StyleDiagnosticReport(BaseModel):
+    """Report from the Chinese human-flavor diagnostic engine (T028).
+
+    The report lists concrete text fragments, issue types and reasons. It never
+    uses an AI-detector score as a pass/fail gate.
+    """
+
+    report_id: str = Field(description="Stable report identifier.")
+    draft_id: str = Field(description="Draft this report diagnoses.")
+    findings: list[StyleDiagnosticFinding] = Field(
+        default_factory=list, description="Diagnostic findings."
+    )
+    ai_detector_score: float | None = Field(
+        default=None,
+        description="Optional detector score recorded for transparency only.",
+    )
+    ai_detector_used_as_gate: bool = Field(
+        default=False,
+        description="Always false: AI detector scores are not used as gates.",
+    )
+    passed: bool = Field(
+        description=(
+            "True when no blocking findings remain and the diagnostic is complete."
+        )
+    )
+
+
+class PatchAction(StrEnum):
+    """User decision on a single revision patch."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+    REWRITE = "rewrite"
+
+
+class FactLockInvariance(BaseModel):
+    """Evidence that a patch or rewrite preserved scientific boundaries.
+
+    The comparison covers fact locks, claim ids, citation ids and the evidence-
+    derived wording strength ceiling.
+    """
+
+    original_span_text: str = Field(description="Span text before the change.")
+    patched_span_text: str = Field(description="Span text after the change.")
+    claim_ids_preserved: bool = Field(description="Claim ids unchanged.")
+    citation_ids_preserved: bool = Field(description="Citation ids unchanged.")
+    fact_lock_ids_preserved: bool = Field(description="Fact lock ids unchanged.")
+    wording_strength_ceiling_preserved: bool = Field(
+        description="Wording strength ceiling unchanged."
+    )
+    numeric_values_preserved: bool = Field(description="Numeric values unchanged.")
+    units_preserved: bool = Field(description="Units unchanged.")
+    qualifiers_preserved: bool = Field(description="Qualifiers and limitations unchanged.")
+    passed: bool = Field(description="Whether all invariance checks hold.")
+
+
+class RevisionPatch(BaseModel):
+    """A local wording patch that must preserve fact locks and citations.
+
+    Each patch records the original span text, the patched text, the diagnostic
+    finding that motivated it, and an explicit fact-lock invariance check.
+    """
+
+    patch_id: str = Field(description="Stable patch identifier.")
+    finding_id: str | None = Field(
+        default=None, description="Diagnostic finding this patch addresses."
+    )
+    target_span_id: str = Field(description="Span the patch applies to.")
+    original_text: str = Field(description="Text before the patch.")
+    patched_text: str = Field(description="Text after the patch.")
+    issue_type: StyleIssueType = Field(description="Category of issue being fixed.")
+    reason: str = Field(description="Why the patch is suggested.")
+    fact_lock_invariance: FactLockInvariance | None = Field(
+        default=None, description="Fact-lock comparison before and after the patch."
+    )
+    applied: bool = Field(default=False, description="Whether the patch is applied.")
+    applied_at: datetime | None = Field(default=None, description="When the patch was applied.")
+    rejected: bool = Field(default=False, description="Whether the user rejected the patch.")
+    user_rewrite: str | None = Field(
+        default=None, description="User-provided alternative to the suggested patch."
+    )
+
+
+class UserFeedbackTarget(StrEnum):
+    """Routing target for user feedback on an expression draft."""
+
+    CURRENT_VERSION = "current_version"
+    CANDIDATE_PREFERENCE = "candidate_preference"
+    LEARNING_RECORD = "learning_record"
+    FACT_REVIEW = "fact_review"
+
+
+class UserFeedback(BaseModel):
+    """A single piece of user feedback with explicit routing.
+
+    Feedback is first applied to the current artifact; only stable, authorized
+    signals are routed to long-term preference or learning record. Factual
+    corrections always go to fact review and never become style preferences.
+    """
+
+    feedback_id: str = Field(description="Stable feedback identifier.")
+    draft_id: str = Field(description="Draft the feedback relates to.")
+    target: UserFeedbackTarget = Field(description="Where the feedback is routed.")
+    message: str = Field(description="User-facing feedback text.")
+    referenced_span_id: str | None = Field(
+        default=None, description="Span the feedback refers to, if any."
+    )
+    referenced_claim_id: str | None = Field(
+        default=None, description="Claim the feedback refers to, if any."
+    )
+    creates_candidate_preference: bool = Field(
+        default=False,
+        description="Whether this feedback may form a candidate preference.",
+    )
+    created_at: datetime = Field(default_factory=datetime.now, description="Timestamp.")
+
+
+class StyleDiagnosticRequest(BaseModel):
+    """Request to run the Chinese expression diagnostic on a draft."""
+
+    draft_id: str = Field(description="Draft to diagnose.")
+    project_id: str | None = Field(default=None, description="Project scope if any.")
+
+
+class StyleDiagnosticResult(BaseModel):
+    """Result of running the Chinese expression diagnostic."""
+
+    draft: ExpressionDraft = Field(description="Draft with diagnostic report attached.")
+    report: StyleDiagnosticReport = Field(description="Diagnostic report.")
+    gate: ExpressionGateResult | None = Field(
+        default=None, description="Re-evaluated gate result after diagnostic."
+    )
+
+
+class ApplyRevisionPatchRequest(BaseModel):
+    """Request to accept, reject or rewrite a revision patch."""
+
+    action: PatchAction = Field(description="User action.")
+    rewrite_text: str | None = Field(
+        default=None, description="User rewrite when action is REWRITE."
+    )
+
+
+class ApplyRevisionPatchResult(BaseModel):
+    """Result of applying a revision patch."""
+
+    patch_id: str = Field(description="Patch identifier.")
+    draft: ExpressionDraft = Field(description="Draft after the action.")
+    invariance: FactLockInvariance = Field(description="Invariance evidence.")
+
+
+class SubmitExpressionFeedbackRequest(BaseModel):
+    """Request to submit user feedback for an expression draft."""
+
+    target: UserFeedbackTarget = Field(description="Routing target.")
+    message: str = Field(description="Feedback text.")
+    referenced_span_id: str | None = Field(default=None)
+    referenced_claim_id: str | None = Field(default=None)
+
+
+class SubmitExpressionFeedbackResult(BaseModel):
+    """Result of submitting user feedback."""
+
+    feedback_id: str = Field(description="Feedback identifier.")
+    draft: ExpressionDraft = Field(description="Draft with feedback logged.")
+    routed_to: UserFeedbackTarget = Field(description="Confirmed routing target.")
+
+
 class ExpressionDraft(BaseModel):
     """A fact-lock-bound expression draft."""
 
@@ -540,6 +793,31 @@ class ExpressionDraft(BaseModel):
         default=None,
         description="Genre-rule compliance review report (T026/T027).",
     )
+    # T028: style policy, diagnostic report and revision patch state.
+    style_policy: StylePolicy | None = Field(
+        default=None,
+        description="Style policy synthesized for this draft.",
+    )
+    style_diagnostic_report: StyleDiagnosticReport | None = Field(
+        default=None,
+        description="Chinese expression diagnostic report.",
+    )
+    pending_patches: list[RevisionPatch] = Field(
+        default_factory=list,
+        description="Suggested revision patches awaiting user decision.",
+    )
+    applied_patches: list[RevisionPatch] = Field(
+        default_factory=list,
+        description="Revision patches that have been applied to this draft.",
+    )
+    rejected_patches: list[RevisionPatch] = Field(
+        default_factory=list,
+        description="Revision patches the user explicitly rejected.",
+    )
+    feedback_log: list[UserFeedback] = Field(
+        default_factory=list,
+        description="User feedback submitted for this draft and its routing.",
+    )
     created_at: datetime = Field(description="Draft creation timestamp.")
 
 
@@ -560,6 +838,9 @@ class ExpressionGateCheck(StrEnum):
     PAPER_ASSIST_ELEMENTS_PRESENT = "paper_assist_elements_present"
     AUTHOR_RESPONSIBILITY_PRESENT = "author_responsibility_present"
     PAPER_ASSIST_AUTHOR_CONFIRMATION_REQUIRED = "paper_assist_author_confirmation_required"
+    # T028: human-flavor diagnostics and revision-loop checks.
+    STYLE_DIAGNOSTIC_COMPLETE = "style_diagnostic_complete"
+    AI_DETECTOR_NOT_GATE = "ai_detector_not_gate"
 
 
 class ExpressionGateResult(BaseModel):
@@ -668,6 +949,23 @@ __all__ = [
     "ReviewFindingSeverity",
     "ReviewFinding",
     "ReviewReport",
+    # T028: style diagnostics, revision patches and feedback routing.
+    "StyleIssueType",
+    "StyleDiagnosticSeverity",
+    "StylePolicy",
+    "StyleDiagnosticFinding",
+    "StyleDiagnosticReport",
+    "PatchAction",
+    "FactLockInvariance",
+    "RevisionPatch",
+    "UserFeedbackTarget",
+    "UserFeedback",
+    "StyleDiagnosticRequest",
+    "StyleDiagnosticResult",
+    "ApplyRevisionPatchRequest",
+    "ApplyRevisionPatchResult",
+    "SubmitExpressionFeedbackRequest",
+    "SubmitExpressionFeedbackResult",
     "ExpressionDraft",
     "ExpressionGateCheck",
     "ExpressionGateResult",

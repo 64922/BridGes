@@ -5971,6 +5971,282 @@
         }
       }
     },
+    "/expression/drafts/{draft_id}/style-diagnostic": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Run Style Diagnostic",
+        "description": "Run or re-run the Chinese human-flavor diagnostic on a draft.",
+        "operationId": "run_style_diagnostic_expression_drafts__draft_id__style_diagnostic_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StyleDiagnosticRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StyleDiagnosticResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/expression/drafts/{draft_id}/patches/{patch_id}/apply": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Apply Revision Patch",
+        "description": "Accept, reject or rewrite a single revision patch.",
+        "operationId": "apply_revision_patch_expression_drafts__draft_id__patches__patch_id__apply_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "patch_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Patch Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRevisionPatchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyRevisionPatchResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/expression/drafts/{draft_id}/feedback": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Submit Expression Feedback",
+        "description": "Submit user feedback for an expression draft.\n\nFeedback is routed to the current version, a candidate preference, a learning\nrecord, or a fact review according to its content.",
+        "operationId": "submit_expression_feedback_expression_drafts__draft_id__feedback_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitExpressionFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SubmitExpressionFeedbackResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/learning/missions": {
       "post": {
         "tags": [
@@ -8650,6 +8926,57 @@
         ],
         "title": "AnswerEvaluatedState",
         "description": "Result of evaluating a single diagnostic answer."
+      },
+      "ApplyRevisionPatchRequest": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PatchAction",
+            "description": "User action."
+          },
+          "rewrite_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Text",
+            "description": "User rewrite when action is REWRITE."
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "ApplyRevisionPatchRequest",
+        "description": "Request to accept, reject or rewrite a revision patch."
+      },
+      "ApplyRevisionPatchResult": {
+        "properties": {
+          "patch_id": {
+            "type": "string",
+            "title": "Patch Id",
+            "description": "Patch identifier."
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ExpressionDraft",
+            "description": "Draft after the action."
+          },
+          "invariance": {
+            "$ref": "#/components/schemas/FactLockInvariance",
+            "description": "Invariance evidence."
+          }
+        },
+        "type": "object",
+        "required": [
+          "patch_id",
+          "draft",
+          "invariance"
+        ],
+        "title": "ApplyRevisionPatchResult",
+        "description": "Result of applying a revision patch."
       },
       "ArgumentNode": {
         "properties": {
@@ -12356,6 +12683,60 @@
             ],
             "description": "Genre-rule compliance review report (T026/T027)."
           },
+          "style_policy": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StylePolicy"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Style policy synthesized for this draft."
+          },
+          "style_diagnostic_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StyleDiagnosticReport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Chinese expression diagnostic report."
+          },
+          "pending_patches": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionPatch"
+            },
+            "type": "array",
+            "title": "Pending Patches",
+            "description": "Suggested revision patches awaiting user decision."
+          },
+          "applied_patches": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionPatch"
+            },
+            "type": "array",
+            "title": "Applied Patches",
+            "description": "Revision patches that have been applied to this draft."
+          },
+          "rejected_patches": {
+            "items": {
+              "$ref": "#/components/schemas/RevisionPatch"
+            },
+            "type": "array",
+            "title": "Rejected Patches",
+            "description": "Revision patches the user explicitly rejected."
+          },
+          "feedback_log": {
+            "items": {
+              "$ref": "#/components/schemas/UserFeedback"
+            },
+            "type": "array",
+            "title": "Feedback Log",
+            "description": "User feedback submitted for this draft and its routing."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -12506,7 +12887,9 @@
           "research_report_elements_present",
           "paper_assist_elements_present",
           "author_responsibility_present",
-          "paper_assist_author_confirmation_required"
+          "paper_assist_author_confirmation_required",
+          "style_diagnostic_complete",
+          "ai_detector_not_gate"
         ],
         "title": "ExpressionGateCheck",
         "description": "Named checks performed by the expression quality gate."
@@ -12649,6 +13032,75 @@
         ],
         "title": "FactLock",
         "description": "A single locked fact derived from a claim and its evidence.\n\nFact locks are immutable boundaries that downstream expression and\nmultimodal nodes may not cross. Each lock records the canonical value,\nallowed transformations, forbidden transformations, required qualifiers,\nand the evidence/citations that justify it."
+      },
+      "FactLockInvariance": {
+        "properties": {
+          "original_span_text": {
+            "type": "string",
+            "title": "Original Span Text",
+            "description": "Span text before the change."
+          },
+          "patched_span_text": {
+            "type": "string",
+            "title": "Patched Span Text",
+            "description": "Span text after the change."
+          },
+          "claim_ids_preserved": {
+            "type": "boolean",
+            "title": "Claim Ids Preserved",
+            "description": "Claim ids unchanged."
+          },
+          "citation_ids_preserved": {
+            "type": "boolean",
+            "title": "Citation Ids Preserved",
+            "description": "Citation ids unchanged."
+          },
+          "fact_lock_ids_preserved": {
+            "type": "boolean",
+            "title": "Fact Lock Ids Preserved",
+            "description": "Fact lock ids unchanged."
+          },
+          "wording_strength_ceiling_preserved": {
+            "type": "boolean",
+            "title": "Wording Strength Ceiling Preserved",
+            "description": "Wording strength ceiling unchanged."
+          },
+          "numeric_values_preserved": {
+            "type": "boolean",
+            "title": "Numeric Values Preserved",
+            "description": "Numeric values unchanged."
+          },
+          "units_preserved": {
+            "type": "boolean",
+            "title": "Units Preserved",
+            "description": "Units unchanged."
+          },
+          "qualifiers_preserved": {
+            "type": "boolean",
+            "title": "Qualifiers Preserved",
+            "description": "Qualifiers and limitations unchanged."
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether all invariance checks hold."
+          }
+        },
+        "type": "object",
+        "required": [
+          "original_span_text",
+          "patched_span_text",
+          "claim_ids_preserved",
+          "citation_ids_preserved",
+          "fact_lock_ids_preserved",
+          "wording_strength_ceiling_preserved",
+          "numeric_values_preserved",
+          "units_preserved",
+          "qualifiers_preserved",
+          "passed"
+        ],
+        "title": "FactLockInvariance",
+        "description": "Evidence that a patch or rewrite preserved scientific boundaries.\n\nThe comparison covers fact locks, claim ids, citation ids and the evidence-\nderived wording strength ceiling."
       },
       "FactLockSet": {
         "properties": {
@@ -14532,6 +14984,16 @@
         ],
         "title": "PaperAssistElement",
         "description": "A structural element for the paper-assist genre contract (T027).\n\nPaper-assist elements make the system's assistance scope visible: it may\nsuggest structure, language, citation checks and argument improvements, but\nmust not fabricate data, experiments or author decisions."
+      },
+      "PatchAction": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "reject",
+          "rewrite"
+        ],
+        "title": "PatchAction",
+        "description": "User decision on a single revision patch."
       },
       "PopularScienceElement": {
         "properties": {
@@ -17036,6 +17498,110 @@
         "title": "ReviewTaskType",
         "description": "Kind of review task: spaced repetition or interleaved practice."
       },
+      "RevisionPatch": {
+        "properties": {
+          "patch_id": {
+            "type": "string",
+            "title": "Patch Id",
+            "description": "Stable patch identifier."
+          },
+          "finding_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finding Id",
+            "description": "Diagnostic finding this patch addresses."
+          },
+          "target_span_id": {
+            "type": "string",
+            "title": "Target Span Id",
+            "description": "Span the patch applies to."
+          },
+          "original_text": {
+            "type": "string",
+            "title": "Original Text",
+            "description": "Text before the patch."
+          },
+          "patched_text": {
+            "type": "string",
+            "title": "Patched Text",
+            "description": "Text after the patch."
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/StyleIssueType",
+            "description": "Category of issue being fixed."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the patch is suggested."
+          },
+          "fact_lock_invariance": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactLockInvariance"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fact-lock comparison before and after the patch."
+          },
+          "applied": {
+            "type": "boolean",
+            "title": "Applied",
+            "description": "Whether the patch is applied.",
+            "default": false
+          },
+          "applied_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applied At",
+            "description": "When the patch was applied."
+          },
+          "rejected": {
+            "type": "boolean",
+            "title": "Rejected",
+            "description": "Whether the user rejected the patch.",
+            "default": false
+          },
+          "user_rewrite": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Rewrite",
+            "description": "User-provided alternative to the suggested patch."
+          }
+        },
+        "type": "object",
+        "required": [
+          "patch_id",
+          "target_span_id",
+          "original_text",
+          "patched_text",
+          "issue_type",
+          "reason"
+        ],
+        "title": "RevisionPatch",
+        "description": "A local wording patch that must preserve fact locks and citations.\n\nEach patch records the original span text, the patched text, the diagnostic\nfinding that motivated it, and an explicit fact-lock invariance check."
+      },
       "RiskTier": {
         "type": "string",
         "enum": [
@@ -18333,6 +18899,311 @@
         "title": "SourceVersionRequest",
         "description": "Request to create a new document version from a corrected source."
       },
+      "StyleDiagnosticFinding": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id",
+            "description": "Stable finding identifier."
+          },
+          "span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Id",
+            "description": "Span containing the flagged text."
+          },
+          "issue_type": {
+            "$ref": "#/components/schemas/StyleIssueType",
+            "description": "Category of expression issue."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/StyleDiagnosticSeverity",
+            "description": "Severity of the issue."
+          },
+          "original_text": {
+            "type": "string",
+            "title": "Original Text",
+            "description": "Concrete flagged text fragment."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why this fragment is flagged for the genre."
+          },
+          "suggested_patch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggested Patch",
+            "description": "Suggested wording that preserves fact locks."
+          },
+          "genre_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre Rule",
+            "description": "Genre or style rule motivating the finding."
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_id",
+          "issue_type",
+          "severity",
+          "original_text",
+          "reason"
+        ],
+        "title": "StyleDiagnosticFinding",
+        "description": "A single Chinese expression issue with a suggested local patch.\n\nFindings anchor to a concrete span and text fragment so the user can review\nthem one by one. They explain why the fragment may hurt the current genre\nand offer a non-binding patch that must still preserve fact locks."
+      },
+      "StyleDiagnosticReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "Stable report identifier."
+          },
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Draft this report diagnoses."
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/StyleDiagnosticFinding"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Diagnostic findings."
+          },
+          "ai_detector_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Detector Score",
+            "description": "Optional detector score recorded for transparency only."
+          },
+          "ai_detector_used_as_gate": {
+            "type": "boolean",
+            "title": "Ai Detector Used As Gate",
+            "description": "Always false: AI detector scores are not used as gates.",
+            "default": false
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "True when no blocking findings remain and the diagnostic is complete."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "draft_id",
+          "passed"
+        ],
+        "title": "StyleDiagnosticReport",
+        "description": "Report from the Chinese human-flavor diagnostic engine (T028).\n\nThe report lists concrete text fragments, issue types and reasons. It never\nuses an AI-detector score as a pass/fail gate."
+      },
+      "StyleDiagnosticRequest": {
+        "properties": {
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Draft to diagnose."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft_id"
+        ],
+        "title": "StyleDiagnosticRequest",
+        "description": "Request to run the Chinese expression diagnostic on a draft."
+      },
+      "StyleDiagnosticResult": {
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/ExpressionDraft",
+            "description": "Draft with diagnostic report attached."
+          },
+          "report": {
+            "$ref": "#/components/schemas/StyleDiagnosticReport",
+            "description": "Diagnostic report."
+          },
+          "gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExpressionGateResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Re-evaluated gate result after diagnostic."
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft",
+          "report"
+        ],
+        "title": "StyleDiagnosticResult",
+        "description": "Result of running the Chinese expression diagnostic."
+      },
+      "StyleDiagnosticSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "suggestion",
+          "warning",
+          "blocking"
+        ],
+        "title": "StyleDiagnosticSeverity",
+        "description": "Severity of a style diagnostic finding."
+      },
+      "StyleIssueType": {
+        "type": "string",
+        "enum": [
+          "template_pattern",
+          "translation_pattern",
+          "rhythm_issue",
+          "tone_boundary",
+          "vague_content",
+          "mechanical_argument",
+          "stiff_language",
+          "format_imbalance",
+          "conversation_residue",
+          "scientific_overreach"
+        ],
+        "title": "StyleIssueType",
+        "description": "Categories of Chinese expression issues diagnosed by T028.\n\nThese map to the six observable dimensions of human-flavored expression:\ntask truth, audience fit, argument clarity, Chinese naturalness, restraint,\nand accountability. The diagnostic engine never emits an \"AI probability\"."
+      },
+      "StylePolicy": {
+        "properties": {
+          "policy_id": {
+            "type": "string",
+            "title": "Policy Id",
+            "description": "Stable policy identifier."
+          },
+          "draft_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Draft Id",
+            "description": "Draft this policy serves."
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "Genre the policy applies to."
+          },
+          "locale": {
+            "type": "string",
+            "title": "Locale",
+            "description": "Target language and locale.",
+            "default": "zh-CN"
+          },
+          "max_sentence_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Sentence Length",
+            "description": "Suggested maximum sentence length in characters."
+          },
+          "preferred_term_style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preferred Term Style",
+            "description": "Term familiarity level for this audience."
+          },
+          "forbidden_phrases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Forbidden Phrases",
+            "description": "Phrases explicitly forbidden by genre or project rules."
+          },
+          "required_qualifier_style": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required Qualifier Style",
+            "description": "How uncertainty and limitations must be expressed."
+          },
+          "personalization_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personalization Note",
+            "description": "How the memory slice may influence presentation."
+          }
+        },
+        "type": "object",
+        "required": [
+          "policy_id",
+          "genre"
+        ],
+        "title": "StylePolicy",
+        "description": "Style policy synthesized for a single expression task.\n\nThe policy constrains wording without changing fact locks. It is built from\nthe genre contract, project vocabulary, public rules and the authorized\nmemory slice."
+      },
       "SubjectContext": {
         "properties": {
           "account_id": {
@@ -18370,6 +19241,73 @@
         ],
         "title": "SubjectContext",
         "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret."
+      },
+      "SubmitExpressionFeedbackRequest": {
+        "properties": {
+          "target": {
+            "$ref": "#/components/schemas/UserFeedbackTarget",
+            "description": "Routing target."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Feedback text."
+          },
+          "referenced_span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referenced Span Id"
+          },
+          "referenced_claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referenced Claim Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target",
+          "message"
+        ],
+        "title": "SubmitExpressionFeedbackRequest",
+        "description": "Request to submit user feedback for an expression draft."
+      },
+      "SubmitExpressionFeedbackResult": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id",
+            "description": "Feedback identifier."
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ExpressionDraft",
+            "description": "Draft with feedback logged."
+          },
+          "routed_to": {
+            "$ref": "#/components/schemas/UserFeedbackTarget",
+            "description": "Confirmed routing target."
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "draft",
+          "routed_to"
+        ],
+        "title": "SubmitExpressionFeedbackResult",
+        "description": "Result of submitting user feedback."
       },
       "TeachingPlan": {
         "properties": {
@@ -18642,6 +19580,85 @@
         ],
         "title": "UnusedSliceItem",
         "description": "One active assertion that was not included in the slice, with a reason."
+      },
+      "UserFeedback": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id",
+            "description": "Stable feedback identifier."
+          },
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Draft the feedback relates to."
+          },
+          "target": {
+            "$ref": "#/components/schemas/UserFeedbackTarget",
+            "description": "Where the feedback is routed."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "User-facing feedback text."
+          },
+          "referenced_span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referenced Span Id",
+            "description": "Span the feedback refers to, if any."
+          },
+          "referenced_claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referenced Claim Id",
+            "description": "Claim the feedback refers to, if any."
+          },
+          "creates_candidate_preference": {
+            "type": "boolean",
+            "title": "Creates Candidate Preference",
+            "description": "Whether this feedback may form a candidate preference.",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "draft_id",
+          "target",
+          "message"
+        ],
+        "title": "UserFeedback",
+        "description": "A single piece of user feedback with explicit routing.\n\nFeedback is first applied to the current artifact; only stable, authorized\nsignals are routed to long-term preference or learning record. Factual\ncorrections always go to fact review and never become style preferences."
+      },
+      "UserFeedbackTarget": {
+        "type": "string",
+        "enum": [
+          "current_version",
+          "candidate_preference",
+          "learning_record",
+          "fact_review"
+        ],
+        "title": "UserFeedbackTarget",
+        "description": "Routing target for user feedback on an expression draft."
       },
       "ValidationError": {
         "properties": {

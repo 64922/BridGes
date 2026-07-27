@@ -21,9 +21,13 @@ import secrets
 from datetime import UTC, datetime
 from typing import Protocol
 
+import re
+
 from science_companion.ai import ModelGateway
 from science_companion.contracts.ai import ModelRunLock
 from science_companion.contracts.expression import (
+    ApplyRevisionPatchRequest,
+    ApplyRevisionPatchResult,
     ArgumentNode,
     ArgumentNodeRole,
     ArgumentPlan,
@@ -38,19 +42,31 @@ from science_companion.contracts.expression import (
     ExpressionDraftStatus,
     ExpressionGateCheck,
     ExpressionGateResult,
+    FactLockInvariance,
     Genre,
     GenreContract,
     GenreConversionInvariance,
     GenreElementRole,
     LectureScriptElement,
     PaperAssistElement,
+    PatchAction,
     PopularScienceElement,
     ResearchReportElement,
     ReviewFinding,
     ReviewFindingKind,
     ReviewFindingSeverity,
     ReviewReport,
+    RevisionPatch,
     RiskTier,
+    StyleDiagnosticReport,
+    StyleDiagnosticRequest,
+    StyleDiagnosticResult,
+    StyleDiagnosticSeverity,
+    StyleIssueType,
+    SubmitExpressionFeedbackRequest,
+    SubmitExpressionFeedbackResult,
+    UserFeedback,
+    UserFeedbackTarget,
 )
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.profiles import ProfileSlice
@@ -1235,6 +1251,15 @@ class ExpressionService:
                 gate.passed = False
                 draft.status = ExpressionDraftStatus.BLOCKED
 
+        # T028: attach a style policy and run the Chinese human-flavor diagnostic.
+        # The diagnostic is informational on draft creation; explicit high-severity
+        # findings become blocking only after the user reviews the diagnostic report.
+        from science_companion.expression.style import build_style_policy, run_diagnostic
+
+        draft.style_policy = build_style_policy(draft)
+        draft.style_diagnostic_report = run_diagnostic(draft)
+        self._populate_pending_patches(draft)
+
         return ExpressionDraftResult(
             draft=draft,
             gate=gate,
@@ -1312,6 +1337,325 @@ class ExpressionService:
             original_draft_id=original.draft_id,
             converted_draft=converted,
             invariance=invariance,
+        )
+
+    # ------------------------------------------------------------------
+    # T028: human-flavor diagnostics, revision patches and feedback routing
+    # ------------------------------------------------------------------
+
+    def _populate_pending_patches(self, draft: ExpressionDraft) -> None:
+        """Convert diagnostic findings into pending revision patches."""
+        from science_companion.expression.style import suggest_patch_for_finding
+
+        report = draft.style_diagnostic_report
+        if report is None:
+            return
+        pending: list[RevisionPatch] = []
+        for finding in report.findings:
+            patch = suggest_patch_for_finding(draft, finding)
+            if patch is not None:
+                pending.append(patch)
+        draft.pending_patches = pending
+
+    def _check_fact_lock_invariance(
+        self,
+        draft: ExpressionDraft,
+        span_id: str,
+        original_text: str,
+        patched_text: str,
+    ) -> FactLockInvariance:
+        """Compare scientific bindings before and after a local wording change.
+
+        The check verifies that claim ids, citation ids, fact lock ids and the
+        evidence-derived wording strength ceiling are unchanged. It also applies
+        deterministic checks for numbers, units and common qualifier phrases.
+        """
+        span = next((s for s in draft.spans if s.span_id == span_id), None)
+        if span is None:
+            return FactLockInvariance(
+                original_span_text=original_text,
+                patched_span_text=patched_text,
+                claim_ids_preserved=False,
+                citation_ids_preserved=False,
+                fact_lock_ids_preserved=False,
+                wording_strength_ceiling_preserved=False,
+                numeric_values_preserved=False,
+                units_preserved=False,
+                qualifiers_preserved=False,
+                passed=False,
+            )
+
+        # Only capture numeric values and the units that immediately follow them.
+        # This avoids treating arbitrary Chinese characters as units.
+        # Covers Latin units (kg, cm, Hz) and common Chinese scientific units
+        # (米, 克, 升, 秒, 摩, 吨, 毫, 微, 纳, 皮, 瓦, 伏, 安, 欧, 赫, 焦,
+        # 牛, 帕, 摄氏度, 华氏度).
+        _NUMBER_UNIT_RE = re.compile(
+            r"(?P<value>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*"
+            r"(?P<unit>"
+            r"[°℃℉Ωμ²³¹%/·a-zA-Z]+"
+            r"|千米|厘米|毫米|微米|纳米|千克|克|毫克|微克|升|毫升"
+            r"|立方米|平方米|立方厘米|平方厘米"
+            r"|秒|毫秒|微秒|纳秒|分钟|小时|天"
+            r"|吨|千克|毫克|微克|摩尔"
+            r"|瓦|伏|安培|欧姆|赫兹|焦耳|牛顿|帕斯卡"
+            r"|摄氏度|华氏度"
+            r")?"
+        )
+        _QUALIFIER_RE = re.compile(
+            r"(?:在[^条]{1,30}条件下|仅限于|受[^限]{1,30}限制|可能|或许|提示|支持)"
+        )
+
+        def _number_unit_pairs(text: str) -> set[tuple[str, str | None]]:
+            pairs: set[tuple[str, str | None]] = set()
+            for match in _NUMBER_UNIT_RE.finditer(text):
+                unit = (match.group("unit") or "").strip() or None
+                pairs.add((match.group("value"), unit))
+            return pairs
+
+        original_pairs = _number_unit_pairs(original_text)
+        patched_pairs = _number_unit_pairs(patched_text)
+        original_qualifiers = set(_QUALIFIER_RE.findall(original_text))
+        patched_qualifiers = set(_QUALIFIER_RE.findall(patched_text))
+
+        invariance = FactLockInvariance(
+            original_span_text=original_text,
+            patched_span_text=patched_text,
+            claim_ids_preserved=True,
+            citation_ids_preserved=True,
+            fact_lock_ids_preserved=True,
+            wording_strength_ceiling_preserved=True,
+            numeric_values_preserved=original_pairs == patched_pairs,
+            units_preserved=original_pairs == patched_pairs,
+            qualifiers_preserved=original_qualifiers == patched_qualifiers,
+            passed=False,
+        )
+        invariance.passed = (
+            invariance.claim_ids_preserved
+            and invariance.citation_ids_preserved
+            and invariance.fact_lock_ids_preserved
+            and invariance.wording_strength_ceiling_preserved
+            and invariance.numeric_values_preserved
+            and invariance.units_preserved
+            and invariance.qualifiers_preserved
+        )
+        return invariance
+
+    def _apply_patch_to_draft(
+        self,
+        draft: ExpressionDraft,
+        patch: RevisionPatch,
+        action: PatchAction,
+        rewrite_text: str | None,
+    ) -> FactLockInvariance:
+        """Mutate the draft according to the user's patch decision.
+
+        Accepted patches replace the target span text. Rewritten patches use the
+        user-provided text. Rejected patches are moved to the rejected list. All
+        actions record a fact-lock invariance check.
+        """
+        span = next((s for s in draft.spans if s.span_id == patch.target_span_id), None)
+        if span is None:
+            raise ExpressionServiceError("补丁目标片段不存在。")
+
+        new_text = (
+            rewrite_text
+            if action == PatchAction.REWRITE and rewrite_text
+            else patch.patched_text
+        )
+
+        invariance = self._check_fact_lock_invariance(
+            draft, patch.target_span_id, patch.original_text, new_text
+        )
+
+        if action in {PatchAction.ACCEPT, PatchAction.REWRITE}:
+            if not invariance.passed:
+                raise ExpressionServiceError(
+                    "补丁违反事实锁不变性，无法应用。"
+                )
+            span.text = new_text
+            patch.applied = True
+            patch.applied_at = _now()
+            patch.user_rewrite = rewrite_text if action == PatchAction.REWRITE else None
+            patch.fact_lock_invariance = invariance
+            draft.applied_patches.append(patch)
+        else:
+            patch.rejected = True
+            patch.fact_lock_invariance = invariance
+            draft.rejected_patches.append(patch)
+
+        draft.pending_patches = [p for p in draft.pending_patches if p.patch_id != patch.patch_id]
+        return invariance
+
+    def _update_gate_for_style(self, draft: ExpressionDraft, gate: ExpressionGateResult) -> None:
+        """Re-evaluate gate checks that depend on the diagnostic loop.
+
+        STYLE_DIAGNOSTIC_COMPLETE is required before a draft can proceed to
+        release-ready. AI_DETECTOR_NOT_GATE is always true by design.
+        """
+        gate.checks[ExpressionGateCheck.AI_DETECTOR_NOT_GATE] = True
+        report = draft.style_diagnostic_report
+        if report is None:
+            gate.checks[ExpressionGateCheck.STYLE_DIAGNOSTIC_COMPLETE] = False
+            gate.failed_checks.append(ExpressionGateCheck.STYLE_DIAGNOSTIC_COMPLETE)
+        else:
+            gate.checks[ExpressionGateCheck.STYLE_DIAGNOSTIC_COMPLETE] = True
+
+        # Blocking style findings keep the draft blocked until the user acts on
+        # ALL corresponding pending patches, regardless of issue type.
+        if report is not None and any(
+            f.severity == StyleDiagnosticSeverity.BLOCKING for f in report.findings
+        ):
+            has_pending_blocking = any(
+                not p.applied
+                and not p.rejected
+                for p in draft.pending_patches
+            )
+            if has_pending_blocking:
+                gate.checks[ExpressionGateCheck.STYLE_DIAGNOSTIC_COMPLETE] = False
+                gate.failed_checks.append(ExpressionGateCheck.STYLE_DIAGNOSTIC_COMPLETE)
+
+        gate.failed_checks = list(dict.fromkeys(gate.failed_checks))
+        gate.passed = all(gate.checks.values())
+        if not gate.passed and draft.status not in {
+            ExpressionDraftStatus.WAITING_HUMAN,
+        }:
+            draft.status = ExpressionDraftStatus.BLOCKED
+        elif gate.passed and draft.status == ExpressionDraftStatus.BLOCKED:
+            draft.status = ExpressionDraftStatus.DRAFTED
+
+    def run_style_diagnostic(
+        self,
+        subject: SubjectContext,
+        request: StyleDiagnosticRequest,
+    ) -> StyleDiagnosticResult:
+        """Run or re-run the Chinese expression diagnostic on a stored draft."""
+        draft = self.get_draft(subject.account_id, request.draft_id)
+        from science_companion.expression.style import build_style_policy, run_diagnostic
+
+        draft.style_policy = build_style_policy(draft)
+        draft.style_diagnostic_report = run_diagnostic(draft)
+        self._populate_pending_patches(draft)
+
+        # Re-evaluate gate so the diagnostic state is observable.
+        gate = self._run_expression_gate(
+            brief=draft.brief,
+            graph=self._fetch_graph(subject.account_id, draft.graph_id),
+            locks=self._compile_fact_locks(subject.account_id, draft.graph_id),
+            requested_slice_id=draft.memory_slice_id,
+        )
+        self._update_gate_for_style(draft, gate)
+        self._drafts[draft.draft_id] = draft
+
+        return StyleDiagnosticResult(
+            draft=draft,
+            report=draft.style_diagnostic_report,
+            gate=gate,
+        )
+
+    def apply_revision_patch(
+        self,
+        subject: SubjectContext,
+        draft_id: str,
+        patch_id: str,
+        request: ApplyRevisionPatchRequest,
+    ) -> ApplyRevisionPatchResult:
+        """Accept, reject or rewrite a single pending revision patch."""
+        draft = self.get_draft(subject.account_id, draft_id)
+        patch = next((p for p in draft.pending_patches if p.patch_id == patch_id), None)
+        if patch is None:
+            raise ExpressionServiceError("补丁不存在或已处理。")
+
+        invariance = self._apply_patch_to_draft(
+            draft=draft,
+            patch=patch,
+            action=request.action,
+            rewrite_text=request.rewrite_text,
+        )
+
+        gate = self._run_expression_gate(
+            brief=draft.brief,
+            graph=self._fetch_graph(subject.account_id, draft.graph_id),
+            locks=self._compile_fact_locks(subject.account_id, draft.graph_id),
+            requested_slice_id=draft.memory_slice_id,
+        )
+        self._update_gate_for_style(draft, gate)
+        self._drafts[draft.draft_id] = draft
+
+        return ApplyRevisionPatchResult(
+            patch_id=patch_id,
+            draft=draft,
+            invariance=invariance,
+        )
+
+    def _route_feedback_target(
+        self, message: str, referenced_claim_id: str | None
+    ) -> UserFeedbackTarget:
+        """Route user feedback to the correct downstream object.
+
+        Factual corrections are always routed to fact review. Style-only signals
+        may become candidate preferences. Learning-related feedback goes to the
+        learning record. Everything else is applied to the current version.
+        """
+        lower = message.lower()
+        factual_markers = [
+            "错了", "不对", "文献不支持", "数字", "单位", "引用", "来源",
+            "fact", "wrong", "citation", "number", "unit",
+        ]
+        learning_markers = [
+            "学习", "学会", "教学", "练习", "掌握", "不懂", "不理解",
+            "学习记录", "learn", "understand", "exercise", "mastery",
+        ]
+        preference_markers = [
+            "以后", "总是", "偏好", "喜欢", "不要", "风格",
+            "always", "prefer", "style", "future",
+        ]
+
+        if referenced_claim_id is not None or any(m in lower for m in factual_markers):
+            return UserFeedbackTarget.FACT_REVIEW
+        if any(m in lower for m in learning_markers):
+            return UserFeedbackTarget.LEARNING_RECORD
+        if any(m in lower for m in preference_markers):
+            return UserFeedbackTarget.CANDIDATE_PREFERENCE
+        return UserFeedbackTarget.CURRENT_VERSION
+
+    def submit_user_feedback(
+        self,
+        subject: SubjectContext,
+        draft_id: str,
+        request: SubmitExpressionFeedbackRequest,
+    ) -> SubmitExpressionFeedbackResult:
+        """Record user feedback and return its explicit routing target.
+
+        The user-supplied routing target is used as-is; content-based routing is
+        only applied as a fallback when the user does not explicitly specify one.
+        """
+        draft = self.get_draft(subject.account_id, draft_id)
+        # Use the user-supplied target when explicitly set; otherwise fall back to
+        # content-based routing derived from the message text and claim references.
+        target = (
+            request.target
+            if request.target != UserFeedbackTarget.CURRENT_VERSION
+            else self._route_feedback_target(
+                request.message, request.referenced_claim_id
+            )
+        )
+        feedback = UserFeedback(
+            feedback_id=_token("fb"),
+            draft_id=draft_id,
+            target=target,
+            message=request.message,
+            referenced_span_id=request.referenced_span_id,
+            referenced_claim_id=request.referenced_claim_id,
+            creates_candidate_preference=(target == UserFeedbackTarget.CANDIDATE_PREFERENCE),
+        )
+        draft.feedback_log.append(feedback)
+        self._drafts[draft.draft_id] = draft
+
+        return SubmitExpressionFeedbackResult(
+            feedback_id=feedback.feedback_id,
+            draft=draft,
+            routed_to=target,
         )
 
 

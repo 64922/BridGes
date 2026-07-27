@@ -15,12 +15,17 @@ import pytest
 from fastapi.testclient import TestClient
 
 from science_companion.contracts.expression import (
+    ApplyRevisionPatchRequest,
     ExpressionBrief,
     ExpressionDraftRequest,
     ExpressionDraftStatus,
     ExpressionGateCheck,
     Genre,
+    PatchAction,
     RiskTier,
+    StyleDiagnosticRequest,
+    SubmitExpressionFeedbackRequest,
+    UserFeedbackTarget,
 )
 from science_companion.contracts.science import MediaType
 
@@ -155,3 +160,102 @@ class TestExpressionDraftAPI:
         assert data["draft"]["status"] == ExpressionDraftStatus.BLOCKED.value
         assert data["gate"]["passed"] is False
         assert ExpressionGateCheck.BRIEF_COMPLETE.value in data["gate"]["failed_checks"]
+
+
+class TestExpressionStyleDiagnosticAPI:
+    def test_style_diagnostic_endpoint_returns_report(
+        self, expression_client: tuple[TestClient, str, str]
+    ) -> None:
+        client, _account_id, graph_id = expression_client
+
+        brief = ExpressionBrief(
+            brief_id="brief-style-api",
+            task_goal="向非专业读者解释线粒体功能",
+            deliverable_type="科普文案",
+            genre=Genre.POPULAR_SCIENCE,
+            channel="公众号",
+            risk_tier=RiskTier.LOW,
+            required_claim_ids=[],
+            success_criteria=["每个核心判断有引用"],
+        )
+        request = ExpressionDraftRequest(brief=brief, graph_id=graph_id)
+        create_response = client.post(
+            "/expression/drafts", json=request.model_dump(mode="json")
+        )
+        assert create_response.status_code == 201
+        draft_id = create_response.json()["draft"]["draft_id"]
+
+        diag_response = client.post(
+            f"/expression/drafts/{draft_id}/style-diagnostic",
+            json=StyleDiagnosticRequest(draft_id=draft_id).model_dump(mode="json"),
+        )
+        assert diag_response.status_code == 200
+        data = diag_response.json()
+        assert data["report"]["draft_id"] == draft_id
+        assert data["report"]["ai_detector_used_as_gate"] is False
+        assert "findings" in data["report"]
+
+    def test_feedback_endpoint_routes_factual_correction(
+        self, expression_client: tuple[TestClient, str, str]
+    ) -> None:
+        client, _account_id, graph_id = expression_client
+
+        brief = ExpressionBrief(
+            brief_id="brief-feedback-api",
+            task_goal="解释线粒体功能",
+            deliverable_type="科普文案",
+            genre=Genre.POPULAR_SCIENCE,
+            channel="公众号",
+            risk_tier=RiskTier.LOW,
+            required_claim_ids=[],
+            success_criteria=["每个核心判断有引用"],
+        )
+        request = ExpressionDraftRequest(brief=brief, graph_id=graph_id)
+        create_response = client.post(
+            "/expression/drafts", json=request.model_dump(mode="json")
+        )
+        assert create_response.status_code == 201
+        draft_id = create_response.json()["draft"]["draft_id"]
+
+        feedback_response = client.post(
+            f"/expression/drafts/{draft_id}/feedback",
+            json=SubmitExpressionFeedbackRequest(
+                target=UserFeedbackTarget.CURRENT_VERSION,
+                message="这个数字不对，文献不支持。",
+            ).model_dump(mode="json"),
+        )
+        assert feedback_response.status_code == 200
+        data = feedback_response.json()
+        assert data["routed_to"] == UserFeedbackTarget.FACT_REVIEW.value
+        assert data["feedback_id"]
+
+    def test_apply_patch_endpoint_requires_auth_and_existing_patch(
+        self, expression_client: tuple[TestClient, str, str]
+    ) -> None:
+        client, _account_id, graph_id = expression_client
+
+        brief = ExpressionBrief(
+            brief_id="brief-patch-api",
+            task_goal="解释线粒体功能",
+            deliverable_type="科普文案",
+            genre=Genre.POPULAR_SCIENCE,
+            channel="公众号",
+            risk_tier=RiskTier.LOW,
+            required_claim_ids=[],
+            success_criteria=["每个核心判断有引用"],
+        )
+        request = ExpressionDraftRequest(brief=brief, graph_id=graph_id)
+        create_response = client.post(
+            "/expression/drafts", json=request.model_dump(mode="json")
+        )
+        assert create_response.status_code == 201
+        draft_id = create_response.json()["draft"]["draft_id"]
+
+        # Applying a non-existent patch returns 404/422, not 200.
+        apply_response = client.post(
+            f"/expression/drafts/{draft_id}/patches/patch-does-not-exist/apply",
+            json=ApplyRevisionPatchRequest(action=PatchAction.ACCEPT).model_dump(
+                mode="json"
+            ),
+        )
+        assert apply_response.status_code in {404, 422}
