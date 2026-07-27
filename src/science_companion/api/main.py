@@ -17,6 +17,7 @@ from science_companion.api import (
     vault,
     workflows,
 )
+from science_companion.api.media import router as media_router
 from science_companion.config import get_settings
 from science_companion.contracts.ai import (
     CapabilityKind,
@@ -40,6 +41,7 @@ from science_companion.learning import (
     TeachingService,
 )
 from science_companion.learning.api import router as learning_router
+from science_companion.media import MediaIngestionService, build_media_impact_resolver
 from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
 from science_companion.profiles.api import router as profiles_router
@@ -394,6 +396,17 @@ def create_app() -> FastAPI:
         "claim_graph", ClaimGraphRevalidationHandler(claim_evidence_service)
     )
 
+    # T030: attach the media ingestion service and register its impact resolver so
+    # media asset invalidation propagates to index, cache and runs.
+    media_ingestion_service = MediaIngestionService(
+        scope_enforcer=app.state.scope_enforcer,
+        invalidation_service=invalidation_service,
+    )
+    invalidation_service.register_impact_resolver(
+        "media_asset", build_media_impact_resolver(media_ingestion_service)
+    )
+    app.state.media_ingestion_service = media_ingestion_service
+
     # T025/T029: attach the expression service. It consumes claim graphs and fact
     # locks from T016, memory slices from T019, records model run locks from T009,
     # and uses the workflow service and invalidation service for release gating.
@@ -437,6 +450,7 @@ def create_app() -> FastAPI:
     app.include_router(evaluation.router)
     app.include_router(science.router)
     app.include_router(expression.router)
+    app.include_router(media_router)
     app.include_router(learning_router)
 
     @app.get("/health/live", response_model=HealthProjection)

@@ -32,10 +32,17 @@ class SourceKind(str, Enum):
 
 
 class MediaType(str, Enum):
-    """Media type of an imported document."""
+    """Media type of an imported document or asset."""
 
     TEXT_PLAIN = "text/plain"
     APPLICATION_PDF = "application/pdf"
+    IMAGE_PNG = "image/png"
+    IMAGE_JPEG = "image/jpeg"
+    IMAGE_SVG = "image/svg+xml"
+    IMAGE_WEBP = "image/webp"
+    APPLICATION_X_LATEX = "application/x-latex"
+    TEXT_CSV = "text/csv"
+    APPLICATION_X_TEX = "application/x-tex"
 
 
 class LifecycleStatus(str, Enum):
