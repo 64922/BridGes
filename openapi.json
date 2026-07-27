@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Science Companion API",
-    "description": "\u957f\u671f\u79d1\u5b66\u5b66\u4e60\u4e0e\u8868\u8fbe\u4f19\u4f34 API",
+    "description": "长期科学学习与表达伙伴 API",
     "version": "0.1.0"
   },
   "paths": {
@@ -2114,6 +2114,496 @@
         }
       }
     },
+    "/projects/{project_id}/runs/{run_id}/evaluations": {
+      "post": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Create Evaluation Run",
+        "description": "Create an evaluation run from a completed project task run.",
+        "operationId": "create_evaluation_run_projects__project_id__runs__run_id__evaluations_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvaluationCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/evaluations/{evaluation_run_id}/replay": {
+      "post": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Replay Evaluation Run",
+        "description": "Replay an evaluation run lock and produce a new result bundle.",
+        "operationId": "replay_evaluation_run_projects__project_id__evaluations__evaluation_run_id__replay_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResultBundle"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/evaluations/{evaluation_run_id}": {
+      "get": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Get Evaluation Run",
+        "description": "Return the evaluation-center projection for an evaluation run.",
+        "operationId": "get_evaluation_run_projects__project_id__evaluations__evaluation_run_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationRunProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/evaluations/{evaluation_run_id}/bundles/{bundle_id}": {
+      "get": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Get Result Bundle",
+        "description": "Return a single evaluation result bundle.",
+        "operationId": "get_result_bundle_projects__project_id__evaluations__evaluation_run_id__bundles__bundle_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "evaluation_run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Evaluation Run Id"
+            }
+          },
+          {
+            "name": "bundle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bundle Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationResultBundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/projects/{project_id}/evaluations/diff": {
+      "post": {
+        "tags": [
+          "evaluation"
+        ],
+        "summary": "Compare Evaluation Bundles",
+        "description": "Compare two result bundles from the same evaluation run lock.",
+        "operationId": "compare_evaluation_bundles_projects__project_id__evaluations_diff_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/_DiffRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationDiffProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvaluationErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -2792,6 +3282,714 @@
         ],
         "title": "DeviceUnavailableState",
         "description": "Legal wait state when the authoritative device is not available.\n\nThe system returns this instead of silently uploading full text from another\nsource or falling back to a stale replica."
+      },
+      "EvaluationCreateRequest": {
+        "properties": {
+          "suite_id": {
+            "type": "string",
+            "title": "Suite Id",
+            "description": "Suite identifier for the evaluation."
+          },
+          "suite_version": {
+            "type": "string",
+            "title": "Suite Version",
+            "description": "Suite version."
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id",
+            "description": "Case identifier; null evaluates the whole suite snapshot."
+          },
+          "runtime_identifier": {
+            "type": "string",
+            "title": "Runtime Identifier",
+            "description": "Runtime carrier used to produce the lock.",
+            "default": "conda-agent"
+          },
+          "random_seed": {
+            "type": "integer",
+            "title": "Random Seed",
+            "description": "Random seed for replay.",
+            "default": 42
+          },
+          "execution_count": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Execution Count",
+            "description": "Executions per replay.",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "suite_id",
+          "suite_version"
+        ],
+        "title": "EvaluationCreateRequest",
+        "description": "Request to create an evaluation run from a completed project task run."
+      },
+      "EvaluationDiffEntry": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "Differing field path."
+          },
+          "value_a": {
+            "title": "Value A",
+            "description": "Value in bundle A."
+          },
+          "value_b": {
+            "title": "Value B",
+            "description": "Value in bundle B."
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "Diff kind: changed, added_a, added_b, removed_a, removed_b."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "value_a",
+          "value_b",
+          "kind"
+        ],
+        "title": "EvaluationDiffEntry",
+        "description": "One field difference between two evaluation result bundles."
+      },
+      "EvaluationDiffProjection": {
+        "properties": {
+          "evaluation_run_id_a": {
+            "type": "string",
+            "title": "Evaluation Run Id A",
+            "description": "Evaluation run A identifier."
+          },
+          "evaluation_run_id_b": {
+            "type": "string",
+            "title": "Evaluation Run Id B",
+            "description": "Evaluation run B identifier."
+          },
+          "bundle_id_a": {
+            "type": "string",
+            "title": "Bundle Id A",
+            "description": "Bundle A identifier."
+          },
+          "bundle_id_b": {
+            "type": "string",
+            "title": "Bundle Id B",
+            "description": "Bundle B identifier."
+          },
+          "lock_match": {
+            "type": "boolean",
+            "title": "Lock Match",
+            "description": "True when both bundles share the same evaluation run lock."
+          },
+          "input_diffs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDiffEntry"
+            },
+            "type": "array",
+            "title": "Input Diffs",
+            "description": "Differences in frozen inputs."
+          },
+          "lock_diffs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDiffEntry"
+            },
+            "type": "array",
+            "title": "Lock Diffs",
+            "description": "Differences in evaluation run locks."
+          },
+          "result_diffs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDiffEntry"
+            },
+            "type": "array",
+            "title": "Result Diffs",
+            "description": "Differences in outputs, status and metrics."
+          },
+          "failure_diffs": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationDiffEntry"
+            },
+            "type": "array",
+            "title": "Failure Diffs",
+            "description": "Differences in failure category and reason."
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluation_run_id_a",
+          "evaluation_run_id_b",
+          "bundle_id_a",
+          "bundle_id_b",
+          "lock_match"
+        ],
+        "title": "EvaluationDiffProjection",
+        "description": "Comparison of two evaluation result bundles in the evaluation center."
+      },
+      "EvaluationErrorResponse": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "EvaluationErrorResponse",
+        "description": "Uniform evaluation error response."
+      },
+      "EvaluationFailureCategory": {
+        "type": "string",
+        "enum": [
+          "none",
+          "data",
+          "retrieval",
+          "scientific_judgment",
+          "citation",
+          "calibration",
+          "pedagogy",
+          "profile",
+          "memory",
+          "expression",
+          "multimodal",
+          "accessibility",
+          "security",
+          "authorization",
+          "orchestration",
+          "tool",
+          "infrastructure",
+          "cost",
+          "judge"
+        ],
+        "title": "EvaluationFailureCategory",
+        "description": "High-level failure classification for an evaluation result."
+      },
+      "EvaluationMetric": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Metric name."
+          },
+          "value": {
+            "type": "number",
+            "title": "Value",
+            "description": "Metric value."
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit",
+            "description": "Metric unit."
+          },
+          "slice_tag": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slice Tag",
+            "description": "Risk slice or subgroup tag, e.g. high_risk, novice."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "value"
+        ],
+        "title": "EvaluationMetric",
+        "description": "A single derived metric in a result bundle."
+      },
+      "EvaluationResultBundle": {
+        "properties": {
+          "bundle_id": {
+            "type": "string",
+            "title": "Bundle Id",
+            "description": "Stable result bundle identifier."
+          },
+          "lock_id": {
+            "type": "string",
+            "title": "Lock Id",
+            "description": "Evaluation run lock that produced this bundle."
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id",
+            "description": "Source project task run identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that owns the bundle."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the bundle is scoped."
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuiteRef",
+            "description": "Suite and case being evaluated."
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvaluationRunStatus",
+            "description": "Final status of the evaluation run."
+          },
+          "frozen_inputs": {
+            "$ref": "#/components/schemas/WorkOrder",
+            "description": "Inputs frozen by the lock."
+          },
+          "run_projection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Task-stage projection produced by replay, if any."
+          },
+          "outputs": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Outputs",
+            "description": "Structured outputs produced by the replayed run."
+          },
+          "state_trajectory": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "State Trajectory",
+            "description": "Ordered run-status values observed during replay."
+          },
+          "typed_artifact_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Typed Artifact Refs",
+            "description": "References to typed artifacts produced during replay."
+          },
+          "model_tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ModelRunLock"
+            },
+            "type": "array",
+            "title": "Model Tool Calls",
+            "description": "Model/tool invocation locks observed during replay."
+          },
+          "failure_category": {
+            "$ref": "#/components/schemas/EvaluationFailureCategory",
+            "description": "High-level failure classification.",
+            "default": "none"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason",
+            "description": "Human-readable failure reason without internal details."
+          },
+          "derived_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/EvaluationMetric"
+            },
+            "type": "array",
+            "title": "Derived Metrics",
+            "description": "Derived metrics such as latency, cost, coverage."
+          },
+          "cost_latency": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Cost Latency",
+            "description": "Cost and latency metadata."
+          },
+          "logs_and_traces": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Logs And Traces",
+            "description": "Scrubbed logs and trace references; no private body."
+          },
+          "reproduction_command": {
+            "type": "string",
+            "title": "Reproduction Command",
+            "description": "Exact command that can replay this evaluation run."
+          },
+          "environment_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Environment Summary",
+            "description": "Environment summary for the runner that produced this bundle."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the bundle was produced."
+          }
+        },
+        "type": "object",
+        "required": [
+          "bundle_id",
+          "lock_id",
+          "source_run_id",
+          "account_id",
+          "project_id",
+          "suite",
+          "status",
+          "frozen_inputs",
+          "reproduction_command",
+          "created_at"
+        ],
+        "title": "EvaluationResultBundle",
+        "description": "Saved result of one evaluation execution.\n\nBundles are append-only: replaying the same lock produces a new bundle rather\nthan overwriting the old one. They never include private body, full prompts,\nsecrets or unnecessary raw model output."
+      },
+      "EvaluationRunLock": {
+        "properties": {
+          "lock_id": {
+            "type": "string",
+            "title": "Lock Id",
+            "description": "Stable evaluation run lock identifier."
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id",
+            "description": "Project task run from which this evaluation was generated."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that owns the evaluation run."
+          },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id",
+            "description": "Institution tenant if applicable."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the evaluation is scoped."
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuiteRef",
+            "description": "Suite and case being evaluated."
+          },
+          "work_order": {
+            "$ref": "#/components/schemas/WorkOrder",
+            "description": "Frozen task input."
+          },
+          "workflow_name": {
+            "type": "string",
+            "title": "Workflow Name",
+            "description": "Compiled workflow template name."
+          },
+          "workflow_version": {
+            "type": "string",
+            "title": "Workflow Version",
+            "description": "Compiled workflow template version."
+          },
+          "code_commit_or_build_digest": {
+            "type": "string",
+            "title": "Code Commit Or Build Digest",
+            "description": "Code commit hash or production build digest at lock time."
+          },
+          "runtime_identifier": {
+            "type": "string",
+            "title": "Runtime Identifier",
+            "description": "Runtime carrier: conda-agent, manual, unified-cli, docker or podman."
+          },
+          "os_hardware_summary": {
+            "type": "string",
+            "title": "Os Hardware Summary",
+            "description": "Operating system and hardware summary."
+          },
+          "database_migration_version": {
+            "type": "string",
+            "title": "Database Migration Version",
+            "description": "Database migration version at lock time."
+          },
+          "config_digest": {
+            "type": "string",
+            "title": "Config Digest",
+            "description": "Deterministic digest of relevant configuration."
+          },
+          "random_seed": {
+            "type": "integer",
+            "title": "Random Seed",
+            "description": "Random seed used for stochastic operations."
+          },
+          "dataset_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Dataset Versions",
+            "description": "Dataset name -> version digest."
+          },
+          "domain_pack_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Domain Pack Versions",
+            "description": "Domain pack name -> version."
+          },
+          "model_run_locks": {
+            "items": {
+              "$ref": "#/components/schemas/ModelRunLock"
+            },
+            "type": "array",
+            "title": "Model Run Locks",
+            "description": "Immutable model invocation locks captured from the source run."
+          },
+          "prompt_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Prompt Versions",
+            "description": "Capability name -> prompt/template version."
+          },
+          "schema_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Schema Versions",
+            "description": "Schema name -> version used during the run."
+          },
+          "tool_adapter_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Tool Adapter Versions",
+            "description": "Tool capability name -> adapter version."
+          },
+          "judge_versions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Judge Versions",
+            "description": "Judge/referee name -> version."
+          },
+          "execution_count": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Execution Count",
+            "description": "How many times the case should be executed for this run.",
+            "default": 1
+          },
+          "network_cache_policy": {
+            "type": "string",
+            "title": "Network Cache Policy",
+            "description": "Network/cache policy: frozen, warm, or online.",
+            "default": "frozen"
+          },
+          "time_baseline": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Time Baseline",
+            "description": "Reference timestamp for the lock."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the lock was created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lock_id",
+          "source_run_id",
+          "account_id",
+          "project_id",
+          "suite",
+          "work_order",
+          "workflow_name",
+          "workflow_version",
+          "code_commit_or_build_digest",
+          "runtime_identifier",
+          "os_hardware_summary",
+          "database_migration_version",
+          "config_digest",
+          "random_seed",
+          "time_baseline",
+          "created_at"
+        ],
+        "title": "EvaluationRunLock",
+        "description": "Immutable snapshot of everything needed to replay an evaluation run.\n\nThe lock freezes the task input, code/environment identifier, model locks,\nschema versions, workflow version and other reproducibility metadata so that\nthe same evaluation can be re-executed on any supported runtime carrier."
+      },
+      "EvaluationRunProjection": {
+        "properties": {
+          "evaluation_run_id": {
+            "type": "string",
+            "title": "Evaluation Run Id",
+            "description": "Same as the lock identifier."
+          },
+          "source_run_id": {
+            "type": "string",
+            "title": "Source Run Id",
+            "description": "Source project task run identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that owns the evaluation run."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project within which the evaluation is scoped."
+          },
+          "suite": {
+            "$ref": "#/components/schemas/EvaluationSuiteRef",
+            "description": "Suite and case being evaluated."
+          },
+          "status": {
+            "$ref": "#/components/schemas/EvaluationRunStatus",
+            "description": "Current status of the evaluation run."
+          },
+          "lock": {
+            "$ref": "#/components/schemas/EvaluationRunLock",
+            "description": "Immutable replay lock."
+          },
+          "bundle_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bundle Ids",
+            "description": "Result bundles produced from this lock, in creation order."
+          },
+          "latest_bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Bundle Id",
+            "description": "Most recently produced bundle identifier."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the evaluation run was created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "evaluation_run_id",
+          "source_run_id",
+          "account_id",
+          "project_id",
+          "suite",
+          "status",
+          "lock",
+          "created_at"
+        ],
+        "title": "EvaluationRunProjection",
+        "description": "Task-stage / evaluation-center projection of one evaluation run."
+      },
+      "EvaluationRunStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "succeeded",
+          "failed"
+        ],
+        "title": "EvaluationRunStatus",
+        "description": "Lifecycle status of an evaluation run."
+      },
+      "EvaluationSuiteRef": {
+        "properties": {
+          "suite_id": {
+            "type": "string",
+            "title": "Suite Id",
+            "description": "Stable suite identifier."
+          },
+          "suite_version": {
+            "type": "string",
+            "title": "Suite Version",
+            "description": "Suite semantic version."
+          },
+          "case_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Case Id",
+            "description": "Case identifier within the suite; null for the whole suite."
+          }
+        },
+        "type": "object",
+        "required": [
+          "suite_id",
+          "suite_version"
+        ],
+        "title": "EvaluationSuiteRef",
+        "description": "Pointer to a registered evaluation suite and case."
       },
       "HTTPValidationError": {
         "properties": {
@@ -4533,7 +5731,7 @@
           "confirmed": {
             "type": "boolean",
             "title": "Confirmed",
-            "description": "Must be true to leave the draft state \u2014 omitting this field is rejected so that accidental confirmation cannot happen."
+            "description": "Must be true to leave the draft state — omitting this field is rejected so that accidental confirmation cannot happen."
           }
         },
         "type": "object",
@@ -4599,6 +5797,27 @@
         ],
         "title": "_CancelRequest",
         "description": "Request body for cancelling a run."
+      },
+      "_DiffRequest": {
+        "properties": {
+          "bundle_id_a": {
+            "type": "string",
+            "title": "Bundle Id A",
+            "description": "First bundle identifier."
+          },
+          "bundle_id_b": {
+            "type": "string",
+            "title": "Bundle Id B",
+            "description": "Second bundle identifier."
+          }
+        },
+        "type": "object",
+        "required": [
+          "bundle_id_a",
+          "bundle_id_b"
+        ],
+        "title": "_DiffRequest",
+        "description": "Request body to compare two evaluation result bundles."
       },
       "_TodoResolveRequest": {
         "properties": {

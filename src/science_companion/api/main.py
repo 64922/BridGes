@@ -7,9 +7,10 @@ from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
 from science_companion.ai import CapabilityRegistry, ModelGateway, StubQwenAdapter
-from science_companion.api import auth, projects, scope, vault, workflows
+from science_companion.api import auth, evaluation, projects, scope, vault, workflows
 from science_companion.config import get_settings
 from science_companion.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus, FallbackPolicy, RetryPolicy
+from science_companion.evaluation import EvaluationService
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.health.probe import build_health_projection
@@ -240,11 +241,16 @@ def create_app() -> FastAPI:
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service
 
+    # T012: attach the in-memory evaluation service and routes.
+    evaluation_service = EvaluationService(workflow_service=workflow_service)
+    app.state.evaluation_service = evaluation_service
+
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
     app.include_router(workflows.router)
     app.include_router(scope.router)
+    app.include_router(evaluation.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

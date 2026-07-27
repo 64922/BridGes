@@ -510,6 +510,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/projects/{project_id}/runs/{run_id}/evaluations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Evaluation Run
+         * @description Create an evaluation run from a completed project task run.
+         */
+        post: operations["create_evaluation_run_projects__project_id__runs__run_id__evaluations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/evaluations/{evaluation_run_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replay Evaluation Run
+         * @description Replay an evaluation run lock and produce a new result bundle.
+         */
+        post: operations["replay_evaluation_run_projects__project_id__evaluations__evaluation_run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/evaluations/{evaluation_run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Evaluation Run
+         * @description Return the evaluation-center projection for an evaluation run.
+         */
+        get: operations["get_evaluation_run_projects__project_id__evaluations__evaluation_run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/evaluations/{evaluation_run_id}/bundles/{bundle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Result Bundle
+         * @description Return a single evaluation result bundle.
+         */
+        get: operations["get_result_bundle_projects__project_id__evaluations__evaluation_run_id__bundles__bundle_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects/{project_id}/evaluations/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Compare Evaluation Bundles
+         * @description Compare two result bundles from the same evaluation run lock.
+         */
+        post: operations["compare_evaluation_bundles_projects__project_id__evaluations_diff_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -749,7 +849,7 @@ export interface components {
          * @description How the current subject authenticated.
          * @enum {string}
          */
-        AuthMethod: "password" | "recovery" | "oidc";
+        AuthMethod: "password" | "recovery" | "oidc" | "service";
         /**
          * AuthResponse
          * @description Response to a successful authentication operation.
@@ -983,6 +1083,514 @@ export interface components {
              * @description If known, the earliest time the device may be reachable again.
              */
             can_retry_at?: string | null;
+        };
+        /**
+         * EvaluationCreateRequest
+         * @description Request to create an evaluation run from a completed project task run.
+         */
+        EvaluationCreateRequest: {
+            /**
+             * Suite Id
+             * @description Suite identifier for the evaluation.
+             */
+            suite_id: string;
+            /**
+             * Suite Version
+             * @description Suite version.
+             */
+            suite_version: string;
+            /**
+             * Case Id
+             * @description Case identifier; null evaluates the whole suite snapshot.
+             */
+            case_id?: string | null;
+            /**
+             * Runtime Identifier
+             * @description Runtime carrier used to produce the lock.
+             * @default conda-agent
+             */
+            runtime_identifier: string;
+            /**
+             * Random Seed
+             * @description Random seed for replay.
+             * @default 42
+             */
+            random_seed: number;
+            /**
+             * Execution Count
+             * @description Executions per replay.
+             * @default 1
+             */
+            execution_count: number;
+        };
+        /**
+         * EvaluationDiffEntry
+         * @description One field difference between two evaluation result bundles.
+         */
+        EvaluationDiffEntry: {
+            /**
+             * Field
+             * @description Differing field path.
+             */
+            field: string;
+            /**
+             * Value A
+             * @description Value in bundle A.
+             */
+            value_a: unknown;
+            /**
+             * Value B
+             * @description Value in bundle B.
+             */
+            value_b: unknown;
+            /**
+             * Kind
+             * @description Diff kind: changed, added_a, added_b, removed_a, removed_b.
+             */
+            kind: string;
+        };
+        /**
+         * EvaluationDiffProjection
+         * @description Comparison of two evaluation result bundles in the evaluation center.
+         */
+        EvaluationDiffProjection: {
+            /**
+             * Evaluation Run Id A
+             * @description Evaluation run A identifier.
+             */
+            evaluation_run_id_a: string;
+            /**
+             * Evaluation Run Id B
+             * @description Evaluation run B identifier.
+             */
+            evaluation_run_id_b: string;
+            /**
+             * Bundle Id A
+             * @description Bundle A identifier.
+             */
+            bundle_id_a: string;
+            /**
+             * Bundle Id B
+             * @description Bundle B identifier.
+             */
+            bundle_id_b: string;
+            /**
+             * Lock Match
+             * @description True when both bundles share the same evaluation run lock.
+             */
+            lock_match: boolean;
+            /**
+             * Input Diffs
+             * @description Differences in frozen inputs.
+             */
+            input_diffs?: components["schemas"]["EvaluationDiffEntry"][];
+            /**
+             * Lock Diffs
+             * @description Differences in evaluation run locks.
+             */
+            lock_diffs?: components["schemas"]["EvaluationDiffEntry"][];
+            /**
+             * Result Diffs
+             * @description Differences in outputs, status and metrics.
+             */
+            result_diffs?: components["schemas"]["EvaluationDiffEntry"][];
+            /**
+             * Failure Diffs
+             * @description Differences in failure category and reason.
+             */
+            failure_diffs?: components["schemas"]["EvaluationDiffEntry"][];
+        };
+        /**
+         * EvaluationErrorResponse
+         * @description Uniform evaluation error response.
+         */
+        EvaluationErrorResponse: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * EvaluationFailureCategory
+         * @description High-level failure classification for an evaluation result.
+         * @enum {string}
+         */
+        EvaluationFailureCategory: "none" | "data" | "retrieval" | "scientific_judgment" | "citation" | "calibration" | "pedagogy" | "profile" | "memory" | "expression" | "multimodal" | "accessibility" | "security" | "authorization" | "orchestration" | "tool" | "infrastructure" | "cost" | "judge";
+        /**
+         * EvaluationMetric
+         * @description A single derived metric in a result bundle.
+         */
+        EvaluationMetric: {
+            /**
+             * Name
+             * @description Metric name.
+             */
+            name: string;
+            /**
+             * Value
+             * @description Metric value.
+             */
+            value: number;
+            /**
+             * Unit
+             * @description Metric unit.
+             */
+            unit?: string | null;
+            /**
+             * Slice Tag
+             * @description Risk slice or subgroup tag, e.g. high_risk, novice.
+             */
+            slice_tag?: string | null;
+        };
+        /**
+         * EvaluationResultBundle
+         * @description Saved result of one evaluation execution.
+         *
+         *     Bundles are append-only: replaying the same lock produces a new bundle rather
+         *     than overwriting the old one. They never include private body, full prompts,
+         *     secrets or unnecessary raw model output.
+         */
+        EvaluationResultBundle: {
+            /**
+             * Bundle Id
+             * @description Stable result bundle identifier.
+             */
+            bundle_id: string;
+            /**
+             * Lock Id
+             * @description Evaluation run lock that produced this bundle.
+             */
+            lock_id: string;
+            /**
+             * Source Run Id
+             * @description Source project task run identifier.
+             */
+            source_run_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the bundle.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project within which the bundle is scoped.
+             */
+            project_id: string;
+            /** @description Suite and case being evaluated. */
+            suite: components["schemas"]["EvaluationSuiteRef"];
+            /** @description Final status of the evaluation run. */
+            status: components["schemas"]["EvaluationRunStatus"];
+            /** @description Inputs frozen by the lock. */
+            frozen_inputs: components["schemas"]["WorkOrder"];
+            /** @description Task-stage projection produced by replay, if any. */
+            run_projection?: components["schemas"]["RunProjection"] | null;
+            /**
+             * Outputs
+             * @description Structured outputs produced by the replayed run.
+             */
+            outputs?: {
+                [key: string]: unknown;
+            };
+            /**
+             * State Trajectory
+             * @description Ordered run-status values observed during replay.
+             */
+            state_trajectory?: string[];
+            /**
+             * Typed Artifact Refs
+             * @description References to typed artifacts produced during replay.
+             */
+            typed_artifact_refs?: string[];
+            /**
+             * Model Tool Calls
+             * @description Model/tool invocation locks observed during replay.
+             */
+            model_tool_calls?: components["schemas"]["ModelRunLock"][];
+            /**
+             * @description High-level failure classification.
+             * @default none
+             */
+            failure_category: components["schemas"]["EvaluationFailureCategory"];
+            /**
+             * Failure Reason
+             * @description Human-readable failure reason without internal details.
+             */
+            failure_reason?: string | null;
+            /**
+             * Derived Metrics
+             * @description Derived metrics such as latency, cost, coverage.
+             */
+            derived_metrics?: components["schemas"]["EvaluationMetric"][];
+            /**
+             * Cost Latency
+             * @description Cost and latency metadata.
+             */
+            cost_latency?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Logs And Traces
+             * @description Scrubbed logs and trace references; no private body.
+             */
+            logs_and_traces?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reproduction Command
+             * @description Exact command that can replay this evaluation run.
+             */
+            reproduction_command: string;
+            /**
+             * Environment Summary
+             * @description Environment summary for the runner that produced this bundle.
+             */
+            environment_summary?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the bundle was produced.
+             */
+            created_at: string;
+        };
+        /**
+         * EvaluationRunLock
+         * @description Immutable snapshot of everything needed to replay an evaluation run.
+         *
+         *     The lock freezes the task input, code/environment identifier, model locks,
+         *     schema versions, workflow version and other reproducibility metadata so that
+         *     the same evaluation can be re-executed on any supported runtime carrier.
+         */
+        EvaluationRunLock: {
+            /**
+             * Lock Id
+             * @description Stable evaluation run lock identifier.
+             */
+            lock_id: string;
+            /**
+             * Source Run Id
+             * @description Project task run from which this evaluation was generated.
+             */
+            source_run_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the evaluation run.
+             */
+            account_id: string;
+            /**
+             * Tenant Id
+             * @description Institution tenant if applicable.
+             */
+            tenant_id?: string | null;
+            /**
+             * Project Id
+             * @description Project within which the evaluation is scoped.
+             */
+            project_id: string;
+            /** @description Suite and case being evaluated. */
+            suite: components["schemas"]["EvaluationSuiteRef"];
+            /** @description Frozen task input. */
+            work_order: components["schemas"]["WorkOrder"];
+            /**
+             * Workflow Name
+             * @description Compiled workflow template name.
+             */
+            workflow_name: string;
+            /**
+             * Workflow Version
+             * @description Compiled workflow template version.
+             */
+            workflow_version: string;
+            /**
+             * Code Commit Or Build Digest
+             * @description Code commit hash or production build digest at lock time.
+             */
+            code_commit_or_build_digest: string;
+            /**
+             * Runtime Identifier
+             * @description Runtime carrier: conda-agent, manual, unified-cli, docker or podman.
+             */
+            runtime_identifier: string;
+            /**
+             * Os Hardware Summary
+             * @description Operating system and hardware summary.
+             */
+            os_hardware_summary: string;
+            /**
+             * Database Migration Version
+             * @description Database migration version at lock time.
+             */
+            database_migration_version: string;
+            /**
+             * Config Digest
+             * @description Deterministic digest of relevant configuration.
+             */
+            config_digest: string;
+            /**
+             * Random Seed
+             * @description Random seed used for stochastic operations.
+             */
+            random_seed: number;
+            /**
+             * Dataset Versions
+             * @description Dataset name -> version digest.
+             */
+            dataset_versions?: {
+                [key: string]: string | undefined;
+            };
+            /**
+             * Domain Pack Versions
+             * @description Domain pack name -> version.
+             */
+            domain_pack_versions?: {
+                [key: string]: string | undefined;
+            };
+            /**
+             * Model Run Locks
+             * @description Immutable model invocation locks captured from the source run.
+             */
+            model_run_locks?: components["schemas"]["ModelRunLock"][];
+            /**
+             * Prompt Versions
+             * @description Capability name -> prompt/template version.
+             */
+            prompt_versions?: {
+                [key: string]: string | undefined;
+            };
+            /**
+             * Schema Versions
+             * @description Schema name -> version used during the run.
+             */
+            schema_versions?: {
+                [key: string]: string | undefined;
+            };
+            /**
+             * Tool Adapter Versions
+             * @description Tool capability name -> adapter version.
+             */
+            tool_adapter_versions?: {
+                [key: string]: string | undefined;
+            };
+            /**
+             * Judge Versions
+             * @description Judge/referee name -> version.
+             */
+            judge_versions?: {
+                [key: string]: string | undefined;
+            };
+            /**
+             * Execution Count
+             * @description How many times the case should be executed for this run.
+             * @default 1
+             */
+            execution_count: number;
+            /**
+             * Network Cache Policy
+             * @description Network/cache policy: frozen, warm, or online.
+             * @default frozen
+             */
+            network_cache_policy: string;
+            /**
+             * Time Baseline
+             * Format: date-time
+             * @description Reference timestamp for the lock.
+             */
+            time_baseline: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the lock was created.
+             */
+            created_at: string;
+        };
+        /**
+         * EvaluationRunProjection
+         * @description Task-stage / evaluation-center projection of one evaluation run.
+         */
+        EvaluationRunProjection: {
+            /**
+             * Evaluation Run Id
+             * @description Same as the lock identifier.
+             */
+            evaluation_run_id: string;
+            /**
+             * Source Run Id
+             * @description Source project task run identifier.
+             */
+            source_run_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the evaluation run.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project within which the evaluation is scoped.
+             */
+            project_id: string;
+            /** @description Suite and case being evaluated. */
+            suite: components["schemas"]["EvaluationSuiteRef"];
+            /** @description Current status of the evaluation run. */
+            status: components["schemas"]["EvaluationRunStatus"];
+            /** @description Immutable replay lock. */
+            lock: components["schemas"]["EvaluationRunLock"];
+            /**
+             * Bundle Ids
+             * @description Result bundles produced from this lock, in creation order.
+             */
+            bundle_ids?: string[];
+            /**
+             * Latest Bundle Id
+             * @description Most recently produced bundle identifier.
+             */
+            latest_bundle_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the evaluation run was created.
+             */
+            created_at: string;
+        };
+        /**
+         * EvaluationRunStatus
+         * @description Lifecycle status of an evaluation run.
+         * @enum {string}
+         */
+        EvaluationRunStatus: "pending" | "running" | "succeeded" | "failed";
+        /**
+         * EvaluationSuiteRef
+         * @description Pointer to a registered evaluation suite and case.
+         */
+        EvaluationSuiteRef: {
+            /**
+             * Suite Id
+             * @description Stable suite identifier.
+             */
+            suite_id: string;
+            /**
+             * Suite Version
+             * @description Suite semantic version.
+             */
+            suite_version: string;
+            /**
+             * Case Id
+             * @description Case identifier within the suite; null for the whole suite.
+             */
+            case_id?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2198,6 +2806,22 @@ export interface components {
             reason: string;
         };
         /**
+         * _DiffRequest
+         * @description Request body to compare two evaluation result bundles.
+         */
+        _DiffRequest: {
+            /**
+             * Bundle Id A
+             * @description First bundle identifier.
+             */
+            bundle_id_a: string;
+            /**
+             * Bundle Id B
+             * @description Second bundle identifier.
+             */
+            bundle_id_b: string;
+        };
+        /**
          * _TodoResolveRequest
          * @description Request body for resolving a human todo.
          */
@@ -2359,7 +2983,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: string;
+                        [key: string]: string | undefined;
                     };
                 };
             };
@@ -3589,6 +4213,301 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    create_evaluation_run_projects__project_id__runs__run_id__evaluations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EvaluationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+        };
+    };
+    replay_evaluation_run_projects__project_id__evaluations__evaluation_run_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                evaluation_run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationResultBundle"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+        };
+    };
+    get_evaluation_run_projects__project_id__evaluations__evaluation_run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                evaluation_run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationRunProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_result_bundle_projects__project_id__evaluations__evaluation_run_id__bundles__bundle_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                evaluation_run_id: string;
+                bundle_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationResultBundle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compare_evaluation_bundles_projects__project_id__evaluations_diff_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["_DiffRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationDiffProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
         };
