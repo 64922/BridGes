@@ -2123,7 +2123,7 @@ export interface components {
          * @description Role of a node in the argument plan.
          * @enum {string}
          */
-        ArgumentNodeRole: "question" | "claim" | "evidence" | "explanation" | "example" | "limitation" | "prerequisite" | "counterpoint" | "transition" | "action";
+        ArgumentNodeRole: "question" | "claim" | "evidence" | "explanation" | "example" | "limitation" | "prerequisite" | "counterpoint" | "transition" | "action" | "analysis" | "interpretation";
         /**
          * ArgumentPlan
          * @description Ordered plan that structures the draft before wording is chosen.
@@ -2211,6 +2211,55 @@ export interface components {
              * @description Opaque session token (one-time exposure).
              */
             session_token: string;
+        };
+        /**
+         * AuthorResponsibilityStatement
+         * @description Author responsibility declaration attached to paper-assist drafts (T027).
+         *
+         *     The statement records that the AI tool is an assistant, not an author, and
+         *     that the human author remains responsible for data accuracy, citation
+         *     integrity, disclosure and final submission decisions.
+         */
+        AuthorResponsibilityStatement: {
+            /**
+             * Statement Id
+             * @description Stable statement identifier.
+             */
+            statement_id: string;
+            /**
+             * Draft Id
+             * @description Draft this statement belongs to.
+             */
+            draft_id: string;
+            /** @description Genre this statement applies to. */
+            genre: components["schemas"]["Genre"];
+            /**
+             * Responsibility Text
+             * @description Human-readable responsibility and AI-disclosure text.
+             */
+            responsibility_text: string;
+            /**
+             * Ai Disclosure Required
+             * @description Whether the target venue requires AI-use disclosure.
+             * @default true
+             */
+            ai_disclosure_required: boolean;
+            /**
+             * Author Confirm Required
+             * @description Whether the author must explicitly confirm the statement.
+             * @default true
+             */
+            author_confirm_required: boolean;
+            /**
+             * Confirmed At
+             * @description When the author confirmed the statement.
+             */
+            confirmed_at?: string | null;
+            /**
+             * Confirmed By
+             * @description Account identifier of the confirming author.
+             */
+            confirmed_by?: string | null;
         };
         /**
          * BackgroundTaskEnvelope
@@ -4219,6 +4268,12 @@ export interface components {
              * @description Memory slice bound to this expression task.
              */
             memory_slice_id?: string | null;
+            /**
+             * Requested Strength Upgrade
+             * @description Whether the user explicitly asked to strengthen wording beyond the evidence-derived ceiling.
+             * @default false
+             */
+            requested_strength_upgrade: boolean;
         };
         /**
          * ExpressionDraft
@@ -4300,7 +4355,19 @@ export interface components {
              * @description Genre-specific elements for lecture script (T026).
              */
             lecture_script_elements?: components["schemas"]["LectureScriptElement"][];
-            /** @description Genre-rule compliance review report (T026). */
+            /**
+             * Research Report Elements
+             * @description Genre-specific elements for research report (T027).
+             */
+            research_report_elements?: components["schemas"]["ResearchReportElement"][];
+            /**
+             * Paper Assist Elements
+             * @description Genre-specific elements for paper assist (T027).
+             */
+            paper_assist_elements?: components["schemas"]["PaperAssistElement"][];
+            /** @description Author responsibility statement for paper-assist drafts (T027). */
+            author_responsibility_statement?: components["schemas"]["AuthorResponsibilityStatement"] | null;
+            /** @description Genre-rule compliance review report (T026/T027). */
             review_report?: components["schemas"]["ReviewReport"] | null;
             /**
              * Created At
@@ -4378,7 +4445,7 @@ export interface components {
          * @description Named checks performed by the expression quality gate.
          * @enum {string}
          */
-        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review" | "popular_science_elements_present" | "lecture_script_elements_present";
+        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review" | "strength_escalation_human_review" | "popular_science_elements_present" | "lecture_script_elements_present" | "research_report_elements_present" | "paper_assist_elements_present" | "author_responsibility_present" | "paper_assist_author_confirmation_required";
         /**
          * ExpressionGateResult
          * @description Result of running the expression quality gate over a draft.
@@ -4536,10 +4603,12 @@ export interface components {
          *     Popular science and lecture script genres expose their required sections as
          *     first-class, auditable elements so users can verify that analogies, analogy
          *     boundaries, learning objectives and comprehension checks are present and
-         *     distinct.
+         *     distinct. Research report and paper-assist genres add observation,
+         *     analysis, interpretation, limitation, next-step and author-assistance
+         *     elements (T027).
          * @enum {string}
          */
-        GenreElementRole: "core_concept" | "analogy" | "analogy_boundary" | "action_relevance" | "learning_objective" | "prerequisite" | "comprehension_check" | "practice_pause";
+        GenreElementRole: "core_concept" | "analogy" | "analogy_boundary" | "action_relevance" | "learning_objective" | "prerequisite" | "comprehension_check" | "practice_pause" | "observation" | "analysis" | "interpretation" | "limitation" | "next_step" | "structure_suggestion" | "language_suggestion" | "citation_verification" | "argument_suggestion" | "ai_disclosure_reminder";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5608,6 +5677,54 @@ export interface components {
          * @enum {string}
          */
         ObservationStatus: "active" | "discarded";
+        /**
+         * PaperAssistElement
+         * @description A structural element for the paper-assist genre contract (T027).
+         *
+         *     Paper-assist elements make the system's assistance scope visible: it may
+         *     suggest structure, language, citation checks and argument improvements, but
+         *     must not fabricate data, experiments or author decisions.
+         */
+        PaperAssistElement: {
+            /**
+             * Element Id
+             * @description Stable element identifier.
+             */
+            element_id: string;
+            /** @description Role of this element. */
+            role: components["schemas"]["GenreElementRole"];
+            /**
+             * Span Ids
+             * @description Draft spans that realize this element.
+             */
+            span_ids?: string[];
+            /**
+             * Claim Ids
+             * @description Claims bound to this element.
+             */
+            claim_ids?: string[];
+            /**
+             * Suggestion Text
+             * @description For suggestions: concrete, non-fabricated advice.
+             */
+            suggestion_text?: string | null;
+            /**
+             * Verified
+             * @description For citation verification: whether the citation was located.
+             */
+            verified?: boolean | null;
+            /**
+             * Disclosure Text
+             * @description For AI disclosure reminders: text the author should review.
+             */
+            disclosure_text?: string | null;
+            /**
+             * Requires Author Confirm
+             * @description Whether this element requires explicit author confirmation.
+             * @default false
+             */
+            requires_author_confirm: boolean;
+        };
         /**
          * PopularScienceElement
          * @description A structural element required by the popular-science genre contract.
@@ -6743,6 +6860,58 @@ export interface components {
              * @description Why the candidate was not used.
              */
             rejection_reason: string;
+        };
+        /**
+         * ResearchReportElement
+         * @description A structural element required by the research-report genre contract (T027).
+         *
+         *     Research reports must keep observation, analysis, interpretation, limitation
+         *     and next-step distinct so peers can judge the boundary between data and
+         *     inference.
+         */
+        ResearchReportElement: {
+            /**
+             * Element Id
+             * @description Stable element identifier.
+             */
+            element_id: string;
+            /** @description Role of this element. */
+            role: components["schemas"]["GenreElementRole"];
+            /**
+             * Span Ids
+             * @description Draft spans that realize this element.
+             */
+            span_ids?: string[];
+            /**
+             * Claim Ids
+             * @description Claims bound to this element.
+             */
+            claim_ids?: string[];
+            /**
+             * Observation Data Ref
+             * @description For observations: reference to the data or result being reported.
+             */
+            observation_data_ref?: string | null;
+            /**
+             * Analysis Method
+             * @description For analyses: the method or procedure applied to the data.
+             */
+            analysis_method?: string | null;
+            /**
+             * Interpretation Scope
+             * @description For interpretations: scope within which the inference holds.
+             */
+            interpretation_scope?: string | null;
+            /**
+             * Limitation Note
+             * @description For limitations: explicit constraint on interpretation.
+             */
+            limitation_note?: string | null;
+            /**
+             * Next Step Action
+             * @description For next steps: concrete follow-up study or verification.
+             */
+            next_step_action?: string | null;
         };
         /**
          * RetrievalCandidate

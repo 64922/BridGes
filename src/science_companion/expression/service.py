@@ -27,6 +27,7 @@ from science_companion.contracts.expression import (
     ArgumentNode,
     ArgumentNodeRole,
     ArgumentPlan,
+    AuthorResponsibilityStatement,
     ConvertGenreRequest,
     ConvertGenreResult,
     DraftSpan,
@@ -42,7 +43,9 @@ from science_companion.contracts.expression import (
     GenreConversionInvariance,
     GenreElementRole,
     LectureScriptElement,
+    PaperAssistElement,
     PopularScienceElement,
+    ResearchReportElement,
     ReviewFinding,
     ReviewFindingKind,
     ReviewFindingSeverity,
@@ -56,6 +59,7 @@ from science_companion.contracts.science import (
     ClaimGraph,
     ClaimImportance,
     ClaimTrustStatus,
+    EvidenceRelation,
     FactLock,
     FactLockSet,
     FactLockType,
@@ -257,6 +261,8 @@ class _DeterministicDraftGenerator:
             ArgumentNodeRole.EXAMPLE: "（受控示例或演示）",
             ArgumentNodeRole.PREREQUISITE: "（先备知识与前置要求）",
             ArgumentNodeRole.ACTION: "（行动建议或下一步）",
+            ArgumentNodeRole.ANALYSIS: "（数据分析与方法说明）",
+            ArgumentNodeRole.INTERPRETATION: "（结果解释与推断范围）",
         }
         for node in argument_plan.nodes:
             if node.role not in node_texts:
@@ -353,7 +359,7 @@ class ExpressionService:
 
             # Surface limitations as separate limitation nodes.
             if any(
-                e.relation.value == "limits" for e in graph.evidence if e.claim_id == claim.claim_id
+                e.relation == EvidenceRelation.LIMITS for e in graph.evidence if e.claim_id == claim.claim_id
             ):
                 nodes.append(
                     ArgumentNode(
@@ -373,6 +379,8 @@ class ExpressionService:
             # T026: popular science benefits from an explicit explanation/analogy
             # node; lecture scripts benefit from a controlled example node and a
             # prerequisite node that states what learners should already know.
+            # T027: research reports separate analysis and interpretation from
+            # observation (the claim itself) and limitations.
             if brief.genre == Genre.POPULAR_SCIENCE:
                 nodes.append(
                     ArgumentNode(
@@ -381,6 +389,29 @@ class ExpressionService:
                         claim_ids=[claim.claim_id],
                         depends_on=[node.argument_node_id],
                         audience_purpose="用类比或情境解释核心概念，同时保留边界",
+                        order=order,
+                    )
+                )
+                order += 1
+            elif brief.genre == Genre.RESEARCH_REPORT:
+                nodes.append(
+                    ArgumentNode(
+                        argument_node_id=_token("node"),
+                        role=ArgumentNodeRole.ANALYSIS,
+                        claim_ids=[claim.claim_id],
+                        depends_on=[node.argument_node_id],
+                        audience_purpose="说明对观测数据采用的分析方法",
+                        order=order,
+                    )
+                )
+                order += 1
+                nodes.append(
+                    ArgumentNode(
+                        argument_node_id=_token("node"),
+                        role=ArgumentNodeRole.INTERPRETATION,
+                        claim_ids=[claim.claim_id],
+                        depends_on=[node.argument_node_id],
+                        audience_purpose="明确结果解释与推断范围",
                         order=order,
                     )
                 )
@@ -538,31 +569,49 @@ class ExpressionService:
             checks[ExpressionGateCheck.RISK_TIER_HUMAN_REVIEW] = False
             reasons.append("高风险任务在证据冲突或不足时需要人工审查。")
 
+        # T027: explicit requests to strengthen wording beyond the evidence-derived
+        # ceiling must be reviewed by a human; the system must not auto-upgrade.
+        if brief.requested_strength_upgrade:
+            checks[ExpressionGateCheck.STRENGTH_ESCALATION_HUMAN_REVIEW] = False
+            reasons.append("强度升级请求需要人工确认，系统不能自动提高措辞强度。")
+
         passed = all(checks.values())
         failed = [check for check, ok in checks.items() if not ok]
 
+        human_review_checks = {
+            ExpressionGateCheck.RISK_TIER_HUMAN_REVIEW,
+            ExpressionGateCheck.STRENGTH_ESCALATION_HUMAN_REVIEW,
+            ExpressionGateCheck.PAPER_ASSIST_AUTHOR_CONFIRMATION_REQUIRED,
+        }
         if failed:
-            if ExpressionGateCheck.RISK_TIER_HUMAN_REVIEW in failed:
+            if human_review_checks & set(failed):
                 draft_status = ExpressionDraftStatus.WAITING_HUMAN
             else:
                 draft_status = ExpressionDraftStatus.BLOCKED
         else:
             draft_status = ExpressionDraftStatus.DRAFTED
 
-        # T026: genre-specific structural elements must be present for the two
-        # genres delivered in this ticket. The check is informational when the
-        # draft is blocked for other reasons, but becomes blocking if the genre
-        # contract is known and the elements are empty after generation.
+        # T026/T027: genre-specific structural elements must be present for the
+        # genre delivered in the ticket. The check is informational when the draft
+        # is blocked for other reasons, but becomes blocking if the genre contract
+        # is known and the elements are empty after generation.
         if brief.genre == Genre.POPULAR_SCIENCE:
             checks[ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT] = True
         elif brief.genre == Genre.LECTURE_SCRIPT:
             checks[ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT] = True
+        elif brief.genre == Genre.RESEARCH_REPORT:
+            checks[ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT] = True
+        elif brief.genre == Genre.PAPER_ASSIST:
+            checks[ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT] = True
+            checks[ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT] = True
+            checks[ExpressionGateCheck.PAPER_ASSIST_AUTHOR_CONFIRMATION_REQUIRED] = False
+            reasons.append("论文辅助体裁要求作者确认责任和 AI 披露。")
 
         passed = all(checks.values())
         failed = [check for check, ok in checks.items() if not ok]
 
         if failed:
-            if ExpressionGateCheck.RISK_TIER_HUMAN_REVIEW in failed:
+            if human_review_checks & set(failed):
                 draft_status = ExpressionDraftStatus.WAITING_HUMAN
             else:
                 draft_status = ExpressionDraftStatus.BLOCKED
@@ -717,6 +766,211 @@ class ExpressionService:
 
         return elements
 
+    def _build_research_report_elements(
+        self, draft: ExpressionDraft
+    ) -> list[ResearchReportElement]:
+        """Build research-report structural elements from the draft plan and spans.
+
+        Research reports separate observation (claim/data), analysis, interpretation,
+        limitation and next-step so peers can judge where data ends and inference
+        begins.
+        """
+        elements: list[ResearchReportElement] = []
+
+        observation_span_ids: list[str] = []
+        analysis_span_ids: list[str] = []
+        interpretation_span_ids: list[str] = []
+        limitation_span_ids: list[str] = []
+        next_step_span_ids: list[str] = []
+
+        for span in draft.spans:
+            node_roles = {
+                node.role
+                for node in draft.argument_plan.nodes
+                if node.argument_node_id in span.argument_node_ids
+            }
+            if ArgumentNodeRole.CLAIM in node_roles:
+                observation_span_ids.append(span.span_id)
+            if ArgumentNodeRole.ANALYSIS in node_roles:
+                analysis_span_ids.append(span.span_id)
+            if ArgumentNodeRole.INTERPRETATION in node_roles:
+                interpretation_span_ids.append(span.span_id)
+            if ArgumentNodeRole.LIMITATION in node_roles:
+                limitation_span_ids.append(span.span_id)
+            if ArgumentNodeRole.ACTION in node_roles:
+                next_step_span_ids.append(span.span_id)
+
+        all_claim_ids = [cid for s in draft.spans for cid in s.claim_ids]
+
+        if observation_span_ids:
+            elements.append(
+                ResearchReportElement(
+                    element_id=_token("rre"),
+                    role=GenreElementRole.OBSERVATION,
+                    span_ids=observation_span_ids,
+                    claim_ids=all_claim_ids,
+                    observation_data_ref="核心结果与观测数据",
+                )
+            )
+        if analysis_span_ids:
+            elements.append(
+                ResearchReportElement(
+                    element_id=_token("rre"),
+                    role=GenreElementRole.ANALYSIS,
+                    span_ids=analysis_span_ids,
+                    claim_ids=all_claim_ids,
+                    analysis_method="对观测数据采用的分析方法",
+                )
+            )
+        if interpretation_span_ids:
+            elements.append(
+                ResearchReportElement(
+                    element_id=_token("rre"),
+                    role=GenreElementRole.INTERPRETATION,
+                    span_ids=interpretation_span_ids,
+                    claim_ids=all_claim_ids,
+                    interpretation_scope="推断在所述条件下的适用范围",
+                )
+            )
+        if limitation_span_ids:
+            elements.append(
+                ResearchReportElement(
+                    element_id=_token("rre"),
+                    role=GenreElementRole.LIMITATION,
+                    span_ids=limitation_span_ids,
+                    claim_ids=all_claim_ids,
+                    limitation_note="关键限制与不确定性",
+                )
+            )
+        if next_step_span_ids:
+            elements.append(
+                ResearchReportElement(
+                    element_id=_token("rre"),
+                    role=GenreElementRole.NEXT_STEP,
+                    span_ids=next_step_span_ids,
+                    claim_ids=all_claim_ids,
+                    next_step_action="后续验证或研究步骤",
+                )
+            )
+
+        return elements
+
+    def _build_paper_assist_elements(
+        self, draft: ExpressionDraft
+    ) -> list[PaperAssistElement]:
+        """Build paper-assist structural elements from the draft plan and spans.
+
+        Paper-assist only supports structure, language, citation verification and
+        argument suggestions. The elements make that scope explicit and never
+        invent data, experiments or author decisions.
+        """
+        elements: list[PaperAssistElement] = []
+        all_claim_ids = [cid for s in draft.spans for cid in s.claim_ids]
+
+        structure_span_ids: list[str] = []
+        language_span_ids: list[str] = []
+        citation_span_ids: list[str] = []
+        argument_span_ids: list[str] = []
+        disclosure_span_ids: list[str] = []
+
+        for span in draft.spans:
+            node_roles = {
+                node.role
+                for node in draft.argument_plan.nodes
+                if node.argument_node_id in span.argument_node_ids
+            }
+            if ArgumentNodeRole.QUESTION in node_roles:
+                structure_span_ids.append(span.span_id)
+            if ArgumentNodeRole.LIMITATION in node_roles:
+                language_span_ids.append(span.span_id)
+            if ArgumentNodeRole.CLAIM in node_roles:
+                citation_span_ids.append(span.span_id)
+                argument_span_ids.append(span.span_id)
+            if ArgumentNodeRole.ACTION in node_roles:
+                structure_span_ids.append(span.span_id)
+                disclosure_span_ids.append(span.span_id)
+
+        if structure_span_ids:
+            elements.append(
+                PaperAssistElement(
+                    element_id=_token("pae"),
+                    role=GenreElementRole.STRUCTURE_SUGGESTION,
+                    span_ids=structure_span_ids,
+                    claim_ids=all_claim_ids,
+                    suggestion_text="建议按研究问题、方法、结果、讨论组织段落。",
+                    requires_author_confirm=True,
+                )
+            )
+        if language_span_ids:
+            elements.append(
+                PaperAssistElement(
+                    element_id=_token("pae"),
+                    role=GenreElementRole.LANGUAGE_SUGGESTION,
+                    span_ids=language_span_ids,
+                    claim_ids=all_claim_ids,
+                    suggestion_text="可对限制与不确定性表述进行语言改进，但不改变事实强度。",
+                    requires_author_confirm=True,
+                )
+            )
+        if citation_span_ids:
+            elements.append(
+                PaperAssistElement(
+                    element_id=_token("pae"),
+                    role=GenreElementRole.CITATION_VERIFICATION,
+                    span_ids=citation_span_ids,
+                    claim_ids=all_claim_ids,
+                    verified=True,
+                    suggestion_text="请作者核验每条引用是否指向原始来源并格式正确。",
+                    requires_author_confirm=True,
+                )
+            )
+        if argument_span_ids:
+            elements.append(
+                PaperAssistElement(
+                    element_id=_token("pae"),
+                    role=GenreElementRole.ARGUMENT_SUGGESTION,
+                    span_ids=argument_span_ids,
+                    claim_ids=all_claim_ids,
+                    suggestion_text="论证顺序建议；作者需判断是否适合目标期刊。",
+                    requires_author_confirm=True,
+                )
+            )
+        if disclosure_span_ids:
+            elements.append(
+                PaperAssistElement(
+                    element_id=_token("pae"),
+                    role=GenreElementRole.AI_DISCLOSURE_REMINDER,
+                    span_ids=disclosure_span_ids,
+                    claim_ids=all_claim_ids,
+                    disclosure_text="请按目标期刊和机构要求披露 AI 辅助使用情况。",
+                    requires_author_confirm=True,
+                )
+            )
+
+        return elements
+
+    def _build_author_responsibility_statement(
+        self, draft: ExpressionDraft
+    ) -> AuthorResponsibilityStatement:
+        """Generate the author responsibility statement for paper-assist drafts.
+
+        The statement makes clear that the tool assists but does not author,
+        fabricate data, fabricate citations or make unverifiable professional
+        judgments.
+        """
+        return AuthorResponsibilityStatement(
+            statement_id=_token("ars"),
+            draft_id=draft.draft_id,
+            genre=Genre.PAPER_ASSIST,
+            responsibility_text=(
+                "本工具仅提供结构、语言、引用核验和论证建议，不生成数据、实验、"
+                "引用或伦理审批。作者对内容准确性、引用完整性、AI 使用披露和最终"
+                "投稿决定负全部责任。"
+            ),
+            ai_disclosure_required=True,
+            author_confirm_required=True,
+        )
+
     def _review_genre_compliance(
         self, draft: ExpressionDraft, genre_contract: GenreContract
     ) -> ReviewReport:
@@ -788,6 +1042,76 @@ class ExpressionService:
                     remediation=None if has_check else "插入理解检查或练习停顿。",
                 )
             )
+
+        if draft.research_report_elements:
+            required_roles = {
+                GenreElementRole.OBSERVATION,
+                GenreElementRole.ANALYSIS,
+                GenreElementRole.INTERPRETATION,
+                GenreElementRole.LIMITATION,
+                GenreElementRole.NEXT_STEP,
+            }
+            present_roles = {e.role for e in draft.research_report_elements}
+            missing = required_roles - present_roles
+            findings.append(
+                ReviewFinding(
+                    finding_id=_token("find"),
+                    kind=ReviewFindingKind.PRESERVED if not missing else ReviewFindingKind.MISSING,
+                    severity=(
+                        ReviewFindingSeverity.WARNING
+                        if missing
+                        else ReviewFindingSeverity.INFO
+                    ),
+                    rule="科研汇报必须分离观测、分析、解释、限制和下一步",
+                    reason="帮助同行判断数据与推断的边界。",
+                    remediation=None if not missing else "补充缺失的科研汇报要素。",
+                )
+            )
+
+        if draft.paper_assist_elements:
+            has_disclosure = any(
+                e.role == GenreElementRole.AI_DISCLOSURE_REMINDER
+                for e in draft.paper_assist_elements
+            )
+            findings.append(
+                ReviewFinding(
+                    finding_id=_token("find"),
+                    kind=(
+                        ReviewFindingKind.PRESERVED
+                        if has_disclosure
+                        else ReviewFindingKind.MISSING
+                    ),
+                    severity=(
+                        ReviewFindingSeverity.WARNING
+                        if not has_disclosure
+                        else ReviewFindingSeverity.INFO
+                    ),
+                    rule="论文辅助必须包含 AI 披露提醒",
+                    reason="作者需按规则披露 AI 使用，不能隐瞒。",
+                    remediation=None if has_disclosure else "补充 AI 使用披露提醒。",
+                )
+            )
+            if draft.author_responsibility_statement:
+                findings.append(
+                    ReviewFinding(
+                        finding_id=_token("find"),
+                        kind=ReviewFindingKind.PRESERVED,
+                        severity=ReviewFindingSeverity.INFO,
+                        rule="论文辅助必须附带作者责任声明",
+                        reason="明确 AI 不替代作者对数据和引用的责任。",
+                    )
+                )
+            else:
+                findings.append(
+                    ReviewFinding(
+                        finding_id=_token("find"),
+                        kind=ReviewFindingKind.MISSING,
+                        severity=ReviewFindingSeverity.BLOCKING,
+                        rule="论文辅助必须附带作者责任声明",
+                        reason="缺少责任声明会导致责任边界不清。",
+                        remediation="生成并保存作者责任声明。",
+                    )
+                )
 
         passed = not any(
             f.severity == ReviewFindingSeverity.BLOCKING for f in findings
@@ -867,12 +1191,20 @@ class ExpressionService:
             created_at=_now(),
         )
 
-        # T026: populate genre-specific elements and review report.
+        # T026/T027: populate genre-specific elements, author responsibility and
+        # review report.
         genre_contract = _genre_contract(brief.genre)
         if brief.genre == Genre.POPULAR_SCIENCE:
             draft.popular_science_elements = self._build_popular_science_elements(draft)
         elif brief.genre == Genre.LECTURE_SCRIPT:
             draft.lecture_script_elements = self._build_lecture_script_elements(draft)
+        elif brief.genre == Genre.RESEARCH_REPORT:
+            draft.research_report_elements = self._build_research_report_elements(draft)
+        elif brief.genre == Genre.PAPER_ASSIST:
+            draft.paper_assist_elements = self._build_paper_assist_elements(draft)
+            draft.author_responsibility_statement = (
+                self._build_author_responsibility_statement(draft)
+            )
         draft.review_report = self._review_genre_compliance(draft, genre_contract)
 
         # Re-evaluate gate now that genre-specific elements are populated.
@@ -886,6 +1218,22 @@ class ExpressionService:
             gate.failed_checks.append(ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT)
             gate.passed = False
             draft.status = ExpressionDraftStatus.BLOCKED
+        elif brief.genre == Genre.RESEARCH_REPORT and not draft.research_report_elements:
+            gate.checks[ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT] = False
+            gate.failed_checks.append(ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT)
+            gate.passed = False
+            draft.status = ExpressionDraftStatus.BLOCKED
+        elif brief.genre == Genre.PAPER_ASSIST:
+            if not draft.paper_assist_elements:
+                gate.checks[ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT] = False
+                gate.failed_checks.append(ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT)
+                gate.passed = False
+                draft.status = ExpressionDraftStatus.BLOCKED
+            if draft.author_responsibility_statement is None:
+                gate.checks[ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT] = False
+                gate.failed_checks.append(ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT)
+                gate.passed = False
+                draft.status = ExpressionDraftStatus.BLOCKED
 
         return ExpressionDraftResult(
             draft=draft,

@@ -8723,7 +8723,9 @@
           "prerequisite",
           "counterpoint",
           "transition",
-          "action"
+          "action",
+          "analysis",
+          "interpretation"
         ],
         "title": "ArgumentNodeRole",
         "description": "Role of a node in the argument plan."
@@ -8851,6 +8853,75 @@
         ],
         "title": "AuthResponse",
         "description": "Response to a successful authentication operation.\n\nThe session_token is delivered only once; callers must store it according to\ntheir client type (browser cookie managed by the API, native secure storage)."
+      },
+      "AuthorResponsibilityStatement": {
+        "properties": {
+          "statement_id": {
+            "type": "string",
+            "title": "Statement Id",
+            "description": "Stable statement identifier."
+          },
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Draft this statement belongs to."
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "Genre this statement applies to."
+          },
+          "responsibility_text": {
+            "type": "string",
+            "title": "Responsibility Text",
+            "description": "Human-readable responsibility and AI-disclosure text."
+          },
+          "ai_disclosure_required": {
+            "type": "boolean",
+            "title": "Ai Disclosure Required",
+            "description": "Whether the target venue requires AI-use disclosure.",
+            "default": true
+          },
+          "author_confirm_required": {
+            "type": "boolean",
+            "title": "Author Confirm Required",
+            "description": "Whether the author must explicitly confirm the statement.",
+            "default": true
+          },
+          "confirmed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At",
+            "description": "When the author confirmed the statement."
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By",
+            "description": "Account identifier of the confirming author."
+          }
+        },
+        "type": "object",
+        "required": [
+          "statement_id",
+          "draft_id",
+          "genre",
+          "responsibility_text"
+        ],
+        "title": "AuthorResponsibilityStatement",
+        "description": "Author responsibility declaration attached to paper-assist drafts (T027).\n\nThe statement records that the AI tool is an assistant, not an author, and\nthat the human author remains responsible for data accuracy, citation\nintegrity, disclosure and final submission decisions."
       },
       "BackgroundTaskEnvelope": {
         "properties": {
@@ -12097,6 +12168,12 @@
             ],
             "title": "Memory Slice Id",
             "description": "Memory slice bound to this expression task."
+          },
+          "requested_strength_upgrade": {
+            "type": "boolean",
+            "title": "Requested Strength Upgrade",
+            "description": "Whether the user explicitly asked to strengthen wording beyond the evidence-derived ceiling.",
+            "default": false
           }
         },
         "type": "object",
@@ -12241,6 +12318,33 @@
             "title": "Lecture Script Elements",
             "description": "Genre-specific elements for lecture script (T026)."
           },
+          "research_report_elements": {
+            "items": {
+              "$ref": "#/components/schemas/ResearchReportElement"
+            },
+            "type": "array",
+            "title": "Research Report Elements",
+            "description": "Genre-specific elements for research report (T027)."
+          },
+          "paper_assist_elements": {
+            "items": {
+              "$ref": "#/components/schemas/PaperAssistElement"
+            },
+            "type": "array",
+            "title": "Paper Assist Elements",
+            "description": "Genre-specific elements for paper assist (T027)."
+          },
+          "author_responsibility_statement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuthorResponsibilityStatement"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Author responsibility statement for paper-assist drafts (T027)."
+          },
           "review_report": {
             "anyOf": [
               {
@@ -12250,7 +12354,7 @@
                 "type": "null"
               }
             ],
-            "description": "Genre-rule compliance review report (T026)."
+            "description": "Genre-rule compliance review report (T026/T027)."
           },
           "created_at": {
             "type": "string",
@@ -12396,8 +12500,13 @@
           "genre_duty_known",
           "source_evidence_present",
           "risk_tier_human_review",
+          "strength_escalation_human_review",
           "popular_science_elements_present",
-          "lecture_script_elements_present"
+          "lecture_script_elements_present",
+          "research_report_elements_present",
+          "paper_assist_elements_present",
+          "author_responsibility_present",
+          "paper_assist_author_confirmation_required"
         ],
         "title": "ExpressionGateCheck",
         "description": "Named checks performed by the expression quality gate."
@@ -12656,10 +12765,20 @@
           "learning_objective",
           "prerequisite",
           "comprehension_check",
-          "practice_pause"
+          "practice_pause",
+          "observation",
+          "analysis",
+          "interpretation",
+          "limitation",
+          "next_step",
+          "structure_suggestion",
+          "language_suggestion",
+          "citation_verification",
+          "argument_suggestion",
+          "ai_disclosure_reminder"
         ],
         "title": "GenreElementRole",
-        "description": "Role of a genre-specific structural element within a draft.\n\nPopular science and lecture script genres expose their required sections as\nfirst-class, auditable elements so users can verify that analogies, analogy\nboundaries, learning objectives and comprehension checks are present and\ndistinct."
+        "description": "Role of a genre-specific structural element within a draft.\n\nPopular science and lecture script genres expose their required sections as\nfirst-class, auditable elements so users can verify that analogies, analogy\nboundaries, learning objectives and comprehension checks are present and\ndistinct. Research report and paper-assist genres add observation,\nanalysis, interpretation, limitation, next-step and author-assistance\nelements (T027)."
       },
       "HTTPValidationError": {
         "properties": {
@@ -14335,6 +14454,84 @@
         ],
         "title": "ObservationStatus",
         "description": "Lifecycle status of a profile observation."
+      },
+      "PaperAssistElement": {
+        "properties": {
+          "element_id": {
+            "type": "string",
+            "title": "Element Id",
+            "description": "Stable element identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/GenreElementRole",
+            "description": "Role of this element."
+          },
+          "span_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Span Ids",
+            "description": "Draft spans that realize this element."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "Claims bound to this element."
+          },
+          "suggestion_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suggestion Text",
+            "description": "For suggestions: concrete, non-fabricated advice."
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified",
+            "description": "For citation verification: whether the citation was located."
+          },
+          "disclosure_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disclosure Text",
+            "description": "For AI disclosure reminders: text the author should review."
+          },
+          "requires_author_confirm": {
+            "type": "boolean",
+            "title": "Requires Author Confirm",
+            "description": "Whether this element requires explicit author confirmation.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "element_id",
+          "role"
+        ],
+        "title": "PaperAssistElement",
+        "description": "A structural element for the paper-assist genre contract (T027).\n\nPaper-assist elements make the system's assistance scope visible: it may\nsuggest structure, language, citation checks and argument improvements, but\nmust not fabricate data, experiments or author decisions."
       },
       "PopularScienceElement": {
         "properties": {
@@ -16072,6 +16269,102 @@
         ],
         "title": "RejectedSliceItem",
         "description": "One candidate that was not promoted and therefore not used."
+      },
+      "ResearchReportElement": {
+        "properties": {
+          "element_id": {
+            "type": "string",
+            "title": "Element Id",
+            "description": "Stable element identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/GenreElementRole",
+            "description": "Role of this element."
+          },
+          "span_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Span Ids",
+            "description": "Draft spans that realize this element."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "Claims bound to this element."
+          },
+          "observation_data_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observation Data Ref",
+            "description": "For observations: reference to the data or result being reported."
+          },
+          "analysis_method": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analysis Method",
+            "description": "For analyses: the method or procedure applied to the data."
+          },
+          "interpretation_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interpretation Scope",
+            "description": "For interpretations: scope within which the inference holds."
+          },
+          "limitation_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limitation Note",
+            "description": "For limitations: explicit constraint on interpretation."
+          },
+          "next_step_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Step Action",
+            "description": "For next steps: concrete follow-up study or verification."
+          }
+        },
+        "type": "object",
+        "required": [
+          "element_id",
+          "role"
+        ],
+        "title": "ResearchReportElement",
+        "description": "A structural element required by the research-report genre contract (T027).\n\nResearch reports must keep observation, analysis, interpretation, limitation\nand next-step distinct so peers can judge the boundary between data and\ninference."
       },
       "RetrievalCandidate": {
         "properties": {

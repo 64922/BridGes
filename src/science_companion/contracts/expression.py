@@ -58,6 +58,8 @@ class ArgumentNodeRole(StrEnum):
     COUNTERPOINT = "counterpoint"
     TRANSITION = "transition"
     ACTION = "action"
+    ANALYSIS = "analysis"
+    INTERPRETATION = "interpretation"
 
 
 class GenreElementRole(StrEnum):
@@ -66,7 +68,9 @@ class GenreElementRole(StrEnum):
     Popular science and lecture script genres expose their required sections as
     first-class, auditable elements so users can verify that analogies, analogy
     boundaries, learning objectives and comprehension checks are present and
-    distinct.
+    distinct. Research report and paper-assist genres add observation,
+    analysis, interpretation, limitation, next-step and author-assistance
+    elements (T027).
     """
 
     CORE_CONCEPT = "core_concept"
@@ -77,6 +81,16 @@ class GenreElementRole(StrEnum):
     PREREQUISITE = "prerequisite"
     COMPREHENSION_CHECK = "comprehension_check"
     PRACTICE_PAUSE = "practice_pause"
+    OBSERVATION = "observation"
+    ANALYSIS = "analysis"
+    INTERPRETATION = "interpretation"
+    LIMITATION = "limitation"
+    NEXT_STEP = "next_step"
+    STRUCTURE_SUGGESTION = "structure_suggestion"
+    LANGUAGE_SUGGESTION = "language_suggestion"
+    CITATION_VERIFICATION = "citation_verification"
+    ARGUMENT_SUGGESTION = "argument_suggestion"
+    AI_DISCLOSURE_REMINDER = "ai_disclosure_reminder"
 
 
 class AudienceModel(BaseModel):
@@ -141,6 +155,13 @@ class ExpressionBrief(BaseModel):
     )
     memory_slice_id: str | None = Field(
         default=None, description="Memory slice bound to this expression task."
+    )
+    requested_strength_upgrade: bool = Field(
+        default=False,
+        description=(
+            "Whether the user explicitly asked to strengthen wording beyond the "
+            "evidence-derived ceiling."
+        ),
     )
 
 
@@ -275,6 +296,112 @@ class LectureScriptElement(BaseModel):
     )
 
 
+class ResearchReportElement(BaseModel):
+    """A structural element required by the research-report genre contract (T027).
+
+    Research reports must keep observation, analysis, interpretation, limitation
+    and next-step distinct so peers can judge the boundary between data and
+    inference.
+    """
+
+    element_id: str = Field(description="Stable element identifier.")
+    role: GenreElementRole = Field(description="Role of this element.")
+    span_ids: list[str] = Field(
+        default_factory=list,
+        description="Draft spans that realize this element.",
+    )
+    claim_ids: list[str] = Field(
+        default_factory=list,
+        description="Claims bound to this element.",
+    )
+    observation_data_ref: str | None = Field(
+        default=None,
+        description="For observations: reference to the data or result being reported.",
+    )
+    analysis_method: str | None = Field(
+        default=None,
+        description="For analyses: the method or procedure applied to the data.",
+    )
+    interpretation_scope: str | None = Field(
+        default=None,
+        description="For interpretations: scope within which the inference holds.",
+    )
+    limitation_note: str | None = Field(
+        default=None,
+        description="For limitations: explicit constraint on interpretation.",
+    )
+    next_step_action: str | None = Field(
+        default=None,
+        description="For next steps: concrete follow-up study or verification.",
+    )
+
+
+class PaperAssistElement(BaseModel):
+    """A structural element for the paper-assist genre contract (T027).
+
+    Paper-assist elements make the system's assistance scope visible: it may
+    suggest structure, language, citation checks and argument improvements, but
+    must not fabricate data, experiments or author decisions.
+    """
+
+    element_id: str = Field(description="Stable element identifier.")
+    role: GenreElementRole = Field(description="Role of this element.")
+    span_ids: list[str] = Field(
+        default_factory=list,
+        description="Draft spans that realize this element.",
+    )
+    claim_ids: list[str] = Field(
+        default_factory=list,
+        description="Claims bound to this element.",
+    )
+    suggestion_text: str | None = Field(
+        default=None,
+        description="For suggestions: concrete, non-fabricated advice.",
+    )
+    verified: bool | None = Field(
+        default=None,
+        description="For citation verification: whether the citation was located.",
+    )
+    disclosure_text: str | None = Field(
+        default=None,
+        description="For AI disclosure reminders: text the author should review.",
+    )
+    requires_author_confirm: bool = Field(
+        default=False,
+        description="Whether this element requires explicit author confirmation.",
+    )
+
+
+class AuthorResponsibilityStatement(BaseModel):
+    """Author responsibility declaration attached to paper-assist drafts (T027).
+
+    The statement records that the AI tool is an assistant, not an author, and
+    that the human author remains responsible for data accuracy, citation
+    integrity, disclosure and final submission decisions.
+    """
+
+    statement_id: str = Field(description="Stable statement identifier.")
+    draft_id: str = Field(description="Draft this statement belongs to.")
+    genre: Genre = Field(description="Genre this statement applies to.")
+    responsibility_text: str = Field(
+        description="Human-readable responsibility and AI-disclosure text."
+    )
+    ai_disclosure_required: bool = Field(
+        default=True,
+        description="Whether the target venue requires AI-use disclosure.",
+    )
+    author_confirm_required: bool = Field(
+        default=True,
+        description="Whether the author must explicitly confirm the statement.",
+    )
+    confirmed_at: datetime | None = Field(
+        default=None, description="When the author confirmed the statement."
+    )
+    confirmed_by: str | None = Field(
+        default=None, description="Account identifier of the confirming author."
+    )
+
+
 class DraftSpan(BaseModel):
     """A single text span in the expression draft.
 
@@ -397,9 +524,21 @@ class ExpressionDraft(BaseModel):
         default_factory=list,
         description="Genre-specific elements for lecture script (T026).",
     )
+    research_report_elements: list[ResearchReportElement] = Field(
+        default_factory=list,
+        description="Genre-specific elements for research report (T027).",
+    )
+    paper_assist_elements: list[PaperAssistElement] = Field(
+        default_factory=list,
+        description="Genre-specific elements for paper assist (T027).",
+    )
+    author_responsibility_statement: AuthorResponsibilityStatement | None = Field(
+        default=None,
+        description="Author responsibility statement for paper-assist drafts (T027).",
+    )
     review_report: ReviewReport | None = Field(
         default=None,
-        description="Genre-rule compliance review report (T026).",
+        description="Genre-rule compliance review report (T026/T027).",
     )
     created_at: datetime = Field(description="Draft creation timestamp.")
 
@@ -414,8 +553,13 @@ class ExpressionGateCheck(StrEnum):
     GENRE_DUTY_KNOWN = "genre_duty_known"
     SOURCE_EVIDENCE_PRESENT = "source_evidence_present"
     RISK_TIER_HUMAN_REVIEW = "risk_tier_human_review"
+    STRENGTH_ESCALATION_HUMAN_REVIEW = "strength_escalation_human_review"
     POPULAR_SCIENCE_ELEMENTS_PRESENT = "popular_science_elements_present"
     LECTURE_SCRIPT_ELEMENTS_PRESENT = "lecture_script_elements_present"
+    RESEARCH_REPORT_ELEMENTS_PRESENT = "research_report_elements_present"
+    PAPER_ASSIST_ELEMENTS_PRESENT = "paper_assist_elements_present"
+    AUTHOR_RESPONSIBILITY_PRESENT = "author_responsibility_present"
+    PAPER_ASSIST_AUTHOR_CONFIRMATION_REQUIRED = "paper_assist_author_confirmation_required"
 
 
 class ExpressionGateResult(BaseModel):
@@ -516,6 +660,9 @@ __all__ = [
     "ArgumentPlan",
     "PopularScienceElement",
     "LectureScriptElement",
+    "ResearchReportElement",
+    "PaperAssistElement",
+    "AuthorResponsibilityStatement",
     "DraftSpan",
     "ReviewFindingKind",
     "ReviewFindingSeverity",
