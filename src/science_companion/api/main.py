@@ -394,12 +394,15 @@ def create_app() -> FastAPI:
         "claim_graph", ClaimGraphRevalidationHandler(claim_evidence_service)
     )
 
-    # T025: attach the expression service. It consumes claim graphs and fact locks
-    # from T016, memory slices from T019, and records model run locks from T009.
+    # T025/T029: attach the expression service. It consumes claim graphs and fact
+    # locks from T016, memory slices from T019, records model run locks from T009,
+    # and uses the workflow service and invalidation service for release gating.
     expression_service = ExpressionService(
         claim_service=claim_evidence_service,
         profile_service=app.state.profile_service,
         model_gateway=model_gateway,
+        invalidation_service=invalidation_service,
+        workflow_service=workflow_service,
     )
     app.state.expression_service = expression_service
 

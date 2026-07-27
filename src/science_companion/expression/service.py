@@ -17,21 +17,26 @@ allowed to override fact locks or evidence-derived strength ceilings.
 
 from __future__ import annotations
 
+import re
 import secrets
 from datetime import UTC, datetime
-from typing import Protocol
-
-import re
+from typing import Any, Protocol
 
 from science_companion.ai import ModelGateway
 from science_companion.contracts.ai import ModelRunLock
 from science_companion.contracts.expression import (
     ApplyRevisionPatchRequest,
     ApplyRevisionPatchResult,
+    ApproveArtifactRequest,
+    ApproveArtifactResult,
     ArgumentNode,
     ArgumentNodeRole,
     ArgumentPlan,
+    ArtifactTrustStatus,
+    ArtifactVersion,
     AuthorResponsibilityStatement,
+    CompareVersionsRequest,
+    CompareVersionsResult,
     ConvertGenreRequest,
     ConvertGenreResult,
     DraftSpan,
@@ -47,10 +52,18 @@ from science_companion.contracts.expression import (
     GenreContract,
     GenreConversionInvariance,
     GenreElementRole,
+    HumanDecision,
+    HumanDecisionType,
     LectureScriptElement,
     PaperAssistElement,
     PatchAction,
     PopularScienceElement,
+    PublishArtifactRequest,
+    PublishArtifactResult,
+    PublishEvent,
+    ReleaseEligibilityStatus,
+    ReleaseGateCheck,
+    ReleaseGateResult,
     ResearchReportElement,
     ReviewFinding,
     ReviewFindingKind,
@@ -58,19 +71,19 @@ from science_companion.contracts.expression import (
     ReviewReport,
     RevisionPatch,
     RiskTier,
-    StyleDiagnosticReport,
     StyleDiagnosticRequest,
     StyleDiagnosticResult,
     StyleDiagnosticSeverity,
-    StyleIssueType,
     SubmitExpressionFeedbackRequest,
     SubmitExpressionFeedbackResult,
     UserFeedback,
     UserFeedbackTarget,
+    VersionDifference,
+    VersionDifferenceField,
 )
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.profiles import ProfileSlice
-from science_companion.contracts.projects import ObjectDomain
+from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
     ClaimGraph,
     ClaimImportance,
@@ -81,7 +94,7 @@ from science_companion.contracts.science import (
     FactLockType,
     ValidationReport,
 )
-from science_companion.contracts.workflows import RunContextEnvelope
+from science_companion.contracts.workflows import RunContextEnvelope, WorkflowRunStatus
 from science_companion.profiles import ProfileError, ProfileService
 from science_companion.science import ClaimEvidenceService, ScienceError
 
@@ -307,12 +320,17 @@ class ExpressionService:
         profile_service: ProfileService | None = None,
         model_gateway: ModelGateway | None = None,
         draft_generator: DraftGeneratorPort | None = None,
+        invalidation_service: Any | None = None,
+        workflow_service: Any | None = None,
     ) -> None:
         self._claim_service = claim_service
         self._profile_service = profile_service
         self._model_gateway = model_gateway
         self._draft_generator = draft_generator or _DeterministicDraftGenerator()
+        self._invalidation = invalidation_service
+        self._workflow = workflow_service
         self._drafts: dict[str, ExpressionDraft] = {}
+        self._publish_events: dict[str, PublishEvent] = {}
 
     def _fetch_graph(self, account_id: str, graph_id: str) -> ClaimGraph:
         try:
@@ -375,7 +393,9 @@ class ExpressionService:
 
             # Surface limitations as separate limitation nodes.
             if any(
-                e.relation == EvidenceRelation.LIMITS for e in graph.evidence if e.claim_id == claim.claim_id
+                e.relation == EvidenceRelation.LIMITS
+                for e in graph.evidence
+                if e.claim_id == claim.claim_id
             ):
                 nodes.append(
                     ArgumentNode(
@@ -1195,6 +1215,7 @@ class ExpressionService:
             graph_id=graph.graph_id,
             account_id=subject.account_id,
             project_id=request.project_id,
+            run_id=request.run_id,
             status=gate.draft_status,
             status_reason=gate.reason,
             argument_plan=argument_plan,
@@ -1204,6 +1225,8 @@ class ExpressionService:
             personalization_note=personalization_note,
             wording_strength_ceiling=validation_report.wording_strength_ceiling,
             model_run_lock=model_lock,
+            artifact_trust_status=ArtifactTrustStatus.DRAFT,
+            approval_decisions=[],
             created_at=_now(),
         )
 
@@ -1390,7 +1413,7 @@ class ExpressionService:
         # Covers Latin units (kg, cm, Hz) and common Chinese scientific units
         # (米, 克, 升, 秒, 摩, 吨, 毫, 微, 纳, 皮, 瓦, 伏, 安, 欧, 赫, 焦,
         # 牛, 帕, 摄氏度, 华氏度).
-        _NUMBER_UNIT_RE = re.compile(
+        _number_unit_re = re.compile(
             r"(?P<value>-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*"
             r"(?P<unit>"
             r"[°℃℉Ωμ²³¹%/·a-zA-Z]+"
@@ -1402,21 +1425,21 @@ class ExpressionService:
             r"|摄氏度|华氏度"
             r")?"
         )
-        _QUALIFIER_RE = re.compile(
+        _qualifier_re = re.compile(
             r"(?:在[^条]{1,30}条件下|仅限于|受[^限]{1,30}限制|可能|或许|提示|支持)"
         )
 
         def _number_unit_pairs(text: str) -> set[tuple[str, str | None]]:
             pairs: set[tuple[str, str | None]] = set()
-            for match in _NUMBER_UNIT_RE.finditer(text):
+            for match in _number_unit_re.finditer(text):
                 unit = (match.group("unit") or "").strip() or None
                 pairs.add((match.group("value"), unit))
             return pairs
 
         original_pairs = _number_unit_pairs(original_text)
         patched_pairs = _number_unit_pairs(patched_text)
-        original_qualifiers = set(_QUALIFIER_RE.findall(original_text))
-        patched_qualifiers = set(_QUALIFIER_RE.findall(patched_text))
+        original_qualifiers = set(_qualifier_re.findall(original_text))
+        patched_qualifiers = set(_qualifier_re.findall(patched_text))
 
         invariance = FactLockInvariance(
             original_span_text=original_text,
@@ -1656,6 +1679,478 @@ class ExpressionService:
             feedback_id=feedback.feedback_id,
             draft=draft,
             routed_to=target,
+        )
+
+    # ------------------------------------------------------------------
+    # T029: version comparison, release gate and publication
+    # ------------------------------------------------------------------
+
+    def _artifact_version(self, draft: ExpressionDraft) -> ArtifactVersion:
+        """Build a stable ArtifactVersion projection for a draft."""
+        return ArtifactVersion(
+            version_id=f"{draft.draft_id}@v1",
+            draft_id=draft.draft_id,
+            version_number=1,
+            artifact_trust_status=draft.artifact_trust_status,
+            created_at=draft.created_at,
+        )
+
+    def _graph_object_ref(self, draft: ExpressionDraft, graph: ClaimGraph) -> ObjectRef:
+        """Build the ObjectRef for the draft's claim graph."""
+        if graph.project_id:
+            return ObjectRef(
+                domain=ObjectDomain.SHARED_PROJECT,
+                owner_id=graph.project_id,
+                object_id=graph.graph_id,
+                version=1,
+            )
+        return ObjectRef(
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=draft.account_id,
+            object_id=graph.graph_id,
+            version=1,
+        )
+
+    def _upstream_source_refs(
+        self, draft: ExpressionDraft, graph: ClaimGraph
+    ) -> list[ObjectRef]:
+        """Collect source ObjectRefs referenced by the draft's citations and evidence."""
+        source_ids: set[str] = set()
+        for citation in graph.citations:
+            source_id = citation.identifier_snapshot.get("source_id")
+            if source_id:
+                source_ids.add(str(source_id))
+        for evidence in graph.evidence:
+            # Prefer a public helper on the claim service when available.
+            finder = getattr(self._claim_service, "find_source_id_for_document", None)
+            if finder is not None:
+                found = finder(evidence.document_id)
+                if found:
+                    source_ids.add(found)
+
+        refs: list[ObjectRef] = []
+        for source_id in sorted(source_ids):
+            if draft.project_id:
+                refs.append(
+                    ObjectRef(
+                        domain=ObjectDomain.SHARED_PROJECT,
+                        owner_id=draft.project_id,
+                        object_id=source_id,
+                        version=1,
+                    )
+                )
+            else:
+                refs.append(
+                    ObjectRef(
+                        domain=ObjectDomain.PERSONAL_VAULT,
+                        owner_id=draft.account_id,
+                        object_id=source_id,
+                        version=1,
+                    )
+                )
+        return refs
+
+    def _check_upstream_objects(
+        self, draft: ExpressionDraft, graph: ClaimGraph
+    ) -> list[ObjectRef]:
+        """Return upstream object refs that are revoked or tombstoned.
+
+        Fails open: if the invalidation service is not available, no objects are
+        reported as invalid, but the release gate still requires the expression gate
+        and human approval as a minimum safeguard.  In production the invalidation
+        service is always available.
+        """
+        if self._invalidation is None:
+            return []
+
+        invalid: list[ObjectRef] = []
+        for ref in [self._graph_object_ref(draft, graph)] + self._upstream_source_refs(
+            draft, graph
+        ):
+            try:
+                self._invalidation.require_active(ref)
+            except Exception:
+                invalid.append(ref)
+        return invalid
+
+    def _latest_human_decision(self, draft: ExpressionDraft) -> HumanDecision | None:
+        """Return the most recent human decision for the artifact, if any."""
+        if not draft.approval_decisions:
+            return None
+        return draft.approval_decisions[-1]
+
+    def _is_approved(self, draft: ExpressionDraft) -> bool:
+        """Whether the latest human decision is an approval."""
+        decision = self._latest_human_decision(draft)
+        return decision is not None and decision.decision == HumanDecisionType.APPROVE
+
+    def _required_confirmations_present(self, draft: ExpressionDraft) -> bool:
+        """Check genre-specific required human confirmations.
+
+        Paper-assist requires the author responsibility statement to be confirmed.
+        """
+        if draft.genre != Genre.PAPER_ASSIST:
+            return True
+        statement = draft.author_responsibility_statement
+        if statement is None:
+            return False
+        return bool(statement.confirmed_at and statement.confirmed_by)
+
+    def _run_has_succeeded(self, account_id: str, run_id: str) -> bool:
+        """Check whether the linked workflow run has succeeded."""
+        if self._workflow is None:
+            return False
+        try:
+            projection = self._workflow.get_run(account_id, run_id)
+        except Exception:
+            return False
+
+        run_status: WorkflowRunStatus = projection.run_status
+        return run_status == WorkflowRunStatus.SUCCEEDED
+
+    def _run_has_open_todos(self, account_id: str, run_id: str) -> bool:
+        """Check whether the linked workflow run has open human todos."""
+        if self._workflow is None:
+            return False
+        try:
+            projection = self._workflow.get_run(account_id, run_id)
+        except Exception:
+            return False
+        return any(todo.status == "open" for todo in projection.human_todos)
+
+    def approve_artifact(
+        self,
+        subject: SubjectContext,
+        draft_id: str,
+        request: ApproveArtifactRequest,
+    ) -> ApproveArtifactResult:
+        """Record a human approval, rejection or change request for an artifact."""
+        draft = self.get_draft(subject.account_id, draft_id)
+        decision = HumanDecision(
+            decision_id=_token("dec"),
+            target_artifact_id=draft_id,
+            account_id=subject.account_id,
+            decision=request.decision,
+            reason=request.reason,
+            created_at=_now(),
+        )
+        draft.approval_decisions.append(decision)
+
+        if request.decision == HumanDecisionType.APPROVE:
+            draft.artifact_trust_status = ArtifactTrustStatus.APPROVED
+        elif request.decision in (
+            HumanDecisionType.REJECT,
+            HumanDecisionType.REQUEST_CHANGES,
+        ):
+            draft.artifact_trust_status = ArtifactTrustStatus.DRAFT
+
+        self._drafts[draft.draft_id] = draft
+        return ApproveArtifactResult(decision_id=decision.decision_id, draft=draft)
+
+    def evaluate_release_eligibility(
+        self,
+        subject: SubjectContext,
+        draft_id: str,
+        run_id: str | None = None,
+    ) -> ReleaseGateResult:
+        """Evaluate whether an expression artifact may be published.
+
+        Release eligibility depends on:
+          - the expression gate passing;
+          - the artifact being explicitly approved by a human;
+          - the linked workflow run having succeeded (when a run is linked);
+          - no open human todos on the linked run;
+          - upstream claim graph and sources remaining active;
+          - genre-specific confirmations (e.g. paper-assist author responsibility).
+        """
+        draft = self.get_draft(subject.account_id, draft_id)
+        graph = self._fetch_graph(subject.account_id, draft.graph_id)
+
+        checks: dict[ReleaseGateCheck, bool] = dict.fromkeys(ReleaseGateCheck, True)
+        failed: list[ReleaseGateCheck] = []
+        reasons: list[str] = []
+
+        # Re-run the expression gate against the current draft state.
+        locks = self._compile_fact_locks(subject.account_id, draft.graph_id)
+        gate = self._run_expression_gate(
+            brief=draft.brief,
+            graph=graph,
+            locks=locks,
+            requested_slice_id=draft.memory_slice_id,
+        )
+        self._update_gate_for_style(draft, gate)
+        checks[ReleaseGateCheck.EXPRESSION_GATE_PASSED] = gate.passed
+        if not gate.passed:
+            failed.append(ReleaseGateCheck.EXPRESSION_GATE_PASSED)
+            reasons.append(gate.reason or "表达质量门未通过。")
+
+        checks[ReleaseGateCheck.ARTIFACT_APPROVED] = self._is_approved(draft)
+        if not checks[ReleaseGateCheck.ARTIFACT_APPROVED]:
+            failed.append(ReleaseGateCheck.ARTIFACT_APPROVED)
+            reasons.append("产物尚未获得人工批准。")
+
+        effective_run_id = run_id or draft.run_id
+        if effective_run_id is not None:
+            checks[ReleaseGateCheck.WORKFLOW_SUCCEEDED] = self._run_has_succeeded(
+                draft.account_id, effective_run_id
+            )
+            if not checks[ReleaseGateCheck.WORKFLOW_SUCCEEDED]:
+                failed.append(ReleaseGateCheck.WORKFLOW_SUCCEEDED)
+                reasons.append("关联工作流尚未成功完成。")
+
+            checks[ReleaseGateCheck.NO_OPEN_HUMAN_TODOS] = (
+                not self._run_has_open_todos(draft.account_id, effective_run_id)
+            )
+            if not checks[ReleaseGateCheck.NO_OPEN_HUMAN_TODOS]:
+                failed.append(ReleaseGateCheck.NO_OPEN_HUMAN_TODOS)
+                reasons.append("工作流存在未解决的人工待办。")
+
+        invalid_upstream = self._check_upstream_objects(draft, graph)
+        checks[ReleaseGateCheck.UPSTREAM_OBJECTS_ACTIVE] = not invalid_upstream
+        if invalid_upstream:
+            failed.append(ReleaseGateCheck.UPSTREAM_OBJECTS_ACTIVE)
+            reasons.append("上游来源、Claim 图或事实锁已失效。")
+
+        checks[ReleaseGateCheck.REQUIRED_HUMAN_CONFIRMATIONS_PRESENT] = (
+            self._required_confirmations_present(draft)
+        )
+        if not checks[ReleaseGateCheck.REQUIRED_HUMAN_CONFIRMATIONS_PRESENT]:
+            failed.append(ReleaseGateCheck.REQUIRED_HUMAN_CONFIRMATIONS_PRESENT)
+            reasons.append("体裁要求的人工确认尚未完成。")
+
+        style_report = draft.style_diagnostic_report
+        has_blocking_style = (
+            style_report is not None
+            and any(f.severity == StyleDiagnosticSeverity.BLOCKING for f in style_report.findings)
+        )
+        checks[ReleaseGateCheck.NO_BLOCKING_STYLE_FINDINGS] = not has_blocking_style
+        if has_blocking_style:
+            failed.append(ReleaseGateCheck.NO_BLOCKING_STYLE_FINDINGS)
+            reasons.append("存在未处理的中文表达阻塞性问题。")
+
+        passed = all(checks.values())
+
+        if passed:
+            status = ReleaseEligibilityStatus.ELIGIBLE
+        elif invalid_upstream:
+            status = ReleaseEligibilityStatus.UPSTREAM_INVALIDATED
+        elif not checks[ReleaseGateCheck.WORKFLOW_SUCCEEDED]:
+            status = ReleaseEligibilityStatus.WAITING_WORKFLOW
+        elif not checks[ReleaseGateCheck.NO_OPEN_HUMAN_TODOS]:
+            status = ReleaseEligibilityStatus.WAITING_HUMAN_TODO
+        elif not checks[ReleaseGateCheck.EXPRESSION_GATE_PASSED]:
+            status = ReleaseEligibilityStatus.BLOCKED
+        elif not checks[ReleaseGateCheck.ARTIFACT_APPROVED]:
+            status = ReleaseEligibilityStatus.WAITING_APPROVAL
+        else:
+            status = ReleaseEligibilityStatus.BLOCKED
+
+        return ReleaseGateResult(
+            passed=passed,
+            status=status,
+            checks=checks,
+            failed_checks=failed,
+            blocked_claim_ids=gate.blocked_claim_ids,
+            reason="；".join(reasons) if reasons else None,
+            upstream_invalid_object_refs=invalid_upstream,
+        )
+
+    def publish_artifact(
+        self,
+        subject: SubjectContext,
+        draft_id: str,
+        request: PublishArtifactRequest,
+    ) -> PublishArtifactResult:
+        """Publish an expression artifact if it is release eligible.
+
+        The publish event is bound to the actual draft version, the authorizing
+        account, the release gate result and the approval decision that authorized
+        publication.
+        """
+        draft = self.get_draft(subject.account_id, draft_id)
+        release_gate = self.evaluate_release_eligibility(subject, draft_id, request.run_id)
+        if not release_gate.passed:
+            raise ExpressionServiceError(
+                f"发布资格不足：{release_gate.reason or '存在未解决的阻塞项。'}"
+            )
+
+        decision = self._latest_human_decision(draft)
+        assert decision is not None
+
+        event = PublishEvent(
+            event_id=_token("pub"),
+            draft_id=draft.draft_id,
+            version_id=self._artifact_version(draft).version_id,
+            account_id=subject.account_id,
+            project_id=draft.project_id,
+            published_at=_now(),
+            release_gate_result=release_gate,
+            human_decision_id=decision.decision_id,
+        )
+        self._publish_events[event.event_id] = event
+        self._drafts[draft.draft_id] = draft
+
+        return PublishArtifactResult(event=event, draft=draft)
+
+    def compare_versions(
+        self,
+        subject: SubjectContext,
+        request: CompareVersionsRequest,
+    ) -> CompareVersionsResult:
+        """Compare two expression drafts and report semantic differences.
+
+        The comparison highlights changes to fact locks, claims, citations,
+        wording strength, argument plan, span text, genre, model run locks,
+        applied patches and artifact trust status. It also reports the release
+        eligibility of each version.
+        """
+        draft_a = self.get_draft(subject.account_id, request.draft_id_a)
+        draft_b = self.get_draft(subject.account_id, request.draft_id_b)
+
+        differences: list[VersionDifference] = []
+
+        if draft_a.genre != draft_b.genre:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.GENRE,
+                    before=draft_a.genre.value,
+                    after=draft_b.genre.value,
+                    reason="体裁变化会影响论证结构和体裁元素。",
+                )
+            )
+
+        if draft_a.fact_lock_set_id != draft_b.fact_lock_set_id:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.FACT_LOCK_SET,
+                    before=draft_a.fact_lock_set_id,
+                    after=draft_b.fact_lock_set_id,
+                    reason="事实锁集合发生变化。",
+                )
+            )
+
+        claim_ids_a = sorted({cid for s in draft_a.spans for cid in s.claim_ids})
+        claim_ids_b = sorted({cid for s in draft_b.spans for cid in s.claim_ids})
+        if claim_ids_a != claim_ids_b:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.CLAIM_IDS,
+                    before=claim_ids_a,
+                    after=claim_ids_b,
+                    reason="绑定的 Claim 集合发生变化。",
+                )
+            )
+
+        citation_ids_a = sorted({cid for s in draft_a.spans for cid in s.citation_ids})
+        citation_ids_b = sorted({cid for s in draft_b.spans for cid in s.citation_ids})
+        if citation_ids_a != citation_ids_b:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.CITATION_IDS,
+                    before=citation_ids_a,
+                    after=citation_ids_b,
+                    reason="引用集合发生变化。",
+                )
+            )
+
+        if draft_a.wording_strength_ceiling != draft_b.wording_strength_ceiling:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.WORDING_STRENGTH_CEILING,
+                    before=draft_a.wording_strength_ceiling.value,
+                    after=draft_b.wording_strength_ceiling.value,
+                    reason="措辞强度上限发生变化，可能由证据状态变化引起。",
+                )
+            )
+
+        arg_nodes_a = [n.argument_node_id for n in draft_a.argument_plan.nodes]
+        arg_nodes_b = [n.argument_node_id for n in draft_b.argument_plan.nodes]
+        if (
+            arg_nodes_a != arg_nodes_b
+            or draft_a.argument_plan.graph_id != draft_b.argument_plan.graph_id
+        ):
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.ARGUMENT_PLAN,
+                    before={
+                        "plan_id": draft_a.argument_plan.plan_id,
+                        "node_count": len(arg_nodes_a),
+                    },
+                    after={
+                        "plan_id": draft_b.argument_plan.plan_id,
+                        "node_count": len(arg_nodes_b),
+                    },
+                    reason="论证计划结构发生变化。",
+                )
+            )
+
+        span_text_a = " ".join(s.text for s in draft_a.spans)
+        span_text_b = " ".join(s.text for s in draft_b.spans)
+        if span_text_a != span_text_b:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.SPAN_TEXT,
+                    before=span_text_a[:200],
+                    after=span_text_b[:200],
+                    reason="文本片段内容发生变化。",
+                )
+            )
+
+        if draft_a.model_run_lock != draft_b.model_run_lock:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.MODEL_RUN_LOCK,
+                    before=draft_a.model_run_lock.lock_id if draft_a.model_run_lock else None,
+                    after=draft_b.model_run_lock.lock_id if draft_b.model_run_lock else None,
+                    reason="模型运行锁发生变化。",
+                )
+            )
+
+        applied_a = [p.patch_id for p in draft_a.applied_patches]
+        applied_b = [p.patch_id for p in draft_b.applied_patches]
+        if applied_a != applied_b:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.APPLIED_PATCHES,
+                    before=applied_a,
+                    after=applied_b,
+                    reason="已应用的人工修订补丁不同。",
+                )
+            )
+
+        if draft_a.artifact_trust_status != draft_b.artifact_trust_status:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.ARTIFACT_TRUST_STATUS,
+                    before=draft_a.artifact_trust_status.value,
+                    after=draft_b.artifact_trust_status.value,
+                    reason="产物可信状态发生变化。",
+                )
+            )
+
+        decisions_a = [d.model_dump() for d in draft_a.approval_decisions]
+        decisions_b = [d.model_dump() for d in draft_b.approval_decisions]
+        if decisions_a != decisions_b:
+            differences.append(
+                VersionDifference(
+                    field=VersionDifferenceField.HUMAN_DECISIONS,
+                    before=decisions_a,
+                    after=decisions_b,
+                    reason="人工决定记录发生变化。",
+                )
+            )
+
+        eligibility_a = self.evaluate_release_eligibility(subject, draft_a.draft_id)
+        eligibility_b = self.evaluate_release_eligibility(subject, draft_b.draft_id)
+
+        return CompareVersionsResult(
+            comparison_id=_token("cmp"),
+            draft_id_a=draft_a.draft_id,
+            draft_id_b=draft_b.draft_id,
+            differences=differences,
+            release_eligibility_a=eligibility_a,
+            release_eligibility_b=eligibility_b,
+            only_b_is_publishable=(eligibility_b.passed and not eligibility_a.passed),
         )
 
 

@@ -6247,6 +6247,359 @@
         }
       }
     },
+    "/expression/drafts/{draft_id}/approve": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Approve Expression Artifact",
+        "description": "Approve, reject or request changes for an expression artifact.\n\nApproval separates workflow success from scientific trust status and is\nrequired before publication.",
+        "operationId": "approve_expression_artifact_expression_drafts__draft_id__approve_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveArtifactRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApproveArtifactResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/expression/drafts/{draft_id}/release-eligibility": {
+      "get": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Get Release Eligibility",
+        "description": "Evaluate whether an expression artifact is eligible for publication.\n\nEligibility depends on the expression gate, human approval, linked workflow\nrun success, open human todos, and active upstream objects.",
+        "operationId": "get_release_eligibility_expression_drafts__draft_id__release_eligibility_get",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseGateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/expression/drafts/{draft_id}/publish": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Publish Expression Artifact",
+        "description": "Publish an expression artifact when it passes the release gate.\n\nThe publish event is bound to the exact draft version, the authorizing\naccount, the release gate result and the approval decision.",
+        "operationId": "publish_expression_artifact_expression_drafts__draft_id__publish_post",
+        "parameters": [
+          {
+            "name": "draft_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Draft Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishArtifactRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishArtifactResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/expression/drafts/compare": {
+      "post": {
+        "tags": [
+          "expression"
+        ],
+        "summary": "Compare Expression Versions",
+        "description": "Compare two expression drafts and report semantic differences.\n\nThe comparison highlights changes to fact locks, claims, citations, wording\nstrength, argument structure, span text, model locks, applied patches and\nartifact trust status, plus the release eligibility of each version.",
+        "operationId": "compare_expression_versions_expression_drafts_compare_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompareVersionsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionComparisonResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExpressionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/learning/missions": {
       "post": {
         "tags": [
@@ -8978,6 +9331,46 @@
         "title": "ApplyRevisionPatchResult",
         "description": "Result of applying a revision patch."
       },
+      "ApproveArtifactRequest": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/science_companion__contracts__expression__HumanDecisionType",
+            "default": "approve"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ApproveArtifactRequest",
+        "description": "Request to approve, reject or request changes for an expression artifact."
+      },
+      "ApproveArtifactResult": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id",
+            "description": "Decision identifier."
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ExpressionDraft",
+            "description": "Draft after the decision."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "draft"
+        ],
+        "title": "ApproveArtifactResult",
+        "description": "Result of recording a human decision on an expression artifact."
+      },
       "ArgumentNode": {
         "properties": {
           "argument_node_id": {
@@ -9091,21 +9484,6 @@
         ],
         "title": "ArgumentPlan",
         "description": "Ordered plan that structures the draft before wording is chosen."
-      },
-      "ArtifactTrustStatus": {
-        "type": "string",
-        "enum": [
-          "not_created",
-          "draft",
-          "evidence_bound",
-          "qualified",
-          "approved",
-          "conflicted",
-          "quarantined",
-          "invalidated"
-        ],
-        "title": "ArtifactTrustStatus",
-        "description": "Lifecycle status of the scientific artifact produced by a run."
       },
       "AssertionStatus": {
         "type": "string",
@@ -10444,6 +10822,27 @@
         "title": "CloudProjectionStatus",
         "description": "Lifecycle status of a cloud control projection."
       },
+      "CompareVersionsRequest": {
+        "properties": {
+          "draft_id_a": {
+            "type": "string",
+            "title": "Draft Id A",
+            "description": "First draft identifier."
+          },
+          "draft_id_b": {
+            "type": "string",
+            "title": "Draft Id B",
+            "description": "Second draft identifier."
+          }
+        },
+        "type": "object",
+        "required": [
+          "draft_id_a",
+          "draft_id_b"
+        ],
+        "title": "CompareVersionsRequest",
+        "description": "Request to compare two expression artifact versions."
+      },
       "Conflict": {
         "properties": {
           "conflict_id": {
@@ -10590,7 +10989,7 @@
       "DecideKnowledgeStateProposalRequest": {
         "properties": {
           "decision": {
-            "$ref": "#/components/schemas/HumanDecisionType",
+            "$ref": "#/components/schemas/science_companion__contracts__learning__HumanDecisionType",
             "description": "Decision type."
           },
           "reason": {
@@ -12556,6 +12955,18 @@
             "title": "Project Id",
             "description": "Project scope if any."
           },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "Workflow run this artifact belongs to, if any."
+          },
           "status": {
             "$ref": "#/components/schemas/ExpressionDraftStatus",
             "description": "Draft lifecycle status."
@@ -12628,6 +13039,19 @@
               }
             ],
             "description": "Model run lock for the generator."
+          },
+          "artifact_trust_status": {
+            "$ref": "#/components/schemas/science_companion__contracts__expression__ArtifactTrustStatus",
+            "description": "Scientific trust state of the artifact.",
+            "default": "draft"
+          },
+          "approval_decisions": {
+            "items": {
+              "$ref": "#/components/schemas/science_companion__contracts__expression__HumanDecision"
+            },
+            "type": "array",
+            "title": "Approval Decisions",
+            "description": "Human decisions recorded for this artifact."
           },
           "popular_science_elements": {
             "items": {
@@ -12794,6 +13218,18 @@
             ],
             "title": "Memory Slice Id",
             "description": "Optional memory slice for personalization."
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "Optional workflow run this artifact belongs to."
           }
         },
         "type": "object",
@@ -13304,16 +13740,6 @@
         ],
         "title": "HealthStatus",
         "description": "Top-level health verdict."
-      },
-      "HumanDecisionType": {
-        "type": "string",
-        "enum": [
-          "accept",
-          "reject",
-          "modify"
-        ],
-        "title": "HumanDecisionType",
-        "description": "Named human decision on a proposed knowledge-state or path change."
       },
       "HumanTodoItem": {
         "properties": {
@@ -16591,6 +17017,107 @@
         "title": "ProposeKnowledgeStateUpdateRequest",
         "description": "Request to propose a knowledge-state update from learning records."
       },
+      "PublishArtifactRequest": {
+        "properties": {
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "Workflow run whose success is required for release."
+          }
+        },
+        "type": "object",
+        "title": "PublishArtifactRequest",
+        "description": "Request to publish an expression artifact."
+      },
+      "PublishArtifactResult": {
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/PublishEvent",
+            "description": "Published event."
+          },
+          "draft": {
+            "$ref": "#/components/schemas/ExpressionDraft",
+            "description": "Draft after publication."
+          }
+        },
+        "type": "object",
+        "required": [
+          "event",
+          "draft"
+        ],
+        "title": "PublishArtifactResult",
+        "description": "Result of publishing an expression artifact."
+      },
+      "PublishEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id",
+            "description": "Stable publish event identifier."
+          },
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Draft that was published."
+          },
+          "version_id": {
+            "type": "string",
+            "title": "Version Id",
+            "description": "Artifact version id at publish time."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that authorized publication."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "published_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Published At",
+            "description": "Publication timestamp."
+          },
+          "release_gate_result": {
+            "$ref": "#/components/schemas/ReleaseGateResult",
+            "description": "Release gate result that authorized publication."
+          },
+          "human_decision_id": {
+            "type": "string",
+            "title": "Human Decision Id",
+            "description": "Approval decision that authorized publication."
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "draft_id",
+          "version_id",
+          "account_id",
+          "published_at",
+          "release_gate_result",
+          "human_decision_id"
+        ],
+        "title": "PublishEvent",
+        "description": "Immutable record that an expression artifact was published."
+      },
       "PublishGateCheck": {
         "type": "string",
         "enum": [
@@ -16731,6 +17258,97 @@
         ],
         "title": "RejectedSliceItem",
         "description": "One candidate that was not promoted and therefore not used."
+      },
+      "ReleaseEligibilityStatus": {
+        "type": "string",
+        "enum": [
+          "eligible",
+          "waiting_approval",
+          "waiting_workflow",
+          "waiting_human_todo",
+          "upstream_invalidated",
+          "blocked"
+        ],
+        "title": "ReleaseEligibilityStatus",
+        "description": "High-level release eligibility state derived from release gate checks."
+      },
+      "ReleaseGateCheck": {
+        "type": "string",
+        "enum": [
+          "expression_gate_passed",
+          "artifact_approved",
+          "workflow_succeeded",
+          "no_open_human_todos",
+          "upstream_objects_active",
+          "required_human_confirmations_present",
+          "no_blocking_style_findings"
+        ],
+        "title": "ReleaseGateCheck",
+        "description": "Named checks performed by the expression release gate."
+      },
+      "ReleaseGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether the artifact may be published."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReleaseEligibilityStatus",
+            "description": "Derived eligibility status."
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/ReleaseGateCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/ReleaseGateCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Human-readable gate summary."
+          },
+          "upstream_invalid_object_refs": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectRef"
+            },
+            "type": "array",
+            "title": "Upstream Invalid Object Refs",
+            "description": "Upstream object refs that are revoked or tombstoned."
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "status"
+        ],
+        "title": "ReleaseGateResult",
+        "description": "Result of running the expression release gate over a draft."
       },
       "ResearchReportElement": {
         "properties": {
@@ -17759,7 +18377,7 @@
             "description": "Workflow execution state."
           },
           "artifact_trust_status": {
-            "$ref": "#/components/schemas/ArtifactTrustStatus",
+            "$ref": "#/components/schemas/science_companion__contracts__workflows__ArtifactTrustStatus",
             "description": "Scientific trust state of the run's primary artifact."
           },
           "publish_eligible": {
@@ -20085,6 +20703,111 @@
         "title": "VaultShareRequest",
         "description": "Request to share a personal vault object as a minimized project copy."
       },
+      "VersionComparisonResult": {
+        "properties": {
+          "comparison_id": {
+            "type": "string",
+            "title": "Comparison Id",
+            "description": "Stable comparison identifier."
+          },
+          "draft_id_a": {
+            "type": "string",
+            "title": "Draft Id A",
+            "description": "First draft."
+          },
+          "draft_id_b": {
+            "type": "string",
+            "title": "Draft Id B",
+            "description": "Second draft."
+          },
+          "differences": {
+            "items": {
+              "$ref": "#/components/schemas/VersionDifference"
+            },
+            "type": "array",
+            "title": "Differences",
+            "description": "Semantic differences between versions."
+          },
+          "release_eligibility_a": {
+            "$ref": "#/components/schemas/ReleaseGateResult",
+            "description": "Release gate result for the first version."
+          },
+          "release_eligibility_b": {
+            "$ref": "#/components/schemas/ReleaseGateResult",
+            "description": "Release gate result for the second version."
+          },
+          "only_b_is_publishable": {
+            "type": "boolean",
+            "title": "Only B Is Publishable",
+            "description": "True when version B is eligible and version A is not; used by the upgrade-or-publish seam.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "comparison_id",
+          "draft_id_a",
+          "draft_id_b",
+          "release_eligibility_a",
+          "release_eligibility_b"
+        ],
+        "title": "VersionComparisonResult",
+        "description": "Result of comparing two expression artifact versions."
+      },
+      "VersionDifference": {
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/VersionDifferenceField",
+            "description": "What changed."
+          },
+          "before": {
+            "title": "Before",
+            "description": "Value in the first version."
+          },
+          "after": {
+            "title": "After",
+            "description": "Value in the second version."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Why the difference matters."
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "before",
+          "after"
+        ],
+        "title": "VersionDifference",
+        "description": "A single semantic difference between two artifact versions."
+      },
+      "VersionDifferenceField": {
+        "type": "string",
+        "enum": [
+          "fact_lock_set",
+          "claim_ids",
+          "citation_ids",
+          "wording_strength_ceiling",
+          "argument_plan",
+          "span_text",
+          "genre",
+          "model_run_lock",
+          "applied_patches",
+          "artifact_trust_status",
+          "human_decisions"
+        ],
+        "title": "VersionDifferenceField",
+        "description": "Fields that can differ between two expression artifact versions."
+      },
       "WordingStrength": {
         "type": "string",
         "enum": [
@@ -20283,6 +21006,73 @@
         "title": "_TodoResolveRequest",
         "description": "Request body for resolving a human todo."
       },
+      "science_companion__contracts__expression__ArtifactTrustStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "evidence_bound",
+          "qualified",
+          "approved",
+          "conflicted",
+          "invalidated"
+        ],
+        "title": "ArtifactTrustStatus",
+        "description": "Scientific trust state of an expression artifact (draft)."
+      },
+      "science_companion__contracts__expression__HumanDecision": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id",
+            "description": "Stable decision identifier."
+          },
+          "target_artifact_id": {
+            "type": "string",
+            "title": "Target Artifact Id",
+            "description": "Draft this decision applies to."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that made the decision."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/science_companion__contracts__expression__HumanDecisionType",
+            "description": "Decision type."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "target_artifact_id",
+          "account_id",
+          "decision",
+          "reason"
+        ],
+        "title": "HumanDecision",
+        "description": "A named, auditable human decision to approve, reject or revise an artifact."
+      },
+      "science_companion__contracts__expression__HumanDecisionType": {
+        "type": "string",
+        "enum": [
+          "approve",
+          "reject",
+          "request_changes"
+        ],
+        "title": "HumanDecisionType",
+        "description": "Named human decision on an expression artifact."
+      },
       "science_companion__contracts__learning__HumanDecision": {
         "properties": {
           "decision_id": {
@@ -20301,7 +21091,7 @@
             "description": "Account that made the decision."
           },
           "decision": {
-            "$ref": "#/components/schemas/HumanDecisionType",
+            "$ref": "#/components/schemas/science_companion__contracts__learning__HumanDecisionType",
             "description": "Decision type."
           },
           "reason": {
@@ -20339,6 +21129,16 @@
         ],
         "title": "HumanDecision",
         "description": "A named, auditable human decision on a knowledge-state proposal."
+      },
+      "science_companion__contracts__learning__HumanDecisionType": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "reject",
+          "modify"
+        ],
+        "title": "HumanDecisionType",
+        "description": "Named human decision on a proposed knowledge-state or path change."
       },
       "science_companion__contracts__profiles__HumanDecision": {
         "properties": {
@@ -20411,6 +21211,21 @@
         ],
         "title": "HumanDecision",
         "description": "Named human decision on a candidate profile."
+      },
+      "science_companion__contracts__workflows__ArtifactTrustStatus": {
+        "type": "string",
+        "enum": [
+          "not_created",
+          "draft",
+          "evidence_bound",
+          "qualified",
+          "approved",
+          "conflicted",
+          "quarantined",
+          "invalidated"
+        ],
+        "title": "ArtifactTrustStatus",
+        "description": "Lifecycle status of the scientific artifact produced by a run."
       }
     }
   }

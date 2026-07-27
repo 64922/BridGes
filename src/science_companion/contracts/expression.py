@@ -15,6 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from science_companion.contracts.ai import ModelRunLock
+from science_companion.contracts.projects import ObjectRef
 from science_companion.contracts.science import (
     WordingStrength,
 )
@@ -741,6 +742,50 @@ class SubmitExpressionFeedbackResult(BaseModel):
     routed_to: UserFeedbackTarget = Field(description="Confirmed routing target.")
 
 
+# T029: artifact trust status and human decisions must be defined before
+# ExpressionDraft because the draft model references them.
+class ArtifactTrustStatus(StrEnum):
+    """Scientific trust state of an expression artifact (draft)."""
+
+    DRAFT = "draft"
+    EVIDENCE_BOUND = "evidence_bound"
+    QUALIFIED = "qualified"
+    APPROVED = "approved"
+    CONFLICTED = "conflicted"
+    INVALIDATED = "invalidated"
+
+
+class HumanDecisionType(StrEnum):
+    """Named human decision on an expression artifact."""
+
+    APPROVE = "approve"
+    REJECT = "reject"
+    REQUEST_CHANGES = "request_changes"
+
+
+class HumanDecision(BaseModel):
+    """A named, auditable human decision to approve, reject or revise an artifact."""
+
+    decision_id: str = Field(description="Stable decision identifier.")
+    target_artifact_id: str = Field(description="Draft this decision applies to.")
+    account_id: str = Field(description="Account that made the decision.")
+    decision: HumanDecisionType = Field(description="Decision type.")
+    reason: str = Field(description="Human-readable rationale.")
+    created_at: datetime = Field(default_factory=datetime.now, description="Timestamp.")
+
+
+class ArtifactVersion(BaseModel):
+    """Version metadata for a publishable expression artifact."""
+
+    version_id: str = Field(description="Stable version identifier.")
+    draft_id: str = Field(description="Draft this version represents.")
+    version_number: int = Field(ge=1, description="Monotonic version number.")
+    artifact_trust_status: ArtifactTrustStatus = Field(
+        description="Current trust state of the artifact."
+    )
+    created_at: datetime = Field(description="Version timestamp.")
+
+
 class ExpressionDraft(BaseModel):
     """A fact-lock-bound expression draft."""
 
@@ -751,6 +796,9 @@ class ExpressionDraft(BaseModel):
     graph_id: str = Field(description="Claim graph the draft is built from.")
     account_id: str = Field(description="Owning account.")
     project_id: str | None = Field(default=None, description="Project scope if any.")
+    run_id: str | None = Field(
+        default=None, description="Workflow run this artifact belongs to, if any."
+    )
     status: ExpressionDraftStatus = Field(description="Draft lifecycle status.")
     status_reason: str | None = Field(default=None, description="Why the draft has this status.")
     argument_plan: ArgumentPlan = Field(description="Argument plan for the draft.")
@@ -769,6 +817,16 @@ class ExpressionDraft(BaseModel):
     )
     model_run_lock: ModelRunLock | None = Field(
         default=None, description="Model run lock for the generator.")
+    # T029: artifact trust status and approval decisions separate workflow success
+    # from scientific approval and from publication eligibility.
+    artifact_trust_status: ArtifactTrustStatus = Field(
+        default=ArtifactTrustStatus.DRAFT,
+        description="Scientific trust state of the artifact.",
+    )
+    approval_decisions: list[HumanDecision] = Field(
+        default_factory=list,
+        description="Human decisions recorded for this artifact.",
+    )
     popular_science_elements: list[PopularScienceElement] = Field(
         default_factory=list,
         description="Genre-specific elements for popular science (T026).",
@@ -863,6 +921,9 @@ class ExpressionDraftRequest(BaseModel):
     memory_slice_id: str | None = Field(
         default=None, description="Optional memory slice for personalization."
     )
+    run_id: str | None = Field(
+        default=None, description="Optional workflow run this artifact belongs to."
+    )
 
 
 class ExpressionDraftResult(BaseModel):
@@ -915,6 +976,152 @@ class ConvertGenreResult(BaseModel):
     invariance: GenreConversionInvariance = Field(
         description="Invariance evidence for the conversion."
     )
+
+
+# ------------------------------------------------------------------------------
+# T029: expression version comparison, release gate and publication contracts
+# ------------------------------------------------------------------------------
+
+
+class ReleaseGateCheck(StrEnum):
+    """Named checks performed by the expression release gate."""
+
+    EXPRESSION_GATE_PASSED = "expression_gate_passed"
+    ARTIFACT_APPROVED = "artifact_approved"
+    WORKFLOW_SUCCEEDED = "workflow_succeeded"
+    NO_OPEN_HUMAN_TODOS = "no_open_human_todos"
+    UPSTREAM_OBJECTS_ACTIVE = "upstream_objects_active"
+    REQUIRED_HUMAN_CONFIRMATIONS_PRESENT = "required_human_confirmations_present"
+    NO_BLOCKING_STYLE_FINDINGS = "no_blocking_style_findings"
+
+
+class ReleaseEligibilityStatus(StrEnum):
+    """High-level release eligibility state derived from release gate checks."""
+
+    ELIGIBLE = "eligible"
+    WAITING_APPROVAL = "waiting_approval"
+    WAITING_WORKFLOW = "waiting_workflow"
+    WAITING_HUMAN_TODO = "waiting_human_todo"
+    UPSTREAM_INVALIDATED = "upstream_invalidated"
+    BLOCKED = "blocked"
+
+
+class ReleaseGateResult(BaseModel):
+    """Result of running the expression release gate over a draft."""
+
+    passed: bool = Field(description="Whether the artifact may be published.")
+    status: ReleaseEligibilityStatus = Field(description="Derived eligibility status.")
+    checks: dict[ReleaseGateCheck, bool] = Field(default_factory=dict)
+    failed_checks: list[ReleaseGateCheck] = Field(default_factory=list)
+    blocked_claim_ids: list[str] = Field(default_factory=list)
+    reason: str | None = Field(default=None, description="Human-readable gate summary.")
+    upstream_invalid_object_refs: list[ObjectRef] = Field(
+        default_factory=list,
+        description="Upstream object refs that are revoked or tombstoned.",
+    )
+
+
+class VersionDifferenceField(StrEnum):
+    """Fields that can differ between two expression artifact versions."""
+
+    FACT_LOCK_SET = "fact_lock_set"
+    CLAIM_IDS = "claim_ids"
+    CITATION_IDS = "citation_ids"
+    WORDING_STRENGTH_CEILING = "wording_strength_ceiling"
+    ARGUMENT_PLAN = "argument_plan"
+    SPAN_TEXT = "span_text"
+    GENRE = "genre"
+    MODEL_RUN_LOCK = "model_run_lock"
+    APPLIED_PATCHES = "applied_patches"
+    ARTIFACT_TRUST_STATUS = "artifact_trust_status"
+    HUMAN_DECISIONS = "human_decisions"
+
+
+class VersionDifference(BaseModel):
+    """A single semantic difference between two artifact versions."""
+
+    field: VersionDifferenceField = Field(description="What changed.")
+    before: Any = Field(description="Value in the first version.")
+    after: Any = Field(description="Value in the second version.")
+    reason: str | None = Field(default=None, description="Why the difference matters.")
+
+
+class VersionComparisonResult(BaseModel):
+    """Result of comparing two expression artifact versions."""
+
+    comparison_id: str = Field(description="Stable comparison identifier.")
+    draft_id_a: str = Field(description="First draft.")
+    draft_id_b: str = Field(description="Second draft.")
+    differences: list[VersionDifference] = Field(
+        default_factory=list, description="Semantic differences between versions."
+    )
+    release_eligibility_a: ReleaseGateResult = Field(
+        description="Release gate result for the first version."
+    )
+    release_eligibility_b: ReleaseGateResult = Field(
+        description="Release gate result for the second version."
+    )
+    only_b_is_publishable: bool = Field(
+        default=False,
+        description=(
+            "True when version B is eligible and version A is not; used by the "
+            "upgrade-or-publish seam."
+        ),
+    )
+
+
+class PublishEvent(BaseModel):
+    """Immutable record that an expression artifact was published."""
+
+    event_id: str = Field(description="Stable publish event identifier.")
+    draft_id: str = Field(description="Draft that was published.")
+    version_id: str = Field(description="Artifact version id at publish time.")
+    account_id: str = Field(description="Account that authorized publication.")
+    project_id: str | None = Field(default=None, description="Project scope if any.")
+    published_at: datetime = Field(description="Publication timestamp.")
+    release_gate_result: ReleaseGateResult = Field(
+        description="Release gate result that authorized publication."
+    )
+    human_decision_id: str = Field(description="Approval decision that authorized publication.")
+
+
+class ApproveArtifactRequest(BaseModel):
+    """Request to approve, reject or request changes for an expression artifact."""
+
+    decision: HumanDecisionType = Field(default=HumanDecisionType.APPROVE)
+    reason: str = Field(description="Human-readable rationale.", min_length=1)
+
+
+class ApproveArtifactResult(BaseModel):
+    """Result of recording a human decision on an expression artifact."""
+
+    decision_id: str = Field(description="Decision identifier.")
+    draft: ExpressionDraft = Field(description="Draft after the decision.")
+
+
+class PublishArtifactRequest(BaseModel):
+    """Request to publish an expression artifact."""
+
+    run_id: str | None = Field(
+        default=None, description="Workflow run whose success is required for release."
+    )
+
+
+class PublishArtifactResult(BaseModel):
+    """Result of publishing an expression artifact."""
+
+    event: PublishEvent = Field(description="Published event.")
+    draft: ExpressionDraft = Field(description="Draft after publication.")
+
+
+class CompareVersionsRequest(BaseModel):
+    """Request to compare two expression artifact versions."""
+
+    draft_id_a: str = Field(description="First draft identifier.")
+    draft_id_b: str = Field(description="Second draft identifier.")
+
+
+CompareVersionsResult = VersionComparisonResult
 
 
 class ExpressionError(BaseModel):
@@ -974,5 +1181,23 @@ __all__ = [
     "GenreConversionInvariance",
     "ConvertGenreRequest",
     "ConvertGenreResult",
+    # T029: version comparison, release gate and publication.
+    "ArtifactTrustStatus",
+    "HumanDecisionType",
+    "HumanDecision",
+    "ArtifactVersion",
+    "ReleaseGateCheck",
+    "ReleaseEligibilityStatus",
+    "ReleaseGateResult",
+    "VersionDifferenceField",
+    "VersionDifference",
+    "VersionComparisonResult",
+    "PublishEvent",
+    "ApproveArtifactRequest",
+    "ApproveArtifactResult",
+    "PublishArtifactRequest",
+    "PublishArtifactResult",
+    "CompareVersionsRequest",
+    "CompareVersionsResult",
     "ExpressionError",
 ]

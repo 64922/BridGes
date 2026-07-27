@@ -15,10 +15,17 @@ from science_companion.api.auth import SubjectDep
 from science_companion.contracts.expression import (
     ApplyRevisionPatchRequest,
     ApplyRevisionPatchResult,
+    ApproveArtifactRequest,
+    ApproveArtifactResult,
+    CompareVersionsRequest,
+    CompareVersionsResult,
     ExpressionDraft,
     ExpressionDraftRequest,
     ExpressionDraftResult,
     ExpressionError,
+    PublishArtifactRequest,
+    PublishArtifactResult,
+    ReleaseGateResult,
     StyleDiagnosticRequest,
     StyleDiagnosticResult,
     SubmitExpressionFeedbackRequest,
@@ -213,4 +220,130 @@ async def submit_expression_feedback(
             ) from exc
         raise _expression_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "feedback_submission_failed", msg
+        ) from exc
+
+
+@router.post(
+    "/drafts/{draft_id}/approve",
+    response_model=ApproveArtifactResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ExpressionError},
+        status.HTTP_404_NOT_FOUND: {"model": ExpressionError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ExpressionError},
+    },
+)
+async def approve_expression_artifact(
+    service: ExpressionServiceDep,
+    subject: SubjectDep,
+    draft_id: str,
+    request: ApproveArtifactRequest,
+) -> ApproveArtifactResult:
+    """Approve, reject or request changes for an expression artifact.
+
+    Approval separates workflow success from scientific trust status and is
+    required before publication.
+    """
+    try:
+        return service.approve_artifact(subject, draft_id, request)
+    except ExpressionServiceError as exc:
+        msg = str(exc)
+        if "不存在" in msg or "访问权限" in msg:
+            raise _expression_error(
+                status.HTTP_404_NOT_FOUND, "draft_not_found", msg
+            ) from exc
+        raise _expression_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "artifact_approval_failed", msg
+        ) from exc
+
+
+@router.get(
+    "/drafts/{draft_id}/release-eligibility",
+    response_model=ReleaseGateResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ExpressionError},
+        status.HTTP_404_NOT_FOUND: {"model": ExpressionError},
+    },
+)
+async def get_release_eligibility(
+    service: ExpressionServiceDep,
+    subject: SubjectDep,
+    draft_id: str,
+    run_id: str | None = None,
+) -> ReleaseGateResult:
+    """Evaluate whether an expression artifact is eligible for publication.
+
+    Eligibility depends on the expression gate, human approval, linked workflow
+    run success, open human todos, and active upstream objects.
+    """
+    try:
+        return service.evaluate_release_eligibility(subject, draft_id, run_id=run_id)
+    except ExpressionServiceError as exc:
+        raise _expression_error(
+            status.HTTP_404_NOT_FOUND, "draft_not_found", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/drafts/{draft_id}/publish",
+    response_model=PublishArtifactResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ExpressionError},
+        status.HTTP_404_NOT_FOUND: {"model": ExpressionError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ExpressionError},
+    },
+)
+async def publish_expression_artifact(
+    service: ExpressionServiceDep,
+    subject: SubjectDep,
+    draft_id: str,
+    request: PublishArtifactRequest,
+) -> PublishArtifactResult:
+    """Publish an expression artifact when it passes the release gate.
+
+    The publish event is bound to the exact draft version, the authorizing
+    account, the release gate result and the approval decision.
+    """
+    try:
+        return service.publish_artifact(subject, draft_id, request)
+    except ExpressionServiceError as exc:
+        msg = str(exc)
+        if "不存在" in msg or "访问权限" in msg:
+            raise _expression_error(
+                status.HTTP_404_NOT_FOUND, "draft_not_found", msg
+            ) from exc
+        raise _expression_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "publish_failed", msg
+        ) from exc
+
+
+@router.post(
+    "/drafts/compare",
+    response_model=CompareVersionsResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ExpressionError},
+        status.HTTP_404_NOT_FOUND: {"model": ExpressionError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ExpressionError},
+    },
+)
+async def compare_expression_versions(
+    service: ExpressionServiceDep,
+    subject: SubjectDep,
+    request: CompareVersionsRequest,
+) -> CompareVersionsResult:
+    """Compare two expression drafts and report semantic differences.
+
+    The comparison highlights changes to fact locks, claims, citations, wording
+    strength, argument structure, span text, model locks, applied patches and
+    artifact trust status, plus the release eligibility of each version.
+    """
+    try:
+        return service.compare_versions(subject, request)
+    except ExpressionServiceError as exc:
+        msg = str(exc)
+        if "不存在" in msg or "访问权限" in msg:
+            raise _expression_error(
+                status.HTTP_404_NOT_FOUND, "draft_not_found", msg
+            ) from exc
+        raise _expression_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "version_comparison_failed", msg
         ) from exc

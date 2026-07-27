@@ -257,6 +257,13 @@ class ClaimEvidenceService:
                 return stored.source
         return None
 
+    def find_source_id_for_document(self, document_id: str) -> str | None:
+        """Public seam: return the source id that owns a document version, if known."""
+        source = self._find_source_by_document_id(document_id)
+        if source is None:
+            return None
+        return str(source.source_id)
+
     def _run_model_for_claims(
         self,
         subject: SubjectContext,
