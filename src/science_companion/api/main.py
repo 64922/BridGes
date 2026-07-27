@@ -23,6 +23,8 @@ from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.observability.service import ObservabilityService
+from science_companion.profiles import InMemoryProfileRepository, ProfileService
+from science_companion.profiles.api import router as profiles_router
 from science_companion.projects import ProjectService
 from science_companion.science import (
     ClaimEvidenceService,
@@ -232,6 +234,14 @@ def create_app() -> FastAPI:
         invalidation_service=invalidation_service,
     )
 
+    # T018: attach the in-memory profile service. Candidate profiles cannot be
+    # treated as stable facts until the user accepts them through the human
+    # decision loop; accepted candidates are promoted to active assertions.
+    app.state.profile_service = ProfileService(
+        repository=InMemoryProfileRepository(),
+        scope_enforcer=app.state.scope_enforcer,
+    )
+
     # T009: attach the capability registry, model gateway and stub adapter.
     capability_registry = CapabilityRegistry()
     _register_builtin_capabilities(capability_registry)
@@ -300,6 +310,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
+    app.include_router(profiles_router)
     app.include_router(workflows.router)
     app.include_router(scope.router)
     app.include_router(evaluation.router)

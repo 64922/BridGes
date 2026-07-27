@@ -342,6 +342,157 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Observations
+         * @description List profile observations for the current account.
+         */
+        get: operations["list_observations_profiles_observations_get"];
+        put?: never;
+        /**
+         * Create Observation
+         * @description Record a traceable profile observation owned by the current account.
+         */
+        post: operations["create_observation_profiles_observations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/observations/{observation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Observation
+         * @description Get a single profile observation.
+         */
+        get: operations["get_observation_profiles_observations__observation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Candidates
+         * @description List candidate profiles for the current account.
+         */
+        get: operations["list_candidates_profiles_candidates_get"];
+        put?: never;
+        /**
+         * Propose Candidate
+         * @description Propose a candidate profile from existing observations.
+         */
+        post: operations["propose_candidate_profiles_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Candidate
+         * @description Get a single candidate profile.
+         */
+        get: operations["get_candidate_profiles_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates/{candidate_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Candidate
+         * @description Accept, reject or modify a candidate profile.
+         */
+        post: operations["decide_candidate_profiles_candidates__candidate_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Assertions
+         * @description List promoted profile assertions for the current account.
+         */
+        get: operations["list_assertions_profiles_assertions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compile Memory Slice
+         * @description Compile the minimal profile slice for a run.
+         *
+         *     Unconfirmed candidates are explicitly excluded so they are never used as
+         *     stable facts in downstream tasks.
+         */
+        get: operations["compile_memory_slice_profiles_memory_slice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/work-orders": {
         parameters: {
             query?: never;
@@ -1157,6 +1308,12 @@ export interface components {
          */
         ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
         /**
+         * AssertionStatus
+         * @description Lifecycle status of a promoted profile assertion.
+         * @enum {string}
+         */
+        AssertionStatus: "active" | "frozen" | "stale";
+        /**
          * AuthError
          * @description Uniform authentication error response.
          *
@@ -1260,6 +1417,35 @@ export interface components {
              */
             memory_slice_refs?: string[];
         };
+        /**
+         * CandidateDecision
+         * @description Request to accept, reject or modify a candidate profile.
+         */
+        CandidateDecision: {
+            /** @description Decision type. */
+            decision: components["schemas"]["DecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+            /** Modified Value Or Rule */
+            modified_value_or_rule?: string | null;
+            /** Modified Applicable Scenes */
+            modified_applicable_scenes?: string[] | null;
+        };
+        /**
+         * CandidateReviewStatus
+         * @description Where the candidate is in the human-review loop.
+         * @enum {string}
+         */
+        CandidateReviewStatus: "proposed" | "accepted" | "rejected" | "modified" | "conflicted" | "stale" | "discarded";
+        /**
+         * CandidateStabilityState
+         * @description Stability classification of a candidate.
+         * @enum {string}
+         */
+        CandidateStabilityState: "candidate" | "active" | "restricted" | "frozen" | "stale" | "deleted";
         /**
          * CapsuleIssueRequest
          * @description Request to issue a temporary task capsule for a vault object.
@@ -1923,6 +2109,12 @@ export interface components {
             /** Detail */
             detail?: string | null;
         };
+        /**
+         * DecisionType
+         * @description Human decision on a candidate profile.
+         * @enum {string}
+         */
+        DecisionType: "accept" | "reject" | "modify";
         /**
          * DependencyHealth
          * @description Health of one external dependency.
@@ -2829,6 +3021,50 @@ export interface components {
          */
         HealthStatus: "pass" | "fail" | "unknown";
         /**
+         * HumanDecision
+         * @description Named human decision on a candidate profile.
+         */
+        HumanDecision: {
+            /**
+             * Decision Id
+             * @description Stable decision identifier.
+             */
+            decision_id: string;
+            /**
+             * Candidate Id
+             * @description Candidate the decision applies to.
+             */
+            candidate_id: string;
+            /**
+             * Account Id
+             * @description Account that made the decision.
+             */
+            account_id: string;
+            /** @description Decision type. */
+            decision: components["schemas"]["DecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+            /**
+             * Modified Value Or Rule
+             * @description Modified value when decision is 'modify'.
+             */
+            modified_value_or_rule?: string | null;
+            /**
+             * Modified Applicable Scenes
+             * @description Modified applicable scenes when decision is 'modify'.
+             */
+            modified_applicable_scenes?: string[] | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the decision was recorded.
+             */
+            created_at: string;
+        };
+        /**
          * HumanTodoItem
          * @description A named human decision attached to a run.
          */
@@ -3146,6 +3382,489 @@ export interface components {
              */
             version: number;
         };
+        /**
+         * ObservationStatus
+         * @description Lifecycle status of a profile observation.
+         * @enum {string}
+         */
+        ObservationStatus: "active" | "discarded";
+        /**
+         * ProfileAssertion
+         * @description Stable, promoted profile entry that may enter a memory slice.
+         */
+        ProfileAssertion: {
+            /**
+             * Assertion Id
+             * @description Stable assertion identifier.
+             */
+            assertion_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Canonical Dimension
+             * @description Profile dimension.
+             */
+            canonical_dimension: string;
+            /**
+             * Value Or Rule
+             * @description Confirmed value or rule.
+             */
+            value_or_rule: string;
+            /** Applicable Scenes */
+            applicable_scenes?: string[];
+            /** Supporting Observation Ids */
+            supporting_observation_ids?: string[];
+            /** Contradicting Observation Ids */
+            contradicting_observation_ids?: string[];
+            /**
+             * Authorization Scope
+             * @description Authorization scope for use.
+             */
+            authorization_scope: string;
+            /** @description Lifecycle status. */
+            status: components["schemas"]["AssertionStatus"];
+            /**
+             * Promoted From Candidate Id
+             * @description Candidate from which this assertion was promoted.
+             */
+            promoted_from_candidate_id?: string | null;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * ProfileCandidate
+         * @description Explainable candidate profile awaiting human review.
+         */
+        ProfileCandidate: {
+            /**
+             * Candidate Id
+             * @description Stable candidate identifier.
+             */
+            candidate_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Canonical Dimension
+             * @description Profile dimension (e.g. 'expression_brevity').
+             */
+            canonical_dimension: string;
+            /**
+             * Value Or Rule
+             * @description Proposed value or rule.
+             */
+            value_or_rule: string;
+            /**
+             * Applicable Scenes
+             * @description Scenes in which the candidate may apply.
+             */
+            applicable_scenes?: string[];
+            /**
+             * Non Applicable Scenes
+             * @description Scenes in which the candidate must not apply.
+             */
+            non_applicable_scenes?: string[];
+            /**
+             * Supporting Observation Ids
+             * @description Observations that support the candidate.
+             */
+            supporting_observation_ids?: string[];
+            /**
+             * Contradicting Observation Ids
+             * @description Observations that contradict the candidate.
+             */
+            contradicting_observation_ids?: string[];
+            /**
+             * Evidence Summary
+             * @description Structured evidence summary.
+             */
+            evidence_summary: string;
+            /**
+             * Authorization Scope
+             * @description Authorization scope for use.
+             */
+            authorization_scope: string;
+            /**
+             * Promotion Policy Version
+             * @description Promotion policy version used to evaluate the candidate.
+             * @default promotion-1.0
+             */
+            promotion_policy_version: string;
+            /** @description Review status. */
+            review_status: components["schemas"]["CandidateReviewStatus"];
+            /**
+             * @description Stability classification.
+             * @default candidate
+             */
+            stability_state: components["schemas"]["CandidateStabilityState"];
+            /**
+             * Proposed At
+             * Format: date-time
+             * @description When the candidate was proposed.
+             */
+            proposed_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+            /**
+             * Expires At
+             * @description Optional expiration after which the candidate goes stale.
+             */
+            expires_at?: string | null;
+            /** @description Recorded human decision, if any. */
+            human_decision?: components["schemas"]["HumanDecision"] | null;
+        };
+        /**
+         * ProfileCandidateCreateRequest
+         * @description Request to propose a candidate profile from observations.
+         */
+        ProfileCandidateCreateRequest: {
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Canonical Dimension
+             * @description Profile dimension.
+             */
+            canonical_dimension: string;
+            /**
+             * Value Or Rule
+             * @description Proposed value or rule.
+             */
+            value_or_rule: string;
+            /** Applicable Scenes */
+            applicable_scenes?: string[];
+            /** Non Applicable Scenes */
+            non_applicable_scenes?: string[];
+            /** Supporting Observation Ids */
+            supporting_observation_ids?: string[];
+            /** Contradicting Observation Ids */
+            contradicting_observation_ids?: string[];
+            /**
+             * Evidence Summary
+             * @description Structured evidence summary for the candidate.
+             * @default
+             */
+            evidence_summary: string;
+            /**
+             * Authorization Scope
+             * @description Authorization scope.
+             * @default general
+             */
+            authorization_scope: string;
+            /**
+             * Promotion Policy Version
+             * @default promotion-1.0
+             */
+            promotion_policy_version: string;
+            /** Expires At */
+            expires_at?: string | null;
+        };
+        /**
+         * ProfileError
+         * @description Uniform profile error response.
+         */
+        ProfileError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * ProfileObservation
+         * @description Traceable atomic signal that may support a candidate profile.
+         */
+        ProfileObservation: {
+            /**
+             * Observation Id
+             * @description Stable observation identifier.
+             */
+            observation_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Project Id
+             * @description Project context when the observation belongs to a project.
+             */
+            project_id?: string | null;
+            source_type: components["schemas"]["ProfileSourceType"];
+            /**
+             * Source Ref
+             * @description Reference to the source object (conversation, run, import, etc.).
+             */
+            source_ref: string;
+            /**
+             * Source Span Or Event
+             * @description Specific span or event within the source (message id, turn, etc.).
+             */
+            source_span_or_event: string;
+            /**
+             * Scene
+             * @description Scene or situation in which the signal occurred.
+             */
+            scene: string;
+            /**
+             * Purpose
+             * @description Declared purpose for which the observation was collected.
+             */
+            purpose: string;
+            /**
+             * Observed Content
+             * @description Literal or summarized observed content.
+             */
+            observed_content: string;
+            /** @description Kind of signal. */
+            signal_kind: components["schemas"]["ProfileSignalKind"];
+            /**
+             * Extractor And Version
+             * @description Extractor and version that produced the observation.
+             */
+            extractor_and_version: string;
+            /**
+             * Model Rationale
+             * @description Structured rationale when produced by a model extractor.
+             */
+            model_rationale?: string | null;
+            /**
+             * Reliability Factors
+             * @description Factors that support or weaken the observation.
+             */
+            reliability_factors?: string[];
+            /** @description Sensitivity classification governing retention and promotion. */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /**
+             * Retention Policy
+             * @description Retention policy for this observation.
+             */
+            retention_policy: string;
+            /**
+             * Authorization Version
+             * @description Authorization policy version at collection time.
+             * @default authz-1.0
+             */
+            authorization_version: string;
+            /**
+             * Content Hash
+             * @description SHA-256 hash of observed_content and source metadata.
+             */
+            content_hash: string;
+            /** @description Lifecycle status. */
+            status: components["schemas"]["ObservationStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * ProfileObservationCreateRequest
+         * @description Request to record a new profile observation.
+         */
+        ProfileObservationCreateRequest: {
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Project Id
+             * @description Optional project context.
+             */
+            project_id?: string | null;
+            source_type: components["schemas"]["ProfileSourceType"];
+            /**
+             * Source Ref
+             * @description Reference to the source object.
+             */
+            source_ref: string;
+            /**
+             * Source Span Or Event
+             * @description Specific span or event within the source.
+             */
+            source_span_or_event: string;
+            /**
+             * Scene
+             * @description Scene or situation.
+             */
+            scene: string;
+            /**
+             * Purpose
+             * @description Declared purpose.
+             */
+            purpose: string;
+            /**
+             * Observed Content
+             * @description Observed content.
+             */
+            observed_content: string;
+            /** @description Kind of signal. */
+            signal_kind: components["schemas"]["ProfileSignalKind"];
+            /**
+             * Extractor And Version
+             * @description Extractor and version.
+             */
+            extractor_and_version: string;
+            /**
+             * Model Rationale
+             * @description Extractor rationale.
+             */
+            model_rationale?: string | null;
+            /**
+             * Reliability Factors
+             * @description Reliability factors.
+             */
+            reliability_factors?: string[];
+            /** @description Sensitivity class. */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /**
+             * Retention Policy
+             * @description Retention policy.
+             */
+            retention_policy: string;
+            /**
+             * Authorization Version
+             * @description Authorization policy version.
+             * @default authz-1.0
+             */
+            authorization_version: string;
+        };
+        /**
+         * ProfileSensitivityClass
+         * @description Sensitivity classification that governs retention and promotion.
+         * @enum {string}
+         */
+        ProfileSensitivityClass: "public" | "preference" | "learning" | "sensitive" | "prohibited";
+        /**
+         * ProfileSignalKind
+         * @description Kind of signal the observation carries.
+         * @enum {string}
+         */
+        ProfileSignalKind: "preference" | "goal" | "style" | "prior_knowledge" | "misconception" | "transient_emotion" | "role_play" | "third_party_story" | "sensitive_identity" | "other";
+        /**
+         * ProfileSlice
+         * @description Minimal, authorized profile information compiled for a single run.
+         */
+        ProfileSlice: {
+            /**
+             * Slice Id
+             * @description Stable slice identifier.
+             */
+            slice_id: string;
+            /**
+             * Run Id
+             * @description Run the slice is bound to.
+             */
+            run_id: string;
+            /**
+             * Purpose
+             * @description Declared processing purpose.
+             */
+            purpose: string;
+            /**
+             * Included Items
+             * @description Promoted assertions included in the slice.
+             */
+            included_items?: components["schemas"]["ProfileSliceItem"][];
+            /**
+             * Excluded Candidate Ids
+             * @description Candidates explicitly excluded from the slice.
+             */
+            excluded_candidate_ids?: string[];
+            /**
+             * Exclusion Reasons
+             * @description Reason each candidate was excluded.
+             */
+            exclusion_reasons?: {
+                [key: string]: string;
+            };
+            /**
+             * Compiled At
+             * Format: date-time
+             * @description When the slice was compiled.
+             */
+            compiled_at: string;
+        };
+        /**
+         * ProfileSliceItem
+         * @description One entry included in a compiled memory slice.
+         */
+        ProfileSliceItem: {
+            /**
+             * Assertion Id
+             * @description Stable assertion identifier.
+             */
+            assertion_id: string;
+            /**
+             * Dimension
+             * @description Profile dimension.
+             */
+            dimension: string;
+            /**
+             * Value Or Rule
+             * @description Value or rule used in the slice.
+             */
+            value_or_rule: string;
+            /**
+             * Inclusion Reason
+             * @description Why the entry was included.
+             */
+            inclusion_reason: string;
+        };
+        /**
+         * ProfileSourceType
+         * @description How the observation originated.
+         * @enum {string}
+         */
+        ProfileSourceType: "explicit_statement" | "correction" | "choice" | "task_behavior" | "assessment" | "imported" | "system_inference";
         /**
          * Project
          * @description Public project projection.
@@ -4043,7 +4762,7 @@ export interface components {
          * @description Current status of a source entry.
          * @enum {string}
          */
-        SourceStatus: "discovered" | "parsing" | "parsed" | "quarantined" | "blocked" | "retracted";
+        SourceStatus: "discovered" | "parsing" | "parsed" | "quarantined" | "blocked" | "retracted" | "status_unknown";
         /**
          * SourceSummary
          * @description List item for sources.
@@ -5541,6 +6260,434 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_observations_profiles_observations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileObservation"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_observation_profiles_observations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileObservationCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileObservation"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    get_observation_profiles_observations__observation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observation_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileObservation"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_candidates_profiles_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileCandidate"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_candidate_profiles_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileCandidateCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileCandidate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    get_candidate_profiles_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileCandidate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_candidate_profiles_candidates__candidate_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CandidateDecision"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileCandidate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    list_assertions_profiles_assertions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compile_memory_slice_profiles_memory_slice_get: {
+        parameters: {
+            query: {
+                /** @description Declared processing purpose. */
+                purpose: string;
+                /** @description Run identifier. */
+                run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSlice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
                 };
             };
             /** @description Validation Error */

@@ -1351,6 +1351,683 @@
         }
       }
     },
+    "/profiles/observations": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Create Observation",
+        "description": "Record a traceable profile observation owned by the current account.",
+        "operationId": "create_observation_profiles_observations_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileObservationCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileObservation"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Observations",
+        "description": "List profile observations for the current account.",
+        "operationId": "list_observations_profiles_observations_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileObservation"
+                  },
+                  "title": "Response List Observations Profiles Observations Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/observations/{observation_id}": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Observation",
+        "description": "Get a single profile observation.",
+        "operationId": "get_observation_profiles_observations__observation_id__get",
+        "parameters": [
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Observation Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileObservation"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Propose Candidate",
+        "description": "Propose a candidate profile from existing observations.",
+        "operationId": "propose_candidate_profiles_candidates_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileCandidateCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileCandidate"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Candidates",
+        "description": "List candidate profiles for the current account.",
+        "operationId": "list_candidates_profiles_candidates_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileCandidate"
+                  },
+                  "title": "Response List Candidates Profiles Candidates Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates/{candidate_id}": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Candidate",
+        "description": "Get a single candidate profile.",
+        "operationId": "get_candidate_profiles_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileCandidate"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates/{candidate_id}/decision": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Decide Candidate",
+        "description": "Accept, reject or modify a candidate profile.",
+        "operationId": "decide_candidate_profiles_candidates__candidate_id__decision_post",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CandidateDecision"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileCandidate"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Assertions",
+        "description": "List promoted profile assertions for the current account.",
+        "operationId": "list_assertions_profiles_assertions_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileAssertion"
+                  },
+                  "title": "Response List Assertions Profiles Assertions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slice": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Compile Memory Slice",
+        "description": "Compile the minimal profile slice for a run.\n\nUnconfirmed candidates are explicitly excluded so they are never used as\nstable facts in downstream tasks.",
+        "operationId": "compile_memory_slice_profiles_memory_slice_get",
+        "parameters": [
+          {
+            "name": "purpose",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Declared processing purpose.",
+              "title": "Purpose"
+            },
+            "description": "Declared processing purpose."
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Run identifier.",
+              "title": "Run Id"
+            },
+            "description": "Run identifier."
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileSlice"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/work-orders": {
       "post": {
         "tags": [
@@ -4541,6 +5218,16 @@
         "title": "ArtifactTrustStatus",
         "description": "Lifecycle status of the scientific artifact produced by a run."
       },
+      "AssertionStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "frozen",
+          "stale"
+        ],
+        "title": "AssertionStatus",
+        "description": "Lifecycle status of a promoted profile assertion."
+      },
       "AuthError": {
         "properties": {
           "error": {
@@ -4680,6 +5367,78 @@
         ],
         "title": "BackgroundTaskEnvelope",
         "description": "Required context for every background task.\n\nA background task must carry a subject, object domain, project, authorization\nversion and key epoch. Missing any of these causes deterministic failure\nclosure rather than running with ambient or guessed context."
+      },
+      "CandidateDecision": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/DecisionType",
+            "description": "Decision type."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          },
+          "modified_value_or_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Value Or Rule"
+          },
+          "modified_applicable_scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Applicable Scenes"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "title": "CandidateDecision",
+        "description": "Request to accept, reject or modify a candidate profile."
+      },
+      "CandidateReviewStatus": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "accepted",
+          "rejected",
+          "modified",
+          "conflicted",
+          "stale",
+          "discarded"
+        ],
+        "title": "CandidateReviewStatus",
+        "description": "Where the candidate is in the human-review loop."
+      },
+      "CandidateStabilityState": {
+        "type": "string",
+        "enum": [
+          "candidate",
+          "active",
+          "restricted",
+          "frozen",
+          "stale",
+          "deleted"
+        ],
+        "title": "CandidateStabilityState",
+        "description": "Stability classification of a candidate."
       },
       "CapsuleIssueRequest": {
         "properties": {
@@ -5868,6 +6627,16 @@
         ],
         "title": "CoverageGap",
         "description": "A coverage or recall gap reported to the caller."
+      },
+      "DecisionType": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "reject",
+          "modify"
+        ],
+        "title": "DecisionType",
+        "description": "Human decision on a candidate profile."
       },
       "DependencyHealth": {
         "properties": {
@@ -7230,6 +7999,78 @@
         "title": "HealthStatus",
         "description": "Top-level health verdict."
       },
+      "HumanDecision": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id",
+            "description": "Stable decision identifier."
+          },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "Candidate the decision applies to."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that made the decision."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/DecisionType",
+            "description": "Decision type."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          },
+          "modified_value_or_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Value Or Rule",
+            "description": "Modified value when decision is 'modify'."
+          },
+          "modified_applicable_scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Applicable Scenes",
+            "description": "Modified applicable scenes when decision is 'modify'."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the decision was recorded."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "candidate_id",
+          "account_id",
+          "decision",
+          "reason",
+          "created_at"
+        ],
+        "title": "HumanDecision",
+        "description": "Named human decision on a candidate profile."
+      },
       "HumanTodoItem": {
         "properties": {
           "todo_id": {
@@ -7774,6 +8615,737 @@
         ],
         "title": "ObjectRef",
         "description": "Stable reference to an owned object.\n\nObjectRef carries enough context to re-authenticate and re-authorize a deep\nlink without relying on ambient session state alone."
+      },
+      "ObservationStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "discarded"
+        ],
+        "title": "ObservationStatus",
+        "description": "Lifecycle status of a profile observation."
+      },
+      "ProfileAssertion": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "Stable assertion identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "canonical_dimension": {
+            "type": "string",
+            "title": "Canonical Dimension",
+            "description": "Profile dimension."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Confirmed value or rule."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes"
+          },
+          "supporting_observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Observation Ids"
+          },
+          "contradicting_observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contradicting Observation Ids"
+          },
+          "authorization_scope": {
+            "type": "string",
+            "title": "Authorization Scope",
+            "description": "Authorization scope for use."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssertionStatus",
+            "description": "Lifecycle status."
+          },
+          "promoted_from_candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted From Candidate Id",
+            "description": "Candidate from which this assertion was promoted."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "owner_account_id",
+          "canonical_dimension",
+          "value_or_rule",
+          "authorization_scope",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProfileAssertion",
+        "description": "Stable, promoted profile entry that may enter a memory slice."
+      },
+      "ProfileCandidate": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "Stable candidate identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "canonical_dimension": {
+            "type": "string",
+            "title": "Canonical Dimension",
+            "description": "Profile dimension (e.g. 'expression_brevity')."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Proposed value or rule."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes",
+            "description": "Scenes in which the candidate may apply."
+          },
+          "non_applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Non Applicable Scenes",
+            "description": "Scenes in which the candidate must not apply."
+          },
+          "supporting_observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Observation Ids",
+            "description": "Observations that support the candidate."
+          },
+          "contradicting_observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contradicting Observation Ids",
+            "description": "Observations that contradict the candidate."
+          },
+          "evidence_summary": {
+            "type": "string",
+            "title": "Evidence Summary",
+            "description": "Structured evidence summary."
+          },
+          "authorization_scope": {
+            "type": "string",
+            "title": "Authorization Scope",
+            "description": "Authorization scope for use."
+          },
+          "promotion_policy_version": {
+            "type": "string",
+            "title": "Promotion Policy Version",
+            "description": "Promotion policy version used to evaluate the candidate.",
+            "default": "promotion-1.0"
+          },
+          "review_status": {
+            "$ref": "#/components/schemas/CandidateReviewStatus",
+            "description": "Review status."
+          },
+          "stability_state": {
+            "$ref": "#/components/schemas/CandidateStabilityState",
+            "description": "Stability classification.",
+            "default": "candidate"
+          },
+          "proposed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Proposed At",
+            "description": "When the candidate was proposed."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "Optional expiration after which the candidate goes stale."
+          },
+          "human_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded human decision, if any."
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "owner_account_id",
+          "canonical_dimension",
+          "value_or_rule",
+          "evidence_summary",
+          "authorization_scope",
+          "review_status",
+          "proposed_at",
+          "updated_at"
+        ],
+        "title": "ProfileCandidate",
+        "description": "Explainable candidate profile awaiting human review."
+      },
+      "ProfileCandidateCreateRequest": {
+        "properties": {
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "canonical_dimension": {
+            "type": "string",
+            "title": "Canonical Dimension",
+            "description": "Profile dimension."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Proposed value or rule."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes"
+          },
+          "non_applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Non Applicable Scenes"
+          },
+          "supporting_observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Observation Ids"
+          },
+          "contradicting_observation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Contradicting Observation Ids"
+          },
+          "evidence_summary": {
+            "type": "string",
+            "title": "Evidence Summary",
+            "description": "Structured evidence summary for the candidate.",
+            "default": ""
+          },
+          "authorization_scope": {
+            "type": "string",
+            "title": "Authorization Scope",
+            "description": "Authorization scope.",
+            "default": "general"
+          },
+          "promotion_policy_version": {
+            "type": "string",
+            "title": "Promotion Policy Version",
+            "default": "promotion-1.0"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "owner_account_id",
+          "canonical_dimension",
+          "value_or_rule"
+        ],
+        "title": "ProfileCandidateCreateRequest",
+        "description": "Request to propose a candidate profile from observations."
+      },
+      "ProfileError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ProfileError",
+        "description": "Uniform profile error response."
+      },
+      "ProfileObservation": {
+        "properties": {
+          "observation_id": {
+            "type": "string",
+            "title": "Observation Id",
+            "description": "Stable observation identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project context when the observation belongs to a project."
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/ProfileSourceType"
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "Reference to the source object (conversation, run, import, etc.)."
+          },
+          "source_span_or_event": {
+            "type": "string",
+            "title": "Source Span Or Event",
+            "description": "Specific span or event within the source (message id, turn, etc.)."
+          },
+          "scene": {
+            "type": "string",
+            "title": "Scene",
+            "description": "Scene or situation in which the signal occurred."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared purpose for which the observation was collected."
+          },
+          "observed_content": {
+            "type": "string",
+            "title": "Observed Content",
+            "description": "Literal or summarized observed content."
+          },
+          "signal_kind": {
+            "$ref": "#/components/schemas/ProfileSignalKind",
+            "description": "Kind of signal."
+          },
+          "extractor_and_version": {
+            "type": "string",
+            "title": "Extractor And Version",
+            "description": "Extractor and version that produced the observation."
+          },
+          "model_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Rationale",
+            "description": "Structured rationale when produced by a model extractor."
+          },
+          "reliability_factors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reliability Factors",
+            "description": "Factors that support or weaken the observation."
+          },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity classification governing retention and promotion."
+          },
+          "retention_policy": {
+            "type": "string",
+            "title": "Retention Policy",
+            "description": "Retention policy for this observation."
+          },
+          "authorization_version": {
+            "type": "string",
+            "title": "Authorization Version",
+            "description": "Authorization policy version at collection time.",
+            "default": "authz-1.0"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "SHA-256 hash of observed_content and source metadata."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ObservationStatus",
+            "description": "Lifecycle status."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "observation_id",
+          "owner_account_id",
+          "source_type",
+          "source_ref",
+          "source_span_or_event",
+          "scene",
+          "purpose",
+          "observed_content",
+          "signal_kind",
+          "extractor_and_version",
+          "sensitivity_class",
+          "retention_policy",
+          "content_hash",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProfileObservation",
+        "description": "Traceable atomic signal that may support a candidate profile."
+      },
+      "ProfileObservationCreateRequest": {
+        "properties": {
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Optional project context."
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/ProfileSourceType"
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "Reference to the source object."
+          },
+          "source_span_or_event": {
+            "type": "string",
+            "title": "Source Span Or Event",
+            "description": "Specific span or event within the source."
+          },
+          "scene": {
+            "type": "string",
+            "title": "Scene",
+            "description": "Scene or situation."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared purpose."
+          },
+          "observed_content": {
+            "type": "string",
+            "title": "Observed Content",
+            "description": "Observed content."
+          },
+          "signal_kind": {
+            "$ref": "#/components/schemas/ProfileSignalKind",
+            "description": "Kind of signal."
+          },
+          "extractor_and_version": {
+            "type": "string",
+            "title": "Extractor And Version",
+            "description": "Extractor and version."
+          },
+          "model_rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Rationale",
+            "description": "Extractor rationale."
+          },
+          "reliability_factors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reliability Factors",
+            "description": "Reliability factors."
+          },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity class."
+          },
+          "retention_policy": {
+            "type": "string",
+            "title": "Retention Policy",
+            "description": "Retention policy."
+          },
+          "authorization_version": {
+            "type": "string",
+            "title": "Authorization Version",
+            "description": "Authorization policy version.",
+            "default": "authz-1.0"
+          }
+        },
+        "type": "object",
+        "required": [
+          "owner_account_id",
+          "source_type",
+          "source_ref",
+          "source_span_or_event",
+          "scene",
+          "purpose",
+          "observed_content",
+          "signal_kind",
+          "extractor_and_version",
+          "sensitivity_class",
+          "retention_policy"
+        ],
+        "title": "ProfileObservationCreateRequest",
+        "description": "Request to record a new profile observation."
+      },
+      "ProfileSensitivityClass": {
+        "type": "string",
+        "enum": [
+          "public",
+          "preference",
+          "learning",
+          "sensitive",
+          "prohibited"
+        ],
+        "title": "ProfileSensitivityClass",
+        "description": "Sensitivity classification that governs retention and promotion."
+      },
+      "ProfileSignalKind": {
+        "type": "string",
+        "enum": [
+          "preference",
+          "goal",
+          "style",
+          "prior_knowledge",
+          "misconception",
+          "transient_emotion",
+          "role_play",
+          "third_party_story",
+          "sensitive_identity",
+          "other"
+        ],
+        "title": "ProfileSignalKind",
+        "description": "Kind of signal the observation carries."
+      },
+      "ProfileSlice": {
+        "properties": {
+          "slice_id": {
+            "type": "string",
+            "title": "Slice Id",
+            "description": "Stable slice identifier."
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Run the slice is bound to."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared processing purpose."
+          },
+          "included_items": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileSliceItem"
+            },
+            "type": "array",
+            "title": "Included Items",
+            "description": "Promoted assertions included in the slice."
+          },
+          "excluded_candidate_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Excluded Candidate Ids",
+            "description": "Candidates explicitly excluded from the slice."
+          },
+          "exclusion_reasons": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Exclusion Reasons",
+            "description": "Reason each candidate was excluded."
+          },
+          "compiled_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Compiled At",
+            "description": "When the slice was compiled."
+          }
+        },
+        "type": "object",
+        "required": [
+          "slice_id",
+          "run_id",
+          "purpose",
+          "compiled_at"
+        ],
+        "title": "ProfileSlice",
+        "description": "Minimal, authorized profile information compiled for a single run."
+      },
+      "ProfileSliceItem": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "Stable assertion identifier."
+          },
+          "dimension": {
+            "type": "string",
+            "title": "Dimension",
+            "description": "Profile dimension."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Value or rule used in the slice."
+          },
+          "inclusion_reason": {
+            "type": "string",
+            "title": "Inclusion Reason",
+            "description": "Why the entry was included."
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "dimension",
+          "value_or_rule",
+          "inclusion_reason"
+        ],
+        "title": "ProfileSliceItem",
+        "description": "One entry included in a compiled memory slice."
+      },
+      "ProfileSourceType": {
+        "type": "string",
+        "enum": [
+          "explicit_statement",
+          "correction",
+          "choice",
+          "task_behavior",
+          "assessment",
+          "imported",
+          "system_inference"
+        ],
+        "title": "ProfileSourceType",
+        "description": "How the observation originated."
       },
       "Project": {
         "properties": {
