@@ -9,7 +9,7 @@ the authoritative shape of CONTRACT-SCI-01.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import Enum, StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -674,6 +674,9 @@ class ClaimGraphResult(BaseModel):
     model_run_lock: ModelRunLock | None = Field(
         default=None, description="Lock for the model call that generated claims."
     )
+    validation_report: ValidationReport | None = Field(
+        default=None, description="Honest-degradation validation report (T016)."
+    )
 
 
 class CitationValidationResult(BaseModel):
@@ -686,3 +689,201 @@ class CitationValidationResult(BaseModel):
         default=None, description="Current document version id if source is still active."
     )
     current_version_label: str | None = Field(default=None, description="Current version label.")
+
+
+class WordingStrength(StrEnum):
+    """Deterministic ceiling on how strongly a claim may be worded.
+
+    The ceiling is derived from evidence state, not from model judgment or user
+    preference. Domain packs may tighten it; they may not weaken it.
+    """
+
+    HIGH = "high"
+    MODERATE = "moderate"
+    LOW = "low"
+    VERY_LOW = "very_low"
+    UNASSESSABLE = "unassessable"
+    CONFLICTING = "conflicting"
+    METADATA_ONLY = "metadata_only"
+
+
+class EvidenceState(StrEnum):
+    """Aggregated evidence state for a single claim."""
+
+    SUPPORTED = "supported"
+    REFUTED = "refuted"
+    LIMITED = "limited"
+    UNKNOWN = "unknown"
+    INSUFFICIENT = "insufficient"
+    CONFLICTED = "conflicted"
+
+
+class FactLockType(StrEnum):
+    """Kind of fact locked for a claim."""
+
+    IDENTIFIER = "identifier"
+    EXACT_VALUE = "exact_value"
+    RELATION = "relation"
+    CONDITION = "condition"
+    STRENGTH = "strength"
+    TERM_FORMULA = "term_formula"
+
+
+class FactLock(BaseModel):
+    """A single locked fact derived from a claim and its evidence.
+
+    Fact locks are immutable boundaries that downstream expression and
+    multimodal nodes may not cross. Each lock records the canonical value,
+    allowed transformations, forbidden transformations, required qualifiers,
+    and the evidence/citations that justify it.
+    """
+
+    lock_id: str = Field(description="Stable fact lock identifier.")
+    claim_id: str = Field(description="Claim this lock belongs to.")
+    lock_type: FactLockType = Field(description="Kind of locked fact.")
+    canonical_value: str = Field(description="Canonical, comparable value.")
+    allowed_variants: list[str] = Field(
+        default_factory=list,
+        description="Equivalent forms that do not change the fact.",
+    )
+    forbidden_transformations: list[str] = Field(
+        default_factory=list,
+        description="Transformations that would violate the lock, e.g. 'upgrade causality'.",
+    )
+    required_qualifiers: list[str] = Field(
+        default_factory=list,
+        description="Qualifiers that must remain attached, e.g. population or conditions.",
+    )
+    evidence_ids: list[str] = Field(
+        default_factory=list, description="Evidence ids supporting the locked fact."
+    )
+    citation_ids: list[str] = Field(
+        default_factory=list, description="Citation ids bound to the locked fact."
+    )
+    wording_strength_ceiling: WordingStrength = Field(
+        default=WordingStrength.UNASSESSABLE,
+        description="Maximum wording strength allowed for this claim.",
+    )
+    verification_method: str = Field(
+        default="rule",
+        description="How the lock was derived: rule, model, human, domain_pack.",
+    )
+
+
+class FactLockSet(BaseModel):
+    """Collection of fact locks compiled from a claim graph."""
+
+    set_id: str = Field(description="Stable fact lock set identifier.")
+    graph_id: str = Field(description="Claim graph this set was compiled from.")
+    account_id: str = Field(description="Owning account.")
+    project_id: str | None = Field(default=None, description="Project scope if any.")
+    locks: list[FactLock] = Field(default_factory=list)
+    created_at: datetime = Field(description="Compilation timestamp.")
+
+
+class ConflictType(StrEnum):
+    """Kind of evidence conflict."""
+
+    TRUE_DISAGREEMENT = "true_disagreement"
+    SCOPE_MISMATCH = "scope_mismatch"
+    DEFINITION_MISMATCH = "definition_mismatch"
+    VERSION_SUPERSEDED = "version_superseded"
+    METHODOLOGICAL = "methodological"
+    UNKNOWN = "unknown"
+
+
+class ConflictResolutionStatus(StrEnum):
+    """Resolution state of a conflict."""
+
+    OPEN = "open"
+    UNDER_REVIEW = "under_review"
+    RESOLVED = "resolved"
+    ESCALATED = "escalated"
+
+
+class Conflict(BaseModel):
+    """An explicit, user-visible evidence conflict.
+
+    Conflicts are first-class scientific objects. They are not exceptions and
+    are not resolved by model voting or last-write-wins.
+    """
+
+    conflict_id: str = Field(description="Stable conflict identifier.")
+    graph_id: str = Field(description="Claim graph this conflict belongs to.")
+    claim_ids: list[str] = Field(default_factory=list)
+    evidence_ids: list[str] = Field(default_factory=list)
+    conflict_type: ConflictType = Field(default=ConflictType.UNKNOWN)
+    materiality: str = Field(
+        default="unknown",
+        description="Materiality of the conflict, e.g. key, supporting, illustrative.",
+    )
+    resolution_status: ConflictResolutionStatus = Field(
+        default=ConflictResolutionStatus.OPEN
+    )
+    resolution_reason: str | None = Field(default=None)
+    resolved_by: str | None = Field(default=None)
+    user_visible_summary: str = Field(
+        default="", description="Human-readable explanation of the conflict."
+    )
+
+
+class ScientificQualityGateCheck(StrEnum):
+    """Named checks performed by the scientific quality gate."""
+
+    FACT_LOCK_CONSISTENT = "fact_lock_consistent"
+    CONFLICT_DISCLOSED = "conflict_disclosed"
+    SOURCE_ACTIVE = "source_active"
+    CITATION_LOCATABLE = "citation_locatable"
+    KEY_CLAIM_COVERAGE = "key_claim_coverage"
+    WORDING_STRENGTH_WITHIN_EVIDENCE = "wording_strength_within_evidence"
+    NO_FABRICATED_CITATIONS = "no_fabricated_citations"
+    EVIDENCE_PRESERVED = "evidence_preserved"
+
+
+class ScientificQualityGateResult(BaseModel):
+    """Result of running the scientific quality gate over a claim graph."""
+
+    passed: bool = Field(description="Whether the graph passes the scientific gate.")
+    graph_status: ClaimTrustStatus = Field(description="Derived trust status.")
+    checks: dict[ScientificQualityGateCheck, bool] = Field(default_factory=dict)
+    failed_checks: list[ScientificQualityGateCheck] = Field(default_factory=list)
+    blocked_claim_ids: list[str] = Field(default_factory=list)
+    reason: str | None = Field(default=None, description="Human-readable gate summary.")
+
+
+class ValidationReport(BaseModel):
+    """Report produced by honest-degradation analysis of a claim graph.
+
+    The report records the evidence state for each claim, detected conflicts,
+    missing evidence, fact lock set id, wording strength ceiling, scientific
+    quality gate result, and recommended recovery actions. It is the input to
+    downstream expression nodes (T025) and to the task stage (T006).
+    """
+
+    report_id: str = Field(description="Stable validation report identifier.")
+    graph_id: str = Field(description="Claim graph this report analyses.")
+    account_id: str = Field(description="Owning account.")
+    project_id: str | None = Field(default=None, description="Project scope if any.")
+    status: ClaimTrustStatus = Field(description="Derived honest-degradation status.")
+    previous_status: ClaimTrustStatus | None = Field(
+        default=None, description="Status before this analysis."
+    )
+    evidence_states: dict[str, EvidenceState] = Field(
+        default_factory=dict, description="Claim id -> aggregated evidence state."
+    )
+    conflicts: list[Conflict] = Field(default_factory=list)
+    missing_evidence_claim_ids: list[str] = Field(default_factory=list)
+    blocked_claim_ids: list[str] = Field(default_factory=list)
+    fact_lock_set_id: str | None = Field(default=None)
+    wording_strength_ceiling: WordingStrength = Field(
+        default=WordingStrength.UNASSESSABLE,
+        description="Global wording strength ceiling for the graph.",
+    )
+    scientific_gate: ScientificQualityGateResult | None = Field(default=None)
+    human_gate_required: bool = Field(default=False)
+    human_gate_reason: str | None = Field(default=None)
+    recovery_actions: list[str] = Field(
+        default_factory=list,
+        description="Suggested actions: add_evidence, human_review, revise_claim, block_publish.",
+    )
+    created_at: datetime = Field(description="Report timestamp.")

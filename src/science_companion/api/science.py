@@ -19,8 +19,10 @@ from science_companion.contracts.science import (
     ClaimGraphResult,
     ClaimRequest,
     DocumentVersion,
+    FactLockSet,
     IngestionRunRef,
     PublishGateResult,
+    ScientificQualityGateResult,
     SearchRequest,
     SearchResult,
     SourceError,
@@ -28,6 +30,7 @@ from science_companion.contracts.science import (
     SourceSummary,
     SourceUploadRequest,
     SourceVersionRequest,
+    ValidationReport,
 )
 from science_companion.invalidation import InvalidationService
 from science_companion.science import (
@@ -451,6 +454,76 @@ async def run_claim_graph_publish_gate(
     """Re-run the publish gate for a claim graph."""
     try:
         return service.run_publish_gate(subject.account_id, graph_id)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_404_NOT_FOUND, "claim_graph_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/claim-graphs/{graph_id}/fact-locks",
+    response_model=FactLockSet,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_404_NOT_FOUND: {"model": SourceError},
+    },
+)
+async def get_fact_locks(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    graph_id: str,
+) -> FactLockSet:
+    """Compile the fact lock set for a claim graph."""
+    try:
+        return service.compile_fact_locks(subject.account_id, graph_id)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_404_NOT_FOUND, "claim_graph_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/claim-graphs/{graph_id}/validate",
+    response_model=ValidationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_404_NOT_FOUND: {"model": SourceError},
+    },
+)
+async def validate_claim_graph(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    graph_id: str,
+    apply: bool = False,
+) -> ValidationReport:
+    """Run honest-degradation analysis and return a validation report.
+
+    Pass `apply=true` to update the stored graph status from the report.
+    """
+    try:
+        return service.validate_claim_graph(subject.account_id, graph_id, apply=apply)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_404_NOT_FOUND, "claim_graph_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/claim-graphs/{graph_id}/scientific-quality-gate",
+    response_model=ScientificQualityGateResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_404_NOT_FOUND: {"model": SourceError},
+    },
+)
+async def run_claim_graph_scientific_quality_gate(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    graph_id: str,
+) -> ScientificQualityGateResult:
+    """Run the scientific quality gate for a claim graph."""
+    try:
+        return service.run_scientific_quality_gate(subject.account_id, graph_id)
     except ScienceError as exc:
         raise _science_error(
             status.HTTP_404_NOT_FOUND, "claim_graph_not_found", str(exc)

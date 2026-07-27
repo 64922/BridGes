@@ -3660,6 +3660,84 @@
             "description": "Unprocessable Entity"
           }
         }
+      },
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "List Claim Graphs",
+        "description": "List claim graphs accessible to the current account, optionally filtered by project.",
+        "operationId": "list_claim_graphs_science_claim_graphs_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ClaimGraph"
+                  },
+                  "title": "Response List Claim Graphs Science Claim Graphs Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/science/claim-graphs/{graph_id}": {
@@ -3783,6 +3861,341 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PublishGateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/claim-graphs/{graph_id}/fact-locks": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Get Fact Locks",
+        "description": "Compile the fact lock set for a claim graph.",
+        "operationId": "get_fact_locks_science_claim_graphs__graph_id__fact_locks_get",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Graph Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactLockSet"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/claim-graphs/{graph_id}/validate": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Validate Claim Graph",
+        "description": "Run honest-degradation analysis and return a validation report.\n\nPass `apply=true` to update the stored graph status from the report.",
+        "operationId": "validate_claim_graph_science_claim_graphs__graph_id__validate_get",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Graph Id"
+            }
+          },
+          {
+            "name": "apply",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false,
+              "title": "Apply"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidationReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/claim-graphs/{graph_id}/scientific-quality-gate": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Run Claim Graph Scientific Quality Gate",
+        "description": "Run the scientific quality gate for a claim graph.",
+        "operationId": "run_claim_graph_scientific_quality_gate_science_claim_graphs__graph_id__scientific_quality_gate_get",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Graph Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScientificQualityGateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/claim-graphs/{graph_id}/citations/{citation_id}/verify": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Verify Citation",
+        "description": "Re-verify a citation against current source state.",
+        "operationId": "verify_citation_science_claim_graphs__graph_id__citations__citation_id__verify_get",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Graph Id"
+            }
+          },
+          {
+            "name": "citation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Citation Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CitationValidationResult"
                 }
               }
             }
@@ -4765,6 +5178,56 @@
         "title": "CitationLocator",
         "description": "Precise location of a citation within a document version."
       },
+      "CitationValidationResult": {
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "title": "Citation Id",
+            "description": "Citation identifier."
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/CitationVerificationStatus",
+            "description": "Current status."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason."
+          },
+          "current_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Document Id",
+            "description": "Current document version id if source is still active."
+          },
+          "current_version_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Label",
+            "description": "Current version label."
+          }
+        },
+        "type": "object",
+        "required": [
+          "citation_id",
+          "verification_status",
+          "reason"
+        ],
+        "title": "CitationValidationResult",
+        "description": "Result of re-verifying a citation against the current source state."
+      },
       "CitationVerificationStatus": {
         "type": "string",
         "enum": [
@@ -5056,6 +5519,17 @@
               }
             ],
             "description": "Lock for the model call that generated claims."
+          },
+          "validation_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValidationReport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Honest-degradation validation report (T016)."
           }
         },
         "type": "object",
@@ -5251,6 +5725,107 @@
         ],
         "title": "CloudProjectionStatus",
         "description": "Lifecycle status of a cloud control projection."
+      },
+      "Conflict": {
+        "properties": {
+          "conflict_id": {
+            "type": "string",
+            "title": "Conflict Id",
+            "description": "Stable conflict identifier."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph this conflict belongs to."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Ids"
+          },
+          "conflict_type": {
+            "$ref": "#/components/schemas/ConflictType",
+            "default": "unknown"
+          },
+          "materiality": {
+            "type": "string",
+            "title": "Materiality",
+            "description": "Materiality of the conflict, e.g. key, supporting, illustrative.",
+            "default": "unknown"
+          },
+          "resolution_status": {
+            "$ref": "#/components/schemas/ConflictResolutionStatus",
+            "default": "open"
+          },
+          "resolution_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Reason"
+          },
+          "resolved_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved By"
+          },
+          "user_visible_summary": {
+            "type": "string",
+            "title": "User Visible Summary",
+            "description": "Human-readable explanation of the conflict.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "conflict_id",
+          "graph_id"
+        ],
+        "title": "Conflict",
+        "description": "An explicit, user-visible evidence conflict.\n\nConflicts are first-class scientific objects. They are not exceptions and\nare not resolved by model voting or last-write-wins."
+      },
+      "ConflictResolutionStatus": {
+        "type": "string",
+        "enum": [
+          "open",
+          "under_review",
+          "resolved",
+          "escalated"
+        ],
+        "title": "ConflictResolutionStatus",
+        "description": "Resolution state of a conflict."
+      },
+      "ConflictType": {
+        "type": "string",
+        "enum": [
+          "true_disagreement",
+          "scope_mismatch",
+          "definition_mismatch",
+          "version_superseded",
+          "methodological",
+          "unknown"
+        ],
+        "title": "ConflictType",
+        "description": "Kind of evidence conflict."
       },
       "ContentAuthority": {
         "type": "string",
@@ -6409,6 +6984,168 @@
         ],
         "title": "EvidenceRelation",
         "description": "Relationship between a source fragment and a claim."
+      },
+      "EvidenceState": {
+        "type": "string",
+        "enum": [
+          "supported",
+          "refuted",
+          "limited",
+          "unknown",
+          "insufficient",
+          "conflicted"
+        ],
+        "title": "EvidenceState",
+        "description": "Aggregated evidence state for a single claim."
+      },
+      "FactLock": {
+        "properties": {
+          "lock_id": {
+            "type": "string",
+            "title": "Lock Id",
+            "description": "Stable fact lock identifier."
+          },
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id",
+            "description": "Claim this lock belongs to."
+          },
+          "lock_type": {
+            "$ref": "#/components/schemas/FactLockType",
+            "description": "Kind of locked fact."
+          },
+          "canonical_value": {
+            "type": "string",
+            "title": "Canonical Value",
+            "description": "Canonical, comparable value."
+          },
+          "allowed_variants": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Allowed Variants",
+            "description": "Equivalent forms that do not change the fact."
+          },
+          "forbidden_transformations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Forbidden Transformations",
+            "description": "Transformations that would violate the lock, e.g. 'upgrade causality'."
+          },
+          "required_qualifiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Required Qualifiers",
+            "description": "Qualifiers that must remain attached, e.g. population or conditions."
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Ids",
+            "description": "Evidence ids supporting the locked fact."
+          },
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citation Ids",
+            "description": "Citation ids bound to the locked fact."
+          },
+          "wording_strength_ceiling": {
+            "$ref": "#/components/schemas/WordingStrength",
+            "description": "Maximum wording strength allowed for this claim.",
+            "default": "unassessable"
+          },
+          "verification_method": {
+            "type": "string",
+            "title": "Verification Method",
+            "description": "How the lock was derived: rule, model, human, domain_pack.",
+            "default": "rule"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lock_id",
+          "claim_id",
+          "lock_type",
+          "canonical_value"
+        ],
+        "title": "FactLock",
+        "description": "A single locked fact derived from a claim and its evidence.\n\nFact locks are immutable boundaries that downstream expression and\nmultimodal nodes may not cross. Each lock records the canonical value,\nallowed transformations, forbidden transformations, required qualifiers,\nand the evidence/citations that justify it."
+      },
+      "FactLockSet": {
+        "properties": {
+          "set_id": {
+            "type": "string",
+            "title": "Set Id",
+            "description": "Stable fact lock set identifier."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph this set was compiled from."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "locks": {
+            "items": {
+              "$ref": "#/components/schemas/FactLock"
+            },
+            "type": "array",
+            "title": "Locks"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Compilation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "set_id",
+          "graph_id",
+          "account_id",
+          "created_at"
+        ],
+        "title": "FactLockSet",
+        "description": "Collection of fact locks compiled from a claim graph."
+      },
+      "FactLockType": {
+        "type": "string",
+        "enum": [
+          "identifier",
+          "exact_value",
+          "relation",
+          "condition",
+          "strength",
+          "term_formula"
+        ],
+        "title": "FactLockType",
+        "description": "Kind of fact locked for a claim."
       },
       "GateResult": {
         "type": "string",
@@ -7806,6 +8543,77 @@
         "title": "RunProjection",
         "description": "Task-stage projection of a workflow run.\n\nIt separates workflow execution status from artifact trust status and\npublish eligibility, so that users do not confuse \"finished running\" with\n\"scientifically approved\" or \"ready to publish\"."
       },
+      "ScientificQualityGateCheck": {
+        "type": "string",
+        "enum": [
+          "fact_lock_consistent",
+          "conflict_disclosed",
+          "source_active",
+          "citation_locatable",
+          "key_claim_coverage",
+          "wording_strength_within_evidence",
+          "no_fabricated_citations",
+          "evidence_preserved"
+        ],
+        "title": "ScientificQualityGateCheck",
+        "description": "Named checks performed by the scientific quality gate."
+      },
+      "ScientificQualityGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether the graph passes the scientific gate."
+          },
+          "graph_status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "description": "Derived trust status."
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/ScientificQualityGateCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/ScientificQualityGateCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Human-readable gate summary."
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "graph_status"
+        ],
+        "title": "ScientificQualityGateResult",
+        "description": "Result of running the scientific quality gate over a claim graph."
+      },
       "ScopeAction": {
         "type": "string",
         "enum": [
@@ -8762,6 +9570,147 @@
         ],
         "title": "ValidationError"
       },
+      "ValidationReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "Stable validation report identifier."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph this report analyses."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "description": "Derived honest-degradation status."
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClaimTrustStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Status before this analysis."
+          },
+          "evidence_states": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EvidenceState"
+            },
+            "type": "object",
+            "title": "Evidence States",
+            "description": "Claim id -> aggregated evidence state."
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "missing_evidence_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Evidence Claim Ids"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "fact_lock_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Set Id"
+          },
+          "wording_strength_ceiling": {
+            "$ref": "#/components/schemas/WordingStrength",
+            "description": "Global wording strength ceiling for the graph.",
+            "default": "unassessable"
+          },
+          "scientific_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScientificQualityGateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "human_gate_required": {
+            "type": "boolean",
+            "title": "Human Gate Required",
+            "default": false
+          },
+          "human_gate_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Gate Reason"
+          },
+          "recovery_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Actions",
+            "description": "Suggested actions: add_evidence, human_review, revise_claim, block_publish."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Report timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "graph_id",
+          "account_id",
+          "status",
+          "created_at"
+        ],
+        "title": "ValidationReport",
+        "description": "Report produced by honest-degradation analysis of a claim graph.\n\nThe report records the evidence state for each claim, detected conflicts,\nmissing evidence, fact lock set id, wording strength ceiling, scientific\nquality gate result, and recommended recovery actions. It is the input to\ndownstream expression nodes (T025) and to the task stage (T006)."
+      },
       "VaultError": {
         "properties": {
           "error": {
@@ -9005,6 +9954,20 @@
         ],
         "title": "VaultShareRequest",
         "description": "Request to share a personal vault object as a minimized project copy."
+      },
+      "WordingStrength": {
+        "type": "string",
+        "enum": [
+          "high",
+          "moderate",
+          "low",
+          "very_low",
+          "unassessable",
+          "conflicting",
+          "metadata_only"
+        ],
+        "title": "WordingStrength",
+        "description": "Deterministic ceiling on how strongly a claim may be worded.\n\nThe ceiling is derived from evidence state, not from model judgment or user\npreference. Domain packs may tighten it; they may not weaken it."
       },
       "WorkOrder": {
         "properties": {

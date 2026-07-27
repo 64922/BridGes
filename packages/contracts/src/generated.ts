@@ -809,7 +809,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Claim Graphs
+         * @description List claim graphs accessible to the current account, optionally filtered by project.
+         */
+        get: operations["list_claim_graphs_science_claim_graphs_get"];
         put?: never;
         /**
          * Generate Personal Claim Graph
@@ -854,6 +858,88 @@ export interface paths {
          * @description Re-run the publish gate for a claim graph.
          */
         get: operations["run_claim_graph_publish_gate_science_claim_graphs__graph_id__publish_gate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs/{graph_id}/fact-locks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Fact Locks
+         * @description Compile the fact lock set for a claim graph.
+         */
+        get: operations["get_fact_locks_science_claim_graphs__graph_id__fact_locks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs/{graph_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Validate Claim Graph
+         * @description Run honest-degradation analysis and return a validation report.
+         *
+         *     Pass `apply=true` to update the stored graph status from the report.
+         */
+        get: operations["validate_claim_graph_science_claim_graphs__graph_id__validate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs/{graph_id}/scientific-quality-gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Claim Graph Scientific Quality Gate
+         * @description Run the scientific quality gate for a claim graph.
+         */
+        get: operations["run_claim_graph_scientific_quality_gate_science_claim_graphs__graph_id__scientific_quality_gate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs/{graph_id}/citations/{citation_id}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verify Citation
+         * @description Re-verify a citation against current source state.
+         */
+        get: operations["verify_citation_science_claim_graphs__graph_id__citations__citation_id__verify_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1440,6 +1526,34 @@ export interface components {
             end_offset?: number | null;
         };
         /**
+         * CitationValidationResult
+         * @description Result of re-verifying a citation against the current source state.
+         */
+        CitationValidationResult: {
+            /**
+             * Citation Id
+             * @description Citation identifier.
+             */
+            citation_id: string;
+            /** @description Current status. */
+            verification_status: components["schemas"]["CitationVerificationStatus"];
+            /**
+             * Reason
+             * @description Human-readable reason.
+             */
+            reason: string;
+            /**
+             * Current Document Id
+             * @description Current document version id if source is still active.
+             */
+            current_document_id?: string | null;
+            /**
+             * Current Version Label
+             * @description Current version label.
+             */
+            current_version_label?: string | null;
+        };
+        /**
          * CitationVerificationStatus
          * @description Verification state of a single citation locator.
          * @enum {string}
@@ -1598,6 +1712,8 @@ export interface components {
             publish_gate: components["schemas"]["PublishGateResult"];
             /** @description Lock for the model call that generated claims. */
             model_run_lock?: components["schemas"]["ModelRunLock"] | null;
+            /** @description Honest-degradation validation report (T016). */
+            validation_report?: components["schemas"]["ValidationReport"] | null;
         };
         /**
          * ClaimImportance
@@ -1721,6 +1837,61 @@ export interface components {
          * @enum {string}
          */
         CloudProjectionStatus: "active" | "pending_device" | "revoked" | "expired";
+        /**
+         * Conflict
+         * @description An explicit, user-visible evidence conflict.
+         *
+         *     Conflicts are first-class scientific objects. They are not exceptions and
+         *     are not resolved by model voting or last-write-wins.
+         */
+        Conflict: {
+            /**
+             * Conflict Id
+             * @description Stable conflict identifier.
+             */
+            conflict_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph this conflict belongs to.
+             */
+            graph_id: string;
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Evidence Ids */
+            evidence_ids?: string[];
+            /** @default unknown */
+            conflict_type: components["schemas"]["ConflictType"];
+            /**
+             * Materiality
+             * @description Materiality of the conflict, e.g. key, supporting, illustrative.
+             * @default unknown
+             */
+            materiality: string;
+            /** @default open */
+            resolution_status: components["schemas"]["ConflictResolutionStatus"];
+            /** Resolution Reason */
+            resolution_reason?: string | null;
+            /** Resolved By */
+            resolved_by?: string | null;
+            /**
+             * User Visible Summary
+             * @description Human-readable explanation of the conflict.
+             * @default
+             */
+            user_visible_summary: string;
+        };
+        /**
+         * ConflictResolutionStatus
+         * @description Resolution state of a conflict.
+         * @enum {string}
+         */
+        ConflictResolutionStatus: "open" | "under_review" | "resolved" | "escalated";
+        /**
+         * ConflictType
+         * @description Kind of evidence conflict.
+         * @enum {string}
+         */
+        ConflictType: "true_disagreement" | "scope_mismatch" | "definition_mismatch" | "version_superseded" | "methodological" | "unknown";
         /**
          * ContentAuthority
          * @description Where the authoritative plaintext of a vault object resides.
@@ -2492,6 +2663,116 @@ export interface components {
          * @enum {string}
          */
         EvidenceRelation: "supports" | "refutes" | "limits" | "contextualizes";
+        /**
+         * EvidenceState
+         * @description Aggregated evidence state for a single claim.
+         * @enum {string}
+         */
+        EvidenceState: "supported" | "refuted" | "limited" | "unknown" | "insufficient" | "conflicted";
+        /**
+         * FactLock
+         * @description A single locked fact derived from a claim and its evidence.
+         *
+         *     Fact locks are immutable boundaries that downstream expression and
+         *     multimodal nodes may not cross. Each lock records the canonical value,
+         *     allowed transformations, forbidden transformations, required qualifiers,
+         *     and the evidence/citations that justify it.
+         */
+        FactLock: {
+            /**
+             * Lock Id
+             * @description Stable fact lock identifier.
+             */
+            lock_id: string;
+            /**
+             * Claim Id
+             * @description Claim this lock belongs to.
+             */
+            claim_id: string;
+            /** @description Kind of locked fact. */
+            lock_type: components["schemas"]["FactLockType"];
+            /**
+             * Canonical Value
+             * @description Canonical, comparable value.
+             */
+            canonical_value: string;
+            /**
+             * Allowed Variants
+             * @description Equivalent forms that do not change the fact.
+             */
+            allowed_variants?: string[];
+            /**
+             * Forbidden Transformations
+             * @description Transformations that would violate the lock, e.g. 'upgrade causality'.
+             */
+            forbidden_transformations?: string[];
+            /**
+             * Required Qualifiers
+             * @description Qualifiers that must remain attached, e.g. population or conditions.
+             */
+            required_qualifiers?: string[];
+            /**
+             * Evidence Ids
+             * @description Evidence ids supporting the locked fact.
+             */
+            evidence_ids?: string[];
+            /**
+             * Citation Ids
+             * @description Citation ids bound to the locked fact.
+             */
+            citation_ids?: string[];
+            /**
+             * @description Maximum wording strength allowed for this claim.
+             * @default unassessable
+             */
+            wording_strength_ceiling: components["schemas"]["WordingStrength"];
+            /**
+             * Verification Method
+             * @description How the lock was derived: rule, model, human, domain_pack.
+             * @default rule
+             */
+            verification_method: string;
+        };
+        /**
+         * FactLockSet
+         * @description Collection of fact locks compiled from a claim graph.
+         */
+        FactLockSet: {
+            /**
+             * Set Id
+             * @description Stable fact lock set identifier.
+             */
+            set_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph this set was compiled from.
+             */
+            graph_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /** Locks */
+            locks?: components["schemas"]["FactLock"][];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Compilation timestamp.
+             */
+            created_at: string;
+        };
+        /**
+         * FactLockType
+         * @description Kind of fact locked for a claim.
+         * @enum {string}
+         */
+        FactLockType: "identifier" | "exact_value" | "relation" | "condition" | "strength" | "term_formula";
         /**
          * GateResult
          * @description Result of a single input quality gate.
@@ -3348,6 +3629,38 @@ export interface components {
             context_envelope: components["schemas"]["RunContextEnvelope"];
         };
         /**
+         * ScientificQualityGateCheck
+         * @description Named checks performed by the scientific quality gate.
+         * @enum {string}
+         */
+        ScientificQualityGateCheck: "fact_lock_consistent" | "conflict_disclosed" | "source_active" | "citation_locatable" | "key_claim_coverage" | "wording_strength_within_evidence" | "no_fabricated_citations" | "evidence_preserved";
+        /**
+         * ScientificQualityGateResult
+         * @description Result of running the scientific quality gate over a claim graph.
+         */
+        ScientificQualityGateResult: {
+            /**
+             * Passed
+             * @description Whether the graph passes the scientific gate.
+             */
+            passed: boolean;
+            /** @description Derived trust status. */
+            graph_status: components["schemas"]["ClaimTrustStatus"];
+            /** Checks */
+            checks?: {
+                [key: string]: boolean;
+            };
+            /** Failed Checks */
+            failed_checks?: components["schemas"]["ScientificQualityGateCheck"][];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /**
+             * Reason
+             * @description Human-readable gate summary.
+             */
+            reason?: string | null;
+        };
+        /**
          * ScopeAction
          * @description Actions that scope isolation can authorize or deny.
          * @enum {string}
@@ -3921,6 +4234,80 @@ export interface components {
             ctx?: Record<string, never>;
         };
         /**
+         * ValidationReport
+         * @description Report produced by honest-degradation analysis of a claim graph.
+         *
+         *     The report records the evidence state for each claim, detected conflicts,
+         *     missing evidence, fact lock set id, wording strength ceiling, scientific
+         *     quality gate result, and recommended recovery actions. It is the input to
+         *     downstream expression nodes (T025) and to the task stage (T006).
+         */
+        ValidationReport: {
+            /**
+             * Report Id
+             * @description Stable validation report identifier.
+             */
+            report_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph this report analyses.
+             */
+            graph_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /** @description Derived honest-degradation status. */
+            status: components["schemas"]["ClaimTrustStatus"];
+            /** @description Status before this analysis. */
+            previous_status?: components["schemas"]["ClaimTrustStatus"] | null;
+            /**
+             * Evidence States
+             * @description Claim id -> aggregated evidence state.
+             */
+            evidence_states?: {
+                [key: string]: components["schemas"]["EvidenceState"];
+            };
+            /** Conflicts */
+            conflicts?: components["schemas"]["Conflict"][];
+            /** Missing Evidence Claim Ids */
+            missing_evidence_claim_ids?: string[];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /** Fact Lock Set Id */
+            fact_lock_set_id?: string | null;
+            /**
+             * @description Global wording strength ceiling for the graph.
+             * @default unassessable
+             */
+            wording_strength_ceiling: components["schemas"]["WordingStrength"];
+            scientific_gate?: components["schemas"]["ScientificQualityGateResult"] | null;
+            /**
+             * Human Gate Required
+             * @default false
+             */
+            human_gate_required: boolean;
+            /** Human Gate Reason */
+            human_gate_reason?: string | null;
+            /**
+             * Recovery Actions
+             * @description Suggested actions: add_evidence, human_review, revise_claim, block_publish.
+             */
+            recovery_actions?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Report timestamp.
+             */
+            created_at: string;
+        };
+        /**
          * VaultError
          * @description Uniform vault error response.
          */
@@ -4105,6 +4492,15 @@ export interface components {
              */
             grant_purpose: string;
         };
+        /**
+         * WordingStrength
+         * @description Deterministic ceiling on how strongly a claim may be worded.
+         *
+         *     The ceiling is derived from evidence state, not from model judgment or user
+         *     preference. Domain packs may tighten it; they may not weaken it.
+         * @enum {string}
+         */
+        WordingStrength: "high" | "moderate" | "low" | "very_low" | "unassessable" | "conflicting" | "metadata_only";
         /**
          * WorkOrder
          * @description A task submitted by the global science companion for compilation into a run.
@@ -6536,6 +6932,48 @@ export interface operations {
             };
         };
     };
+    list_claim_graphs_science_claim_graphs_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimGraph"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_personal_claim_graph_science_claim_graphs_post: {
         parameters: {
             query?: never;
@@ -6660,6 +7098,213 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PublishGateResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_fact_locks_science_claim_graphs__graph_id__fact_locks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                graph_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactLockSet"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_claim_graph_science_claim_graphs__graph_id__validate_get: {
+        parameters: {
+            query?: {
+                apply?: boolean;
+            };
+            header?: never;
+            path: {
+                graph_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ValidationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_claim_graph_scientific_quality_gate_science_claim_graphs__graph_id__scientific_quality_gate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                graph_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScientificQualityGateResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_citation_science_claim_graphs__graph_id__citations__citation_id__verify_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                graph_id: string;
+                citation_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationValidationResult"];
                 };
             };
             /** @description Unauthorized */

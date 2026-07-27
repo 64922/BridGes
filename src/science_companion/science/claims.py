@@ -21,7 +21,7 @@ from __future__ import annotations
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 from science_companion.ai import ModelGateway
 from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
@@ -41,15 +41,23 @@ from science_companion.contracts.science import (
     ClaimType,
     Evidence,
     EvidenceRelation,
+    FactLockSet,
     PublishGateCheck,
     PublishGateResult,
     RetrievalCandidate,
+    ScientificQualityGateResult,
     SearchRequest,
     SearchResult,
     SourceStatus,
+    ValidationReport,
 )
 from science_companion.contracts.workflows import RunContextEnvelope
 from science_companion.invalidation import InvalidationService
+from science_companion.science.fact_lock import (
+    apply_honest_degradation,
+    compile_fact_locks,
+    update_claim_graph_with_report,
+)
 from science_companion.science.search import ScienceSearchService
 from science_companion.science.service import ScienceError, ScienceSourceService, SearchableChunk
 
@@ -450,6 +458,14 @@ class ClaimEvidenceService:
             graph.status = ClaimTrustStatus.METADATA_ONLY
             graph.status_reason = "No retrieval candidates; claims cannot be source-located."
 
+        # T016: compile fact locks and apply honest-degradation analysis. The
+        # graph status is updated deterministically from evidence state.
+        self._refresh_all_citations(graph)
+        validation_report = apply_honest_degradation(
+            graph, had_candidates=bool(search_result.candidates)
+        )
+        update_claim_graph_with_report(graph, validation_report)
+
         publish_gate = self._run_publish_gate(graph)
         self._graphs[graph_id] = _StoredGraph(
             graph=graph, search_result=search_result, account_id=subject.account_id
@@ -459,6 +475,7 @@ class ClaimEvidenceService:
             search_result=search_result,
             publish_gate=publish_gate,
             model_run_lock=lock,
+            validation_report=validation_report,
         )
 
     def get_claim_graph(self, account_id: str, graph_id: str) -> ClaimGraph:
@@ -732,6 +749,56 @@ class ClaimEvidenceService:
         """Re-run the publish gate against the current state of a graph."""
         graph = self._authorize_graph(account_id, graph_id)
         return self._run_publish_gate(graph)
+
+    def compile_fact_locks(
+        self,
+        account_id: str,
+        graph_id: str,
+    ) -> FactLockSet:
+        """Compile the fact lock set for a claim graph."""
+        graph = self._authorize_graph(account_id, graph_id)
+        return compile_fact_locks(graph)
+
+    def _refresh_all_citations(self, graph: ClaimGraph) -> None:
+        """Re-verify every citation in the graph against current source state."""
+        for citation in graph.citations:
+            self._refresh_citation_verification(graph, citation)
+
+    def validate_claim_graph(
+        self,
+        account_id: str,
+        graph_id: str,
+        *,
+        apply: bool = False,
+    ) -> ValidationReport:
+        """Run honest-degradation analysis and return a validation report.
+
+        If `apply` is True, the graph and claim statuses are updated in place.
+        """
+        graph = self._authorize_graph(account_id, graph_id)
+        self._refresh_all_citations(graph)
+        stored = self._graphs[graph_id]
+        had_candidates = bool(stored.search_result.candidates)
+        report = apply_honest_degradation(graph, had_candidates=had_candidates)
+        if apply:
+            update_claim_graph_with_report(graph, report)
+        return report
+
+    def run_scientific_quality_gate(
+        self,
+        account_id: str,
+        graph_id: str,
+    ) -> ScientificQualityGateResult:
+        """Run the scientific quality gate for a claim graph."""
+        graph = self._authorize_graph(account_id, graph_id)
+        self._refresh_all_citations(graph)
+        stored = self._graphs[graph_id]
+        report = apply_honest_degradation(
+            graph, had_candidates=bool(stored.search_result.candidates)
+        )
+        if report.scientific_gate is None:
+            raise RuntimeError("Expected scientific gate result from honest-degradation analysis.")
+        return report.scientific_gate
 
     def invalidate_citations_for_source(
         self,
