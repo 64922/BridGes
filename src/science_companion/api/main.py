@@ -7,7 +7,7 @@ from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
 from science_companion.ai import CapabilityRegistry, ModelGateway, StubQwenAdapter
-from science_companion.api import auth, evaluation, projects, scope, vault, workflows
+from science_companion.api import auth, evaluation, projects, science, scope, vault, workflows
 from science_companion.config import get_settings
 from science_companion.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus, FallbackPolicy, RetryPolicy
 from science_companion.evaluation import EvaluationService
@@ -18,6 +18,8 @@ from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.observability.service import ObservabilityService
 from science_companion.projects import ProjectService
+from science_companion.science import ScienceSourceService
+from science_companion.science.service import build_source_impact_resolver
 from science_companion.scope import ScopeEnforcer
 from science_companion.vault import (
     InMemoryVaultRepository,
@@ -245,12 +247,24 @@ def create_app() -> FastAPI:
     evaluation_service = EvaluationService(workflow_service=workflow_service)
     app.state.evaluation_service = evaluation_service
 
+    # T013: attach the in-memory science source service and register its impact
+    # resolver so source invalidation propagates to index, cache and runs.
+    science_source_service = ScienceSourceService(
+        scope_enforcer=app.state.scope_enforcer,
+        invalidation_service=invalidation_service,
+    )
+    invalidation_service.register_impact_resolver(
+        "science_source", build_source_impact_resolver(science_source_service)
+    )
+    app.state.science_source_service = science_source_service
+
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
     app.include_router(workflows.router)
     app.include_router(scope.router)
     app.include_router(evaluation.router)
+    app.include_router(science.router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

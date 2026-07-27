@@ -2604,6 +2604,726 @@
         }
       }
     },
+    "/science/projects/{project_id}/sources": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Upload Source To Project",
+        "description": "Upload a text or PDF source into a project.",
+        "operationId": "upload_source_to_project_science_projects__project_id__sources_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionRunRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "List Project Sources",
+        "description": "List sources uploaded to a project.",
+        "operationId": "list_project_sources_science_projects__project_id__sources_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SourceSummary"
+                  },
+                  "title": "Response List Project Sources Science Projects  Project Id  Sources Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/sources": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Upload Source",
+        "description": "Upload a personal text or PDF source (not bound to a project).",
+        "operationId": "upload_source_science_sources_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionRunRef"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "List Sources",
+        "description": "List personal sources for the current account.",
+        "operationId": "list_sources_science_sources_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SourceSummary"
+                  },
+                  "title": "Response List Sources Science Sources Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/sources/{source_id}": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Get Source",
+        "description": "Get a source projection with current document and chunks.",
+        "operationId": "get_source_science_sources__source_id__get",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/sources/{source_id}/versions": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "List Source Versions",
+        "description": "List all document versions of a source.",
+        "operationId": "list_source_versions_science_sources__source_id__versions_get",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DocumentVersion"
+                  },
+                  "title": "Response List Source Versions Science Sources  Source Id  Versions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Create Source Version",
+        "description": "Create a new document version by applying chunk corrections.",
+        "operationId": "create_source_version_science_sources__source_id__versions_post",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourceVersionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/science/sources/{source_id}/chunks/{chunk_id}": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Get Chunk",
+        "description": "Get a single structural chunk.",
+        "operationId": "get_chunk_science_sources__source_id__chunks__chunk_id__get",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "chunk_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Chunk Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChunkVersion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/sources/{source_id}/revoke": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Revoke Source",
+        "description": "Revoke a source so it cannot be used in new evidence.",
+        "operationId": "revoke_source_science_sources__source_id__revoke_post",
+        "parameters": [
+          {
+            "name": "source_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Source Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Revoke Source Science Sources  Source Id  Revoke Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -3103,6 +3823,236 @@
         "title": "CapsuleStatus",
         "description": "Lifecycle status of a temporary task capsule."
       },
+      "ChunkCorrection": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id",
+            "description": "Chunk to correct."
+          },
+          "corrected_text": {
+            "type": "string",
+            "title": "Corrected Text",
+            "description": "Corrected chunk text."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "corrected_text"
+        ],
+        "title": "ChunkCorrection",
+        "description": "A human correction to a single chunk.\n\nCorrections create a new DocumentVersion so history is preserved."
+      },
+      "ChunkStructurePath": {
+        "properties": {
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "subsection": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subsection"
+          },
+          "paragraph": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paragraph"
+          },
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page"
+          },
+          "figure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table"
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula"
+          }
+        },
+        "type": "object",
+        "title": "ChunkStructurePath",
+        "description": "Hierarchical location of a chunk within a document."
+      },
+      "ChunkVersion": {
+        "properties": {
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id",
+            "description": "Stable chunk identifier."
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Parent document version identifier."
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Source entry identifier."
+          },
+          "parent_chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Chunk Id"
+          },
+          "previous_chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Chunk Id"
+          },
+          "next_chunk_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Chunk Id"
+          },
+          "structure_path": {
+            "$ref": "#/components/schemas/ChunkStructurePath"
+          },
+          "start_offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Start Offset",
+            "default": 0
+          },
+          "end_offset": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "End Offset",
+            "default": 0
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Chunk text content."
+          },
+          "text_hash": {
+            "type": "string",
+            "title": "Text Hash",
+            "description": "SHA-256 hash of chunk text."
+          },
+          "parse_confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Parse Confidence",
+            "description": "Confidence of automatic parsing.",
+            "default": 1.0
+          },
+          "human_corrected": {
+            "type": "boolean",
+            "title": "Human Corrected",
+            "default": false
+          },
+          "injection_flags": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Injection Flags"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Chunk creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "document_id",
+          "source_id",
+          "text",
+          "text_hash",
+          "created_at"
+        ],
+        "title": "ChunkVersion",
+        "description": "A structural chunk of a document version.\n\nChunks are the smallest retrievable units that preserve locator information\nso that claims and citations can point back to precise positions."
+      },
       "CloudControlProjection": {
         "properties": {
           "projection_id": {
@@ -3282,6 +4232,207 @@
         ],
         "title": "DeviceUnavailableState",
         "description": "Legal wait state when the authoritative device is not available.\n\nThe system returns this instead of silently uploading full text from another\nsource or falling back to a stale replica."
+      },
+      "DocumentVersion": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Stable document version identifier."
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Parent source identifier."
+          },
+          "version_label": {
+            "type": "string",
+            "title": "Version Label",
+            "description": "Human-readable version label, e.g. v1, v2."
+          },
+          "version_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version Number",
+            "description": "Monotonic version number."
+          },
+          "version_date": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Version Date",
+            "description": "Version timestamp."
+          },
+          "retrieved_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retrieved At"
+          },
+          "publication_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publication Stage",
+            "description": "preprint, accepted_manuscript, version_of_record, etc."
+          },
+          "lifecycle_status": {
+            "$ref": "#/components/schemas/LifecycleStatus",
+            "default": "active"
+          },
+          "status_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Status Evidence"
+          },
+          "status_checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Checked At"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "SHA-256 hash of raw content bytes."
+          },
+          "metadata_hash": {
+            "type": "string",
+            "title": "Metadata Hash",
+            "description": "SHA-256 hash of canonical metadata."
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType",
+            "description": "Media type of raw content."
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "rights_snapshot": {
+            "$ref": "#/components/schemas/SourceLicense"
+          },
+          "raw_blob_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Raw Blob Ref",
+            "description": "Reference to encrypted raw content object."
+          },
+          "parser_id": {
+            "type": "string",
+            "title": "Parser Id",
+            "description": "Parser that produced this version."
+          },
+          "parser_version": {
+            "type": "string",
+            "title": "Parser Version",
+            "description": "Parser version."
+          },
+          "ocr_asr_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Asr Id"
+          },
+          "ocr_asr_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocr Asr Version"
+          },
+          "provenance_bundle_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Provenance Bundle Id"
+          },
+          "superseded_by_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Document Id"
+          },
+          "chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Chunk Ids"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Document creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "source_id",
+          "version_label",
+          "version_number",
+          "version_date",
+          "content_hash",
+          "metadata_hash",
+          "media_type",
+          "parser_id",
+          "parser_version",
+          "created_at"
+        ],
+        "title": "DocumentVersion",
+        "description": "Immutable content snapshot of a source.\n\nEach new upload, correction or re-parse creates a new DocumentVersion; older\nversions remain addressable so citations can be verified against the exact\nsnapshot that produced them."
       },
       "EvaluationCreateRequest": {
         "properties": {
@@ -3991,6 +5142,16 @@
         "title": "EvaluationSuiteRef",
         "description": "Pointer to a registered evaluation suite and case."
       },
+      "GateResult": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "wait",
+          "fail"
+        ],
+        "title": "GateResult",
+        "description": "Result of a single input quality gate."
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -4137,6 +5298,126 @@
         "title": "HumanTodoStatus",
         "description": "Status of a named human decision attached to a run."
       },
+      "IngestionRunRef": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "Ingestion run identifier."
+          },
+          "source_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IngestionStatus",
+            "default": "pending"
+          },
+          "gate_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GateResult"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/InputQualityGate"
+            },
+            "type": "object",
+            "title": "Gate Results"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Run creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last run update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "IngestionRunRef",
+        "description": "Reference to an asynchronous ingestion run."
+      },
+      "IngestionStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed",
+          "quarantined"
+        ],
+        "title": "IngestionStatus",
+        "description": "Status of an ingestion run."
+      },
+      "InputQualityGate": {
+        "type": "string",
+        "enum": [
+          "mime_type",
+          "magic_number",
+          "size_limit",
+          "decompression_bomb",
+          "malicious_content",
+          "license",
+          "parse",
+          "scope"
+        ],
+        "title": "InputQualityGate",
+        "description": "Named gates that imported content must pass before entering evidence."
+      },
+      "LicenseState": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "public_domain",
+          "open_access",
+          "closed_access",
+          "embargoed",
+          "user_owned",
+          "pending_review"
+        ],
+        "title": "LicenseState",
+        "description": "License/Access state for the document."
+      },
+      "LifecycleStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "corrected",
+          "expression_of_concern",
+          "retracted",
+          "withdrawn",
+          "superseded",
+          "unknown"
+        ],
+        "title": "LifecycleStatus",
+        "description": "Lifecycle status of a specific document version."
+      },
       "LoginCredential": {
         "properties": {
           "email": {
@@ -4160,6 +5441,15 @@
         ],
         "title": "LoginCredential",
         "description": "Request to authenticate with email and password."
+      },
+      "MediaType": {
+        "type": "string",
+        "enum": [
+          "text/plain",
+          "application/pdf"
+        ],
+        "title": "MediaType",
+        "description": "Media type of an imported document."
       },
       "ModelCallStatus": {
         "type": "string",
@@ -5260,6 +6550,487 @@
         ],
         "title": "SessionResponse",
         "description": "Response for an existing session lookup."
+      },
+      "Source": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Stable source identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope when owned by a project."
+          },
+          "source_kind": {
+            "$ref": "#/components/schemas/SourceKind",
+            "default": "user_upload"
+          },
+          "canonical_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Identity",
+            "description": "DOI, arXiv ID, domain or local canonical identifier."
+          },
+          "publisher_or_owner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Publisher Or Owner"
+          },
+          "authority_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Authority Scope",
+            "description": "Description of authority scope."
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "license": {
+            "$ref": "#/components/schemas/SourceLicense"
+          },
+          "trust_assertions": {
+            "items": {
+              "$ref": "#/components/schemas/SourceTrustAssertion"
+            },
+            "type": "array",
+            "title": "Trust Assertions"
+          },
+          "connector_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Id"
+          },
+          "connector_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Version"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceStatus",
+            "default": "discovered"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Source creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last source update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "account_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Source",
+        "description": "A source entry: the identity and ownership of one scientific work.\n\nA Source is not a specific content version; it owns the version history and\ncurrent pointer. The actual content snapshots are DocumentVersion objects."
+      },
+      "SourceError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "SourceError",
+        "description": "Uniform source error response."
+      },
+      "SourceKind": {
+        "type": "string",
+        "enum": [
+          "user_upload",
+          "publisher",
+          "repository",
+          "standards_body",
+          "government",
+          "database",
+          "web"
+        ],
+        "title": "SourceKind",
+        "description": "Kind of source entry."
+      },
+      "SourceLicense": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/LicenseState",
+            "default": "unknown"
+          },
+          "rights_statement": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rights Statement",
+            "description": "Human-readable rights statement."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "License URL if known."
+          },
+          "checked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checked At"
+          }
+        },
+        "type": "object",
+        "title": "SourceLicense",
+        "description": "License snapshot for a document version."
+      },
+      "SourceProjection": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/Source",
+            "description": "Source entry."
+          },
+          "current_document": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DocumentVersion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_chunks": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkVersion"
+            },
+            "type": "array",
+            "title": "Current Chunks"
+          },
+          "version_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version Count",
+            "default": 0
+          },
+          "can_enter_evidence": {
+            "type": "boolean",
+            "title": "Can Enter Evidence",
+            "description": "Whether the source passed all input quality gates.",
+            "default": false
+          },
+          "gate_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/GateResult"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/InputQualityGate"
+            },
+            "type": "object",
+            "title": "Gate Results"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source"
+        ],
+        "title": "SourceProjection",
+        "description": "Public projection of a source with its current document version."
+      },
+      "SourceStatus": {
+        "type": "string",
+        "enum": [
+          "discovered",
+          "parsing",
+          "parsed",
+          "quarantined",
+          "blocked",
+          "retracted"
+        ],
+        "title": "SourceStatus",
+        "description": "Current status of a source entry."
+      },
+      "SourceSummary": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Source identifier."
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MediaType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceStatus",
+            "description": "Current source status."
+          },
+          "version_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Version Count",
+            "default": 0
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "status",
+          "updated_at"
+        ],
+        "title": "SourceSummary",
+        "description": "List item for sources."
+      },
+      "SourceTrustAssertion": {
+        "properties": {
+          "asserted_by": {
+            "type": "string",
+            "title": "Asserted By",
+            "description": "Agent that made the assertion."
+          },
+          "asserted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Asserted At",
+            "description": "When the assertion was recorded."
+          },
+          "assertion_kind": {
+            "type": "string",
+            "title": "Assertion Kind",
+            "description": "Kind of assertion, e.g. peer_reviewed, authoritative_host."
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asserted_by",
+          "asserted_at",
+          "assertion_kind"
+        ],
+        "title": "SourceTrustAssertion",
+        "description": "A recorded trust assertion about a source."
+      },
+      "SourceUploadRequest": {
+        "properties": {
+          "filename": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Filename",
+            "description": "Original filename."
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaType",
+            "description": "Declared media type."
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Content",
+            "description": "Base64-encoded raw content bytes."
+          },
+          "license_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LicenseState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "canonical_identity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Identity"
+          }
+        },
+        "type": "object",
+        "required": [
+          "filename",
+          "media_type",
+          "content"
+        ],
+        "title": "SourceUploadRequest",
+        "description": "Request to upload a text or PDF scientific source."
+      },
+      "SourceVersionRequest": {
+        "properties": {
+          "base_document_id": {
+            "type": "string",
+            "title": "Base Document Id",
+            "description": "Document version to base the new version on."
+          },
+          "chunk_corrections": {
+            "items": {
+              "$ref": "#/components/schemas/ChunkCorrection"
+            },
+            "type": "array",
+            "title": "Chunk Corrections",
+            "description": "Corrections to apply to chunks."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Reason for the new version.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "base_document_id"
+        ],
+        "title": "SourceVersionRequest",
+        "description": "Request to create a new document version from a corrected source."
       },
       "SubjectContext": {
         "properties": {

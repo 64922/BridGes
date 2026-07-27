@@ -610,6 +610,138 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/science/projects/{project_id}/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Sources
+         * @description List sources uploaded to a project.
+         */
+        get: operations["list_project_sources_science_projects__project_id__sources_get"];
+        put?: never;
+        /**
+         * Upload Source To Project
+         * @description Upload a text or PDF source into a project.
+         */
+        post: operations["upload_source_to_project_science_projects__project_id__sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/sources": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Sources
+         * @description List personal sources for the current account.
+         */
+        get: operations["list_sources_science_sources_get"];
+        put?: never;
+        /**
+         * Upload Source
+         * @description Upload a personal text or PDF source (not bound to a project).
+         */
+        post: operations["upload_source_science_sources_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/sources/{source_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Source
+         * @description Get a source projection with current document and chunks.
+         */
+        get: operations["get_source_science_sources__source_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/sources/{source_id}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Source Versions
+         * @description List all document versions of a source.
+         */
+        get: operations["list_source_versions_science_sources__source_id__versions_get"];
+        put?: never;
+        /**
+         * Create Source Version
+         * @description Create a new document version by applying chunk corrections.
+         */
+        post: operations["create_source_version_science_sources__source_id__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/sources/{source_id}/chunks/{chunk_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Chunk
+         * @description Get a single structural chunk.
+         */
+        get: operations["get_chunk_science_sources__source_id__chunks__chunk_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/sources/{source_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Source
+         * @description Revoke a source so it cannot be used in new evidence.
+         */
+        post: operations["revoke_source_science_sources__source_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -961,6 +1093,116 @@ export interface components {
          */
         CapsuleStatus: "issued" | "revoked" | "expired" | "consumed";
         /**
+         * ChunkCorrection
+         * @description A human correction to a single chunk.
+         *
+         *     Corrections create a new DocumentVersion so history is preserved.
+         */
+        ChunkCorrection: {
+            /**
+             * Chunk Id
+             * @description Chunk to correct.
+             */
+            chunk_id: string;
+            /**
+             * Corrected Text
+             * @description Corrected chunk text.
+             */
+            corrected_text: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * ChunkStructurePath
+         * @description Hierarchical location of a chunk within a document.
+         */
+        ChunkStructurePath: {
+            /** Section */
+            section?: string | null;
+            /** Subsection */
+            subsection?: string | null;
+            /** Paragraph */
+            paragraph?: number | null;
+            /** Page */
+            page?: number | null;
+            /** Figure */
+            figure?: string | null;
+            /** Table */
+            table?: string | null;
+            /** Formula */
+            formula?: string | null;
+        };
+        /**
+         * ChunkVersion
+         * @description A structural chunk of a document version.
+         *
+         *     Chunks are the smallest retrievable units that preserve locator information
+         *     so that claims and citations can point back to precise positions.
+         */
+        ChunkVersion: {
+            /**
+             * Chunk Id
+             * @description Stable chunk identifier.
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * @description Parent document version identifier.
+             */
+            document_id: string;
+            /**
+             * Source Id
+             * @description Source entry identifier.
+             */
+            source_id: string;
+            /** Parent Chunk Id */
+            parent_chunk_id?: string | null;
+            /** Previous Chunk Id */
+            previous_chunk_id?: string | null;
+            /** Next Chunk Id */
+            next_chunk_id?: string | null;
+            structure_path?: components["schemas"]["ChunkStructurePath"];
+            /**
+             * Start Offset
+             * @default 0
+             */
+            start_offset: number;
+            /**
+             * End Offset
+             * @default 0
+             */
+            end_offset: number;
+            /**
+             * Text
+             * @description Chunk text content.
+             */
+            text: string;
+            /**
+             * Text Hash
+             * @description SHA-256 hash of chunk text.
+             */
+            text_hash: string;
+            /**
+             * Parse Confidence
+             * @description Confidence of automatic parsing.
+             * @default 1
+             */
+            parse_confidence: number;
+            /**
+             * Human Corrected
+             * @default false
+             */
+            human_corrected: boolean;
+            /** Injection Flags */
+            injection_flags?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Chunk creation timestamp.
+             */
+            created_at: string;
+        };
+        /**
          * CloudControlProjection
          * @description Minimal cloud-side projection of a vault object.
          *
@@ -1083,6 +1325,101 @@ export interface components {
              * @description If known, the earliest time the device may be reachable again.
              */
             can_retry_at?: string | null;
+        };
+        /**
+         * DocumentVersion
+         * @description Immutable content snapshot of a source.
+         *
+         *     Each new upload, correction or re-parse creates a new DocumentVersion; older
+         *     versions remain addressable so citations can be verified against the exact
+         *     snapshot that produced them.
+         */
+        DocumentVersion: {
+            /**
+             * Document Id
+             * @description Stable document version identifier.
+             */
+            document_id: string;
+            /**
+             * Source Id
+             * @description Parent source identifier.
+             */
+            source_id: string;
+            /**
+             * Version Label
+             * @description Human-readable version label, e.g. v1, v2.
+             */
+            version_label: string;
+            /**
+             * Version Number
+             * @description Monotonic version number.
+             */
+            version_number: number;
+            /**
+             * Version Date
+             * Format: date-time
+             * @description Version timestamp.
+             */
+            version_date: string;
+            /** Retrieved At */
+            retrieved_at?: string | null;
+            /**
+             * Publication Stage
+             * @description preprint, accepted_manuscript, version_of_record, etc.
+             */
+            publication_stage?: string | null;
+            /** @default active */
+            lifecycle_status: components["schemas"]["LifecycleStatus"];
+            /** Status Evidence */
+            status_evidence?: string[];
+            /** Status Checked At */
+            status_checked_at?: string | null;
+            /**
+             * Content Hash
+             * @description SHA-256 hash of raw content bytes.
+             */
+            content_hash: string;
+            /**
+             * Metadata Hash
+             * @description SHA-256 hash of canonical metadata.
+             */
+            metadata_hash: string;
+            /** @description Media type of raw content. */
+            media_type: components["schemas"]["MediaType"];
+            /** Language */
+            language?: string | null;
+            rights_snapshot?: components["schemas"]["SourceLicense"];
+            /**
+             * Raw Blob Ref
+             * @description Reference to encrypted raw content object.
+             */
+            raw_blob_ref?: string | null;
+            /**
+             * Parser Id
+             * @description Parser that produced this version.
+             */
+            parser_id: string;
+            /**
+             * Parser Version
+             * @description Parser version.
+             */
+            parser_version: string;
+            /** Ocr Asr Id */
+            ocr_asr_id?: string | null;
+            /** Ocr Asr Version */
+            ocr_asr_version?: string | null;
+            /** Provenance Bundle Id */
+            provenance_bundle_id?: string | null;
+            /** Superseded By Document Id */
+            superseded_by_document_id?: string | null;
+            /** Chunk Ids */
+            chunk_ids?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Document creation timestamp.
+             */
+            created_at: string;
         };
         /**
          * EvaluationCreateRequest
@@ -1450,14 +1787,14 @@ export interface components {
              * @description Dataset name -> version digest.
              */
             dataset_versions?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             /**
              * Domain Pack Versions
              * @description Domain pack name -> version.
              */
             domain_pack_versions?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             /**
              * Model Run Locks
@@ -1469,28 +1806,28 @@ export interface components {
              * @description Capability name -> prompt/template version.
              */
             prompt_versions?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             /**
              * Schema Versions
              * @description Schema name -> version used during the run.
              */
             schema_versions?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             /**
              * Tool Adapter Versions
              * @description Tool capability name -> adapter version.
              */
             tool_adapter_versions?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             /**
              * Judge Versions
              * @description Judge/referee name -> version.
              */
             judge_versions?: {
-                [key: string]: string | undefined;
+                [key: string]: string;
             };
             /**
              * Execution Count
@@ -1592,6 +1929,12 @@ export interface components {
              */
             case_id?: string | null;
         };
+        /**
+         * GateResult
+         * @description Result of a single input quality gate.
+         * @enum {string}
+         */
+        GateResult: "pass" | "wait" | "fail";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1684,6 +2027,63 @@ export interface components {
          */
         HumanTodoStatus: "open" | "resolved" | "blocked";
         /**
+         * IngestionRunRef
+         * @description Reference to an asynchronous ingestion run.
+         */
+        IngestionRunRef: {
+            /**
+             * Run Id
+             * @description Ingestion run identifier.
+             */
+            run_id: string;
+            /** Source Id */
+            source_id?: string | null;
+            /** @default pending */
+            status: components["schemas"]["IngestionStatus"];
+            /** Gate Results */
+            gate_results?: {
+                [key: string]: components["schemas"]["GateResult"];
+            };
+            /** Error */
+            error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Run creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last run update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * IngestionStatus
+         * @description Status of an ingestion run.
+         * @enum {string}
+         */
+        IngestionStatus: "pending" | "running" | "completed" | "failed" | "quarantined";
+        /**
+         * InputQualityGate
+         * @description Named gates that imported content must pass before entering evidence.
+         * @enum {string}
+         */
+        InputQualityGate: "mime_type" | "magic_number" | "size_limit" | "decompression_bomb" | "malicious_content" | "license" | "parse" | "scope";
+        /**
+         * LicenseState
+         * @description License/Access state for the document.
+         * @enum {string}
+         */
+        LicenseState: "unknown" | "public_domain" | "open_access" | "closed_access" | "embargoed" | "user_owned" | "pending_review";
+        /**
+         * LifecycleStatus
+         * @description Lifecycle status of a specific document version.
+         * @enum {string}
+         */
+        LifecycleStatus: "active" | "corrected" | "expression_of_concern" | "retracted" | "withdrawn" | "superseded" | "unknown";
+        /**
          * LoginCredential
          * @description Request to authenticate with email and password.
          */
@@ -1701,6 +2101,12 @@ export interface components {
              */
             password: string;
         };
+        /**
+         * MediaType
+         * @description Media type of an imported document.
+         * @enum {string}
+         */
+        MediaType: "text/plain" | "application/pdf";
         /**
          * ModelCallStatus
          * @description Outcome of a single model-gateway invocation.
@@ -2419,6 +2825,246 @@ export interface components {
             subject: components["schemas"]["SubjectContext"];
         };
         /**
+         * Source
+         * @description A source entry: the identity and ownership of one scientific work.
+         *
+         *     A Source is not a specific content version; it owns the version history and
+         *     current pointer. The actual content snapshots are DocumentVersion objects.
+         */
+        Source: {
+            /**
+             * Source Id
+             * @description Stable source identifier.
+             */
+            source_id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope when owned by a project.
+             */
+            project_id?: string | null;
+            /** @default user_upload */
+            source_kind: components["schemas"]["SourceKind"];
+            /**
+             * Canonical Identity
+             * @description DOI, arXiv ID, domain or local canonical identifier.
+             */
+            canonical_identity?: string | null;
+            /** Publisher Or Owner */
+            publisher_or_owner?: string | null;
+            /**
+             * Authority Scope
+             * @description Description of authority scope.
+             */
+            authority_scope?: string | null;
+            /** Title */
+            title?: string | null;
+            license?: components["schemas"]["SourceLicense"];
+            /** Trust Assertions */
+            trust_assertions?: components["schemas"]["SourceTrustAssertion"][];
+            /** Connector Id */
+            connector_id?: string | null;
+            /** Connector Version */
+            connector_version?: string | null;
+            /** @default discovered */
+            status: components["schemas"]["SourceStatus"];
+            /** Current Version Id */
+            current_version_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Source creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last source update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * SourceError
+         * @description Uniform source error response.
+         */
+        SourceError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * SourceKind
+         * @description Kind of source entry.
+         * @enum {string}
+         */
+        SourceKind: "user_upload" | "publisher" | "repository" | "standards_body" | "government" | "database" | "web";
+        /**
+         * SourceLicense
+         * @description License snapshot for a document version.
+         */
+        SourceLicense: {
+            /** @default unknown */
+            state: components["schemas"]["LicenseState"];
+            /**
+             * Rights Statement
+             * @description Human-readable rights statement.
+             */
+            rights_statement?: string | null;
+            /**
+             * Canonical Url
+             * @description License URL if known.
+             */
+            canonical_url?: string | null;
+            /** Checked At */
+            checked_at?: string | null;
+        };
+        /**
+         * SourceProjection
+         * @description Public projection of a source with its current document version.
+         */
+        SourceProjection: {
+            /** @description Source entry. */
+            source: components["schemas"]["Source"];
+            current_document?: components["schemas"]["DocumentVersion"] | null;
+            /** Current Chunks */
+            current_chunks?: components["schemas"]["ChunkVersion"][];
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
+            /**
+             * Can Enter Evidence
+             * @description Whether the source passed all input quality gates.
+             * @default false
+             */
+            can_enter_evidence: boolean;
+            /** Gate Results */
+            gate_results?: {
+                [key: string]: components["schemas"]["GateResult"];
+            };
+        };
+        /**
+         * SourceStatus
+         * @description Current status of a source entry.
+         * @enum {string}
+         */
+        SourceStatus: "discovered" | "parsing" | "parsed" | "quarantined" | "blocked" | "retracted";
+        /**
+         * SourceSummary
+         * @description List item for sources.
+         */
+        SourceSummary: {
+            /**
+             * Source Id
+             * @description Source identifier.
+             */
+            source_id: string;
+            /** Title */
+            title?: string | null;
+            media_type?: components["schemas"]["MediaType"] | null;
+            /** @description Current source status. */
+            status: components["schemas"]["SourceStatus"];
+            /**
+             * Version Count
+             * @default 0
+             */
+            version_count: number;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * SourceTrustAssertion
+         * @description A recorded trust assertion about a source.
+         */
+        SourceTrustAssertion: {
+            /**
+             * Asserted By
+             * @description Agent that made the assertion.
+             */
+            asserted_by: string;
+            /**
+             * Asserted At
+             * Format: date-time
+             * @description When the assertion was recorded.
+             */
+            asserted_at: string;
+            /**
+             * Assertion Kind
+             * @description Kind of assertion, e.g. peer_reviewed, authoritative_host.
+             */
+            assertion_kind: string;
+            /** Reason */
+            reason?: string | null;
+        };
+        /**
+         * SourceUploadRequest
+         * @description Request to upload a text or PDF scientific source.
+         */
+        SourceUploadRequest: {
+            /**
+             * Filename
+             * @description Original filename.
+             */
+            filename: string;
+            /** @description Declared media type. */
+            media_type: components["schemas"]["MediaType"];
+            /**
+             * Content
+             * @description Base64-encoded raw content bytes.
+             */
+            content: string;
+            license_state?: components["schemas"]["LicenseState"] | null;
+            /** Title */
+            title?: string | null;
+            /** Canonical Identity */
+            canonical_identity?: string | null;
+        };
+        /**
+         * SourceVersionRequest
+         * @description Request to create a new document version from a corrected source.
+         */
+        SourceVersionRequest: {
+            /**
+             * Base Document Id
+             * @description Document version to base the new version on.
+             */
+            base_document_id: string;
+            /**
+             * Chunk Corrections
+             * @description Corrections to apply to chunks.
+             */
+            chunk_corrections?: components["schemas"]["ChunkCorrection"][];
+            /**
+             * Reason
+             * @description Reason for the new version.
+             * @default
+             */
+            reason: string;
+        };
+        /**
          * SubjectContext
          * @description Resolved subject for an authenticated request.
          *
@@ -2983,7 +3629,7 @@ export interface operations {
                 };
                 content: {
                     "application/json": {
-                        [key: string]: string | undefined;
+                        [key: string]: string;
                     };
                 };
             };
@@ -4508,6 +5154,458 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
+                };
+            };
+        };
+    };
+    list_project_sources_science_projects__project_id__sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_source_to_project_science_projects__project_id__sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionRunRef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    list_sources_science_sources_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_source_science_sources_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionRunRef"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    get_source_science_sources__source_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_source_versions_science_sources__source_id__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersion"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_source_version_science_sources__source_id__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SourceVersionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    get_chunk_science_sources__source_id__chunks__chunk_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+                chunk_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChunkVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_source_science_sources__source_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
