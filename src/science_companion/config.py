@@ -28,6 +28,7 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(
         env_prefix=ENV_PREFIX,
+        env_file=".env",
         env_file_encoding="utf-8",
         extra="ignore",
         validate_default=True,
@@ -53,6 +54,13 @@ class Settings(BaseSettings):
     redis_url: SecretStr | None = None
     object_storage_url: SecretStr | None = None
     qwen_api_key: SecretStr | None = None
+
+    # Qwen routing configuration.
+    qwen_workspace_id: str | None = None
+    qwen_region: str = "cn-beijing"
+    qwen_cassette_dir: str | None = None
+    qwen_record_cassettes: bool = False
+    qwen_force_stub: bool = False
 
     _SECRET_FIELDS: frozenset[str] = frozenset(
         {"secret_key", "database_url", "redis_url", "object_storage_url", "qwen_api_key"}

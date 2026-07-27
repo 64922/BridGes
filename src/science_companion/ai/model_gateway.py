@@ -12,14 +12,14 @@ vendor model. It enforces:
 
 from __future__ import annotations
 
+import random
 import secrets
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from science_companion.ai.adapters import (
     AdapterError,
-    AdapterResult,
     AuthError,
     CapabilityAdapter,
     RateLimitError,
@@ -34,7 +34,6 @@ from science_companion.contracts.ai import (
     ModelCallResult,
     ModelCallStatus,
     ModelRunLock,
-    RetryPolicy,
 )
 from science_companion.contracts.workflows import RunContextEnvelope
 
@@ -61,6 +60,10 @@ class ModelGateway:
         Multiple capabilities may share the same adapter instance.
         """
         self._adapters[(capability_name, capability_version)] = adapter
+
+    def is_adapter_registered(self, capability_name: str, capability_version: str) -> bool:
+        """Return whether an adapter has already been bound to a capability."""
+        return (capability_name, capability_version) in self._adapters
 
     def invoke(
         self,
@@ -97,7 +100,7 @@ class ModelGateway:
                 degradation_reason=str(exc),
                 error_code="unregistered_capability",
                 error_message=str(exc),
-                created_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
             )
             return ModelCallResult(
                 status=ModelCallStatus.BLOCKED,
@@ -216,18 +219,19 @@ class ModelGateway:
     ) -> tuple[ModelCallResult, ModelRunLock]:
         attempted.append(f"{capability.name}@{capability.version}")
         retry_policy = capability.retry_policy
-        last_error: AdapterError | None = None
         retry_count = 0
 
         for attempt in range(1, retry_policy.max_attempts + 1):
             try:
                 adapter_result = adapter.call(capability, run_context, payload)
             except (RateLimitError, TransientError) as exc:
-                last_error = exc
                 retry_count = attempt - 1
                 if attempt < retry_policy.max_attempts:
                     if retry_policy.backoff_seconds > 0:
-                        time.sleep(retry_policy.backoff_seconds * (2 ** (attempt - 1)))
+                        backoff = retry_policy.backoff_seconds * (2 ** (attempt - 1))
+                        if retry_policy.jitter:
+                            backoff *= random.uniform(0.5, 1.5)
+                        time.sleep(backoff)
                     continue
                 # Exhausted retries on this capability.
                 lock = self._build_lock(
@@ -239,6 +243,7 @@ class ModelGateway:
                     degradation_reason=str(exc),
                     error_code=exc.code,
                     error_message=exc.message,
+                    payload=payload,
                 )
                 return (
                     ModelCallResult(
@@ -260,6 +265,7 @@ class ModelGateway:
                     degradation_reason=str(exc),
                     error_code=exc.code,
                     error_message=exc.message,
+                    payload=payload,
                 )
                 return (
                     ModelCallResult(
@@ -281,6 +287,7 @@ class ModelGateway:
                     degradation_reason=str(exc),
                     error_code=exc.code,
                     error_message=exc.message,
+                    payload=payload,
                 )
                 return (
                     ModelCallResult(
@@ -301,6 +308,7 @@ class ModelGateway:
                 retry_count=attempt - 1,
                 actual_model_id=adapter_result.actual_model_id,
                 usage=adapter_result.usage,
+                payload=payload,
             )
             return (
                 ModelCallResult(
@@ -321,6 +329,7 @@ class ModelGateway:
             degradation_reason="unexpected empty invocation",
             error_code="unexpected",
             error_message="Unexpected empty invocation path.",
+            payload=payload,
         )
         return (
             ModelCallResult(
@@ -344,6 +353,7 @@ class ModelGateway:
         usage: dict[str, Any] | None = None,
         error_code: str | None = None,
         error_message: str | None = None,
+        payload: dict[str, Any] | None = None,
     ) -> ModelRunLock:
         return ModelRunLock(
             lock_id=secrets.token_urlsafe(16),
@@ -354,7 +364,7 @@ class ModelGateway:
             capability_version=capability.version,
             actual_model_id=actual_model_id or capability.model_id,
             region=capability.region,
-            parameters={"temperature": 0.7, "max_tokens": 1024},
+            parameters=self._capture_parameters(payload),
             prompt_version=capability.prompt_version,
             input_output_contract=f"{capability.name}:{capability.input_schema_version}->{capability.output_schema_version}",
             fallback_path=list(fallback_path),
@@ -363,9 +373,25 @@ class ModelGateway:
             degradation_reason=degradation_reason,
             error_code=error_code,
             error_message=error_message,
-            created_at=datetime.now(timezone.utc),
+            created_at=datetime.now(UTC),
             usage=usage,
         )
+
+    @staticmethod
+    def _capture_parameters(payload: dict[str, Any] | None) -> dict[str, Any]:
+        """Extract non-secret invocation parameters from payload.
+
+        Only well-known parameter keys are captured; unknown keys are
+        silently ignored to avoid leaking sensitive payload fields into
+        the immutable run lock.
+        """
+        params: dict[str, Any] = {}
+        for key in ("temperature", "max_tokens", "top_p"):
+            if payload and key in payload:
+                params[key] = payload[key]
+        if not params:
+            params = {"temperature": 0.7, "max_tokens": 1024}
+        return params
 
     def _blocked_result(
         self,

@@ -1,0 +1,38 @@
+{
+  "request": {
+    "model": "qwen3.7-plus",
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful scientific assistant."
+      },
+      {
+        "role": "user",
+        "content": "compile_context"
+      }
+    ],
+    "temperature": 0.7,
+    "max_tokens": 1024
+  },
+  "response": {
+    "id": "chatcmpl-test-text",
+    "object": "chat.completion",
+    "created": 1234567890,
+    "model": "qwen3.7-plus",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "上下文已编译。"
+        },
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 15,
+      "completion_tokens": 5,
+      "total_tokens": 20
+    }
+  }
+}

@@ -261,7 +261,7 @@
 
 **What to build:** 让用户从一次项目任务创建评测运行，并在评测与运行中心重放、比较输入、运行锁、结果与失败。
 
-**Blocked by:** T006 — 打通 WorkOrder 与任务舞台生命周期；T009 — 接入 Qwen 能力注册表与模型运行锁
+**Blocked by:** T006 — 打通 WorkOrder 与任务舞台生命周期；T009 — 接入 Qwen 能力注册表与模型运行锁；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-EVAL-01、REQ-PRO-02
 
@@ -282,7 +282,7 @@
 
 **What to build:** 让用户向自己的项目导入文本和 PDF，查看结构化解析、来源版本、许可、状态和错误，并阻止未通过输入门的内容进入可信证据。
 
-**Blocked by:** T007 — 建立多用户基础作用域隔离；T011 — 建立通用失效、墓碑与影响传播基础
+**Blocked by:** T007 — 建立多用户基础作用域隔离；T011 — 建立通用失效、墓碑与影响传播基础；T061 — 实现真实 Qwen 视觉/OCR 适配器
 
 **关联需求：** REQ-SCI-01、REQ-SAFE-01、REQ-ID-01
 
@@ -303,7 +303,7 @@
 
 **What to build:** 让用户在当前项目和授权范围内使用全文、向量融合与重排检索科学材料，并看见检索覆盖与缺口。
 
-**Blocked by:** T013 — 导入并版本化文本与 PDF 科学来源
+**Blocked by:** T013 — 导入并版本化文本与 PDF 科学来源；T061 — 实现真实 Qwen 视觉/OCR 适配器
 
 **关联需求：** REQ-SCI-01、REQ-ID-01
 
@@ -324,7 +324,7 @@
 
 **What to build:** 让用户从检索材料得到带支持、反驳、限制和精确引用位置的科学 Claim，并能从产物回到证据。
 
-**Blocked by:** T014 — 完成作用域约束的混合检索；T009 — 接入 Qwen 能力注册表与模型运行锁
+**Blocked by:** T014 — 完成作用域约束的混合检索；T009 — 接入 Qwen 能力注册表与模型运行锁；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-01、REQ-SAFE-01
 
@@ -450,7 +450,7 @@
 
 **What to build:** 让用户定义真实学习使命和成功标准，并获得基于证据而非标签的先备知识与最近发展区判断。
 
-**Blocked by:** T019 — 编译并解释最小记忆切片；T015 — 生成可定位的 Claim—Evidence—Citation 关系
+**Blocked by:** T019 — 编译并解释最小记忆切片；T015 — 生成可定位的 Claim—Evidence—Citation 关系；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-02、REQ-PRO-01、REQ-ID-02
 
@@ -471,7 +471,7 @@
 
 **What to build:** 让用户获得围绕单一学习胜利的短课、示例、检索练习和即时反馈，并能查看其科学依据。
 
-**Blocked by:** T021 — 建立学习使命与先备知识诊断；T016 — 完成证据冲突、事实锁与诚实降级
+**Blocked by:** T021 — 建立学习使命与先备知识诊断；T016 — 完成证据冲突、事实锁与诚实降级；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-01、REQ-SCI-02、REQ-PRO-02
 
@@ -534,7 +534,7 @@
 
 **What to build:** 让用户指定目标、受众、体裁、渠道、长度和风险，并得到绑定 Claim、Citation 与事实锁的首个表达草稿。
 
-**Blocked by:** T016 — 完成证据冲突、事实锁与诚实降级；T019 — 编译并解释最小记忆切片；T009 — 接入 Qwen 能力注册表与模型运行锁
+**Blocked by:** T016 — 完成证据冲突、事实锁与诚实降级；T019 — 编译并解释最小记忆切片；T009 — 接入 Qwen 能力注册表与模型运行锁；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-01、REQ-EXP-01、REQ-PRO-01
 
@@ -555,7 +555,7 @@
 
 **What to build:** 让用户为大众科普和教学场景生成、审阅与修订适配受众的内容，同时保留类比边界和教学检查点。
 
-**Blocked by:** T025 — 从表达任务契约生成事实锁草稿
+**Blocked by:** T025 — 从表达任务契约生成事实锁草稿；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-02、REQ-EXP-01
 
@@ -576,7 +576,7 @@
 
 **What to build:** 让用户生成科研汇报或论文辅助内容，明确区分数据、推断、限制、引用与作者责任。
 
-**Blocked by:** T025 — 从表达任务契约生成事实锁草稿
+**Blocked by:** T025 — 从表达任务契约生成事实锁草稿；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-01、REQ-SCI-02、REQ-EXP-01
 
@@ -597,7 +597,7 @@
 
 **What to build:** 让用户查看中文模板腔、翻译腔、节奏与分寸问题，并逐条接受、拒绝或改写不改变事实锁的补丁。
 
-**Blocked by:** T026 — 完成科普文案与课程讲稿体裁合同；T027 — 完成科研汇报与论文辅助体裁合同
+**Blocked by:** T026 — 完成科普文案与课程讲稿体裁合同；T027 — 完成科研汇报与论文辅助体裁合同；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-EXP-01、REQ-PRO-02、REQ-EVAL-01
 
@@ -618,7 +618,7 @@
 
 **What to build:** 让用户比较表达版本中的事实、证据、结构、措辞、模型和人工修改，并只发布满足全部资格的版本。
 
-**Blocked by:** T028 — 完成人味诊断与逐条修订闭环；T017 — 传播来源失效并定位下游影响
+**Blocked by:** T028 — 完成人味诊断与逐条修订闭环；T017 — 传播来源失效并定位下游影响；T059 — 实现真实 Qwen 文本与结构化输出适配器
 
 **关联需求：** REQ-SCI-01、REQ-EXP-01、REQ-SAFE-01
 
@@ -639,7 +639,7 @@
 
 **What to build:** 让用户导入科学图片、扫描件、公式与表格，查看和纠正 OCR、区域、符号、单位和数据结构。
 
-**Blocked by:** T013 — 导入并版本化文本与 PDF 科学来源；T016 — 完成证据冲突、事实锁与诚实降级
+**Blocked by:** T013 — 导入并版本化文本与 PDF 科学来源；T016 — 完成证据冲突、事实锁与诚实降级；T061 — 实现真实 Qwen 视觉/OCR 适配器
 
 **关联需求：** REQ-MM-01、REQ-SCI-01、REQ-SAFE-01
 
@@ -660,7 +660,7 @@
 
 **What to build:** 让用户导入音频和视频，查看并纠正 ASR、时间戳、说话段、字幕、关键帧和科学术语。
 
-**Blocked by:** T013 — 导入并版本化文本与 PDF 科学来源；T009 — 接入 Qwen 能力注册表与模型运行锁
+**Blocked by:** T013 — 导入并版本化文本与 PDF 科学来源；T009 — 接入 Qwen 能力注册表与模型运行锁；T060 — 实现真实 Qwen ASR 适配器
 
 **关联需求：** REQ-MM-01、REQ-AI-01、REQ-ID-01
 
@@ -681,7 +681,7 @@
 
 **What to build:** 让用户从科学证据和数据生成带可编辑源、Claim 绑定、单位、图例、替代文本与数据表的静态作品。
 
-**Blocked by:** T030 — 摄入并校正图片、扫描件、公式和表格；T016 — 完成证据冲突、事实锁与诚实降级
+**Blocked by:** T030 — 摄入并校正图片、扫描件、公式和表格；T016 — 完成证据冲突、事实锁与诚实降级；T061 — 实现真实 Qwen 视觉/OCR 适配器
 
 **关联需求：** REQ-MM-01、REQ-SCI-01、REQ-SCI-02
 
@@ -702,7 +702,7 @@
 
 **What to build:** 让用户先审查结构化分镜和可编辑源，再在强隔离沙箱中运行交互或动画并查看验证结果。
 
-**Blocked by:** T030 — 摄入并校正图片、扫描件、公式和表格；T008 — 建立四种生产运行合同骨架；T009 — 接入 Qwen 能力注册表与模型运行锁
+**Blocked by:** T030 — 摄入并校正图片、扫描件、公式和表格；T008 — 建立四种生产运行合同骨架；T009 — 接入 Qwen 能力注册表与模型运行锁；T061 — 实现真实 Qwen 视觉/OCR 适配器
 
 **关联需求：** REQ-MM-01、REQ-AI-01、REQ-SAFE-01
 
@@ -723,7 +723,7 @@
 
 **What to build:** 让科学媒体对象拥有朗读、文字稿、字幕、替代文本、键盘路径、减少动画和顺序阅读版本。
 
-**Blocked by:** T031 — 摄入并校正音频与视频材料；T032 — 生成可编辑静态科学图与数据图表；T033 — 生成结构化分镜并在沙箱运行交互或动画
+**Blocked by:** T031 — 摄入并校正音频与视频材料；T032 — 生成可编辑静态科学图与数据图表；T033 — 生成结构化分镜并在沙箱运行交互或动画；T060 — 实现真实 Qwen ASR 适配器；T062 — 实现真实 Qwen TTS 适配器
 
 **关联需求：** REQ-MM-01、REQ-SCI-02
 
@@ -1245,3 +1245,88 @@
 - [ ] G5 证明容量、成本、降级、备份、恢复、监控、回滚和事故响应已演练。
 - [ ] 发行范围扫描确认不包含作品演示、比赛答辩、宣传视频、路演话术、营销活动或评分展示脚本。
 - [ ] 无未关闭关键安全、科学、数据完整性或恢复风险时，才生成成熟发行基线。
+
+## T059 — 实现真实 Qwen 文本与结构化输出适配器
+
+**What to build:** 替换 `StubQwenAdapter`，让 `qwen_text_chat`、`qwen_text_chat_fallback` 和 `qwen_structured_output` 能力通过真实 HTTP 调用百炼 OpenAI 兼容接口，同时保持 `ModelGateway` 的限流、重试、同区 fallback 和不可变运行锁。
+
+**Blocked by:** T009 — 接入 Qwen 能力注册表与模型运行锁
+
+**关联需求：** REQ-AI-01、REQ-SAFE-01、REQ-OPS-01
+
+**规划书章节：** P4-C19、P5-C20
+
+**关键合同：** CapabilityRecord、ModelRunLock、RetryPolicy、FallbackPolicy
+
+**必读资料：** [Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)、[智能体编排决策](.scratch/science-companion-plan/decisions/08-agent-orchestration-contracts.md)
+
+**建议测试接缝：** 配置 `SCIENCE_COMPANION_QWEN_API_KEY` 后调用文本/结构化能力，验证真实端点请求、运行锁、限流重试和 401/403/结构化失败闭锁。
+
+- [x] 从配置读取 `qwen_api_key`，按区域拼接 Base URL，不暴露到日志、响应或导出包。
+- [x] 成功、429、5xx、区域错误、401/403 和结构化输出失败均产生正确的 `ModelRunLock`。
+- [x] 限流与瞬时失败在预算内重试，安全/区域/禁止降级条件不重试也不跨区 fallback。
+- [x] 测试套件可在录制回放模式下运行，保证 CI 不依赖真实云调用。
+
+## T060 — 实现真实 Qwen ASR 适配器并接入音视频摄入
+
+**What to build:** 实现 `QwenAsrAdapter`，让 `qwen_asr_short` / `qwen_asr_long` 能力真实调用百炼 ASR 接口；`MediaIngestionService` 在解析音频/视频时通过 `ModelGateway` 调用 ASR，失败时回退到确定性占位并记录 `degradation_reason`。
+
+**Blocked by:** T009 — 接入 Qwen 能力注册表与模型运行锁；T031 — 摄入并校正音频与视频材料
+
+**关联需求：** REQ-MM-01、REQ-AI-01、REQ-SAFE-01
+
+**规划书章节：** P2-C09、P4-C19
+
+**关键合同：** CapabilityRecord、ModelRunLock、AudioVideoDerivedData、MediaManifest
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)
+
+**建议测试接缝：** 上传音频或视频，验证真实 ASR 调用产生时间轴转写、说话段和字幕，并记录真实模型运行锁。
+
+- [ ] 支持 `qwen3-asr-flash` 和 `qwen3-asr-flash-filetrans` 的官方输入限制（时长、大小、格式）。
+- [ ] 返回结果绑定原始资产时间轴、版本和账户/项目作用域。
+- [ ] 低置信术语、多语言片段和缺失音轨被明确标记。
+- [ ] ASR 失败时保留原始资产，产物进入可人工校正状态，不标记为完成。
+
+## T061 — 实现真实 Qwen 视觉/OCR 适配器并接入来源摄入
+
+**What to build:** 实现 `QwenOcrAdapter` / `QwenVisionAdapter`，让 `qwen-vl-ocr` 及视觉主模型真实调用百炼接口；替换 T013/T030 中 PDF、图像、公式、表格的确定性占位，生成带坐标/页码的派生资产。
+
+**Blocked by:** T009 — 接入 Qwen 能力注册表与模型运行锁；T013 — 导入并版本化文本与 PDF 科学来源；T030 — 摄入并校正图片、扫描件、公式和表格
+
+**关联需求：** REQ-SCI-01、REQ-MM-01、REQ-AI-01、REQ-SAFE-01
+
+**规划书章节：** P3-C11、P4-C17、P4-C19
+
+**关键合同：** CapabilityRecord、ModelRunLock、SourceAsset、DerivedAsset、SpatialTemporalLocator
+
+**必读资料：** [科学证据研究](.scratch/science-companion-plan/research/03-scientific-trust-system.md)、[多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)
+
+**建议测试接缝：** 上传 PDF/图像/公式/表格，验证真实 OCR/视觉调用产生区域、OCR token、符号表、表格 Schema 和关键帧解释，并记录真实模型运行锁。
+
+- [ ] 支持 `qwen-vl-ocr` 及视觉主模型的输入限制和区域可用性探测。
+- [ ] 模型输出作为候选派生资产，低置信区域明确标记，不直接进入事实锁。
+- [ ] 坐标/页码/时间定位绑定原始资产版本，校正后产生新版本。
+- [ ] 失败时保留原始资产，不伪造数据点或文本。
+
+## T062 — 实现真实 Qwen TTS 适配器并接入无障碍媒体
+
+**What to build:** 实现 `QwenTtsAdapter`，让 `qwen3-tts-flash` / `qwen3-tts-instruct-flash` 能力真实调用百炼 TTS 接口；在 T034 朗读/字幕生成中通过 `ModelGateway` 调用，输出转存到受控对象存储。
+
+**Blocked by:** T009 — 接入 Qwen 能力注册表与模型运行锁；T034 — 生成朗读、字幕和完整无障碍替代
+
+**关联需求：** REQ-MM-01、REQ-AI-01、REQ-SAFE-01
+
+**规划书章节：** P2-C09、P4-C19
+
+**关键合同：** CapabilityRecord、ModelRunLock、CaptionTrack、AccessibilityAlternative
+
+**必读资料：** [多模态科学研究](.scratch/science-companion-plan/research/06-multimodal-science-studio.md)、[Qwen 与技术栈研究](.scratch/science-companion-plan/research/07-qwen-and-technology-stack.md)
+
+**建议测试接缝：** 对已通过事实锁的文本调用 TTS，验证真实语音合成、临时 URL 转存、发音处理和失败降级。
+
+- [ ] 只接受已通过事实锁的文本输入，不直接为未经验证 claim 生成语音。
+- [ ] 数字、单位、公式、缩写和外文专名有发音处理或显式降级提示。
+- [ ] 供应商临时 URL 在有效期内转存，记录 MIME、大小、哈希和归属。
+- [ ] TTS 失败时文本回答仍可交付，媒体对象标记合成失败。
+

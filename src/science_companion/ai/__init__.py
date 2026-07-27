@@ -12,6 +12,8 @@ from science_companion.ai.adapters import (
 )
 from science_companion.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
 from science_companion.ai.model_gateway import ModelGateway, ModelGatewayError
+from science_companion.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
+from science_companion.ai.qwen_client import CassetteStore, QwenApiClient
 
 __all__ = [
     "AdapterError",
@@ -20,8 +22,12 @@ __all__ = [
     "CapabilityAdapter",
     "CapabilityRegistry",
     "CapabilityRegistryError",
+    "CassetteStore",
     "ModelGateway",
     "ModelGatewayError",
+    "QwenApiClient",
+    "QwenStructuredOutputAdapter",
+    "QwenTextChatAdapter",
     "RateLimitError",
     "RegionError",
     "StubQwenAdapter",

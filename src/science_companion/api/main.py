@@ -1,12 +1,21 @@
 """FastAPI application for the Science Companion API."""
 
+from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
-from science_companion.ai import CapabilityRegistry, ModelGateway, StubQwenAdapter
+from science_companion.ai import (
+    CapabilityRegistry,
+    CassetteStore,
+    ModelGateway,
+    QwenApiClient,
+    QwenStructuredOutputAdapter,
+    QwenTextChatAdapter,
+    StubQwenAdapter,
+)
 from science_companion.api import (
     auth,
     evaluation,
@@ -368,13 +377,41 @@ def create_app() -> FastAPI:
         "profile_assertion", _profile_assertion_resolver
     )
 
-    # T009: attach the capability registry, model gateway and stub adapter.
+    # T009/T059: attach the capability registry, model gateway and adapters.
     capability_registry = CapabilityRegistry()
     _register_builtin_capabilities(capability_registry)
     model_gateway = ModelGateway(capability_registry)
+
+    settings = app.state.settings
+    if (
+        settings is not None
+        and settings.qwen_api_key is not None
+        and not settings.qwen_force_stub
+    ):
+        cassette_store = None
+        if settings.qwen_cassette_dir is not None:
+            cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
+        qwen_client = QwenApiClient(
+            api_key=settings.qwen_api_key,
+            workspace_id=settings.qwen_workspace_id,
+            region=settings.qwen_region,
+            cassette_store=cassette_store,
+            record_mode=settings.qwen_record_cassettes,
+        )
+        model_gateway.register_adapter(
+            "qwen_text_chat", "1", QwenTextChatAdapter(qwen_client)
+        )
+        model_gateway.register_adapter(
+            "qwen_text_chat_fallback", "1", QwenTextChatAdapter(qwen_client)
+        )
+        model_gateway.register_adapter(
+            "qwen_structured_output", "1", QwenStructuredOutputAdapter(qwen_client)
+        )
+
     stub_adapter = StubQwenAdapter()
     for capability in capability_registry.list_active():
-        model_gateway.register_adapter(capability.name, capability.version, stub_adapter)
+        if not model_gateway.is_adapter_registered(capability.name, capability.version):
+            model_gateway.register_adapter(capability.name, capability.version, stub_adapter)
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
 
