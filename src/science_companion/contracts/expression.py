@@ -8,7 +8,7 @@ authoritative shape of CONTRACT-CREATE-01.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import StrEnum
 from typing import Any
 
@@ -688,7 +688,7 @@ class UserFeedback(BaseModel):
         default=False,
         description="Whether this feedback may form a candidate preference.",
     )
-    created_at: datetime = Field(default_factory=datetime.now, description="Timestamp.")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp.")
 
 
 class StyleDiagnosticRequest(BaseModel):
@@ -771,7 +771,7 @@ class HumanDecision(BaseModel):
     account_id: str = Field(description="Account that made the decision.")
     decision: HumanDecisionType = Field(description="Decision type.")
     reason: str = Field(description="Human-readable rationale.")
-    created_at: datetime = Field(default_factory=datetime.now, description="Timestamp.")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Timestamp.")
 
 
 class ArtifactVersion(BaseModel):

@@ -611,35 +611,16 @@ class ExpressionService:
             checks[ExpressionGateCheck.STRENGTH_ESCALATION_HUMAN_REVIEW] = False
             reasons.append("强度升级请求需要人工确认，系统不能自动提高措辞强度。")
 
-        passed = all(checks.values())
-        failed = [check for check, ok in checks.items() if not ok]
-
         human_review_checks = {
             ExpressionGateCheck.RISK_TIER_HUMAN_REVIEW,
             ExpressionGateCheck.STRENGTH_ESCALATION_HUMAN_REVIEW,
             ExpressionGateCheck.PAPER_ASSIST_AUTHOR_CONFIRMATION_REQUIRED,
         }
-        if failed:
-            if human_review_checks & set(failed):
-                draft_status = ExpressionDraftStatus.WAITING_HUMAN
-            else:
-                draft_status = ExpressionDraftStatus.BLOCKED
-        else:
-            draft_status = ExpressionDraftStatus.DRAFTED
 
-        # T026/T027: genre-specific structural elements must be present for the
-        # genre delivered in the ticket. The check is informational when the draft
-        # is blocked for other reasons, but becomes blocking if the genre contract
-        # is known and the elements are empty after generation.
-        if brief.genre == Genre.POPULAR_SCIENCE:
-            checks[ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT] = True
-        elif brief.genre == Genre.LECTURE_SCRIPT:
-            checks[ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT] = True
-        elif brief.genre == Genre.RESEARCH_REPORT:
-            checks[ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT] = True
-        elif brief.genre == Genre.PAPER_ASSIST:
-            checks[ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT] = True
-            checks[ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT] = True
+        # T026/T027: genre-specific structural elements. For paper assist, the
+        # author confirmation requirement is a forced gate that must be cleared
+        # later regardless of whether elements were populated.
+        if brief.genre == Genre.PAPER_ASSIST:
             checks[ExpressionGateCheck.PAPER_ASSIST_AUTHOR_CONFIRMATION_REQUIRED] = False
             reasons.append("论文辅助体裁要求作者确认责任和 AI 披露。")
 
@@ -1247,32 +1228,7 @@ class ExpressionService:
         draft.review_report = self._review_genre_compliance(draft, genre_contract)
 
         # Re-evaluate gate now that genre-specific elements are populated.
-        if brief.genre == Genre.POPULAR_SCIENCE and not draft.popular_science_elements:
-            gate.checks[ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT] = False
-            gate.failed_checks.append(ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT)
-            gate.passed = False
-            draft.status = ExpressionDraftStatus.BLOCKED
-        elif brief.genre == Genre.LECTURE_SCRIPT and not draft.lecture_script_elements:
-            gate.checks[ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT] = False
-            gate.failed_checks.append(ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT)
-            gate.passed = False
-            draft.status = ExpressionDraftStatus.BLOCKED
-        elif brief.genre == Genre.RESEARCH_REPORT and not draft.research_report_elements:
-            gate.checks[ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT] = False
-            gate.failed_checks.append(ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT)
-            gate.passed = False
-            draft.status = ExpressionDraftStatus.BLOCKED
-        elif brief.genre == Genre.PAPER_ASSIST:
-            if not draft.paper_assist_elements:
-                gate.checks[ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT] = False
-                gate.failed_checks.append(ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT)
-                gate.passed = False
-                draft.status = ExpressionDraftStatus.BLOCKED
-            if draft.author_responsibility_statement is None:
-                gate.checks[ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT] = False
-                gate.failed_checks.append(ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT)
-                gate.passed = False
-                draft.status = ExpressionDraftStatus.BLOCKED
+        self._update_gate_for_genre_elements(draft, gate)
 
         # T028: attach a style policy and run the Chinese human-flavor diagnostic.
         # The diagnostic is informational on draft creation; explicit high-severity
@@ -1547,6 +1503,36 @@ class ExpressionService:
         elif gate.passed and draft.status == ExpressionDraftStatus.BLOCKED:
             draft.status = ExpressionDraftStatus.DRAFTED
 
+    def _update_gate_for_genre_elements(
+        self, draft: ExpressionDraft, gate: ExpressionGateResult
+    ) -> None:
+        """Verify genre-specific structural elements and update the gate."""
+        genre = draft.genre
+        if genre == Genre.POPULAR_SCIENCE and not draft.popular_science_elements:
+            gate.checks[ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT] = False
+            gate.failed_checks.append(ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT)
+        elif genre == Genre.LECTURE_SCRIPT and not draft.lecture_script_elements:
+            gate.checks[ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT] = False
+            gate.failed_checks.append(ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT)
+        elif genre == Genre.RESEARCH_REPORT and not draft.research_report_elements:
+            gate.checks[ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT] = False
+            gate.failed_checks.append(ExpressionGateCheck.RESEARCH_REPORT_ELEMENTS_PRESENT)
+        elif genre == Genre.PAPER_ASSIST:
+            if not draft.paper_assist_elements:
+                gate.checks[ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT] = False
+                gate.failed_checks.append(ExpressionGateCheck.PAPER_ASSIST_ELEMENTS_PRESENT)
+            if draft.author_responsibility_statement is None:
+                gate.checks[ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT] = False
+                gate.failed_checks.append(ExpressionGateCheck.AUTHOR_RESPONSIBILITY_PRESENT)
+        else:
+            return  # No genre-specific structural elements to verify.
+
+        if any(not v for v in gate.checks.values() if v is not None):
+            gate.passed = False
+            if draft.status not in {ExpressionDraftStatus.WAITING_HUMAN}:
+                draft.status = ExpressionDraftStatus.BLOCKED
+        gate.failed_checks = list(dict.fromkeys(gate.failed_checks))
+
     def run_style_diagnostic(
         self,
         subject: SubjectContext,
@@ -1568,6 +1554,7 @@ class ExpressionService:
             requested_slice_id=draft.memory_slice_id,
         )
         self._update_gate_for_style(draft, gate)
+        self._update_gate_for_genre_elements(draft, gate)
         self._drafts[draft.draft_id] = draft
 
         return StyleDiagnosticResult(
@@ -1603,6 +1590,7 @@ class ExpressionService:
             requested_slice_id=draft.memory_slice_id,
         )
         self._update_gate_for_style(draft, gate)
+        self._update_gate_for_genre_elements(draft, gate)
         self._drafts[draft.draft_id] = draft
 
         return ApplyRevisionPatchResult(
@@ -1879,6 +1867,7 @@ class ExpressionService:
             requested_slice_id=draft.memory_slice_id,
         )
         self._update_gate_for_style(draft, gate)
+        self._update_gate_for_genre_elements(draft, gate)
         checks[ReleaseGateCheck.EXPRESSION_GATE_PASSED] = gate.passed
         if not gate.passed:
             failed.append(ReleaseGateCheck.EXPRESSION_GATE_PASSED)
@@ -1919,12 +1908,15 @@ class ExpressionService:
             reasons.append("体裁要求的人工确认尚未完成。")
 
         style_report = draft.style_diagnostic_report
-        has_blocking_style = (
+        has_any_blocking_finding = (
             style_report is not None
             and any(f.severity == StyleDiagnosticSeverity.BLOCKING for f in style_report.findings)
         )
-        checks[ReleaseGateCheck.NO_BLOCKING_STYLE_FINDINGS] = not has_blocking_style
-        if has_blocking_style:
+        has_unresolved_blocking = has_any_blocking_finding and any(
+            not p.applied and not p.rejected for p in draft.pending_patches
+        )
+        checks[ReleaseGateCheck.NO_BLOCKING_STYLE_FINDINGS] = not has_unresolved_blocking
+        if has_unresolved_blocking:
             failed.append(ReleaseGateCheck.NO_BLOCKING_STYLE_FINDINGS)
             reasons.append("存在未处理的中文表达阻塞性问题。")
 
