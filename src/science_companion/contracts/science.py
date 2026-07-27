@@ -1,8 +1,9 @@
-"""Scientific source, document and chunk contracts.
+"""Scientific source, document, chunk and claim-evidence-citation contracts.
 
 These models define the public surface of imported scientific sources (text and
-PDF), their immutable document versions, structural chunks, lifecycle status and
-input quality gates. They are the authoritative shape of CONTRACT-SCI-01.
+PDF), their immutable document versions, structural chunks, lifecycle status,
+input quality gates, and the locatable claim--evidence--citation graph. They are
+the authoritative shape of CONTRACT-SCI-01.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from science_companion.contracts.ai import ModelRunLock
 from science_companion.contracts.projects import ObjectDomain
 from science_companion.contracts.scope import ScopeEnvelope
 
@@ -413,3 +415,274 @@ class SearchResult(BaseModel):
     lexical_total: int = Field(default=0, description="Number of lexical candidates before fusion.")
     vector_total: int = Field(default=0, description="Number of vector candidates before fusion.")
     coverage_gaps: list[CoverageGap] = Field(default_factory=list)
+
+
+class EvidenceRelation(str, Enum):
+    """Relationship between a source fragment and a claim."""
+
+    SUPPORTS = "supports"
+    REFUTES = "refutes"
+    LIMITS = "limits"
+    CONTEXTUALIZES = "contextualizes"
+
+
+class ClaimType(str, Enum):
+    """Kind of scientific claim."""
+
+    DEFINITION = "definition"
+    DESCRIPTIVE = "descriptive"
+    QUANTITATIVE = "quantitative"
+    COMPARATIVE = "comparative"
+    CAUSAL = "causal"
+    MECHANISTIC = "mechanistic"
+    PREDICTIVE = "predictive"
+    NORMATIVE = "normative"
+    PROOF_STEP = "proof_step"
+
+
+class ClaimImportance(str, Enum):
+    """Importance of a claim within an answer."""
+
+    KEY = "key"
+    SUPPORTING = "supporting"
+    ILLUSTRATIVE = "illustrative"
+
+
+class ClaimTrustStatus(str, Enum):
+    """Trust status of a claim or claim graph.
+
+    Mirrors the honest-degradation state machine from the scientific-trust
+    research: verified, qualified, partial, conflicted, metadata_only,
+    quarantined and blocked are all legal terminal or intermediate states.
+    """
+
+    VERIFIED = "verified"
+    QUALIFIED = "qualified"
+    PARTIAL = "partial"
+    CONFLICTED = "conflicted"
+    METADATA_ONLY = "metadata_only"
+    QUARANTINED = "quarantined"
+    BLOCKED = "blocked"
+
+
+class CitationVerificationStatus(str, Enum):
+    """Verification state of a single citation locator."""
+
+    VERIFIED = "verified"
+    STALE = "stale"
+    UNLOCATABLE = "unlocatable"
+    SOURCE_REVOKED = "source_revoked"
+    SOURCE_SUPERSEDED = "source_superseded"
+
+
+class CitationLocator(BaseModel):
+    """Precise location of a citation within a document version."""
+
+    page: int | None = Field(default=None, description="Page number if known.")
+    section: str | None = Field(default=None, description="Section title or number.")
+    paragraph: int | None = Field(default=None, description="Paragraph index within section.")
+    figure: str | None = Field(default=None, description="Figure identifier.")
+    table: str | None = Field(default=None, description="Table identifier.")
+    formula: str | None = Field(default=None, description="Formula identifier.")
+    start_offset: int | None = Field(
+        default=None, description="Start character offset in the document version."
+    )
+    end_offset: int | None = Field(
+        default=None, description="End character offset in the document version."
+    )
+
+
+class Evidence(BaseModel):
+    """A source fragment's relationship to a claim.
+
+    Evidence is not the literature itself; it records how one or more chunks
+    from a specific document version relate to a claim (support, refute, limit,
+    contextualize) and why that relationship was assessed.
+    """
+
+    evidence_id: str = Field(description="Stable evidence identifier.")
+    claim_id: str = Field(description="Claim this evidence relates to.")
+    document_id: str = Field(description="Document version that produced the evidence.")
+    chunk_ids: list[str] = Field(default_factory=list, description="Chunks used as evidence.")
+    relation: EvidenceRelation = Field(description="Relationship to the claim.")
+    quoted_span_or_data_ref: str | None = Field(
+        default=None, description="Exact quoted span or structured data reference."
+    )
+    evidence_role: str = Field(
+        default="primary_result",
+        description="Role in the argument, e.g. primary_result, synthesis, standard.",
+    )
+    source_proximity: str = Field(
+        default="full_text",
+        description="How close the evidence is to the original content.",
+    )
+    lifecycle_status: LifecycleStatus = Field(
+        default=LifecycleStatus.ACTIVE, description="Lifecycle status of the document version."
+    )
+    assessment_reason: str = Field(
+        default="", description="Transparent reason for the assessment."
+    )
+    assessor: str = Field(
+        default="rule",
+        description="Agent that produced the assessment: rule, model, human.",
+    )
+    valid_from: datetime = Field(description="When this evidence became valid.")
+    invalidated_at: datetime | None = Field(
+        default=None, description="When this evidence was invalidated."
+    )
+    model_run_lock_id: str | None = Field(
+        default=None, description="Model run lock that produced or reviewed this evidence."
+    )
+
+
+class Citation(BaseModel):
+    """A rendered citation binding wording to evidence with a precise locator.
+
+    Citation records are immutable; when the source version changes or the
+    locator becomes stale, a new citation version is created rather than
+    overwriting history.
+    """
+
+    citation_id: str = Field(description="Stable citation identifier.")
+    evidence_id: str = Field(description="Evidence this citation presents.")
+    claim_id: str = Field(description="Claim this citation supports in the output.")
+    locator: CitationLocator = Field(description="Precise location in the source version.")
+    identifier_snapshot: dict[str, str | None] = Field(
+        default_factory=dict,
+        description="DOI, PMID, arXiv ID, etc. at citation creation time.",
+    )
+    title_snapshot: str | None = Field(default=None, description="Source title at creation time.")
+    source_version_label: str | None = Field(
+        default=None, description="Document version label, e.g. v1, v2."
+    )
+    canonical_url: str | None = Field(default=None, description="Canonical URL if known.")
+    accessed_at: datetime = Field(description="When the citation was generated.")
+    render_style: str = Field(default="footnote", description="Citation rendering style.")
+    verification_status: CitationVerificationStatus = Field(
+        default=CitationVerificationStatus.VERIFIED,
+        description="Current verification state of the locator against the source.",
+    )
+    verification_reason: str | None = Field(
+        default=None, description="Human-readable reason for the verification status."
+    )
+
+
+class Claim(BaseModel):
+    """A single scientific proposition produced from retrieval and validation."""
+
+    claim_id: str = Field(description="Stable claim identifier.")
+    graph_id: str = Field(description="Claim graph this claim belongs to.")
+    claim_type: ClaimType = Field(default=ClaimType.DESCRIPTIVE)
+    text: str = Field(description="Canonical claim text.")
+    importance: ClaimImportance = Field(default=ClaimImportance.SUPPORTING)
+    scope: str | None = Field(
+        default=None, description="Scope qualifier such as population, conditions or time range."
+    )
+    status: ClaimTrustStatus = Field(default=ClaimTrustStatus.VERIFIED)
+    status_reason: str | None = Field(default=None, description="Why the claim has this status.")
+    version_number: int = Field(default=1, ge=1, description="Monotonic claim version.")
+    evidence_ids: list[str] = Field(
+        default_factory=list, description="Evidence ids for this claim."
+    )
+    citation_ids: list[str] = Field(
+        default_factory=list, description="Citation ids for this claim."
+    )
+    created_at: datetime = Field(description="Claim creation timestamp.")
+    superseded_by_claim_id: str | None = Field(
+        default=None, description="Newer claim version that replaces this one."
+    )
+    model_run_lock_id: str | None = Field(
+        default=None, description="Model run lock that produced or reviewed this claim."
+    )
+
+
+class ClaimGraph(BaseModel):
+    """A versioned collection of claims, evidence and citations for one answer."""
+
+    graph_id: str = Field(description="Stable graph identifier.")
+    account_id: str = Field(description="Owning account.")
+    project_id: str | None = Field(default=None, description="Project scope if any.")
+    run_id: str | None = Field(
+        default=None, description="Workflow run that produced the graph."
+    )
+    query: str = Field(description="Question or task that generated the graph.")
+    status: ClaimTrustStatus = Field(default=ClaimTrustStatus.VERIFIED)
+    status_reason: str | None = Field(default=None, description="Why the graph has this status.")
+    version_number: int = Field(default=1, ge=1, description="Monotonic graph version.")
+    claims: list[Claim] = Field(default_factory=list)
+    evidence: list[Evidence] = Field(default_factory=list)
+    citations: list[Citation] = Field(default_factory=list)
+    index_snapshot_id: str | None = Field(
+        default=None, description="Index used to build the graph."
+    )
+    created_at: datetime = Field(description="Graph creation timestamp.")
+    superseded_by_graph_id: str | None = Field(
+        default=None, description="Newer graph version that replaces this one."
+    )
+    model_run_lock_id: str | None = Field(
+        default=None, description="Model run lock that produced the graph."
+    )
+
+
+class ClaimRequest(BaseModel):
+    """Request to generate a claim graph from a scientific question.
+
+    The service compiles scope first, runs hybrid retrieval, then produces
+    claim-level evidence and citations against the retrieved source versions.
+    """
+
+    query: str = Field(description="Scientific question.", min_length=1)
+    project_id: str | None = Field(default=None, description="Project scope.")
+    object_domain: ObjectDomain = Field(default=ObjectDomain.PERSONAL_VAULT)
+    top_k: int = Field(default=5, ge=1, le=100, description="Maximum retrieval candidates.")
+    include_refutations: bool = Field(
+        default=True, description="Include refuting/limiting evidence where found."
+    )
+    run_id: str | None = Field(
+        default=None, description="Optional workflow run to bind the graph to."
+    )
+
+
+class PublishGateCheck(str, Enum):
+    """Named checks performed by the publish gate."""
+
+    KEY_CLAIM_COVERAGE = "key_claim_coverage"
+    CITATION_LOCATABLE = "citation_locatable"
+    SOURCE_ACTIVE = "source_active"
+    SOURCE_CURRENT_VERSION = "source_current_version"
+    NO_FABRICATED_CITATIONS = "no_fabricated_citations"
+    HIGH_CONFIDENCE_EVIDENCE = "high_confidence_evidence"
+
+
+class PublishGateResult(BaseModel):
+    """Result of running the claim-graph publish gate."""
+
+    passed: bool = Field(description="Whether the graph may be published.")
+    graph_status: ClaimTrustStatus = Field(description="Derived trust status.")
+    checks: dict[PublishGateCheck, bool] = Field(default_factory=dict)
+    failed_checks: list[PublishGateCheck] = Field(default_factory=list)
+    blocked_claim_ids: list[str] = Field(default_factory=list)
+    reason: str | None = Field(default=None, description="Human-readable gate summary.")
+
+
+class ClaimGraphResult(BaseModel):
+    """Result of generating a claim graph from a question."""
+
+    graph: ClaimGraph = Field(description="Generated claim graph.")
+    search_result: SearchResult = Field(description="Retrieval result that fed the graph.")
+    publish_gate: PublishGateResult = Field(description="Publish gate run against the graph.")
+    model_run_lock: ModelRunLock | None = Field(
+        default=None, description="Lock for the model call that generated claims."
+    )
+
+
+class CitationValidationResult(BaseModel):
+    """Result of re-verifying a citation against the current source state."""
+
+    citation_id: str = Field(description="Citation identifier.")
+    verification_status: CitationVerificationStatus = Field(description="Current status.")
+    reason: str = Field(description="Human-readable reason.")
+    current_document_id: str | None = Field(
+        default=None, description="Current document version id if source is still active."
+    )
+    current_version_label: str | None = Field(default=None, description="Current version label.")

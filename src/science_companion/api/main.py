@@ -18,7 +18,7 @@ from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.observability.service import ObservabilityService
 from science_companion.projects import ProjectService
-from science_companion.science import ScienceSearchService, ScienceSourceService
+from science_companion.science import ClaimEvidenceService, ScienceSearchService, ScienceSourceService
 from science_companion.science.service import build_source_impact_resolver
 from science_companion.scope import ScopeEnforcer
 from science_companion.vault import (
@@ -263,6 +263,14 @@ def create_app() -> FastAPI:
         source_service=science_source_service,
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
+    )
+
+    # T015: attach the claim--evidence--citation service.
+    app.state.claim_evidence_service = ClaimEvidenceService(
+        source_service=science_source_service,
+        search_service=app.state.science_search_service,
+        invalidation_service=invalidation_service,
+        model_gateway=model_gateway,
     )
 
     app.include_router(auth.router)

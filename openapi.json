@@ -3493,6 +3493,333 @@
         }
       }
     },
+    "/science/projects/{project_id}/claim-graphs": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Generate Project Claim Graph",
+        "description": "Generate a locatable claim--evidence--citation graph for a project question.",
+        "operationId": "generate_project_claim_graph_science_projects__project_id__claim_graphs_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimGraphResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/science/claim-graphs": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Generate Personal Claim Graph",
+        "description": "Generate a locatable claim--evidence--citation graph for a personal question.",
+        "operationId": "generate_personal_claim_graph_science_claim_graphs_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClaimRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimGraphResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/science/claim-graphs/{graph_id}": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Get Claim Graph",
+        "description": "Retrieve a claim graph by id.",
+        "operationId": "get_claim_graph_science_claim_graphs__graph_id__get",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Graph Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClaimGraph"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/science/claim-graphs/{graph_id}/publish-gate": {
+      "get": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Run Claim Graph Publish Gate",
+        "description": "Re-run the publish gate for a claim graph.",
+        "operationId": "run_claim_graph_publish_gate_science_claim_graphs__graph_id__publish_gate_get",
+        "parameters": [
+          {
+            "name": "graph_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Graph Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishGateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -4221,6 +4548,622 @@
         ],
         "title": "ChunkVersion",
         "description": "A structural chunk of a document version.\n\nChunks are the smallest retrievable units that preserve locator information\nso that claims and citations can point back to precise positions."
+      },
+      "Citation": {
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "title": "Citation Id",
+            "description": "Stable citation identifier."
+          },
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "description": "Evidence this citation presents."
+          },
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id",
+            "description": "Claim this citation supports in the output."
+          },
+          "locator": {
+            "$ref": "#/components/schemas/CitationLocator",
+            "description": "Precise location in the source version."
+          },
+          "identifier_snapshot": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Identifier Snapshot",
+            "description": "DOI, PMID, arXiv ID, etc. at citation creation time."
+          },
+          "title_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title Snapshot",
+            "description": "Source title at creation time."
+          },
+          "source_version_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version Label",
+            "description": "Document version label, e.g. v1, v2."
+          },
+          "canonical_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Url",
+            "description": "Canonical URL if known."
+          },
+          "accessed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accessed At",
+            "description": "When the citation was generated."
+          },
+          "render_style": {
+            "type": "string",
+            "title": "Render Style",
+            "description": "Citation rendering style.",
+            "default": "footnote"
+          },
+          "verification_status": {
+            "$ref": "#/components/schemas/CitationVerificationStatus",
+            "description": "Current verification state of the locator against the source.",
+            "default": "verified"
+          },
+          "verification_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Reason",
+            "description": "Human-readable reason for the verification status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "citation_id",
+          "evidence_id",
+          "claim_id",
+          "locator",
+          "accessed_at"
+        ],
+        "title": "Citation",
+        "description": "A rendered citation binding wording to evidence with a precise locator.\n\nCitation records are immutable; when the source version changes or the\nlocator becomes stale, a new citation version is created rather than\noverwriting history."
+      },
+      "CitationLocator": {
+        "properties": {
+          "page": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page",
+            "description": "Page number if known."
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section",
+            "description": "Section title or number."
+          },
+          "paragraph": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paragraph",
+            "description": "Paragraph index within section."
+          },
+          "figure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Figure",
+            "description": "Figure identifier."
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table",
+            "description": "Table identifier."
+          },
+          "formula": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Formula",
+            "description": "Formula identifier."
+          },
+          "start_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Start Offset",
+            "description": "Start character offset in the document version."
+          },
+          "end_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "End Offset",
+            "description": "End character offset in the document version."
+          }
+        },
+        "type": "object",
+        "title": "CitationLocator",
+        "description": "Precise location of a citation within a document version."
+      },
+      "CitationVerificationStatus": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "stale",
+          "unlocatable",
+          "source_revoked",
+          "source_superseded"
+        ],
+        "title": "CitationVerificationStatus",
+        "description": "Verification state of a single citation locator."
+      },
+      "Claim": {
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id",
+            "description": "Stable claim identifier."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph this claim belongs to."
+          },
+          "claim_type": {
+            "$ref": "#/components/schemas/ClaimType",
+            "default": "descriptive"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Canonical claim text."
+          },
+          "importance": {
+            "$ref": "#/components/schemas/ClaimImportance",
+            "default": "supporting"
+          },
+          "scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scope",
+            "description": "Scope qualifier such as population, conditions or time range."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "default": "verified"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason",
+            "description": "Why the claim has this status."
+          },
+          "version_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version Number",
+            "description": "Monotonic claim version.",
+            "default": 1
+          },
+          "evidence_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Ids",
+            "description": "Evidence ids for this claim."
+          },
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citation Ids",
+            "description": "Citation ids for this claim."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Claim creation timestamp."
+          },
+          "superseded_by_claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Claim Id",
+            "description": "Newer claim version that replaces this one."
+          },
+          "model_run_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Run Lock Id",
+            "description": "Model run lock that produced or reviewed this claim."
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim_id",
+          "graph_id",
+          "text",
+          "created_at"
+        ],
+        "title": "Claim",
+        "description": "A single scientific proposition produced from retrieval and validation."
+      },
+      "ClaimGraph": {
+        "properties": {
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Stable graph identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "Workflow run that produced the graph."
+          },
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "Question or task that generated the graph."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "default": "verified"
+          },
+          "status_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status Reason",
+            "description": "Why the graph has this status."
+          },
+          "version_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version Number",
+            "description": "Monotonic graph version.",
+            "default": 1
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/Claim"
+            },
+            "type": "array",
+            "title": "Claims"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/Citation"
+            },
+            "type": "array",
+            "title": "Citations"
+          },
+          "index_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Snapshot Id",
+            "description": "Index used to build the graph."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Graph creation timestamp."
+          },
+          "superseded_by_graph_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By Graph Id",
+            "description": "Newer graph version that replaces this one."
+          },
+          "model_run_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Run Lock Id",
+            "description": "Model run lock that produced the graph."
+          }
+        },
+        "type": "object",
+        "required": [
+          "graph_id",
+          "account_id",
+          "query",
+          "created_at"
+        ],
+        "title": "ClaimGraph",
+        "description": "A versioned collection of claims, evidence and citations for one answer."
+      },
+      "ClaimGraphResult": {
+        "properties": {
+          "graph": {
+            "$ref": "#/components/schemas/ClaimGraph",
+            "description": "Generated claim graph."
+          },
+          "search_result": {
+            "$ref": "#/components/schemas/SearchResult",
+            "description": "Retrieval result that fed the graph."
+          },
+          "publish_gate": {
+            "$ref": "#/components/schemas/PublishGateResult",
+            "description": "Publish gate run against the graph."
+          },
+          "model_run_lock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRunLock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Lock for the model call that generated claims."
+          }
+        },
+        "type": "object",
+        "required": [
+          "graph",
+          "search_result",
+          "publish_gate"
+        ],
+        "title": "ClaimGraphResult",
+        "description": "Result of generating a claim graph from a question."
+      },
+      "ClaimImportance": {
+        "type": "string",
+        "enum": [
+          "key",
+          "supporting",
+          "illustrative"
+        ],
+        "title": "ClaimImportance",
+        "description": "Importance of a claim within an answer."
+      },
+      "ClaimRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Query",
+            "description": "Scientific question."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope."
+          },
+          "object_domain": {
+            "$ref": "#/components/schemas/ObjectDomain",
+            "default": "personal_vault"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "description": "Maximum retrieval candidates.",
+            "default": 5
+          },
+          "include_refutations": {
+            "type": "boolean",
+            "title": "Include Refutations",
+            "description": "Include refuting/limiting evidence where found.",
+            "default": true
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "Optional workflow run to bind the graph to."
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "ClaimRequest",
+        "description": "Request to generate a claim graph from a scientific question.\n\nThe service compiles scope first, runs hybrid retrieval, then produces\nclaim-level evidence and citations against the retrieved source versions."
+      },
+      "ClaimTrustStatus": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "qualified",
+          "partial",
+          "conflicted",
+          "metadata_only",
+          "quarantined",
+          "blocked"
+        ],
+        "title": "ClaimTrustStatus",
+        "description": "Trust status of a claim or claim graph.\n\nMirrors the honest-degradation state machine from the scientific-trust\nresearch: verified, qualified, partial, conflicted, metadata_only,\nquarantined and blocked are all legal terminal or intermediate states."
+      },
+      "ClaimType": {
+        "type": "string",
+        "enum": [
+          "definition",
+          "descriptive",
+          "quantitative",
+          "comparative",
+          "causal",
+          "mechanistic",
+          "predictive",
+          "normative",
+          "proof_step"
+        ],
+        "title": "ClaimType",
+        "description": "Kind of scientific claim."
       },
       "CloudControlProjection": {
         "properties": {
@@ -5343,6 +6286,130 @@
         "title": "EvaluationSuiteRef",
         "description": "Pointer to a registered evaluation suite and case."
       },
+      "Evidence": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "description": "Stable evidence identifier."
+          },
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id",
+            "description": "Claim this evidence relates to."
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Document version that produced the evidence."
+          },
+          "chunk_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Chunk Ids",
+            "description": "Chunks used as evidence."
+          },
+          "relation": {
+            "$ref": "#/components/schemas/EvidenceRelation",
+            "description": "Relationship to the claim."
+          },
+          "quoted_span_or_data_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quoted Span Or Data Ref",
+            "description": "Exact quoted span or structured data reference."
+          },
+          "evidence_role": {
+            "type": "string",
+            "title": "Evidence Role",
+            "description": "Role in the argument, e.g. primary_result, synthesis, standard.",
+            "default": "primary_result"
+          },
+          "source_proximity": {
+            "type": "string",
+            "title": "Source Proximity",
+            "description": "How close the evidence is to the original content.",
+            "default": "full_text"
+          },
+          "lifecycle_status": {
+            "$ref": "#/components/schemas/LifecycleStatus",
+            "description": "Lifecycle status of the document version.",
+            "default": "active"
+          },
+          "assessment_reason": {
+            "type": "string",
+            "title": "Assessment Reason",
+            "description": "Transparent reason for the assessment.",
+            "default": ""
+          },
+          "assessor": {
+            "type": "string",
+            "title": "Assessor",
+            "description": "Agent that produced the assessment: rule, model, human.",
+            "default": "rule"
+          },
+          "valid_from": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Valid From",
+            "description": "When this evidence became valid."
+          },
+          "invalidated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidated At",
+            "description": "When this evidence was invalidated."
+          },
+          "model_run_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Run Lock Id",
+            "description": "Model run lock that produced or reviewed this evidence."
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "claim_id",
+          "document_id",
+          "relation",
+          "valid_from"
+        ],
+        "title": "Evidence",
+        "description": "A source fragment's relationship to a claim.\n\nEvidence is not the literature itself; it records how one or more chunks\nfrom a specific document version relate to a claim (support, refute, limit,\ncontextualize) and why that relationship was assessed."
+      },
+      "EvidenceRelation": {
+        "type": "string",
+        "enum": [
+          "supports",
+          "refutes",
+          "limits",
+          "contextualizes"
+        ],
+        "title": "EvidenceRelation",
+        "description": "Relationship between a source fragment and a claim."
+      },
       "GateResult": {
         "type": "string",
         "enum": [
@@ -6235,6 +7302,75 @@
         "type": "object",
         "title": "ProjectUpdateRequest",
         "description": "Request to rename or update a project."
+      },
+      "PublishGateCheck": {
+        "type": "string",
+        "enum": [
+          "key_claim_coverage",
+          "citation_locatable",
+          "source_active",
+          "source_current_version",
+          "no_fabricated_citations",
+          "high_confidence_evidence"
+        ],
+        "title": "PublishGateCheck",
+        "description": "Named checks performed by the publish gate."
+      },
+      "PublishGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether the graph may be published."
+          },
+          "graph_status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "description": "Derived trust status."
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/PublishGateCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/PublishGateCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Human-readable gate summary."
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed",
+          "graph_status"
+        ],
+        "title": "PublishGateResult",
+        "description": "Result of running the claim-graph publish gate."
       },
       "RecoveryRequest": {
         "properties": {

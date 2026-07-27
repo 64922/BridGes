@@ -14,8 +14,13 @@ from science_companion.api.auth import SubjectDep
 from science_companion.contracts.invalidation import InvalidationEventType
 from science_companion.contracts.science import (
     ChunkVersion,
+    CitationValidationResult,
+    ClaimGraph,
+    ClaimGraphResult,
+    ClaimRequest,
     DocumentVersion,
     IngestionRunRef,
+    PublishGateResult,
     SearchRequest,
     SearchResult,
     SourceError,
@@ -25,7 +30,12 @@ from science_companion.contracts.science import (
     SourceVersionRequest,
 )
 from science_companion.invalidation import InvalidationService
-from science_companion.science import ScienceError, ScienceSearchService, ScienceSourceService
+from science_companion.science import (
+    ClaimEvidenceService,
+    ScienceError,
+    ScienceSearchService,
+    ScienceSourceService,
+)
 
 router = APIRouter(prefix="/science", tags=["science"])
 
@@ -48,8 +58,18 @@ def _get_search_service(request: Request) -> ScienceSearchService:
     return service
 
 
+def _get_claim_service(request: Request) -> ClaimEvidenceService:
+    service: ClaimEvidenceService | None = getattr(
+        request.app.state, "claim_evidence_service", None
+    )
+    if service is None:
+        raise RuntimeError("ClaimEvidenceService not attached to application state.")
+    return service
+
+
 ScienceServiceDep = Annotated[ScienceSourceService, Depends(_get_science_service)]
 SearchServiceDep = Annotated[ScienceSearchService, Depends(_get_search_service)]
+ClaimServiceDep = Annotated[ClaimEvidenceService, Depends(_get_claim_service)]
 
 
 def _science_error(status_code: int, error: str, message: str) -> HTTPException:
@@ -335,3 +355,142 @@ async def search_personal_sources(
 ) -> SearchResult:
     """Search personal scientific sources using scoped hybrid retrieval."""
     return service.search(subject, request)
+
+
+@router.post(
+    "/projects/{project_id}/claim-graphs",
+    response_model=ClaimGraphResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_403_FORBIDDEN: {"model": SourceError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
+    },
+)
+async def generate_project_claim_graph(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    project_id: str,
+    request: ClaimRequest,
+) -> ClaimGraphResult:
+    """Generate a locatable claim--evidence--citation graph for a project question."""
+    from science_companion.contracts.projects import ObjectDomain
+
+    scoped_request = request.model_copy(update={"project_id": project_id})
+    if scoped_request.object_domain == ObjectDomain.PERSONAL_VAULT:
+        scoped_request = scoped_request.model_copy(
+            update={"object_domain": ObjectDomain.SHARED_PROJECT}
+        )
+    try:
+        return service.generate_claim_graph(subject, scoped_request)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_403_FORBIDDEN, "claim_generation_failed", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/claim-graphs",
+    response_model=ClaimGraphResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_403_FORBIDDEN: {"model": SourceError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
+    },
+)
+async def generate_personal_claim_graph(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    request: ClaimRequest,
+) -> ClaimGraphResult:
+    """Generate a locatable claim--evidence--citation graph for a personal question."""
+    try:
+        return service.generate_claim_graph(subject, request)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_403_FORBIDDEN, "claim_generation_failed", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/claim-graphs/{graph_id}",
+    response_model=ClaimGraph,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_404_NOT_FOUND: {"model": SourceError},
+    },
+)
+async def get_claim_graph(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    graph_id: str,
+) -> ClaimGraph:
+    """Retrieve a claim graph by id."""
+    try:
+        return service.get_claim_graph(subject.account_id, graph_id)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_404_NOT_FOUND, "claim_graph_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/claim-graphs/{graph_id}/publish-gate",
+    response_model=PublishGateResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_404_NOT_FOUND: {"model": SourceError},
+    },
+)
+async def run_claim_graph_publish_gate(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    graph_id: str,
+) -> PublishGateResult:
+    """Re-run the publish gate for a claim graph."""
+    try:
+        return service.run_publish_gate(subject.account_id, graph_id)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_404_NOT_FOUND, "claim_graph_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/claim-graphs",
+    response_model=list[ClaimGraph],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+    },
+)
+async def list_claim_graphs(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    project_id: str | None = None,
+) -> list[ClaimGraph]:
+    """List claim graphs accessible to the current account, optionally filtered by project."""
+    return service.list_claim_graphs(subject.account_id, project_id=project_id)
+
+
+@router.get(
+    "/claim-graphs/{graph_id}/citations/{citation_id}/verify",
+    response_model=CitationValidationResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_404_NOT_FOUND: {"model": SourceError},
+    },
+)
+async def verify_citation(
+    service: ClaimServiceDep,
+    subject: SubjectDep,
+    graph_id: str,
+    citation_id: str,
+) -> CitationValidationResult:
+    """Re-verify a citation against current source state."""
+    try:
+        return service.validate_citation(subject.account_id, graph_id, citation_id)
+    except ScienceError as exc:
+        raise _science_error(
+            status.HTTP_404_NOT_FOUND, "citation_not_found", str(exc)
+        ) from exc

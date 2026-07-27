@@ -782,6 +782,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/science/projects/{project_id}/claim-graphs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Project Claim Graph
+         * @description Generate a locatable claim--evidence--citation graph for a project question.
+         */
+        post: operations["generate_project_claim_graph_science_projects__project_id__claim_graphs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Personal Claim Graph
+         * @description Generate a locatable claim--evidence--citation graph for a personal question.
+         */
+        post: operations["generate_personal_claim_graph_science_claim_graphs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs/{graph_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Claim Graph
+         * @description Retrieve a claim graph by id.
+         */
+        get: operations["get_claim_graph_science_claim_graphs__graph_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/claim-graphs/{graph_id}/publish-gate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Claim Graph Publish Gate
+         * @description Re-run the publish gate for a claim graph.
+         */
+        get: operations["run_claim_graph_publish_gate_science_claim_graphs__graph_id__publish_gate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1242,6 +1322,343 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * Citation
+         * @description A rendered citation binding wording to evidence with a precise locator.
+         *
+         *     Citation records are immutable; when the source version changes or the
+         *     locator becomes stale, a new citation version is created rather than
+         *     overwriting history.
+         */
+        Citation: {
+            /**
+             * Citation Id
+             * @description Stable citation identifier.
+             */
+            citation_id: string;
+            /**
+             * Evidence Id
+             * @description Evidence this citation presents.
+             */
+            evidence_id: string;
+            /**
+             * Claim Id
+             * @description Claim this citation supports in the output.
+             */
+            claim_id: string;
+            /** @description Precise location in the source version. */
+            locator: components["schemas"]["CitationLocator"];
+            /**
+             * Identifier Snapshot
+             * @description DOI, PMID, arXiv ID, etc. at citation creation time.
+             */
+            identifier_snapshot?: {
+                [key: string]: string | null;
+            };
+            /**
+             * Title Snapshot
+             * @description Source title at creation time.
+             */
+            title_snapshot?: string | null;
+            /**
+             * Source Version Label
+             * @description Document version label, e.g. v1, v2.
+             */
+            source_version_label?: string | null;
+            /**
+             * Canonical Url
+             * @description Canonical URL if known.
+             */
+            canonical_url?: string | null;
+            /**
+             * Accessed At
+             * Format: date-time
+             * @description When the citation was generated.
+             */
+            accessed_at: string;
+            /**
+             * Render Style
+             * @description Citation rendering style.
+             * @default footnote
+             */
+            render_style: string;
+            /**
+             * @description Current verification state of the locator against the source.
+             * @default verified
+             */
+            verification_status: components["schemas"]["CitationVerificationStatus"];
+            /**
+             * Verification Reason
+             * @description Human-readable reason for the verification status.
+             */
+            verification_reason?: string | null;
+        };
+        /**
+         * CitationLocator
+         * @description Precise location of a citation within a document version.
+         */
+        CitationLocator: {
+            /**
+             * Page
+             * @description Page number if known.
+             */
+            page?: number | null;
+            /**
+             * Section
+             * @description Section title or number.
+             */
+            section?: string | null;
+            /**
+             * Paragraph
+             * @description Paragraph index within section.
+             */
+            paragraph?: number | null;
+            /**
+             * Figure
+             * @description Figure identifier.
+             */
+            figure?: string | null;
+            /**
+             * Table
+             * @description Table identifier.
+             */
+            table?: string | null;
+            /**
+             * Formula
+             * @description Formula identifier.
+             */
+            formula?: string | null;
+            /**
+             * Start Offset
+             * @description Start character offset in the document version.
+             */
+            start_offset?: number | null;
+            /**
+             * End Offset
+             * @description End character offset in the document version.
+             */
+            end_offset?: number | null;
+        };
+        /**
+         * CitationVerificationStatus
+         * @description Verification state of a single citation locator.
+         * @enum {string}
+         */
+        CitationVerificationStatus: "verified" | "stale" | "unlocatable" | "source_revoked" | "source_superseded";
+        /**
+         * Claim
+         * @description A single scientific proposition produced from retrieval and validation.
+         */
+        Claim: {
+            /**
+             * Claim Id
+             * @description Stable claim identifier.
+             */
+            claim_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph this claim belongs to.
+             */
+            graph_id: string;
+            /** @default descriptive */
+            claim_type: components["schemas"]["ClaimType"];
+            /**
+             * Text
+             * @description Canonical claim text.
+             */
+            text: string;
+            /** @default supporting */
+            importance: components["schemas"]["ClaimImportance"];
+            /**
+             * Scope
+             * @description Scope qualifier such as population, conditions or time range.
+             */
+            scope?: string | null;
+            /** @default verified */
+            status: components["schemas"]["ClaimTrustStatus"];
+            /**
+             * Status Reason
+             * @description Why the claim has this status.
+             */
+            status_reason?: string | null;
+            /**
+             * Version Number
+             * @description Monotonic claim version.
+             * @default 1
+             */
+            version_number: number;
+            /**
+             * Evidence Ids
+             * @description Evidence ids for this claim.
+             */
+            evidence_ids?: string[];
+            /**
+             * Citation Ids
+             * @description Citation ids for this claim.
+             */
+            citation_ids?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Claim creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Superseded By Claim Id
+             * @description Newer claim version that replaces this one.
+             */
+            superseded_by_claim_id?: string | null;
+            /**
+             * Model Run Lock Id
+             * @description Model run lock that produced or reviewed this claim.
+             */
+            model_run_lock_id?: string | null;
+        };
+        /**
+         * ClaimGraph
+         * @description A versioned collection of claims, evidence and citations for one answer.
+         */
+        ClaimGraph: {
+            /**
+             * Graph Id
+             * @description Stable graph identifier.
+             */
+            graph_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /**
+             * Run Id
+             * @description Workflow run that produced the graph.
+             */
+            run_id?: string | null;
+            /**
+             * Query
+             * @description Question or task that generated the graph.
+             */
+            query: string;
+            /** @default verified */
+            status: components["schemas"]["ClaimTrustStatus"];
+            /**
+             * Status Reason
+             * @description Why the graph has this status.
+             */
+            status_reason?: string | null;
+            /**
+             * Version Number
+             * @description Monotonic graph version.
+             * @default 1
+             */
+            version_number: number;
+            /** Claims */
+            claims?: components["schemas"]["Claim"][];
+            /** Evidence */
+            evidence?: components["schemas"]["Evidence"][];
+            /** Citations */
+            citations?: components["schemas"]["Citation"][];
+            /**
+             * Index Snapshot Id
+             * @description Index used to build the graph.
+             */
+            index_snapshot_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Graph creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Superseded By Graph Id
+             * @description Newer graph version that replaces this one.
+             */
+            superseded_by_graph_id?: string | null;
+            /**
+             * Model Run Lock Id
+             * @description Model run lock that produced the graph.
+             */
+            model_run_lock_id?: string | null;
+        };
+        /**
+         * ClaimGraphResult
+         * @description Result of generating a claim graph from a question.
+         */
+        ClaimGraphResult: {
+            /** @description Generated claim graph. */
+            graph: components["schemas"]["ClaimGraph"];
+            /** @description Retrieval result that fed the graph. */
+            search_result: components["schemas"]["SearchResult"];
+            /** @description Publish gate run against the graph. */
+            publish_gate: components["schemas"]["PublishGateResult"];
+            /** @description Lock for the model call that generated claims. */
+            model_run_lock?: components["schemas"]["ModelRunLock"] | null;
+        };
+        /**
+         * ClaimImportance
+         * @description Importance of a claim within an answer.
+         * @enum {string}
+         */
+        ClaimImportance: "key" | "supporting" | "illustrative";
+        /**
+         * ClaimRequest
+         * @description Request to generate a claim graph from a scientific question.
+         *
+         *     The service compiles scope first, runs hybrid retrieval, then produces
+         *     claim-level evidence and citations against the retrieved source versions.
+         */
+        ClaimRequest: {
+            /**
+             * Query
+             * @description Scientific question.
+             */
+            query: string;
+            /**
+             * Project Id
+             * @description Project scope.
+             */
+            project_id?: string | null;
+            /** @default personal_vault */
+            object_domain: components["schemas"]["ObjectDomain"];
+            /**
+             * Top K
+             * @description Maximum retrieval candidates.
+             * @default 5
+             */
+            top_k: number;
+            /**
+             * Include Refutations
+             * @description Include refuting/limiting evidence where found.
+             * @default true
+             */
+            include_refutations: boolean;
+            /**
+             * Run Id
+             * @description Optional workflow run to bind the graph to.
+             */
+            run_id?: string | null;
+        };
+        /**
+         * ClaimTrustStatus
+         * @description Trust status of a claim or claim graph.
+         *
+         *     Mirrors the honest-degradation state machine from the scientific-trust
+         *     research: verified, qualified, partial, conflicted, metadata_only,
+         *     quarantined and blocked are all legal terminal or intermediate states.
+         * @enum {string}
+         */
+        ClaimTrustStatus: "verified" | "qualified" | "partial" | "conflicted" | "metadata_only" | "quarantined" | "blocked";
+        /**
+         * ClaimType
+         * @description Kind of scientific claim.
+         * @enum {string}
+         */
+        ClaimType: "definition" | "descriptive" | "quantitative" | "comparative" | "causal" | "mechanistic" | "predictive" | "normative" | "proof_step";
         /**
          * CloudControlProjection
          * @description Minimal cloud-side projection of a vault object.
@@ -1988,6 +2405,94 @@ export interface components {
             case_id?: string | null;
         };
         /**
+         * Evidence
+         * @description A source fragment's relationship to a claim.
+         *
+         *     Evidence is not the literature itself; it records how one or more chunks
+         *     from a specific document version relate to a claim (support, refute, limit,
+         *     contextualize) and why that relationship was assessed.
+         */
+        Evidence: {
+            /**
+             * Evidence Id
+             * @description Stable evidence identifier.
+             */
+            evidence_id: string;
+            /**
+             * Claim Id
+             * @description Claim this evidence relates to.
+             */
+            claim_id: string;
+            /**
+             * Document Id
+             * @description Document version that produced the evidence.
+             */
+            document_id: string;
+            /**
+             * Chunk Ids
+             * @description Chunks used as evidence.
+             */
+            chunk_ids?: string[];
+            /** @description Relationship to the claim. */
+            relation: components["schemas"]["EvidenceRelation"];
+            /**
+             * Quoted Span Or Data Ref
+             * @description Exact quoted span or structured data reference.
+             */
+            quoted_span_or_data_ref?: string | null;
+            /**
+             * Evidence Role
+             * @description Role in the argument, e.g. primary_result, synthesis, standard.
+             * @default primary_result
+             */
+            evidence_role: string;
+            /**
+             * Source Proximity
+             * @description How close the evidence is to the original content.
+             * @default full_text
+             */
+            source_proximity: string;
+            /**
+             * @description Lifecycle status of the document version.
+             * @default active
+             */
+            lifecycle_status: components["schemas"]["LifecycleStatus"];
+            /**
+             * Assessment Reason
+             * @description Transparent reason for the assessment.
+             * @default
+             */
+            assessment_reason: string;
+            /**
+             * Assessor
+             * @description Agent that produced the assessment: rule, model, human.
+             * @default rule
+             */
+            assessor: string;
+            /**
+             * Valid From
+             * Format: date-time
+             * @description When this evidence became valid.
+             */
+            valid_from: string;
+            /**
+             * Invalidated At
+             * @description When this evidence was invalidated.
+             */
+            invalidated_at?: string | null;
+            /**
+             * Model Run Lock Id
+             * @description Model run lock that produced or reviewed this evidence.
+             */
+            model_run_lock_id?: string | null;
+        };
+        /**
+         * EvidenceRelation
+         * @description Relationship between a source fragment and a claim.
+         * @enum {string}
+         */
+        EvidenceRelation: "supports" | "refutes" | "limits" | "contextualizes";
+        /**
          * GateResult
          * @description Result of a single input quality gate.
          * @enum {string}
@@ -2526,6 +3031,38 @@ export interface components {
              * @description New project goal.
              */
             description?: string | null;
+        };
+        /**
+         * PublishGateCheck
+         * @description Named checks performed by the publish gate.
+         * @enum {string}
+         */
+        PublishGateCheck: "key_claim_coverage" | "citation_locatable" | "source_active" | "source_current_version" | "no_fabricated_citations" | "high_confidence_evidence";
+        /**
+         * PublishGateResult
+         * @description Result of running the claim-graph publish gate.
+         */
+        PublishGateResult: {
+            /**
+             * Passed
+             * @description Whether the graph may be published.
+             */
+            passed: boolean;
+            /** @description Derived trust status. */
+            graph_status: components["schemas"]["ClaimTrustStatus"];
+            /** Checks */
+            checks?: {
+                [key: string]: boolean;
+            };
+            /** Failed Checks */
+            failed_checks?: components["schemas"]["PublishGateCheck"][];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /**
+             * Reason
+             * @description Human-readable gate summary.
+             */
+            reason?: string | null;
         };
         /**
          * RecoveryRequest
@@ -5940,6 +6477,216 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    generate_project_claim_graph_science_projects__project_id__claim_graphs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimGraphResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    generate_personal_claim_graph_science_claim_graphs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ClaimRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimGraphResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    get_claim_graph_science_claim_graphs__graph_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                graph_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ClaimGraph"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_claim_graph_publish_gate_science_claim_graphs__graph_id__publish_gate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                graph_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishGateResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
