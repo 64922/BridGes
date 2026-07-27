@@ -147,6 +147,7 @@ def serve(
     Web and API remain independent OS processes; this command only orchestrates
     startup and graceful shutdown for local development convenience.
     """
+    _load_settings_or_exit()
     settings = get_settings()
     typer.echo(f"serve profile={profile}")
     typer.echo(f"Starting API on {settings.api_host}:{settings.api_port} ...")

@@ -98,12 +98,7 @@ class ScopeEnforcer:
         if rls_context is not None:
             if rls_context.subject.account_id != subject.account_id:
                 raise ScopeIsolationError("RLS 上下文与主体不一致。")
-            if (
-                rls_context.scope_envelope.object_domain != object_ref.domain
-                and rls_context.scope_envelope.object_domain != ObjectDomain.PERSONAL_VAULT
-            ):
-                # Allow personal-vault default to avoid breaking existing routes;
-                # explicit mismatch still fails.
+            if rls_context.scope_envelope.object_domain != object_ref.domain:
                 raise ScopeIsolationError("RLS 对象域与目标对象不一致。")
 
         return self.compile_scope(
@@ -134,6 +129,10 @@ class ScopeEnforcer:
         if rls_context is not None:
             if rls_context.subject.account_id != subject.account_id:
                 raise ScopeIsolationError("RLS 上下文与主体不一致。")
+            vault_domain_value = vault_ref.domain.value
+            rls_domain_value = rls_context.scope_envelope.object_domain.value
+            if vault_domain_value != rls_domain_value:
+                raise ScopeIsolationError("RLS 对象域与目标保险库对象不一致。")
 
         return self.compile_scope(
             subject,

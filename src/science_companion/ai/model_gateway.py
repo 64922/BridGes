@@ -13,6 +13,7 @@ vendor model. It enforces:
 from __future__ import annotations
 
 import secrets
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -147,7 +148,13 @@ class ModelGateway:
                 if condition in (primary_result.error_code or "") or condition in (
                     primary_result.degradation_reason or ""
                 ):
-                    return primary_result
+                    return self._blocked_result(
+                        run_context,
+                        primary,
+                        "fallback_prohibited",
+                        f"禁止降级条件触发：{condition}，不允许使用备选能力。",
+                        attempted=attempted,
+                    )
 
         fallback = self._resolve_fallback(primary.fallback_policy, attempted)
         if fallback is None:
@@ -219,6 +226,8 @@ class ModelGateway:
                 last_error = exc
                 retry_count = attempt - 1
                 if attempt < retry_policy.max_attempts:
+                    if retry_policy.backoff_seconds > 0:
+                        time.sleep(retry_policy.backoff_seconds * (2 ** (attempt - 1)))
                     continue
                 # Exhausted retries on this capability.
                 lock = self._build_lock(

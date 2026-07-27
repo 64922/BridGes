@@ -566,6 +566,7 @@ class WorkflowService:
                 WorkflowRunStatus.RUNNING,
                 WorkflowRunStatus.WAITING_HUMAN,
                 WorkflowRunStatus.RETRYING,
+                WorkflowRunStatus.BLOCKED,
             },
         )
         now = self._now()

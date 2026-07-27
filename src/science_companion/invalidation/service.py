@@ -340,6 +340,16 @@ class InvalidationService:
         for downstream in impact_set.affected_downstreams:
             entry_id = secrets.token_urlsafe(16)
             idempotency_key = f"{event_id}:{downstream.downstream_type}:{downstream.downstream_id}"
+
+            # Deduplicate: skip if an entry with the same idempotency_key already exists.
+            existing_entry = next(
+                (e for e in self._outbox.values() if e.idempotency_key == idempotency_key),
+                None,
+            )
+            if existing_entry is not None:
+                outbox_entries.append(existing_entry)
+                continue
+
             entry = OutboxEntry(
                 entry_id=entry_id,
                 destination=downstream.downstream_type,

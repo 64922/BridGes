@@ -30,6 +30,16 @@ _FORBIDDEN_KEYS = frozenset(
         "private_key",
         "vault_payload",
         "memory_slice_content",
+        # Additional privacy-sensitive fields (T010 review)
+        "raw_output",
+        "model_output",
+        "completion",
+        "authorization",
+        "client_secret",
+        "secret_key",
+        "session_token",
+        "refresh_token",
+        "access_token",
     }
 )
 
