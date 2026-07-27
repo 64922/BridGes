@@ -486,6 +486,227 @@ class GenerateLessonRequest(BaseModel):
     )
 
 
+class LearningRecordType(StrEnum):
+    """Kind of observable learning evidence that may update a knowledge state.
+
+    Browsing and completion-only activities are deliberately excluded; they are
+    stored as ``LearningActivity`` and never promoted to learning records.
+    """
+
+    EXERCISE_ATTEMPT = "exercise_attempt"
+    MISCONCEPTION_CORRECTION = "misconception_correction"
+    PREREQUISITE_EVIDENCE = "prerequisite_evidence"
+    DELAYED_RETRIEVAL = "delayed_retrieval"
+    TRANSFER_TASK = "transfer_task"
+
+
+class LearningRecordSource(StrEnum):
+    """Origin of a learning record."""
+
+    DIAGNOSTIC_ANSWER = "diagnostic_answer"
+    EXERCISE_ATTEMPT = "exercise_attempt"
+    USER_CORRECTION = "user_correction"
+
+
+class LearningRecord(BaseModel):
+    """Evidence-backed record of a learning event that can update knowledge state.
+
+    A learning record references the concrete response, misconception correction
+    or prerequisite evidence that justifies a knowledge-state change. It is
+    versioned, scoped to a mission and never derived from browsing or completion.
+    """
+
+    record_id: str = Field(description="Stable record identifier.")
+    mission_id: str = Field(description="Mission this record belongs to.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    concept_id: str = Field(description="Concept the record evidences.")
+    record_type: LearningRecordType = Field(description="Kind of learning evidence.")
+    source_type: LearningRecordSource = Field(description="Origin of the evidence.")
+    source_id: str = Field(
+        description="Id of the source object (attempt id, answer id, correction id)."
+    )
+    response_text: str | None = Field(
+        default=None, description="User response or product when applicable."
+    )
+    evaluated_state: AnswerEvaluatedState | None = Field(
+        default=None, description="Evaluated result when applicable."
+    )
+    misconception_corrected: str | None = Field(
+        default=None, description="Misconception that was corrected, if any."
+    )
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list,
+        description="Scientific evidence grounding the record.",
+    )
+    record_reason: str = Field(
+        description="Why this record counts as qualified learning evidence."
+    )
+    created_at: datetime = Field(description="When the record was created.")
+
+
+class LearningRecordCreateRequest(BaseModel):
+    """Request to create a qualified learning record."""
+
+    concept_id: str = Field(description="Concept the record evidences.")
+    record_type: LearningRecordType = Field(description="Kind of learning evidence.")
+    source_type: LearningRecordSource = Field(description="Origin of the evidence.")
+    source_id: str = Field(description="Id of the source object.")
+    response_text: str | None = Field(default=None, description="User response.")
+    evaluated_state: AnswerEvaluatedState | None = Field(
+        default=None, description="Evaluated result."
+    )
+    misconception_corrected: str | None = Field(
+        default=None, description="Corrected misconception."
+    )
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence grounding the record."
+    )
+    record_reason: str = Field(description="Why this is qualified evidence.")
+
+
+class HumanDecisionType(StrEnum):
+    """Named human decision on a proposed knowledge-state or path change."""
+
+    ACCEPT = "accept"
+    REJECT = "reject"
+    MODIFY = "modify"
+
+
+class HumanDecision(BaseModel):
+    """A named, auditable human decision on a knowledge-state proposal."""
+
+    decision_id: str = Field(description="Stable decision identifier.")
+    target_id: str = Field(description="Proposal the decision applies to.")
+    account_id: str = Field(description="Account that made the decision.")
+    decision: HumanDecisionType = Field(description="Decision type.")
+    reason: str = Field(description="Human-readable rationale.")
+    modified_value: str | None = Field(
+        default=None, description="Modified value when decision is 'modify'."
+    )
+    created_at: datetime = Field(description="When the decision was recorded.")
+
+
+class KnowledgeStateProposalStatus(StrEnum):
+    """Lifecycle status of a knowledge-state update proposal."""
+
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    SUPERSEDED = "superseded"
+
+
+class KnowledgeStateProposal(BaseModel):
+    """A proposed update to a knowledge state derived from learning records.
+
+    The proposal is only a candidate until the user accepts, rejects or modifies
+    it. Rejected proposals remain auditable and cannot be silently re-applied by
+    the model.
+    """
+
+    proposal_id: str = Field(description="Stable proposal identifier.")
+    mission_id: str = Field(description="Mission this proposal belongs to.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    concept_id: str = Field(description="Concept being updated.")
+    proposed_status: KnowledgeStateStatus = Field(description="Proposed state.")
+    proposed_confidence: KnowledgeConfidence = Field(
+        default=KnowledgeConfidence.LOW, description="Proposed confidence."
+    )
+    supporting_record_ids: list[str] = Field(
+        default_factory=list, description="Records that support the proposal."
+    )
+    refuting_record_ids: list[str] = Field(
+        default_factory=list, description="Records that refute or limit it."
+    )
+    uncertainty_reason: str | None = Field(
+        default=None, description="Why confidence is not higher."
+    )
+    scope: str = Field(description="Scope within which the state applies.")
+    next_validation_task: str = Field(
+        description="Next task to validate or refine the state."
+    )
+    status: KnowledgeStateProposalStatus = Field(
+        default=KnowledgeStateProposalStatus.PENDING
+    )
+    decision: HumanDecision | None = Field(
+        default=None, description="Recorded human decision, if any."
+    )
+    version: int = Field(default=1, ge=1, description="Optimistic concurrency version.")
+    created_at: datetime = Field(description="Creation timestamp.")
+    decided_at: datetime | None = Field(
+        default=None, description="When the proposal was decided."
+    )
+
+
+class ProposeKnowledgeStateUpdateRequest(BaseModel):
+    """Request to propose a knowledge-state update from learning records."""
+
+    concept_id: str = Field(description="Concept to update.")
+    record_ids: list[str] | None = Field(
+        default=None,
+        description="Records to base the proposal on; auto-select if omitted.",
+    )
+
+
+class DecideKnowledgeStateProposalRequest(BaseModel):
+    """Request to accept, reject or modify a knowledge-state proposal."""
+
+    decision: HumanDecisionType = Field(description="Decision type.")
+    reason: str = Field(description="Human-readable rationale.", min_length=1)
+    modified_status: KnowledgeStateStatus | None = Field(
+        default=None, description="Modified status when decision is 'modify'."
+    )
+    modified_confidence: KnowledgeConfidence | None = Field(
+        default=None, description="Modified confidence when decision is 'modify'."
+    )
+
+
+class LearningPathNodeStatus(StrEnum):
+    """Lifecycle status of a node on a learning path."""
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    SKIPPED = "skipped"
+
+
+class LearningPathNode(BaseModel):
+    """A single step on a learning path bound to evidence."""
+
+    node_id: str = Field(description="Stable node identifier.")
+    concept_id: str = Field(description="Concept addressed by this node.")
+    title: str = Field(description="Short node title.")
+    description: str = Field(description="What the learner should do.")
+    status: LearningPathNodeStatus = Field(
+        default=LearningPathNodeStatus.PENDING
+    )
+    evidence_record_ids: list[str] = Field(
+        default_factory=list,
+        description="Learning records that justify this node's placement.",
+    )
+    depends_on_node_ids: list[str] = Field(
+        default_factory=list, description="Nodes that should be addressed first."
+    )
+
+
+class LearningPath(BaseModel):
+    """A per-user learning route driven by confirmed knowledge states.
+
+    The path is recomputed when knowledge states change. It is anchored to the
+    learning mission and each node traces back to learning records.
+    """
+
+    path_id: str = Field(description="Stable path identifier.")
+    mission_id: str = Field(description="Mission the path serves.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    title: str = Field(description="Path title.")
+    nodes: list[LearningPathNode] = Field(default_factory=list)
+    current_node_id: str | None = Field(
+        default=None, description="Next recommended node."
+    )
+    version: int = Field(default=1, ge=1, description="Optimistic concurrency version.")
+    created_at: datetime = Field(description="Creation timestamp.")
+    updated_at: datetime = Field(description="Last update timestamp.")
+
+
 class LearningError(BaseModel):
     """Uniform learning-domain error response."""
 

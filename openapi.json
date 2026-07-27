@@ -6890,6 +6890,512 @@
         }
       }
     },
+    "/learning/missions/{mission_id}/learning-records": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Create Learning Record",
+        "description": "Record a qualified learning evidence item.",
+        "operationId": "create_learning_record_learning_missions__mission_id__learning_records_post",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningRecordCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "List Learning Records",
+        "description": "List learning records for a mission.",
+        "operationId": "list_learning_records_learning_missions__mission_id__learning_records_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "concept_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Concept Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LearningRecord"
+                  },
+                  "title": "Response List Learning Records Learning Missions  Mission Id  Learning Records Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/knowledge-state-proposals": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Propose Knowledge State Update",
+        "description": "Propose a knowledge-state update from learning records.",
+        "operationId": "propose_knowledge_state_update_learning_missions__mission_id__knowledge_state_proposals_post",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeKnowledgeStateUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeStateProposal"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "List Knowledge State Proposals",
+        "description": "List knowledge-state proposals for a mission.",
+        "operationId": "list_knowledge_state_proposals_learning_missions__mission_id__knowledge_state_proposals_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "concept_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Concept Id"
+            }
+          },
+          {
+            "name": "proposal_status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/KnowledgeStateProposalStatus"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Proposal Status"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/KnowledgeStateProposal"
+                  },
+                  "title": "Response List Knowledge State Proposals Learning Missions  Mission Id  Knowledge State Proposals Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/knowledge-state-proposals/{proposal_id}/decide": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Decide Knowledge State Proposal",
+        "description": "Accept, reject or modify a knowledge-state proposal.",
+        "operationId": "decide_knowledge_state_proposal_learning_knowledge_state_proposals__proposal_id__decide_post",
+        "parameters": [
+          {
+            "name": "proposal_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Proposal Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DecideKnowledgeStateProposalRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KnowledgeStateProposal"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/learning-path": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Learning Path",
+        "description": "Get the current learning path for a mission.",
+        "operationId": "get_learning_path_learning_missions__mission_id__learning_path_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningPath"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -8619,6 +9125,49 @@
         ],
         "title": "CoverageGap",
         "description": "A coverage or recall gap reported to the caller."
+      },
+      "DecideKnowledgeStateProposalRequest": {
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/HumanDecisionType",
+            "description": "Decision type."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          },
+          "modified_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeStateStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Modified status when decision is 'modify'."
+          },
+          "modified_confidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/KnowledgeConfidence"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Modified confidence when decision is 'modify'."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision",
+          "reason"
+        ],
+        "title": "DecideKnowledgeStateProposalRequest",
+        "description": "Request to accept, reject or modify a knowledge-state proposal."
       },
       "DecisionType": {
         "type": "string",
@@ -10545,77 +11094,15 @@
         "title": "HealthStatus",
         "description": "Top-level health verdict."
       },
-      "HumanDecision": {
-        "properties": {
-          "decision_id": {
-            "type": "string",
-            "title": "Decision Id",
-            "description": "Stable decision identifier."
-          },
-          "candidate_id": {
-            "type": "string",
-            "title": "Candidate Id",
-            "description": "Candidate the decision applies to."
-          },
-          "account_id": {
-            "type": "string",
-            "title": "Account Id",
-            "description": "Account that made the decision."
-          },
-          "decision": {
-            "$ref": "#/components/schemas/DecisionType",
-            "description": "Decision type."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable rationale."
-          },
-          "modified_value_or_rule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Value Or Rule",
-            "description": "Modified value when decision is 'modify'."
-          },
-          "modified_applicable_scenes": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Applicable Scenes",
-            "description": "Modified applicable scenes when decision is 'modify'."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "When the decision was recorded."
-          }
-        },
-        "type": "object",
-        "required": [
-          "decision_id",
-          "candidate_id",
-          "account_id",
-          "decision",
-          "reason",
-          "created_at"
+      "HumanDecisionType": {
+        "type": "string",
+        "enum": [
+          "accept",
+          "reject",
+          "modify"
         ],
-        "title": "HumanDecision",
-        "description": "Named human decision on a candidate profile."
+        "title": "HumanDecisionType",
+        "description": "Named human decision on a proposed knowledge-state or path change."
       },
       "HumanTodoItem": {
         "properties": {
@@ -10981,6 +11468,142 @@
         "title": "KnowledgeStateCorrection",
         "description": "User correction of a knowledge-state judgement."
       },
+      "KnowledgeStateProposal": {
+        "properties": {
+          "proposal_id": {
+            "type": "string",
+            "title": "Proposal Id",
+            "description": "Stable proposal identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission this proposal belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being updated."
+          },
+          "proposed_status": {
+            "$ref": "#/components/schemas/KnowledgeStateStatus",
+            "description": "Proposed state."
+          },
+          "proposed_confidence": {
+            "$ref": "#/components/schemas/KnowledgeConfidence",
+            "description": "Proposed confidence.",
+            "default": "low"
+          },
+          "supporting_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Supporting Record Ids",
+            "description": "Records that support the proposal."
+          },
+          "refuting_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Refuting Record Ids",
+            "description": "Records that refute or limit it."
+          },
+          "uncertainty_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Reason",
+            "description": "Why confidence is not higher."
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "description": "Scope within which the state applies."
+          },
+          "next_validation_task": {
+            "type": "string",
+            "title": "Next Validation Task",
+            "description": "Next task to validate or refine the state."
+          },
+          "status": {
+            "$ref": "#/components/schemas/KnowledgeStateProposalStatus",
+            "default": "pending"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/science_companion__contracts__learning__HumanDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Recorded human decision, if any."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "decided_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decided At",
+            "description": "When the proposal was decided."
+          }
+        },
+        "type": "object",
+        "required": [
+          "proposal_id",
+          "mission_id",
+          "owner_account_id",
+          "concept_id",
+          "proposed_status",
+          "scope",
+          "next_validation_task",
+          "created_at"
+        ],
+        "title": "KnowledgeStateProposal",
+        "description": "A proposed update to a knowledge state derived from learning records.\n\nThe proposal is only a candidate until the user accepts, rejects or modifies\nit. Rejected proposals remain auditable and cannot be silently re-applied by\nthe model."
+      },
+      "KnowledgeStateProposalStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "rejected",
+          "superseded"
+        ],
+        "title": "KnowledgeStateProposalStatus",
+        "description": "Lifecycle status of a knowledge-state update proposal."
+      },
       "KnowledgeStateStatus": {
         "type": "string",
         "enum": [
@@ -11172,6 +11795,349 @@
         ],
         "title": "LearningMissionCreateRequest",
         "description": "Request to create a learning mission."
+      },
+      "LearningPath": {
+        "properties": {
+          "path_id": {
+            "type": "string",
+            "title": "Path Id",
+            "description": "Stable path identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission the path serves."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Path title."
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/LearningPathNode"
+            },
+            "type": "array",
+            "title": "Nodes"
+          },
+          "current_node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Node Id",
+            "description": "Next recommended node."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "path_id",
+          "mission_id",
+          "owner_account_id",
+          "title",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LearningPath",
+        "description": "A per-user learning route driven by confirmed knowledge states.\n\nThe path is recomputed when knowledge states change. It is anchored to the\nlearning mission and each node traces back to learning records."
+      },
+      "LearningPathNode": {
+        "properties": {
+          "node_id": {
+            "type": "string",
+            "title": "Node Id",
+            "description": "Stable node identifier."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept addressed by this node."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Short node title."
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "What the learner should do."
+          },
+          "status": {
+            "$ref": "#/components/schemas/LearningPathNodeStatus",
+            "default": "pending"
+          },
+          "evidence_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Record Ids",
+            "description": "Learning records that justify this node's placement."
+          },
+          "depends_on_node_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Depends On Node Ids",
+            "description": "Nodes that should be addressed first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "node_id",
+          "concept_id",
+          "title",
+          "description"
+        ],
+        "title": "LearningPathNode",
+        "description": "A single step on a learning path bound to evidence."
+      },
+      "LearningPathNodeStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "completed",
+          "skipped"
+        ],
+        "title": "LearningPathNodeStatus",
+        "description": "Lifecycle status of a node on a learning path."
+      },
+      "LearningRecord": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "title": "Record Id",
+            "description": "Stable record identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission this record belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept the record evidences."
+          },
+          "record_type": {
+            "$ref": "#/components/schemas/LearningRecordType",
+            "description": "Kind of learning evidence."
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/LearningRecordSource",
+            "description": "Origin of the evidence."
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Id of the source object (attempt id, answer id, correction id)."
+          },
+          "response_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Text",
+            "description": "User response or product when applicable."
+          },
+          "evaluated_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerEvaluatedState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Evaluated result when applicable."
+          },
+          "misconception_corrected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Misconception Corrected",
+            "description": "Misconception that was corrected, if any."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Scientific evidence grounding the record."
+          },
+          "record_reason": {
+            "type": "string",
+            "title": "Record Reason",
+            "description": "Why this record counts as qualified learning evidence."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the record was created."
+          }
+        },
+        "type": "object",
+        "required": [
+          "record_id",
+          "mission_id",
+          "owner_account_id",
+          "concept_id",
+          "record_type",
+          "source_type",
+          "source_id",
+          "record_reason",
+          "created_at"
+        ],
+        "title": "LearningRecord",
+        "description": "Evidence-backed record of a learning event that can update knowledge state.\n\nA learning record references the concrete response, misconception correction\nor prerequisite evidence that justifies a knowledge-state change. It is\nversioned, scoped to a mission and never derived from browsing or completion."
+      },
+      "LearningRecordCreateRequest": {
+        "properties": {
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept the record evidences."
+          },
+          "record_type": {
+            "$ref": "#/components/schemas/LearningRecordType",
+            "description": "Kind of learning evidence."
+          },
+          "source_type": {
+            "$ref": "#/components/schemas/LearningRecordSource",
+            "description": "Origin of the evidence."
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Id of the source object."
+          },
+          "response_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Text",
+            "description": "User response."
+          },
+          "evaluated_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerEvaluatedState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Evaluated result."
+          },
+          "misconception_corrected": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Misconception Corrected",
+            "description": "Corrected misconception."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence grounding the record."
+          },
+          "record_reason": {
+            "type": "string",
+            "title": "Record Reason",
+            "description": "Why this is qualified evidence."
+          }
+        },
+        "type": "object",
+        "required": [
+          "concept_id",
+          "record_type",
+          "source_type",
+          "source_id",
+          "record_reason"
+        ],
+        "title": "LearningRecordCreateRequest",
+        "description": "Request to create a qualified learning record."
+      },
+      "LearningRecordSource": {
+        "type": "string",
+        "enum": [
+          "diagnostic_answer",
+          "exercise_attempt",
+          "user_correction"
+        ],
+        "title": "LearningRecordSource",
+        "description": "Origin of a learning record."
+      },
+      "LearningRecordType": {
+        "type": "string",
+        "enum": [
+          "exercise_attempt",
+          "misconception_correction",
+          "prerequisite_evidence",
+          "delayed_retrieval",
+          "transfer_task"
+        ],
+        "title": "LearningRecordType",
+        "description": "Kind of observable learning evidence that may update a knowledge state.\n\nBrowsing and completion-only activities are deliberately excluded; they are\nstored as ``LearningActivity`` and never promoted to learning records."
       },
       "LessonEvidenceBundle": {
         "properties": {
@@ -12067,7 +13033,7 @@
           "human_decision": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/HumanDecision"
+                "$ref": "#/components/schemas/science_companion__contracts__profiles__HumanDecision"
               },
               {
                 "type": "null"
@@ -13151,6 +14117,36 @@
         "type": "object",
         "title": "ProjectUpdateRequest",
         "description": "Request to rename or update a project."
+      },
+      "ProposeKnowledgeStateUpdateRequest": {
+        "properties": {
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept to update."
+          },
+          "record_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Record Ids",
+            "description": "Records to base the proposal on; auto-select if omitted."
+          }
+        },
+        "type": "object",
+        "required": [
+          "concept_id"
+        ],
+        "title": "ProposeKnowledgeStateUpdateRequest",
+        "description": "Request to propose a knowledge-state update from learning records."
       },
       "PublishGateCheck": {
         "type": "string",
@@ -15723,6 +16719,135 @@
         ],
         "title": "_TodoResolveRequest",
         "description": "Request body for resolving a human todo."
+      },
+      "science_companion__contracts__learning__HumanDecision": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id",
+            "description": "Stable decision identifier."
+          },
+          "target_id": {
+            "type": "string",
+            "title": "Target Id",
+            "description": "Proposal the decision applies to."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that made the decision."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/HumanDecisionType",
+            "description": "Decision type."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          },
+          "modified_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Value",
+            "description": "Modified value when decision is 'modify'."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the decision was recorded."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "target_id",
+          "account_id",
+          "decision",
+          "reason",
+          "created_at"
+        ],
+        "title": "HumanDecision",
+        "description": "A named, auditable human decision on a knowledge-state proposal."
+      },
+      "science_companion__contracts__profiles__HumanDecision": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id",
+            "description": "Stable decision identifier."
+          },
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "Candidate the decision applies to."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Account that made the decision."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/DecisionType",
+            "description": "Decision type."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable rationale."
+          },
+          "modified_value_or_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Value Or Rule",
+            "description": "Modified value when decision is 'modify'."
+          },
+          "modified_applicable_scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Applicable Scenes",
+            "description": "Modified applicable scenes when decision is 'modify'."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the decision was recorded."
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "candidate_id",
+          "account_id",
+          "decision",
+          "reason",
+          "created_at"
+        ],
+        "title": "HumanDecision",
+        "description": "Named human decision on a candidate profile."
       }
     }
   }

@@ -9,8 +9,12 @@ from science_companion.contracts.learning import (
     DiagnosticRun,
     ExerciseAttempt,
     KnowledgeState,
+    KnowledgeStateProposal,
+    KnowledgeStateProposalStatus,
     LearningActivity,
     LearningMission,
+    LearningPath,
+    LearningRecord,
     ShortLesson,
     TeachingPlan,
 )
@@ -54,7 +58,15 @@ class LearningRepository(ABC):
 
     @abstractmethod
     def save_knowledge_state(self, state: KnowledgeState) -> KnowledgeState:
-        """Persist a knowledge state."""
+        """Persist a knowledge state.
+
+        When a new state replaces an existing one for the same concept (same
+        account, mission and concept_id), the adapter must set the previous
+        state's ``superseded_by_state_id`` to the new state's id so the version
+        chain is preserved. Only the latest active state (with
+        ``superseded_by_state_id=None``) is returned by
+        ``list_knowledge_states_for_mission``.
+        """
 
     @abstractmethod
     def get_knowledge_state(
@@ -117,3 +129,56 @@ class LearningRepository(ABC):
     @abstractmethod
     def save_activity(self, activity: LearningActivity) -> LearningActivity:
         """Persist a learning activity that does not update knowledge state."""
+
+    @abstractmethod
+    def save_learning_record(self, record: LearningRecord) -> LearningRecord:
+        """Persist a qualified learning record."""
+
+    @abstractmethod
+    def get_learning_record(self, owner_id: str, record_id: str) -> LearningRecord:
+        """Return a learning record or raise a domain error."""
+
+    @abstractmethod
+    def list_learning_records(
+        self,
+        owner_id: str,
+        mission_id: str,
+        concept_id: str | None = None,
+    ) -> list[LearningRecord]:
+        """List learning records for a mission, optionally filtered by concept."""
+
+    @abstractmethod
+    def save_knowledge_state_proposal(
+        self, proposal: KnowledgeStateProposal
+    ) -> KnowledgeStateProposal:
+        """Persist a knowledge-state proposal."""
+
+    @abstractmethod
+    def get_knowledge_state_proposal(
+        self, owner_id: str, proposal_id: str
+    ) -> KnowledgeStateProposal:
+        """Return a knowledge-state proposal or raise a domain error."""
+
+    @abstractmethod
+    def list_knowledge_state_proposals(
+        self,
+        owner_id: str,
+        mission_id: str,
+        concept_id: str | None = None,
+        status: KnowledgeStateProposalStatus | None = None,
+    ) -> list[KnowledgeStateProposal]:
+        """List knowledge-state proposals for a mission."""
+
+    @abstractmethod
+    def save_learning_path(self, path: LearningPath) -> LearningPath:
+        """Persist a learning path."""
+
+    @abstractmethod
+    def get_learning_path(self, owner_id: str, path_id: str) -> LearningPath:
+        """Return a learning path or raise a domain error."""
+
+    @abstractmethod
+    def get_learning_path_for_mission(
+        self, owner_id: str, mission_id: str
+    ) -> LearningPath | None:
+        """Return the latest learning path for a mission, if any."""

@@ -7,8 +7,12 @@ from science_companion.contracts.learning import (
     DiagnosticRun,
     ExerciseAttempt,
     KnowledgeState,
+    KnowledgeStateProposal,
+    KnowledgeStateProposalStatus,
     LearningActivity,
     LearningMission,
+    LearningPath,
+    LearningRecord,
     ShortLesson,
     TeachingPlan,
 )
@@ -35,6 +39,10 @@ class InMemoryLearningRepository(LearningRepository):
         self._activities: dict[str, LearningActivity] = {}
         self._lessons: dict[str, ShortLesson] = {}
         self._attempts: dict[str, ExerciseAttempt] = {}
+        self._records: dict[str, LearningRecord] = {}
+        self._proposals: dict[str, KnowledgeStateProposal] = {}
+        self._paths: dict[str, LearningPath] = {}
+        self._mission_paths: dict[str, LearningPath] = {}
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -182,3 +190,78 @@ class InMemoryLearningRepository(LearningRepository):
     def save_activity(self, activity: LearningActivity) -> LearningActivity:
         self._activities[self._key(activity.owner_account_id, activity.activity_id)] = activity
         return activity
+
+    def save_learning_record(self, record: LearningRecord) -> LearningRecord:
+        self._records[self._key(record.owner_account_id, record.record_id)] = record
+        return record
+
+    def get_learning_record(self, owner_id: str, record_id: str) -> LearningRecord:
+        record = self._records.get(self._key(owner_id, record_id))
+        if record is None:
+            raise LearningError("学习记录不存在或没有访问权限。")
+        return record
+
+    def list_learning_records(
+        self,
+        owner_id: str,
+        mission_id: str,
+        concept_id: str | None = None,
+    ) -> list[LearningRecord]:
+        records = [
+            r
+            for r in self._records.values()
+            if r.owner_account_id == owner_id and r.mission_id == mission_id
+        ]
+        if concept_id is not None:
+            records = [r for r in records if r.concept_id == concept_id]
+        records.sort(key=lambda r: r.created_at, reverse=True)
+        return records
+
+    def save_knowledge_state_proposal(
+        self, proposal: KnowledgeStateProposal
+    ) -> KnowledgeStateProposal:
+        self._proposals[self._key(proposal.owner_account_id, proposal.proposal_id)] = proposal
+        return proposal
+
+    def get_knowledge_state_proposal(
+        self, owner_id: str, proposal_id: str
+    ) -> KnowledgeStateProposal:
+        proposal = self._proposals.get(self._key(owner_id, proposal_id))
+        if proposal is None:
+            raise LearningError("知识状态提议不存在或没有访问权限。")
+        return proposal
+
+    def list_knowledge_state_proposals(
+        self,
+        owner_id: str,
+        mission_id: str,
+        concept_id: str | None = None,
+        status: KnowledgeStateProposalStatus | None = None,
+    ) -> list[KnowledgeStateProposal]:
+        proposals = [
+            p
+            for p in self._proposals.values()
+            if p.owner_account_id == owner_id and p.mission_id == mission_id
+        ]
+        if concept_id is not None:
+            proposals = [p for p in proposals if p.concept_id == concept_id]
+        if status is not None:
+            proposals = [p for p in proposals if p.status == status]
+        proposals.sort(key=lambda p: p.created_at, reverse=True)
+        return proposals
+
+    def save_learning_path(self, path: LearningPath) -> LearningPath:
+        self._paths[self._key(path.owner_account_id, path.path_id)] = path
+        self._mission_paths[self._key(path.owner_account_id, path.mission_id)] = path
+        return path
+
+    def get_learning_path(self, owner_id: str, path_id: str) -> LearningPath:
+        path = self._paths.get(self._key(owner_id, path_id))
+        if path is None:
+            raise LearningError("学习路径不存在或没有访问权限。")
+        return path
+
+    def get_learning_path_for_mission(
+        self, owner_id: str, mission_id: str
+    ) -> LearningPath | None:
+        return self._mission_paths.get(self._key(owner_id, mission_id))

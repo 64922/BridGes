@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from science_companion.api.auth import SubjectDep
 from science_companion.contracts.learning import (
+    DecideKnowledgeStateProposalRequest,
     DiagnosticAnswerCreateRequest,
     DiagnosticQuestionCreateRequest,
     DiagnosticResult,
@@ -17,13 +18,19 @@ from science_companion.contracts.learning import (
     GenerateLessonRequest,
     KnowledgeState,
     KnowledgeStateCorrection,
+    KnowledgeStateProposal,
+    KnowledgeStateProposalStatus,
     LearningError,
     LearningMission,
     LearningMissionCreateRequest,
+    LearningPath,
+    LearningRecord,
+    LearningRecordCreateRequest,
+    ProposeKnowledgeStateUpdateRequest,
     ShortLesson,
     TeachingPlan,
 )
-from science_companion.learning import LearningService, TeachingService
+from science_companion.learning import LearningPathService, LearningService, TeachingService
 from science_companion.learning.adapters import LearningError as LearningAdapterError
 
 router = APIRouter(prefix="/learning", tags=["learning"])
@@ -47,6 +54,18 @@ def _get_teaching_service(request: Request) -> TeachingService:
 
 
 TeachingServiceDep = Annotated[TeachingService, Depends(_get_teaching_service)]
+
+
+def _get_learning_path_service(request: Request) -> LearningPathService:
+    service: LearningPathService | None = getattr(
+        request.app.state, "learning_path_service", None
+    )
+    if service is None:
+        raise RuntimeError("LearningPathService not attached to application state.")
+    return service
+
+
+LearningPathServiceDep = Annotated[LearningPathService, Depends(_get_learning_path_service)]
 
 
 def _error(status_code: int, error: str, message: str) -> HTTPException:
@@ -353,3 +372,134 @@ async def submit_exercise_attempt(
         )
     except LearningAdapterError as exc:
         raise _error(status.HTTP_400_BAD_REQUEST, "attempt_failed", str(exc)) from exc
+
+
+@router.post(
+    "/missions/{mission_id}/learning-records",
+    response_model=LearningRecord,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def create_learning_record(
+    path_service: LearningPathServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+    request: LearningRecordCreateRequest,
+) -> LearningRecord:
+    """Record a qualified learning evidence item."""
+    try:
+        return path_service.record_learning_record(
+            subject.account_id, mission_id, request
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.get(
+    "/missions/{mission_id}/learning-records",
+    response_model=list[LearningRecord],
+)
+async def list_learning_records(
+    path_service: LearningPathServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+    concept_id: str | None = Query(default=None),
+) -> list[LearningRecord]:
+    """List learning records for a mission."""
+    try:
+        return path_service.list_learning_records(
+            subject.account_id, mission_id, concept_id
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.post(
+    "/missions/{mission_id}/knowledge-state-proposals",
+    response_model=KnowledgeStateProposal,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def propose_knowledge_state_update(
+    path_service: LearningPathServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+    request: ProposeKnowledgeStateUpdateRequest,
+) -> KnowledgeStateProposal:
+    """Propose a knowledge-state update from learning records."""
+    try:
+        return path_service.propose_knowledge_state_update(
+            subject.account_id, mission_id, request
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "proposal_failed", str(exc)) from exc
+
+
+@router.get(
+    "/missions/{mission_id}/knowledge-state-proposals",
+    response_model=list[KnowledgeStateProposal],
+)
+async def list_knowledge_state_proposals(
+    path_service: LearningPathServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+    concept_id: str | None = Query(default=None),
+    proposal_status: KnowledgeStateProposalStatus | None = Query(default=None),
+) -> list[KnowledgeStateProposal]:
+    """List knowledge-state proposals for a mission."""
+    try:
+        return path_service.list_knowledge_state_proposals(
+            subject.account_id, mission_id, concept_id, proposal_status
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.post(
+    "/knowledge-state-proposals/{proposal_id}/decide",
+    response_model=KnowledgeStateProposal,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def decide_knowledge_state_proposal(
+    path_service: LearningPathServiceDep,
+    subject: SubjectDep,
+    proposal_id: str,
+    request: DecideKnowledgeStateProposalRequest,
+) -> KnowledgeStateProposal:
+    """Accept, reject or modify a knowledge-state proposal."""
+    try:
+        return path_service.decide_knowledge_state_proposal(
+            subject.account_id, proposal_id, request
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "decision_failed", str(exc)) from exc
+
+
+@router.get(
+    "/missions/{mission_id}/learning-path",
+    response_model=LearningPath,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def get_learning_path(
+    path_service: LearningPathServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+) -> LearningPath:
+    """Get the current learning path for a mission."""
+    try:
+        return path_service.get_learning_path(subject.account_id, mission_id)
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
