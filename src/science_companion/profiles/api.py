@@ -264,7 +264,7 @@ async def compile_memory_slice(
     sensitivity_class: Annotated[
         list[ProfileSensitivityClass],
         Query(description="Allowed sensitivity classes."),
-    ] = None,  # type: ignore[assignment]
+    ] = None,
     ttl_seconds: Annotated[int, Query(description="Slice time-to-live in seconds.")] = 3600,
     authorization_version: Annotated[
         str, Query(description="Authorization policy version snapshot.")
