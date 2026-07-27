@@ -13,6 +13,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from science_companion.contracts.projects import ObjectDomain
+from science_companion.contracts.scope import ScopeEnvelope
+
 
 class SourceKind(str, Enum):
     """Kind of source entry."""
@@ -317,3 +320,96 @@ class ParseResult(BaseModel):
     language: str | None = Field(default=None)
     parse_warnings: list[str] = Field(default_factory=list)
     injection_flags: list[str] = Field(default_factory=list)
+
+
+
+class RetrievalChannel(str, Enum):
+    """Channel that produced a retrieval candidate."""
+
+    LEXICAL = "lexical"
+    VECTOR = "vector"
+
+
+class SearchRequest(BaseModel):
+    """Scoped hybrid search request over scientific sources.
+
+    The search service compiles a ScopeEnvelope from the authenticated subject,
+    project, object domain and declared purpose before touching any index.
+    """
+
+    query: str = Field(description="Scientific question or search text.", min_length=1)
+    project_id: str | None = Field(
+        default=None, description="Project scope; None searches personal vault sources."
+    )
+    object_domain: ObjectDomain = Field(
+        default=ObjectDomain.PERSONAL_VAULT, description="Authority domain that owns the index."
+    )
+    top_k: int = Field(default=10, ge=1, le=100, description="Maximum candidates to return.")
+    include_lexical: bool = Field(default=True, description="Include full-text lexical candidates.")
+    include_vector: bool = Field(
+        default=True, description="Include vector/semantic similarity candidates."
+    )
+    rerank: bool = Field(
+        default=True,
+        description="Apply reciprocal-rank fusion reranking across channels.",
+    )
+
+
+class RetrievalCandidate(BaseModel):
+    """A single candidate chunk returned by scoped hybrid retrieval.
+
+    Scores are ranking signals only; they are not evidence strength and must not
+    be shown to users as confidence or truth values.
+    """
+
+    candidate_id: str = Field(description="Stable candidate identifier for this result set.")
+    chunk_id: str = Field(description="Chunk identifier.")
+    document_id: str = Field(description="Document version identifier.")
+    source_id: str = Field(description="Source entry identifier.")
+    text: str = Field(description="Chunk text content.")
+    structure_path: ChunkStructurePath = Field(description="Hierarchical location in document.")
+    channels: list[RetrievalChannel] = Field(
+        default_factory=list, description="Channels that recalled this candidate."
+    )
+    lexical_rank: int | None = Field(default=None, description="Rank in lexical channel.")
+    vector_rank: int | None = Field(default=None, description="Rank in vector channel.")
+    fused_rank: int = Field(description="Final rank after fusion and reranking.")
+    lexical_score: float | None = Field(
+        default=None, description="Raw lexical score; for ranking only."
+    )
+    vector_score: float | None = Field(
+        default=None, description="Raw vector similarity score; for ranking only."
+    )
+    fused_score: float = Field(description="Fused ranking score; for ranking only.")
+    source_lifecycle_status: LifecycleStatus = Field(
+        description="Lifecycle status of the document version at retrieval time."
+    )
+    source_status: SourceStatus = Field(description="Source entry status at retrieval time.")
+
+
+class CoverageGap(BaseModel):
+    """A coverage or recall gap reported to the caller."""
+
+    gap_type: str = Field(description="Type of gap, e.g. lexical, vector, scope.")
+    reason: str = Field(description="Human-readable reason.")
+    detail: str | None = Field(default=None)
+
+
+class SearchResult(BaseModel):
+    """Result of a scoped hybrid search.
+
+    Carries the compiled scope envelope so callers can audit the scope snapshot
+    that was enforced, and so downstream claim/evidence steps can bind the same
+    scope. Coverage gaps are reported explicitly rather than silently dropping
+    channels.
+    """
+
+    query: str = Field(description="Original query.")
+    scope_envelope: ScopeEnvelope = Field(description="Compiled scope snapshot.")
+    index_snapshot_id: str | None = Field(
+        default=None, description="Identifier of the index version used."
+    )
+    candidates: list[RetrievalCandidate] = Field(default_factory=list)
+    lexical_total: int = Field(default=0, description="Number of lexical candidates before fusion.")
+    vector_total: int = Field(default=0, description="Number of vector candidates before fusion.")
+    coverage_gaps: list[CoverageGap] = Field(default_factory=list)

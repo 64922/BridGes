@@ -3324,6 +3324,175 @@
         }
       }
     },
+    "/science/projects/{project_id}/search": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Search Project Sources",
+        "description": "Search scientific sources within a project using scoped hybrid retrieval.",
+        "operationId": "search_project_sources_science_projects__project_id__search_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/science/search": {
+      "post": {
+        "tags": [
+          "science"
+        ],
+        "summary": "Search Personal Sources",
+        "description": "Search personal scientific sources using scoped hybrid retrieval.",
+        "operationId": "search_personal_sources_science_search_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -4149,6 +4318,38 @@
         ],
         "title": "ContentAuthority",
         "description": "Where the authoritative plaintext of a vault object resides.\n\n- DEVICE_LOCAL: the full content is authoritative on the user's device. The\n  cloud only holds a control projection (hash and metadata).\n- SERVER_REPLICA: the server holds an encrypted replica for synchronization;\n  the device is not required for every read.\n- PROJECT_COPY: a minimized copy owned by a shared project, detached from the\n  personal vault original."
+      },
+      "CoverageGap": {
+        "properties": {
+          "gap_type": {
+            "type": "string",
+            "title": "Gap Type",
+            "description": "Type of gap, e.g. lexical, vector, scope."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason."
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "required": [
+          "gap_type",
+          "reason"
+        ],
+        "title": "CoverageGap",
+        "description": "A coverage or recall gap reported to the caller."
       },
       "DependencyHealth": {
         "properties": {
@@ -6075,6 +6276,137 @@
         "title": "RecoveryReset",
         "description": "Reset password using a recovery token."
       },
+      "RetrievalCandidate": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "Stable candidate identifier for this result set."
+          },
+          "chunk_id": {
+            "type": "string",
+            "title": "Chunk Id",
+            "description": "Chunk identifier."
+          },
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "Document version identifier."
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Source entry identifier."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Chunk text content."
+          },
+          "structure_path": {
+            "$ref": "#/components/schemas/ChunkStructurePath",
+            "description": "Hierarchical location in document."
+          },
+          "channels": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalChannel"
+            },
+            "type": "array",
+            "title": "Channels",
+            "description": "Channels that recalled this candidate."
+          },
+          "lexical_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexical Rank",
+            "description": "Rank in lexical channel."
+          },
+          "vector_rank": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Rank",
+            "description": "Rank in vector channel."
+          },
+          "fused_rank": {
+            "type": "integer",
+            "title": "Fused Rank",
+            "description": "Final rank after fusion and reranking."
+          },
+          "lexical_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lexical Score",
+            "description": "Raw lexical score; for ranking only."
+          },
+          "vector_score": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Score",
+            "description": "Raw vector similarity score; for ranking only."
+          },
+          "fused_score": {
+            "type": "number",
+            "title": "Fused Score",
+            "description": "Fused ranking score; for ranking only."
+          },
+          "source_lifecycle_status": {
+            "$ref": "#/components/schemas/LifecycleStatus",
+            "description": "Lifecycle status of the document version at retrieval time."
+          },
+          "source_status": {
+            "$ref": "#/components/schemas/SourceStatus",
+            "description": "Source entry status at retrieval time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "chunk_id",
+          "document_id",
+          "source_id",
+          "text",
+          "structure_path",
+          "fused_rank",
+          "fused_score",
+          "source_lifecycle_status",
+          "source_status"
+        ],
+        "title": "RetrievalCandidate",
+        "description": "A single candidate chunk returned by scoped hybrid retrieval.\n\nScores are ranking signals only; they are not evidence strength and must not\nbe shown to users as confidence or truth values."
+      },
+      "RetrievalChannel": {
+        "type": "string",
+        "enum": [
+          "lexical",
+          "vector"
+        ],
+        "title": "RetrievalChannel",
+        "description": "Channel that produced a retrieval candidate."
+      },
       "RunContextEnvelope": {
         "properties": {
           "run_id": {
@@ -6478,6 +6810,123 @@
         ],
         "title": "ScopeViolationReport",
         "description": "Audit-safe report when a scope check fails.\n\nThe report intentionally does not include private content, full prompts or\nkeys; it records only the subject, requested scope, reason and timestamp."
+      },
+      "SearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Query",
+            "description": "Scientific question or search text."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope; None searches personal vault sources."
+          },
+          "object_domain": {
+            "$ref": "#/components/schemas/ObjectDomain",
+            "description": "Authority domain that owns the index.",
+            "default": "personal_vault"
+          },
+          "top_k": {
+            "type": "integer",
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "description": "Maximum candidates to return.",
+            "default": 10
+          },
+          "include_lexical": {
+            "type": "boolean",
+            "title": "Include Lexical",
+            "description": "Include full-text lexical candidates.",
+            "default": true
+          },
+          "include_vector": {
+            "type": "boolean",
+            "title": "Include Vector",
+            "description": "Include vector/semantic similarity candidates.",
+            "default": true
+          },
+          "rerank": {
+            "type": "boolean",
+            "title": "Rerank",
+            "description": "Apply reciprocal-rank fusion reranking across channels.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "SearchRequest",
+        "description": "Scoped hybrid search request over scientific sources.\n\nThe search service compiles a ScopeEnvelope from the authenticated subject,\nproject, object domain and declared purpose before touching any index."
+      },
+      "SearchResult": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "Original query."
+          },
+          "scope_envelope": {
+            "$ref": "#/components/schemas/ScopeEnvelope",
+            "description": "Compiled scope snapshot."
+          },
+          "index_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Snapshot Id",
+            "description": "Identifier of the index version used."
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalCandidate"
+            },
+            "type": "array",
+            "title": "Candidates"
+          },
+          "lexical_total": {
+            "type": "integer",
+            "title": "Lexical Total",
+            "description": "Number of lexical candidates before fusion.",
+            "default": 0
+          },
+          "vector_total": {
+            "type": "integer",
+            "title": "Vector Total",
+            "description": "Number of vector candidates before fusion.",
+            "default": 0
+          },
+          "coverage_gaps": {
+            "items": {
+              "$ref": "#/components/schemas/CoverageGap"
+            },
+            "type": "array",
+            "title": "Coverage Gaps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "scope_envelope"
+        ],
+        "title": "SearchResult",
+        "description": "Result of a scoped hybrid search.\n\nCarries the compiled scope envelope so callers can audit the scope snapshot\nthat was enforced, and so downstream claim/evidence steps can bind the same\nscope. Coverage gaps are reported explicitly rather than silently dropping\nchannels."
       },
       "Session": {
         "properties": {

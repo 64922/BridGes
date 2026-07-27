@@ -18,7 +18,7 @@ from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.observability.service import ObservabilityService
 from science_companion.projects import ProjectService
-from science_companion.science import ScienceSourceService
+from science_companion.science import ScienceSearchService, ScienceSourceService
 from science_companion.science.service import build_source_impact_resolver
 from science_companion.scope import ScopeEnforcer
 from science_companion.vault import (
@@ -257,6 +257,13 @@ def create_app() -> FastAPI:
         "science_source", build_source_impact_resolver(science_source_service)
     )
     app.state.science_source_service = science_source_service
+
+    # T014: attach the scoped hybrid search service.
+    app.state.science_search_service = ScienceSearchService(
+        source_service=science_source_service,
+        scope_enforcer=app.state.scope_enforcer,
+        invalidation_service=invalidation_service,
+    )
 
     app.include_router(auth.router)
     app.include_router(projects.router)

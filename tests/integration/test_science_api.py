@@ -329,3 +329,81 @@ class TestSourceInvalidation:
         # New read is blocked.
         response = client.get(f"/science/sources/{source_id}")
         assert response.status_code == 404
+
+
+
+class TestHybridSearchAPI:
+    def test_project_search_returns_lexical_and_vector_candidates(
+        self, client: TestClient
+    ) -> None:
+        _register(client, "search-user@example.com", "correct-horse-12")
+        project_id = _create_project(client, "Search Project")
+        _upload_text(
+            client,
+            project_id,
+            "Mitochondria generate ATP through cellular respiration. "
+            "The electron transport chain powers oxidative phosphorylation.",
+        )
+
+        response = client.post(
+            f"/science/projects/{project_id}/search",
+            json={"query": "mitochondria ATP respiration", "top_k": 5},
+        )
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result["query"] == "mitochondria ATP respiration"
+        assert result["scope_envelope"]["account_id"]
+        assert result["scope_envelope"]["project_id"] == project_id
+        assert len(result["candidates"]) > 0
+
+        channels = {
+            ch for c in result["candidates"] for ch in c["channels"]
+        }
+        assert "lexical" in channels
+        assert "vector" in channels
+        assert result["lexical_total"] > 0
+        assert result["vector_total"] > 0
+
+    def test_project_search_excludes_revoked_source(
+        self, client: TestClient
+    ) -> None:
+        _register(client, "search-revoke@example.com", "correct-horse-12")
+        project_id = _create_project(client, "Search Revoke Project")
+        run = _upload_text(client, project_id, "Revoked source about black holes.")
+        source_id = run["source_id"]
+
+        revoke_response = client.post(f"/science/sources/{source_id}/revoke")
+        assert revoke_response.status_code == 200
+
+        response = client.post(
+            f"/science/projects/{project_id}/search",
+            json={"query": "black holes", "top_k": 5},
+        )
+        assert response.status_code == 200
+        result = response.json()
+        assert result["candidates"] == []
+
+    def test_project_search_is_isolated_by_account(
+        self, client: TestClient
+    ) -> None:
+        alice_client = TestClient(client.app)
+        bob_client = TestClient(client.app)
+
+        _register(alice_client, "alice-search@example.com", "correct-horse-12")
+        alice_project = _create_project(alice_client, "Alice Search Project")
+        _upload_text(alice_client, alice_project, "Alice private CRISPR notes.")
+
+        _register(bob_client, "bob-search@example.com", "correct-horse-12")
+        bob_project = _create_project(bob_client, "Bob Search Project")
+        _upload_text(bob_client, bob_project, "Bob public CRISPR notes.")
+
+        response = bob_client.post(
+            f"/science/projects/{bob_project}/search",
+            json={"query": "CRISPR", "top_k": 5},
+        )
+        assert response.status_code == 200
+        result = response.json()
+        source_ids = {c["source_id"] for c in result["candidates"]}
+        alice_run = alice_client.get(f"/science/projects/{alice_project}/sources").json()
+        alice_source_id = alice_run[0]["source_id"]
+        assert alice_source_id not in source_ids

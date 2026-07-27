@@ -16,6 +16,8 @@ from science_companion.contracts.science import (
     ChunkVersion,
     DocumentVersion,
     IngestionRunRef,
+    SearchRequest,
+    SearchResult,
     SourceError,
     SourceProjection,
     SourceSummary,
@@ -23,7 +25,7 @@ from science_companion.contracts.science import (
     SourceVersionRequest,
 )
 from science_companion.invalidation import InvalidationService
-from science_companion.science import ScienceError, ScienceSourceService
+from science_companion.science import ScienceError, ScienceSearchService, ScienceSourceService
 
 router = APIRouter(prefix="/science", tags=["science"])
 
@@ -37,7 +39,17 @@ def _get_science_service(request: Request) -> ScienceSourceService:
     return service
 
 
+def _get_search_service(request: Request) -> ScienceSearchService:
+    service: ScienceSearchService | None = getattr(
+        request.app.state, "science_search_service", None
+    )
+    if service is None:
+        raise RuntimeError("ScienceSearchService not attached to application state.")
+    return service
+
+
 ScienceServiceDep = Annotated[ScienceSourceService, Depends(_get_science_service)]
+SearchServiceDep = Annotated[ScienceSearchService, Depends(_get_search_service)]
 
 
 def _science_error(status_code: int, error: str, message: str) -> HTTPException:
@@ -278,3 +290,48 @@ async def revoke_source(
         "status": "revoked",
         "object_ref": source_ref.model_dump(),
     }
+
+
+
+@router.post(
+    "/projects/{project_id}/search",
+    response_model=SearchResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_403_FORBIDDEN: {"model": SourceError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
+    },
+)
+async def search_project_sources(
+    service: SearchServiceDep,
+    subject: SubjectDep,
+    project_id: str,
+    request: SearchRequest,
+) -> SearchResult:
+    """Search scientific sources within a project using scoped hybrid retrieval."""
+    from science_companion.contracts.projects import ObjectDomain
+
+    scoped_request = request.model_copy(update={"project_id": project_id})
+    if scoped_request.object_domain == ObjectDomain.PERSONAL_VAULT:
+        scoped_request = scoped_request.model_copy(
+            update={"object_domain": ObjectDomain.SHARED_PROJECT}
+        )
+    return service.search(subject, scoped_request)
+
+
+@router.post(
+    "/search",
+    response_model=SearchResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": SourceError},
+        status.HTTP_403_FORBIDDEN: {"model": SourceError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": SourceError},
+    },
+)
+async def search_personal_sources(
+    service: SearchServiceDep,
+    subject: SubjectDep,
+    request: SearchRequest,
+) -> SearchResult:
+    """Search personal scientific sources using scoped hybrid retrieval."""
+    return service.search(subject, request)

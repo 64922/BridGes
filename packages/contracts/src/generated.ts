@@ -742,6 +742,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/science/projects/{project_id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Project Sources
+         * @description Search scientific sources within a project using scoped hybrid retrieval.
+         */
+        post: operations["search_project_sources_science_projects__project_id__search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/science/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Search Personal Sources
+         * @description Search personal scientific sources using scoped hybrid retrieval.
+         */
+        post: operations["search_personal_sources_science_search_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1277,6 +1317,24 @@ export interface components {
          * @enum {string}
          */
         ContentAuthority: "device_local" | "server_replica" | "project_copy";
+        /**
+         * CoverageGap
+         * @description A coverage or recall gap reported to the caller.
+         */
+        CoverageGap: {
+            /**
+             * Gap Type
+             * @description Type of gap, e.g. lexical, vector, scope.
+             */
+            gap_type: string;
+            /**
+             * Reason
+             * @description Human-readable reason.
+             */
+            reason: string;
+            /** Detail */
+            detail?: string | null;
+        };
         /**
          * DependencyHealth
          * @description Health of one external dependency.
@@ -2502,6 +2560,87 @@ export interface components {
             new_password: string;
         };
         /**
+         * RetrievalCandidate
+         * @description A single candidate chunk returned by scoped hybrid retrieval.
+         *
+         *     Scores are ranking signals only; they are not evidence strength and must not
+         *     be shown to users as confidence or truth values.
+         */
+        RetrievalCandidate: {
+            /**
+             * Candidate Id
+             * @description Stable candidate identifier for this result set.
+             */
+            candidate_id: string;
+            /**
+             * Chunk Id
+             * @description Chunk identifier.
+             */
+            chunk_id: string;
+            /**
+             * Document Id
+             * @description Document version identifier.
+             */
+            document_id: string;
+            /**
+             * Source Id
+             * @description Source entry identifier.
+             */
+            source_id: string;
+            /**
+             * Text
+             * @description Chunk text content.
+             */
+            text: string;
+            /** @description Hierarchical location in document. */
+            structure_path: components["schemas"]["ChunkStructurePath"];
+            /**
+             * Channels
+             * @description Channels that recalled this candidate.
+             */
+            channels?: components["schemas"]["RetrievalChannel"][];
+            /**
+             * Lexical Rank
+             * @description Rank in lexical channel.
+             */
+            lexical_rank?: number | null;
+            /**
+             * Vector Rank
+             * @description Rank in vector channel.
+             */
+            vector_rank?: number | null;
+            /**
+             * Fused Rank
+             * @description Final rank after fusion and reranking.
+             */
+            fused_rank: number;
+            /**
+             * Lexical Score
+             * @description Raw lexical score; for ranking only.
+             */
+            lexical_score?: number | null;
+            /**
+             * Vector Score
+             * @description Raw vector similarity score; for ranking only.
+             */
+            vector_score?: number | null;
+            /**
+             * Fused Score
+             * @description Fused ranking score; for ranking only.
+             */
+            fused_score: number;
+            /** @description Lifecycle status of the document version at retrieval time. */
+            source_lifecycle_status: components["schemas"]["LifecycleStatus"];
+            /** @description Source entry status at retrieval time. */
+            source_status: components["schemas"]["SourceStatus"];
+        };
+        /**
+         * RetrievalChannel
+         * @description Channel that produced a retrieval candidate.
+         * @enum {string}
+         */
+        RetrievalChannel: "lexical" | "vector";
+        /**
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.
          *
@@ -2775,6 +2914,93 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * SearchRequest
+         * @description Scoped hybrid search request over scientific sources.
+         *
+         *     The search service compiles a ScopeEnvelope from the authenticated subject,
+         *     project, object domain and declared purpose before touching any index.
+         */
+        SearchRequest: {
+            /**
+             * Query
+             * @description Scientific question or search text.
+             */
+            query: string;
+            /**
+             * Project Id
+             * @description Project scope; None searches personal vault sources.
+             */
+            project_id?: string | null;
+            /**
+             * @description Authority domain that owns the index.
+             * @default personal_vault
+             */
+            object_domain: components["schemas"]["ObjectDomain"];
+            /**
+             * Top K
+             * @description Maximum candidates to return.
+             * @default 10
+             */
+            top_k: number;
+            /**
+             * Include Lexical
+             * @description Include full-text lexical candidates.
+             * @default true
+             */
+            include_lexical: boolean;
+            /**
+             * Include Vector
+             * @description Include vector/semantic similarity candidates.
+             * @default true
+             */
+            include_vector: boolean;
+            /**
+             * Rerank
+             * @description Apply reciprocal-rank fusion reranking across channels.
+             * @default true
+             */
+            rerank: boolean;
+        };
+        /**
+         * SearchResult
+         * @description Result of a scoped hybrid search.
+         *
+         *     Carries the compiled scope envelope so callers can audit the scope snapshot
+         *     that was enforced, and so downstream claim/evidence steps can bind the same
+         *     scope. Coverage gaps are reported explicitly rather than silently dropping
+         *     channels.
+         */
+        SearchResult: {
+            /**
+             * Query
+             * @description Original query.
+             */
+            query: string;
+            /** @description Compiled scope snapshot. */
+            scope_envelope: components["schemas"]["ScopeEnvelope"];
+            /**
+             * Index Snapshot Id
+             * @description Identifier of the index version used.
+             */
+            index_snapshot_id?: string | null;
+            /** Candidates */
+            candidates?: components["schemas"]["RetrievalCandidate"][];
+            /**
+             * Lexical Total
+             * @description Number of lexical candidates before fusion.
+             * @default 0
+             */
+            lexical_total: number;
+            /**
+             * Vector Total
+             * @description Number of vector candidates before fusion.
+             * @default 0
+             */
+            vector_total: number;
+            /** Coverage Gaps */
+            coverage_gaps?: components["schemas"]["CoverageGap"][];
         };
         /**
          * Session
@@ -5606,6 +5832,114 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_project_sources_science_projects__project_id__search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+        };
+    };
+    search_personal_sources_science_search_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceError"];
                 };
             };
         };

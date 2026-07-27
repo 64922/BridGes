@@ -91,6 +91,20 @@ class _StoredSource:
     gate_results: dict[InputQualityGate, GateResult] | None = None
 
 
+@dataclass
+class SearchableChunk:
+    """A chunk exposed to the search service for indexing.
+
+    This is an internal seam type between ingestion and retrieval within the
+    science module. It carries the source and document metadata needed to apply
+    scope, lifecycle and invalidation filters at query time.
+    """
+
+    source: Source
+    document: DocumentVersion
+    chunk: ChunkVersion
+
+
 class ScienceSourceService:
     """In-memory scientific source service for T013."""
 
@@ -320,9 +334,9 @@ class ScienceSourceService:
             return run_ref
         finally:
             # Persist gate results for later projection queries.
-            stored = self._sources.get(source.source_id)
-            if stored is not None:
-                stored.gate_results = dict(run_ref.gate_results)
+            persisted = self._sources.get(source.source_id)
+            if persisted is not None:
+                persisted.gate_results = dict(run_ref.gate_results)
 
     def get_source(self, account_id: str, source_id: str) -> SourceProjection:
         """Return a source projection including current document and chunks."""
@@ -528,6 +542,57 @@ class ScienceSourceService:
         source.updated_at = now
 
         return new_document
+
+    def list_searchable_chunks(
+        self,
+        account_id: str,
+        project_id: str | None = None,
+    ) -> list[SearchableChunk]:
+        """Return chunks that may enter a scoped search index.
+
+        Filters apply the same scope, status, lifecycle and quality rules as
+        evidence admission: only parsed, active, non-quarantined sources owned by
+        the account (and optionally project) are exposed.
+        """
+        subject = self._subject(account_id)
+        results: list[SearchableChunk] = []
+        for stored in self._sources.values():
+            source = stored.source
+            if source.account_id != account_id:
+                continue
+            if project_id is not None:
+                if source.project_id != project_id:
+                    continue
+            else:
+                # Scoped personal-vault search without a project only surfaces
+                # sources that are not attached to a project.
+                if source.project_id is not None:
+                    continue
+            if source.status != SourceStatus.PARSED:
+                continue
+            if source.license.state in {LicenseState.UNKNOWN, LicenseState.PENDING_REVIEW}:
+                continue
+            if source.current_version_id is None:
+                continue
+            document = stored.documents.get(source.current_version_id)
+            if document is None:
+                continue
+            if document.lifecycle_status not in {
+                LifecycleStatus.ACTIVE,
+                LifecycleStatus.CORRECTED,
+            }:
+                continue
+            for chunk_id in document.chunk_ids:
+                chunk = stored.chunks.get(chunk_id)
+                if chunk is None or chunk.injection_flags:
+                    continue
+                try:
+                    self._authorize_source(account_id, source, ScopeAction.READ)
+                    self._require_active(_source_ref(source))
+                except ScienceError:
+                    continue
+                results.append(SearchableChunk(source=source, document=document, chunk=chunk))
+        return results
 
     def revoke_source(self, account_id: str, source_id: str, reason: str) -> ObjectRef:
         """Revoke a source, blocking it from entering new evidence."""
