@@ -8,6 +8,7 @@ from science_companion.contracts.profiles import (
     ProfileAssertion,
     ProfileCandidate,
     ProfileObservation,
+    ProfileSlice,
 )
 
 
@@ -51,3 +52,23 @@ class ProfileRepository(ABC):
     @abstractmethod
     def list_assertions(self, owner_id: str) -> list[ProfileAssertion]:
         """List assertions for the owner, most recent first."""
+
+    @abstractmethod
+    def save_slice(self, slice_: ProfileSlice) -> ProfileSlice:
+        """Persist a compiled memory slice."""
+
+    @abstractmethod
+    def get_slice(self, owner_id: str, slice_id: str) -> ProfileSlice:
+        """Return a compiled memory slice or raise a domain error."""
+
+    @abstractmethod
+    def list_slices_for_run(self, owner_id: str, run_id: str) -> list[ProfileSlice]:
+        """List slices bound to a run for the owner, most recent first."""
+
+    @abstractmethod
+    def get_slice_by_id(self, slice_id: str) -> ProfileSlice:
+        """Return a compiled memory slice by its identifier without owner check.
+
+        Callers are responsible for verifying the run binding and scope. This is
+        intended for model/worker lookups that authorize by run_id, not account.
+        """

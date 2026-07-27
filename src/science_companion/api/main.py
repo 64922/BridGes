@@ -263,6 +263,7 @@ def create_app() -> FastAPI:
         model_gateway=model_gateway,
         observability_service=app.state.observability_service,
         invalidation_service=invalidation_service,
+        profile_service=app.state.profile_service,
     )
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service

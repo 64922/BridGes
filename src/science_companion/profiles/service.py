@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
 from science_companion.contracts.profiles import (
@@ -22,7 +22,11 @@ from science_companion.contracts.profiles import (
     ProfileSensitivityClass,
     ProfileSignalKind,
     ProfileSlice,
+    ProfileSliceCompileRequest,
     ProfileSliceItem,
+    RejectedSliceItem,
+    SliceStatus,
+    UnusedSliceItem,
 )
 from science_companion.profiles.adapters import ProfileError
 from science_companion.profiles.ports import ProfileRepository
@@ -141,6 +145,7 @@ class ProfileService:
         evidence_summary: str = "",
         authorization_scope: str = "general",
         promotion_policy_version: str = "promotion-1.0",
+        sensitivity_class: ProfileSensitivityClass = ProfileSensitivityClass.PREFERENCE,
         expires_at: datetime | None = None,
     ) -> ProfileCandidate:
         """Propose a candidate profile from supporting observations.
@@ -176,6 +181,7 @@ class ProfileService:
             promotion_policy_version=promotion_policy_version,
             review_status=CandidateReviewStatus.PROPOSED,
             stability_state=CandidateStabilityState.CANDIDATE,
+            sensitivity_class=sensitivity_class,
             proposed_at=now,
             updated_at=now,
             expires_at=expires_at,
@@ -216,6 +222,8 @@ class ProfileService:
             contradicting_observation_ids=list(candidate.contradicting_observation_ids),
             authorization_scope=candidate.authorization_scope,
             status=AssertionStatus.ACTIVE,
+            sensitivity_class=candidate.sensitivity_class,
+            expires_at=candidate.expires_at,
             promoted_from_candidate_id=candidate.candidate_id,
             version=1,
             created_at=now,
@@ -280,23 +288,78 @@ class ProfileService:
         """List promoted profile assertions for the account."""
         return self._repository.list_assertions(account_id)
 
+    def _is_assertion_expired(self, assertion: ProfileAssertion, now: datetime) -> bool:
+        return assertion.expires_at is not None and assertion.expires_at <= now
+
+    def _is_sensitivity_allowed(
+        self,
+        sensitivity: ProfileSensitivityClass,
+        allowed: list[ProfileSensitivityClass] | None,
+    ) -> bool:
+        if sensitivity in _PROHIBITED_SENSITIVITY:
+            return False
+        if allowed is None or not allowed:
+            return sensitivity != ProfileSensitivityClass.PROHIBITED
+        return sensitivity in allowed
+
     def compile_memory_slice(
-        self, account_id: str, *, purpose: str, run_id: str
+        self,
+        account_id: str,
+        *,
+        purpose: str,
+        run_id: str,
+        project_id: str | None = None,
+        sensitivity_classes: list[ProfileSensitivityClass] | None = None,
+        ttl_seconds: int = 3600,
+        authorization_version: str = "authz-1.0",
+        key_epoch: str = "epoch-0",
     ) -> ProfileSlice:
         """Compile the minimal, authorized profile slice for a run.
 
-        Only active assertions whose applicable scenes cover the purpose are
-        included. Candidates in any non-accepted state are explicitly excluded so
-        they can never be treated as stable facts.
+        The slice is compiled according to task purpose, object scope,
+        authorization snapshot, key epoch, expiration and sensitivity class.
+        Active assertions are included only when all filters pass. The resulting
+        slice is persisted and bound to the run so models and worker nodes can
+        access only the slice, never the full profile vault.
         """
         now = _now()
         included: list[ProfileSliceItem] = []
+        unused: list[UnusedSliceItem] = []
         excluded_candidate_ids: list[str] = []
         exclusion_reasons: dict[str, str] = {}
+        rejected: list[RejectedSliceItem] = []
 
         for assertion in self._repository.list_assertions(account_id):
             if assertion.status != AssertionStatus.ACTIVE:
                 continue
+
+            if self._is_assertion_expired(assertion, now):
+                unused.append(
+                    UnusedSliceItem(
+                        assertion_id=assertion.assertion_id,
+                        dimension=assertion.canonical_dimension,
+                        value_or_rule=assertion.value_or_rule,
+                        exclusion_reason="Assertion has expired.",
+                    )
+                )
+                continue
+
+            if not self._is_sensitivity_allowed(
+                assertion.sensitivity_class, sensitivity_classes
+            ):
+                unused.append(
+                    UnusedSliceItem(
+                        assertion_id=assertion.assertion_id,
+                        dimension=assertion.canonical_dimension,
+                        value_or_rule=assertion.value_or_rule,
+                        exclusion_reason=(
+                            f"Sensitivity '{assertion.sensitivity_class.value}' "
+                            "is not permitted for this task."
+                        ),
+                    )
+                )
+                continue
+
             if purpose in assertion.applicable_scenes or not assertion.applicable_scenes:
                 included.append(
                     ProfileSliceItem(
@@ -304,6 +367,20 @@ class ProfileService:
                         dimension=assertion.canonical_dimension,
                         value_or_rule=assertion.value_or_rule,
                         inclusion_reason=f"Active assertion applicable to purpose '{purpose}'.",
+                        sensitivity_class=assertion.sensitivity_class,
+                        expires_at=assertion.expires_at,
+                    )
+                )
+            else:
+                unused.append(
+                    UnusedSliceItem(
+                        assertion_id=assertion.assertion_id,
+                        dimension=assertion.canonical_dimension,
+                        value_or_rule=assertion.value_or_rule,
+                        exclusion_reason=(
+                            f"Purpose '{purpose}' is not in applicable scenes "
+                            f"{assertion.applicable_scenes}."
+                        ),
                     )
                 )
 
@@ -314,16 +391,101 @@ class ProfileService:
             }:
                 excluded_candidate_ids.append(candidate.candidate_id)
                 status_value = candidate.review_status.value
-                exclusion_reasons[candidate.candidate_id] = (
-                    f"Candidate status '{status_value}' cannot be used as a stable fact."
+                reason = f"Candidate status '{status_value}' cannot be used as a stable fact."
+                exclusion_reasons[candidate.candidate_id] = reason
+                rejected.append(
+                    RejectedSliceItem(
+                        candidate_id=candidate.candidate_id,
+                        dimension=candidate.canonical_dimension,
+                        value_or_rule=candidate.value_or_rule,
+                        rejection_reason=reason,
+                    )
                 )
 
-        return ProfileSlice(
+        expires_at = now + timedelta(seconds=ttl_seconds)
+        slice_ = ProfileSlice(
             slice_id=_new_id(),
+            owner_account_id=account_id,
             run_id=run_id,
             purpose=purpose,
+            project_id=project_id,
             included_items=included,
+            unused_items=unused,
             excluded_candidate_ids=excluded_candidate_ids,
             exclusion_reasons=exclusion_reasons,
+            rejected_items=rejected,
+            authorization_snapshot=authorization_version,
+            key_epoch=key_epoch,
+            expires_at=expires_at,
+            sensitivity_classes_allowed=list(sensitivity_classes or []),
             compiled_at=now,
         )
+        return self._repository.save_slice(slice_)
+
+    def compile_memory_slice_from_request(
+        self, account_id: str, request: ProfileSliceCompileRequest
+    ) -> ProfileSlice:
+        """Compile a slice from a typed request."""
+        return self.compile_memory_slice(
+            account_id,
+            purpose=request.purpose,
+            run_id=request.run_id,
+            project_id=request.project_id,
+            sensitivity_classes=request.sensitivity_classes,
+            ttl_seconds=request.ttl_seconds,
+            authorization_version=request.authorization_version,
+            key_epoch=request.key_epoch,
+        )
+
+    def get_slice(self, account_id: str, slice_id: str) -> ProfileSlice:
+        """Return a compiled slice if the account owns it."""
+        return self._repository.get_slice(account_id, slice_id)
+
+    def list_slices_for_run(self, account_id: str, run_id: str) -> list[ProfileSlice]:
+        """List slices bound to a run for the account."""
+        return self._repository.list_slices_for_run(account_id, run_id)
+
+    def check_slice_usable(self, slice_: ProfileSlice) -> None:
+        """Fail closed if the slice is expired, revoked or cancelled."""
+        now = _now()
+        if slice_.status == SliceStatus.CANCELLED:
+            raise ProfileError("切片已被取消，无法使用。")
+        if slice_.status == SliceStatus.REVOKED:
+            raise ProfileError("切片已被撤权，无法使用。")
+        if slice_.status == SliceStatus.EXPIRED or (
+            slice_.expires_at is not None and slice_.expires_at <= now
+        ):
+            raise ProfileError("切片已过期，无法使用。")
+
+    def require_slice_for_run(self, slice_id: str, run_id: str) -> ProfileSlice:
+        """Return a usable slice only when it is bound to the expected run.
+
+        Models and worker nodes must call this method rather than browsing the
+        profile vault directly. It fails closed on scope or state mismatch.
+        """
+        slice_ = self._repository.get_slice_by_id(slice_id)
+        if slice_.run_id != run_id:
+            raise ProfileError("切片与运行绑定不一致。")
+        self.check_slice_usable(slice_)
+        return slice_
+
+    def invalidate_slice(
+        self,
+        account_id: str,
+        slice_id: str,
+        reason: str,
+        status: SliceStatus = SliceStatus.REVOKED,
+    ) -> ProfileSlice:
+        """Invalidate a compiled slice.
+
+        Called when authorization is withdrawn, the run is cancelled, or the
+        underlying assertion is deleted. Invalidated slices cannot be read by
+        models or worker nodes.
+        """
+        slice_ = self._repository.get_slice(account_id, slice_id)
+        if slice_.status != SliceStatus.ACTIVE:
+            raise ProfileError("切片已经失效。")
+        slice_.status = status
+        slice_.invalidated_at = _now()
+        slice_.invalidation_reason = reason
+        return self._repository.save_slice(slice_)

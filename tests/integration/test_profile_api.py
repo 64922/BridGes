@@ -261,3 +261,88 @@ class TestCrossAccountIsolation:
             json={"decision": "accept", "reason": "Hacked."},
         )
         assert response.status_code == 404
+
+
+class TestMemorySliceInspector:
+    def test_inspector_shows_used_unused_and_rejected_items(
+        self, client: TestClient
+    ) -> None:
+        registered = _register(client, "profile-inspector@example.com", "correct-horse-12")
+        account_id = registered["account"]["id"]
+        obs = _create_observation(client, account_id)
+        candidate = _propose_candidate(client, account_id, obs["observation_id"])
+        client.post(
+            f"/profiles/candidates/{candidate['candidate_id']}/decision",
+            json={"decision": "reject", "reason": "One-off."},
+        )
+
+        response = client.get(
+            "/profiles/memory-slice",
+            params={"purpose": "quick_check", "run_id": "run-inspector-1"},
+        )
+        assert response.status_code == 200, response.text
+        slice_body = response.json()
+        slice_id = slice_body["slice_id"]
+
+        response = client.get(f"/profiles/memory-slices/{slice_id}/inspector")
+        assert response.status_code == 200, response.text
+        inspected = response.json()
+        assert inspected["slice_id"] == slice_id
+        assert inspected["run_id"] == "run-inspector-1"
+        assert inspected["included_items"] == []
+        assert len(inspected["rejected_items"]) == 1
+        assert inspected["rejected_items"][0]["candidate_id"] == candidate["candidate_id"]
+        assert "reject" in inspected["rejected_items"][0]["rejection_reason"].lower()
+
+    def test_model_access_check_passes_for_bound_slice(
+        self, client: TestClient
+    ) -> None:
+        registered = _register(client, "profile-access@example.com", "correct-horse-12")
+        account_id = registered["account"]["id"]
+        obs = _create_observation(client, account_id)
+        candidate = _propose_candidate(client, account_id, obs["observation_id"])
+        client.post(
+            f"/profiles/candidates/{candidate['candidate_id']}/decision",
+            json={"decision": "accept", "reason": "Confirmed."},
+        )
+
+        response = client.get(
+            "/profiles/memory-slice",
+            params={"purpose": "quick_check", "run_id": "run-access-1"},
+        )
+        assert response.status_code == 200, response.text
+        slice_id = response.json()["slice_id"]
+
+        response = client.post(
+            f"/profiles/memory-slices/{slice_id}/access-check",
+            params={"run_id": "run-access-1"},
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["accessible"] is True
+        assert body["slice_id"] == slice_id
+
+    def test_model_access_check_fails_for_wrong_run(
+        self, client: TestClient
+    ) -> None:
+        registered = _register(client, "profile-wrong-run@example.com", "correct-horse-12")
+        account_id = registered["account"]["id"]
+        obs = _create_observation(client, account_id)
+        candidate = _propose_candidate(client, account_id, obs["observation_id"])
+        client.post(
+            f"/profiles/candidates/{candidate['candidate_id']}/decision",
+            json={"decision": "accept", "reason": "Confirmed."},
+        )
+
+        response = client.get(
+            "/profiles/memory-slice",
+            params={"purpose": "quick_check", "run_id": "run-access-2"},
+        )
+        assert response.status_code == 200, response.text
+        slice_id = response.json()["slice_id"]
+
+        response = client.post(
+            f"/profiles/memory-slices/{slice_id}/access-check",
+            params={"run_id": "other-run"},
+        )
+        assert response.status_code == 404, response.text

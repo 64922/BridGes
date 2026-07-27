@@ -1952,7 +1952,7 @@
           "profiles"
         ],
         "summary": "Compile Memory Slice",
-        "description": "Compile the minimal profile slice for a run.\n\nUnconfirmed candidates are explicitly excluded so they are never used as\nstable facts in downstream tasks.",
+        "description": "Compile the minimal profile slice for a run.\n\nThe slice is bound to the run and filtered by purpose, project scope,\nauthorization snapshot, key epoch, expiration and sensitivity class.\nUnconfirmed candidates are explicitly excluded so they are never used as\nstable facts in downstream tasks.",
         "operationId": "compile_memory_slice_profiles_memory_slice_get",
         "parameters": [
           {
@@ -1976,6 +1976,74 @@
               "title": "Run Id"
             },
             "description": "Run identifier."
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Project scope.",
+              "title": "Project Id"
+            },
+            "description": "Project scope."
+          },
+          {
+            "name": "sensitivity_class",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ProfileSensitivityClass"
+              },
+              "description": "Allowed sensitivity classes.",
+              "title": "Sensitivity Class"
+            },
+            "description": "Allowed sensitivity classes."
+          },
+          {
+            "name": "ttl_seconds",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "description": "Slice time-to-live in seconds.",
+              "default": 3600,
+              "title": "Ttl Seconds"
+            },
+            "description": "Slice time-to-live in seconds."
+          },
+          {
+            "name": "authorization_version",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Authorization policy version snapshot.",
+              "default": "authz-1.0",
+              "title": "Authorization Version"
+            },
+            "description": "Authorization policy version snapshot."
+          },
+          {
+            "name": "key_epoch",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "description": "Key epoch.",
+              "default": "epoch-0",
+              "title": "Key Epoch"
+            },
+            "description": "Key epoch."
           },
           {
             "name": "science_companion_session",
@@ -2014,6 +2082,266 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slices/{slice_id}": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Memory Slice",
+        "description": "Return a compiled memory slice owned by the current account.",
+        "operationId": "get_memory_slice_profiles_memory_slices__slice_id__get",
+        "parameters": [
+          {
+            "name": "slice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slice Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileSlice"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slices/{slice_id}/inspector": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Inspect Memory Slice",
+        "description": "Inspect a memory slice: used, unused and rejected items with reasons.\n\nThe context inspector uses this view to explain why each profile entry was\nor was not included in the run context.",
+        "operationId": "inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get",
+        "parameters": [
+          {
+            "name": "slice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slice Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileSlice"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slices/{slice_id}/access-check": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Check Memory Slice Access",
+        "description": "Verify that a model or worker node can access only the bound slice.\n\nThis endpoint fails closed when the slice is not bound to the run, has\nexpired, or has been revoked/cancelled. It proves that downstream nodes\ncannot browse the full profile vault.",
+        "operationId": "check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post",
+        "parameters": [
+          {
+            "name": "slice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slice Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "description": "Run identifier the slice must be bound to.",
+              "title": "Run Id"
+            },
+            "description": "Run identifier the slice must be bound to."
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Check Memory Slice Access Profiles Memory Slices  Slice Id  Access Check Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "422": {
             "description": "Validation Error",
@@ -8677,6 +9005,24 @@
             "$ref": "#/components/schemas/AssertionStatus",
             "description": "Lifecycle status."
           },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity classification governing slice inclusion.",
+            "default": "preference"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "Optional expiration after which the assertion cannot be recalled."
+          },
           "promoted_from_candidate_id": {
             "anyOf": [
               {
@@ -8801,6 +9147,11 @@
             "description": "Stability classification.",
             "default": "candidate"
           },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity classification governing retention and slice inclusion.",
+            "default": "preference"
+          },
           "proposed_at": {
             "type": "string",
             "format": "date-time",
@@ -8914,6 +9265,11 @@
             "type": "string",
             "title": "Promotion Policy Version",
             "default": "promotion-1.0"
+          },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity classification of the candidate.",
+            "default": "preference"
           },
           "expires_at": {
             "anyOf": [
@@ -9249,6 +9605,11 @@
             "title": "Slice Id",
             "description": "Stable slice identifier."
           },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
           "run_id": {
             "type": "string",
             "title": "Run Id",
@@ -9259,6 +9620,18 @@
             "title": "Purpose",
             "description": "Declared processing purpose."
           },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope for which the slice was compiled."
+          },
           "included_items": {
             "items": {
               "$ref": "#/components/schemas/ProfileSliceItem"
@@ -9266,6 +9639,14 @@
             "type": "array",
             "title": "Included Items",
             "description": "Promoted assertions included in the slice."
+          },
+          "unused_items": {
+            "items": {
+              "$ref": "#/components/schemas/UnusedSliceItem"
+            },
+            "type": "array",
+            "title": "Unused Items",
+            "description": "Active assertions excluded from the slice with reasons."
           },
           "excluded_candidate_ids": {
             "items": {
@@ -9283,6 +9664,83 @@
             "title": "Exclusion Reasons",
             "description": "Reason each candidate was excluded."
           },
+          "rejected_items": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedSliceItem"
+            },
+            "type": "array",
+            "title": "Rejected Items",
+            "description": "Candidates rejected or not yet promoted with reasons."
+          },
+          "authorization_snapshot": {
+            "type": "string",
+            "title": "Authorization Snapshot",
+            "description": "Authorization policy version at compile time.",
+            "default": "authz-1.0"
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Key epoch under which the slice is bound.",
+            "default": "epoch-0"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "Expiration after which the slice must not be used."
+          },
+          "sensitivity_classes_allowed": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileSensitivityClass"
+            },
+            "type": "array",
+            "title": "Sensitivity Classes Allowed",
+            "description": "Sensitivity classes permitted in this slice."
+          },
+          "compiled_policy_version": {
+            "type": "string",
+            "title": "Compiled Policy Version",
+            "description": "Version of the slice compilation policy used.",
+            "default": "slice-1.0"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SliceStatus",
+            "description": "Lifecycle status of the slice.",
+            "default": "active"
+          },
+          "invalidated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidated At",
+            "description": "When the slice was invalidated."
+          },
+          "invalidation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalidation Reason",
+            "description": "Why the slice was invalidated."
+          },
           "compiled_at": {
             "type": "string",
             "format": "date-time",
@@ -9293,12 +9751,13 @@
         "type": "object",
         "required": [
           "slice_id",
+          "owner_account_id",
           "run_id",
           "purpose",
           "compiled_at"
         ],
         "title": "ProfileSlice",
-        "description": "Minimal, authorized profile information compiled for a single run."
+        "description": "Minimal, authorized profile information compiled for a single run.\n\nA slice is the only long-term information carrier allowed into a model\ncontext. It records why each item was included, excluded or rejected so the\ncontext inspector can explain the personalization decision."
       },
       "ProfileSliceItem": {
         "properties": {
@@ -9321,6 +9780,24 @@
             "type": "string",
             "title": "Inclusion Reason",
             "description": "Why the entry was included."
+          },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity classification of the source assertion.",
+            "default": "preference"
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "Expiration of the source assertion."
           }
         },
         "type": "object",
@@ -9719,6 +10196,39 @@
         ],
         "title": "RecoveryReset",
         "description": "Reset password using a recovery token."
+      },
+      "RejectedSliceItem": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "title": "Candidate Id",
+            "description": "Stable candidate identifier."
+          },
+          "dimension": {
+            "type": "string",
+            "title": "Dimension",
+            "description": "Profile dimension."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Proposed value or rule."
+          },
+          "rejection_reason": {
+            "type": "string",
+            "title": "Rejection Reason",
+            "description": "Why the candidate was not used."
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "dimension",
+          "value_or_rule",
+          "rejection_reason"
+        ],
+        "title": "RejectedSliceItem",
+        "description": "One candidate that was not promoted and therefore not used."
       },
       "RetrievalCandidate": {
         "properties": {
@@ -10515,6 +11025,17 @@
         "title": "SessionResponse",
         "description": "Response for an existing session lookup."
       },
+      "SliceStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "expired",
+          "revoked",
+          "cancelled"
+        ],
+        "title": "SliceStatus",
+        "description": "Lifecycle status of a compiled memory slice bound to a run."
+      },
       "Source": {
         "properties": {
           "source_id": {
@@ -11101,6 +11622,39 @@
         ],
         "title": "TemporaryTaskCapsule",
         "description": "Encrypted minimal context for a single task run.\n\nA temporary task capsule binds subject, purpose, objects, run, authorization\nversion, key epoch, and TTL. It is the only long-information carrier that may\nbe sent to cloud workers or model gateways."
+      },
+      "UnusedSliceItem": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "Stable assertion identifier."
+          },
+          "dimension": {
+            "type": "string",
+            "title": "Dimension",
+            "description": "Profile dimension."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Value or rule of the assertion."
+          },
+          "exclusion_reason": {
+            "type": "string",
+            "title": "Exclusion Reason",
+            "description": "Why the assertion was not included."
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "dimension",
+          "value_or_rule",
+          "exclusion_reason"
+        ],
+        "title": "UnusedSliceItem",
+        "description": "One active assertion that was not included in the slice, with a reason."
       },
       "ValidationError": {
         "properties": {

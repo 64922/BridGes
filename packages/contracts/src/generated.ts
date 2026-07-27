@@ -481,12 +481,81 @@ export interface paths {
          * Compile Memory Slice
          * @description Compile the minimal profile slice for a run.
          *
+         *     The slice is bound to the run and filtered by purpose, project scope,
+         *     authorization snapshot, key epoch, expiration and sensitivity class.
          *     Unconfirmed candidates are explicitly excluded so they are never used as
          *     stable facts in downstream tasks.
          */
         get: operations["compile_memory_slice_profiles_memory_slice_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slices/{slice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Memory Slice
+         * @description Return a compiled memory slice owned by the current account.
+         */
+        get: operations["get_memory_slice_profiles_memory_slices__slice_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slices/{slice_id}/inspector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspect Memory Slice
+         * @description Inspect a memory slice: used, unused and rejected items with reasons.
+         *
+         *     The context inspector uses this view to explain why each profile entry was
+         *     or was not included in the run context.
+         */
+        get: operations["inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slices/{slice_id}/access-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Memory Slice Access
+         * @description Verify that a model or worker node can access only the bound slice.
+         *
+         *     This endpoint fails closed when the slice is not bound to the run, has
+         *     expired, or has been revoked/cancelled. It proves that downstream nodes
+         *     cannot browse the full profile vault.
+         */
+        post: operations["check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3427,6 +3496,16 @@ export interface components {
             /** @description Lifecycle status. */
             status: components["schemas"]["AssertionStatus"];
             /**
+             * @description Sensitivity classification governing slice inclusion.
+             * @default preference
+             */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /**
+             * Expires At
+             * @description Optional expiration after which the assertion cannot be recalled.
+             */
+            expires_at?: string | null;
+            /**
              * Promoted From Candidate Id
              * @description Candidate from which this assertion was promoted.
              */
@@ -3519,6 +3598,11 @@ export interface components {
              */
             stability_state: components["schemas"]["CandidateStabilityState"];
             /**
+             * @description Sensitivity classification governing retention and slice inclusion.
+             * @default preference
+             */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /**
              * Proposed At
              * Format: date-time
              * @description When the candidate was proposed.
@@ -3583,6 +3667,11 @@ export interface components {
              * @default promotion-1.0
              */
             promotion_policy_version: string;
+            /**
+             * @description Sensitivity classification of the candidate.
+             * @default preference
+             */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
             /** Expires At */
             expires_at?: string | null;
         };
@@ -3792,6 +3881,10 @@ export interface components {
         /**
          * ProfileSlice
          * @description Minimal, authorized profile information compiled for a single run.
+         *
+         *     A slice is the only long-term information carrier allowed into a model
+         *     context. It records why each item was included, excluded or rejected so the
+         *     context inspector can explain the personalization decision.
          */
         ProfileSlice: {
             /**
@@ -3799,6 +3892,11 @@ export interface components {
              * @description Stable slice identifier.
              */
             slice_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
             /**
              * Run Id
              * @description Run the slice is bound to.
@@ -3810,10 +3908,20 @@ export interface components {
              */
             purpose: string;
             /**
+             * Project Id
+             * @description Project scope for which the slice was compiled.
+             */
+            project_id?: string | null;
+            /**
              * Included Items
              * @description Promoted assertions included in the slice.
              */
             included_items?: components["schemas"]["ProfileSliceItem"][];
+            /**
+             * Unused Items
+             * @description Active assertions excluded from the slice with reasons.
+             */
+            unused_items?: components["schemas"]["UnusedSliceItem"][];
             /**
              * Excluded Candidate Ids
              * @description Candidates explicitly excluded from the slice.
@@ -3826,6 +3934,54 @@ export interface components {
             exclusion_reasons?: {
                 [key: string]: string;
             };
+            /**
+             * Rejected Items
+             * @description Candidates rejected or not yet promoted with reasons.
+             */
+            rejected_items?: components["schemas"]["RejectedSliceItem"][];
+            /**
+             * Authorization Snapshot
+             * @description Authorization policy version at compile time.
+             * @default authz-1.0
+             */
+            authorization_snapshot: string;
+            /**
+             * Key Epoch
+             * @description Key epoch under which the slice is bound.
+             * @default epoch-0
+             */
+            key_epoch: string;
+            /**
+             * Expires At
+             * @description Expiration after which the slice must not be used.
+             */
+            expires_at?: string | null;
+            /**
+             * Sensitivity Classes Allowed
+             * @description Sensitivity classes permitted in this slice.
+             */
+            sensitivity_classes_allowed?: components["schemas"]["ProfileSensitivityClass"][];
+            /**
+             * Compiled Policy Version
+             * @description Version of the slice compilation policy used.
+             * @default slice-1.0
+             */
+            compiled_policy_version: string;
+            /**
+             * @description Lifecycle status of the slice.
+             * @default active
+             */
+            status: components["schemas"]["SliceStatus"];
+            /**
+             * Invalidated At
+             * @description When the slice was invalidated.
+             */
+            invalidated_at?: string | null;
+            /**
+             * Invalidation Reason
+             * @description Why the slice was invalidated.
+             */
+            invalidation_reason?: string | null;
             /**
              * Compiled At
              * Format: date-time
@@ -3858,6 +4014,16 @@ export interface components {
              * @description Why the entry was included.
              */
             inclusion_reason: string;
+            /**
+             * @description Sensitivity classification of the source assertion.
+             * @default preference
+             */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /**
+             * Expires At
+             * @description Expiration of the source assertion.
+             */
+            expires_at?: string | null;
         };
         /**
          * ProfileSourceType
@@ -4095,6 +4261,32 @@ export interface components {
              * @description New account password.
              */
             new_password: string;
+        };
+        /**
+         * RejectedSliceItem
+         * @description One candidate that was not promoted and therefore not used.
+         */
+        RejectedSliceItem: {
+            /**
+             * Candidate Id
+             * @description Stable candidate identifier.
+             */
+            candidate_id: string;
+            /**
+             * Dimension
+             * @description Profile dimension.
+             */
+            dimension: string;
+            /**
+             * Value Or Rule
+             * @description Proposed value or rule.
+             */
+            value_or_rule: string;
+            /**
+             * Rejection Reason
+             * @description Why the candidate was not used.
+             */
+            rejection_reason: string;
         };
         /**
          * RetrievalCandidate
@@ -4620,6 +4812,12 @@ export interface components {
             subject: components["schemas"]["SubjectContext"];
         };
         /**
+         * SliceStatus
+         * @description Lifecycle status of a compiled memory slice bound to a run.
+         * @enum {string}
+         */
+        SliceStatus: "active" | "expired" | "revoked" | "cancelled";
+        /**
          * Source
          * @description A source entry: the identity and ownership of one scientific work.
          *
@@ -4938,6 +5136,32 @@ export interface components {
             expires_at: string;
             /** @description Current capsule status. */
             status: components["schemas"]["CapsuleStatus"];
+        };
+        /**
+         * UnusedSliceItem
+         * @description One active assertion that was not included in the slice, with a reason.
+         */
+        UnusedSliceItem: {
+            /**
+             * Assertion Id
+             * @description Stable assertion identifier.
+             */
+            assertion_id: string;
+            /**
+             * Dimension
+             * @description Profile dimension.
+             */
+            dimension: string;
+            /**
+             * Value Or Rule
+             * @description Value or rule of the assertion.
+             */
+            value_or_rule: string;
+            /**
+             * Exclusion Reason
+             * @description Why the assertion was not included.
+             */
+            exclusion_reason: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -6663,6 +6887,16 @@ export interface operations {
                 purpose: string;
                 /** @description Run identifier. */
                 run_id: string;
+                /** @description Project scope. */
+                project_id?: string | null;
+                /** @description Allowed sensitivity classes. */
+                sensitivity_class?: components["schemas"]["ProfileSensitivityClass"][];
+                /** @description Slice time-to-live in seconds. */
+                ttl_seconds?: number;
+                /** @description Authorization policy version snapshot. */
+                authorization_version?: string;
+                /** @description Key epoch. */
+                key_epoch?: string;
             };
             header?: never;
             path?: never;
@@ -6683,6 +6917,173 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_slice_profiles_memory_slices__slice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slice_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSlice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slice_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileSlice"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post: {
+        parameters: {
+            query: {
+                /** @description Run identifier the slice must be bound to. */
+                run_id: string;
+            };
+            header?: never;
+            path: {
+                slice_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

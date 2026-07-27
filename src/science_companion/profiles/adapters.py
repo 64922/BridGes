@@ -6,6 +6,7 @@ from science_companion.contracts.profiles import (
     ProfileAssertion,
     ProfileCandidate,
     ProfileObservation,
+    ProfileSlice,
 )
 from science_companion.profiles.ports import ProfileRepository
 
@@ -25,6 +26,7 @@ class InMemoryProfileRepository(ProfileRepository):
         self._observations: dict[str, ProfileObservation] = {}
         self._candidates: dict[str, ProfileCandidate] = {}
         self._assertions: dict[str, ProfileAssertion] = {}
+        self._slices: dict[str, ProfileSlice] = {}
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -83,3 +85,28 @@ class InMemoryProfileRepository(ProfileRepository):
         ]
         assertions.sort(key=lambda a: a.created_at, reverse=True)
         return assertions
+
+    def save_slice(self, slice_: ProfileSlice) -> ProfileSlice:
+        self._slices[self._key(slice_.owner_account_id, slice_.slice_id)] = slice_
+        return slice_
+
+    def get_slice(self, owner_id: str, slice_id: str) -> ProfileSlice:
+        slice_ = self._slices.get(self._key(owner_id, slice_id))
+        if slice_ is None:
+            raise ProfileError("对象不存在或没有访问权限。")
+        return slice_
+
+    def list_slices_for_run(self, owner_id: str, run_id: str) -> list[ProfileSlice]:
+        slices = [
+            slice_
+            for slice_ in self._slices.values()
+            if slice_.owner_account_id == owner_id and slice_.run_id == run_id
+        ]
+        slices.sort(key=lambda s: s.compiled_at, reverse=True)
+        return slices
+
+    def get_slice_by_id(self, slice_id: str) -> ProfileSlice:
+        for slice_ in self._slices.values():
+            if slice_.slice_id == slice_id:
+                return slice_
+        raise ProfileError("对象不存在或没有访问权限。")

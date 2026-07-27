@@ -11,16 +11,19 @@ by the workflow schema.
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from science_companion.ai import ModelGateway
 from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
 from science_companion.contracts.identity import SubjectContext
+from science_companion.contracts.observability import AuditAction, AuditResult
+from science_companion.contracts.profiles import SliceStatus
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
-from science_companion.contracts.observability import AuditAction, AuditResult
 from science_companion.contracts.workflows import (
     ArtifactTrustStatus,
     HumanTodoItem,
@@ -29,12 +32,13 @@ from science_companion.contracts.workflows import (
     NodeStatus,
     RunContextEnvelope,
     RunProjection,
-    WorkOrder,
     WorkflowRunStatus,
+    WorkOrder,
 )
 from science_companion.invalidation import InvalidationError, InvalidationService
+from science_companion.profiles import ProfileService
+from science_companion.profiles.adapters import ProfileError
 from science_companion.scope import ScopeEnforcer
-from science_companion.ai import ModelGateway
 
 if TYPE_CHECKING:
     from science_companion.observability.service import ObservabilityService
@@ -94,6 +98,7 @@ class WorkflowService:
         model_gateway: ModelGateway | None = None,
         observability_service: ObservabilityService | None = None,
         invalidation_service: InvalidationService | None = None,
+        profile_service: ProfileService | None = None,
     ) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
@@ -101,6 +106,7 @@ class WorkflowService:
         self._model_gateway = model_gateway
         self._observability = observability_service
         self._invalidation = invalidation_service
+        self._profile_service = profile_service
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -113,7 +119,7 @@ class WorkflowService:
         )
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     def _require_objects_active(self, object_refs: list[str], account_id: str) -> None:
         """Fail closed if any referenced object is revoked or tombstoned.
@@ -247,7 +253,10 @@ class WorkflowService:
         if self._observability is None:
             return
         ctx = record.context
-        from science_companion.observability.telemetry_context import build_correlation, get_correlation
+        from science_companion.observability.telemetry_context import (
+            build_correlation,
+            get_correlation,
+        )
 
         existing = get_correlation()
         correlation = build_correlation(
@@ -291,6 +300,40 @@ class WorkflowService:
             terminal_reason=terminal_reason,
         )
 
+    def _compile_memory_slice_for_run(self, record: _RunRecord) -> list[str]:
+        """Compile the minimal memory slice for a run if none was supplied.
+
+        The slice is bound to the run, scoped to the project, and filtered by the
+        workflow purpose. Models and worker nodes receive only the slice
+        reference, never direct access to the full profile vault.
+        """
+        if self._profile_service is None:
+            return []
+        if record.work_order.memory_slice_refs:
+            return list(record.work_order.memory_slice_refs)
+        purpose = record.work_order.workflow_name
+        slice_ = self._profile_service.compile_memory_slice(
+            record.context.account_id,
+            purpose=purpose,
+            run_id=record.run_id,
+            project_id=record.context.project_id,
+            authorization_version=record.context.authorization_snapshot,
+            key_epoch=record.context.key_epoch,
+        )
+        return [slice_.slice_id]
+
+    def _invalidate_run_slices(
+        self, record: _RunRecord, reason: str, status: SliceStatus
+    ) -> None:
+        """Invalidate all memory slices bound to a run."""
+        if self._profile_service is None:
+            return
+        for slice_id in record.context.memory_slice_refs:
+            with contextlib.suppress(ProfileError):
+                self._profile_service.invalidate_slice(
+                    record.context.account_id, slice_id, reason, status
+                )
+
     def submit_work_order(self, account_id: str, order: WorkOrder) -> RunProjection:
         """Submit a WorkOrder and return a draft task-stage projection."""
         subject = self._subject(account_id)
@@ -333,7 +376,10 @@ class WorkflowService:
             record,
             AuditAction.WORKORDER_SUBMIT,
             AuditResult.SUCCESS,
-            details={"workflow_name": order.workflow_name, "workflow_version": order.workflow_version},
+            details={
+                "workflow_name": order.workflow_name,
+                "workflow_version": order.workflow_version,
+            },
         )
         return self._build_projection(record)
 
@@ -344,7 +390,7 @@ class WorkflowService:
         *,
         confirmed: bool = True,
     ) -> RunProjection:
-        """Confirm the WorkOrder goal, success criteria, and risk, then compile and start the run."""
+        """Confirm the WorkOrder and compile/start the run."""
         record = self._require_record(account_id, run_id)
         self._assert_transition(record, {WorkflowRunStatus.DRAFT})
         self._require_objects_active(list(record.work_order.object_refs), account_id)
@@ -363,6 +409,7 @@ class WorkflowService:
         record.context.confirmed_at = now
         record.run_started_at = now
         record.artifact_trust_status = ArtifactTrustStatus.DRAFT
+        record.context.memory_slice_refs = self._compile_memory_slice_for_run(record)
 
         record.nodes = [
             NodeProgress(
@@ -479,7 +526,9 @@ class WorkflowService:
                 ),
                 details={
                     "node_id": current_def.node_id,
-                    "capability_ref": f"{current_def.capability_name}@{current_def.capability_version}",
+                    "capability_ref": (
+                        f"{current_def.capability_name}@{current_def.capability_version}"
+                    ),
                     "model_call_status": lock.status.value if lock else "none",
                     "retry_count": lock.retry_count if lock else 0,
                 },
@@ -573,6 +622,9 @@ class WorkflowService:
         record.status = WorkflowRunStatus.CANCELLED
         record.cancel_reason = reason
         record.run_ended_at = now
+        self._invalidate_run_slices(
+            record, f"run_cancelled:{reason}", SliceStatus.CANCELLED
+        )
         projection = self._build_projection(record)
         self._emit_audit(
             record,

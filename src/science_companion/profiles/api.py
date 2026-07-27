@@ -15,6 +15,7 @@ from science_companion.contracts.profiles import (
     ProfileError,
     ProfileObservation,
     ProfileObservationCreateRequest,
+    ProfileSensitivityClass,
     ProfileSlice,
 )
 from science_companion.profiles import ProfileService
@@ -254,9 +255,21 @@ async def compile_memory_slice(
     subject: SubjectDep,
     purpose: Annotated[str, Query(description="Declared processing purpose.")],
     run_id: Annotated[str, Query(description="Run identifier.")],
+    project_id: Annotated[str | None, Query(description="Project scope.")] = None,
+    sensitivity_class: Annotated[
+        list[ProfileSensitivityClass],
+        Query(description="Allowed sensitivity classes."),
+    ] = None,  # type: ignore[assignment]
+    ttl_seconds: Annotated[int, Query(description="Slice time-to-live in seconds.")] = 3600,
+    authorization_version: Annotated[
+        str, Query(description="Authorization policy version snapshot.")
+    ] = "authz-1.0",
+    key_epoch: Annotated[str, Query(description="Key epoch.")] = "epoch-0",
 ) -> ProfileSlice:
     """Compile the minimal profile slice for a run.
 
+    The slice is bound to the run and filtered by purpose, project scope,
+    authorization snapshot, key epoch, expiration and sensitivity class.
     Unconfirmed candidates are explicitly excluded so they are never used as
     stable facts in downstream tasks.
     """
@@ -264,4 +277,100 @@ async def compile_memory_slice(
         subject.account_id,
         purpose=purpose,
         run_id=run_id,
+        project_id=project_id,
+        sensitivity_classes=sensitivity_class,
+        ttl_seconds=ttl_seconds,
+        authorization_version=authorization_version,
+        key_epoch=key_epoch,
     )
+
+
+@router.get(
+    "/memory-slices/{slice_id}",
+    response_model=ProfileSlice,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def get_memory_slice(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    slice_id: str,
+) -> ProfileSlice:
+    """Return a compiled memory slice owned by the current account."""
+    try:
+        return service.get_slice(subject.account_id, slice_id)
+    except ProfileAdapterError as exc:
+        raise _profile_error(
+            status.HTTP_404_NOT_FOUND,
+            "slice_not_found",
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/memory-slices/{slice_id}/inspector",
+    response_model=ProfileSlice,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def inspect_memory_slice(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    slice_id: str,
+) -> ProfileSlice:
+    """Inspect a memory slice: used, unused and rejected items with reasons.
+
+    The context inspector uses this view to explain why each profile entry was
+    or was not included in the run context.
+    """
+    try:
+        return service.get_slice(subject.account_id, slice_id)
+    except ProfileAdapterError as exc:
+        raise _profile_error(
+            status.HTTP_404_NOT_FOUND,
+            "slice_not_found",
+            str(exc),
+        ) from exc
+
+
+@router.post(
+    "/memory-slices/{slice_id}/access-check",
+    response_model=dict[str, object],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_403_FORBIDDEN: {"model": ProfileError},
+    },
+)
+async def check_memory_slice_access(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    slice_id: str,
+    run_id: Annotated[str, Query(description="Run identifier the slice must be bound to.")],
+) -> dict[str, object]:
+    """Verify that a model or worker node can access only the bound slice.
+
+    This endpoint fails closed when the slice is not bound to the run, has
+    expired, or has been revoked/cancelled. It proves that downstream nodes
+    cannot browse the full profile vault.
+    """
+    try:
+        service.require_slice_for_run(slice_id, run_id)
+    except ProfileAdapterError as exc:
+        msg = str(exc)
+        if "不存在" in msg or "不一致" in msg:
+            raise _profile_error(
+                status.HTTP_404_NOT_FOUND,
+                "slice_not_found",
+                msg,
+            ) from exc
+        raise _profile_error(
+            status.HTTP_403_FORBIDDEN,
+            "slice_not_usable",
+            msg,
+        ) from exc
+    return {"slice_id": slice_id, "run_id": run_id, "accessible": True}

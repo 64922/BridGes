@@ -248,3 +248,106 @@ def test_human_todo_flow_through_api(client: TestClient) -> None:
     assert resumed["run_status"] == "running"
     assert resumed["human_todos"][0]["status"] == "resolved"
     assert resumed["current_node_id"] == "finalize"
+
+
+class TestMemorySliceBoundToRun:
+    def _create_assertion(self, client: TestClient, account_id: str) -> None:
+        response = client.post(
+            "/profiles/observations",
+            json={
+                "owner_account_id": account_id,
+                "source_type": "explicit_statement",
+                "source_ref": "conversation-1",
+                "source_span_or_event": "user-message-1",
+                "scene": "quick_check",
+                "purpose": "expression_preference",
+                "observed_content": "I prefer short answers.",
+                "signal_kind": "preference",
+                "extractor_and_version": "rule-extractor-1",
+                "reliability_factors": ["explicit_statement"],
+                "sensitivity_class": "preference",
+                "retention_policy": "account_lifetime",
+            },
+        )
+        assert response.status_code == 201
+        obs_id = response.json()["observation_id"]
+
+        response = client.post(
+            "/profiles/candidates",
+            json={
+                "owner_account_id": account_id,
+                "canonical_dimension": "expression_brevity",
+                "value_or_rule": "prefer_short_answers",
+                "applicable_scenes": ["generic_science_task"],
+                "supporting_observation_ids": [obs_id],
+            },
+        )
+        assert response.status_code == 201
+        candidate_id = response.json()["candidate_id"]
+
+        response = client.post(
+            f"/profiles/candidates/{candidate_id}/decision",
+            json={"decision": "accept", "reason": "Confirmed."},
+        )
+        assert response.status_code == 200
+
+    def test_run_confirmation_compiles_memory_slice(
+        self, client: TestClient
+    ) -> None:
+        registered = _register(client, "wo-slice@example.com", "correct-horse-12")
+        account_id = registered["account"]["id"]
+        self._create_assertion(client, account_id)
+        project_id = _create_project(client, "切片项目")
+
+        draft = _submit_work_order(client, project_id)
+        run_id = draft["run_id"]
+        assert draft["context_envelope"]["memory_slice_refs"] == []
+
+        confirm = client.post(
+            f"/projects/{project_id}/runs/{run_id}/confirm",
+            json={"confirmed": True},
+        )
+        assert confirm.status_code == 200
+        confirmed = confirm.json()
+        slice_refs = confirmed["context_envelope"]["memory_slice_refs"]
+        assert len(slice_refs) == 1
+
+        # The context inspector can read the slice and see the included assertion.
+        slice_id = slice_refs[0]
+        response = client.get(f"/profiles/memory-slices/{slice_id}/inspector")
+        assert response.status_code == 200
+        inspected = response.json()
+        assert inspected["run_id"] == run_id
+        assert len(inspected["included_items"]) == 1
+        assert inspected["included_items"][0]["dimension"] == "expression_brevity"
+
+    def test_run_cancellation_invalidates_memory_slice(
+        self, client: TestClient
+    ) -> None:
+        registered = _register(client, "wo-slice-cancel@example.com", "correct-horse-12")
+        account_id = registered["account"]["id"]
+        self._create_assertion(client, account_id)
+        project_id = _create_project(client, "取消切片项目")
+
+        draft = _submit_work_order(client, project_id)
+        run_id = draft["run_id"]
+        client.post(
+            f"/projects/{project_id}/runs/{run_id}/confirm",
+            json={"confirmed": True},
+        )
+        slice_id = client.get(f"/projects/{project_id}/runs/{run_id}").json()[
+            "context_envelope"
+        ]["memory_slice_refs"][0]
+
+        cancel = client.post(
+            f"/projects/{project_id}/runs/{run_id}/cancel",
+            json={"reason": "用户主动取消"},
+        )
+        assert cancel.status_code == 200
+
+        # Model access check now fails closed for the invalidated slice.
+        response = client.post(
+            f"/profiles/memory-slices/{slice_id}/access-check",
+            params={"run_id": run_id},
+        )
+        assert response.status_code == 403
