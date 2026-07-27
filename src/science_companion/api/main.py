@@ -234,12 +234,49 @@ def create_app() -> FastAPI:
         invalidation_service=invalidation_service,
     )
 
-    # T018: attach the in-memory profile service. Candidate profiles cannot be
+    # T010: attach the observability service early so downstream services can
+    # emit privacy-preserving audit events.
+    app.state.observability_service = ObservabilityService()
+
+    # T018/T020: attach the in-memory profile service. Candidate profiles cannot be
     # treated as stable facts until the user accepts them through the human
-    # decision loop; accepted candidates are promoted to active assertions.
+    # decision loop; accepted candidates are promoted to active assertions. At
+    # T020 the service also freezes, deletes, rolls back and exports assertions
+    # while propagating invalidations to slices, cache, index and runs.
     app.state.profile_service = ProfileService(
         repository=InMemoryProfileRepository(),
         scope_enforcer=app.state.scope_enforcer,
+        invalidation_service=invalidation_service,
+        observability_service=app.state.observability_service,
+    )
+
+    # T020: register a profile-specific impact resolver so assertion deletions
+    # produce scope-correct memory-slice downstreams in addition to the generic
+    # cache, index and run resolvers registered by T011.
+    def _profile_assertion_resolver(event: Any) -> list[AffectedDownstream]:
+        affected: list[AffectedDownstream] = []
+        profile_service = app.state.profile_service
+        object_ref = event.object_ref
+        if object_ref.domain.value != "personal_vault":
+            return affected
+        slices = profile_service.find_slices_for_assertion(
+            object_ref.owner_id, object_ref.object_id
+        )
+        for slice_ in slices:
+            affected.append(
+                AffectedDownstream(
+                    downstream_id=f"memory_slice:{slice_.slice_id}",
+                    downstream_type="memory_slice",
+                    object_refs=[slice_.slice_id],
+                    scope_envelope=event.scope_envelope,
+                    action="revoke",
+                    details={"assertion_id": object_ref.object_id},
+                )
+            )
+        return affected
+
+    invalidation_service.register_impact_resolver(
+        "profile_assertion", _profile_assertion_resolver
     )
 
     # T009: attach the capability registry, model gateway and stub adapter.
@@ -251,11 +288,6 @@ def create_app() -> FastAPI:
         model_gateway.register_adapter(capability.name, capability.version, stub_adapter)
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
-
-    # T010: attach the observability service. It is passed to services so that
-    # trace/metric/log/audit events share the same run/subject/project/object
-    # correlation and never copy private body, full prompts or keys.
-    app.state.observability_service = ObservabilityService()
 
     # T006/T009: attach the in-memory workflow service and register workflows.
     workflow_service = WorkflowService(

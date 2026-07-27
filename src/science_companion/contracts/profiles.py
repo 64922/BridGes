@@ -97,6 +97,7 @@ class AssertionStatus(StrEnum):
     ACTIVE = "active"
     FROZEN = "frozen"
     STALE = "stale"
+    DELETED = "deleted"
 
 
 class SliceStatus(StrEnum):
@@ -449,3 +450,114 @@ class ProfileError(BaseModel):
         default_factory=dict,
         description="Opaque detail safe for logging; must not expose internal state.",
     )
+
+
+class ProfileAssertionVersion(BaseModel):
+    """Immutable snapshot of a profile assertion at a point in its history.
+
+    Rollback creates a new active version from a prior snapshot without erasing
+    the audit chain. Each version stores the value and metadata at that point so
+    that rollback is possible, but audit events and exports retain only the
+    content hash rather than the full value, ensuring deleted content body is not
+    preserved in the governance audit trail.
+    """
+
+    version_id: str = Field(description="Stable version snapshot identifier.")
+    assertion_id: str = Field(description="Assertion this version belongs to.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    version: int = Field(description="Assertion version number this snapshot records.")
+    canonical_dimension: str = Field(description="Profile dimension.")
+    value_or_rule: str = Field(description="Value or rule at this version.")
+    applicable_scenes: list[str] = Field(default_factory=list)
+    status: AssertionStatus = Field(description="Assertion status at this version.")
+    sensitivity_class: ProfileSensitivityClass = Field(
+        default=ProfileSensitivityClass.PREFERENCE
+    )
+    promoted_from_candidate_id: str | None = Field(default=None)
+    content_hash: str = Field(description="SHA-256 hash of value and scenes.")
+    changed_at: datetime = Field(description="When this version was created.")
+    changed_by: str = Field(description="Actor that created this version.")
+    change_reason: str = Field(description="Human-readable reason for the change.")
+
+
+class ProfileAssertionHistory(BaseModel):
+    """Version history of a single profile assertion."""
+
+    assertion_id: str = Field(description="Assertion identifier.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    current_version: int = Field(description="Current optimistic concurrency version.")
+    versions: list[ProfileAssertionVersion] = Field(
+        default_factory=list, description="Historical snapshots, oldest first."
+    )
+
+
+class ProfileAssertionModifyRequest(BaseModel):
+    """Request to modify an active profile assertion, creating a new version."""
+
+    value_or_rule: str = Field(description="New value or rule.")
+    applicable_scenes: list[str] = Field(default_factory=list)
+    reason: str = Field(description="Human-readable reason for the change.")
+
+
+class ProfileAssertionRollbackRequest(BaseModel):
+    """Request to roll an assertion back to a previous version."""
+
+    to_version: int = Field(ge=1, description="Target historical version number.")
+    reason: str = Field(description="Human-readable reason for the rollback.")
+
+
+class ProfileFreezeRequest(BaseModel):
+    """Request to freeze a profile assertion."""
+
+    reason: str = Field(description="Human-readable reason for freezing.")
+
+
+class ProfileDeleteRequest(BaseModel):
+    """Request to delete a profile assertion."""
+
+    reason: str = Field(description="Human-readable reason for deletion.")
+
+
+class ProfileExportAssertion(BaseModel):
+    """One assertion as it appears in a user export."""
+
+    assertion_id: str = Field(description="Stable assertion identifier.")
+    canonical_dimension: str = Field(description="Profile dimension.")
+    status: AssertionStatus = Field(description="Current lifecycle status.")
+    value_or_rule: str | None = Field(
+        default=None,
+        description="Current value; redacted when the assertion has been deleted.",
+    )
+    applicable_scenes: list[str] = Field(default_factory=list)
+    version: int = Field(description="Current optimistic concurrency version.")
+    content_hash: str = Field(description="SHA-256 hash of current value and scenes.")
+    promoted_from_candidate_id: str | None = Field(default=None)
+    created_at: datetime = Field(description="When the assertion was first promoted.")
+    updated_at: datetime = Field(description="When the assertion was last changed.")
+    deleted_at: datetime | None = Field(default=None)
+
+
+class ProfileExport(BaseModel):
+    """Structured, portable export of a user's evidence-backed profile.
+
+    Exports include assertion metadata and content hashes so the user can verify
+    integrity, but they omit deleted observed content and audit-unfriendly body
+    copies. The export is itself scope-bound to the requesting account.
+    """
+
+    export_id: str = Field(description="Stable export identifier.")
+    owner_account_id: str = Field(description="Account the export belongs to.")
+    exported_at: datetime = Field(description="Export generation timestamp.")
+    assertions: list[ProfileExportAssertion] = Field(
+        default_factory=list, description="Current assertions."
+    )
+    history: dict[str, ProfileAssertionHistory] = Field(
+        default_factory=dict,
+        description="Version history keyed by assertion identifier.",
+    )
+    audit_event_refs: list[str] = Field(
+        default_factory=list,
+        description="References to governance audit events included in this export.",
+    )
+
+

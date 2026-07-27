@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 
 from science_companion.contracts.profiles import (
     ProfileAssertion,
+    ProfileAssertionVersion,
     ProfileCandidate,
     ProfileObservation,
     ProfileSlice,
@@ -72,3 +73,27 @@ class ProfileRepository(ABC):
         Callers are responsible for verifying the run binding and scope. This is
         intended for model/worker lookups that authorize by run_id, not account.
         """
+
+    @abstractmethod
+    def get_assertion(
+        self, owner_id: str, assertion_id: str
+    ) -> ProfileAssertion:
+        """Return a profile assertion or raise a domain error."""
+
+    @abstractmethod
+    def save_assertion_version(
+        self, version: ProfileAssertionVersion
+    ) -> ProfileAssertionVersion:
+        """Persist a snapshot of a profile assertion version."""
+
+    @abstractmethod
+    def list_assertion_versions(
+        self, owner_id: str, assertion_id: str
+    ) -> list[ProfileAssertionVersion]:
+        """Return version history for an assertion, oldest first."""
+
+    @abstractmethod
+    def list_slices_containing_assertion(
+        self, owner_id: str, assertion_id: str
+    ) -> list[ProfileSlice]:
+        """Return slices that include the assertion in their included items."""

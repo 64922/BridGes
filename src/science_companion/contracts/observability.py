@@ -34,6 +34,11 @@ class AuditAction(str, Enum):
     ALERT_FIRE = "alert_fire"
     ALERT_ACKNOWLEDGE = "alert_acknowledge"
     ALERT_RESOLVE = "alert_resolve"
+    PROFILE_FREEZE = "profile_freeze"
+    PROFILE_MODIFY = "profile_modify"
+    PROFILE_DELETE = "profile_delete"
+    PROFILE_ROLLBACK = "profile_rollback"
+    PROFILE_EXPORT = "profile_export"
 
 
 class AuditResult(str, Enum):

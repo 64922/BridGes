@@ -76,6 +76,15 @@ class ObservabilityService:
         """Return all audit events for a run."""
         return self._audit.get_events_for_run(run_id)
 
+    def list_audit_events(
+        self,
+        *,
+        account_id: str | None = None,
+        action: AuditAction | None = None,
+    ) -> list[AuditEvent]:
+        """Return audit events filtered by account and/or action."""
+        return self._audit.list_events(account_id=account_id, action=action)
+
     # Run summaries
 
     def summarize_run(

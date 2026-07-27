@@ -2356,6 +2356,501 @@
         }
       }
     },
+    "/profiles/assertions/{assertion_id}": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Assertion",
+        "description": "Return a single promoted profile assertion.",
+        "operationId": "get_assertion_profiles_assertions__assertion_id__get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/freeze": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Freeze Assertion",
+        "description": "Freeze a profile assertion so it is no longer used in new runs.",
+        "operationId": "freeze_assertion_profiles_assertions__assertion_id__freeze_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileFreezeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/modify": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Modify Assertion",
+        "description": "Modify a profile assertion, creating a new version.",
+        "operationId": "modify_assertion_profiles_assertions__assertion_id__modify_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileAssertionModifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/rollback": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Rollback Assertion",
+        "description": "Roll a profile assertion back to a previous version.",
+        "operationId": "rollback_assertion_profiles_assertions__assertion_id__rollback_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileAssertionRollbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/delete": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Delete Assertion",
+        "description": "Delete a profile assertion and propagate the deletion downstream.",
+        "operationId": "delete_assertion_profiles_assertions__assertion_id__delete_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/export": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Export Profile",
+        "description": "Export the current account's profile assertions and governance history.",
+        "operationId": "export_profile_profiles_export_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileExport"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects/{project_id}/work-orders": {
       "post": {
         "tags": [
@@ -5551,7 +6046,8 @@
         "enum": [
           "active",
           "frozen",
-          "stale"
+          "stale",
+          "deleted"
         ],
         "title": "AssertionStatus",
         "description": "Lifecycle status of a promoted profile assertion."
@@ -9068,6 +9564,188 @@
         "title": "ProfileAssertion",
         "description": "Stable, promoted profile entry that may enter a memory slice."
       },
+      "ProfileAssertionHistory": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "Assertion identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "current_version": {
+            "type": "integer",
+            "title": "Current Version",
+            "description": "Current optimistic concurrency version."
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileAssertionVersion"
+            },
+            "type": "array",
+            "title": "Versions",
+            "description": "Historical snapshots, oldest first."
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "owner_account_id",
+          "current_version"
+        ],
+        "title": "ProfileAssertionHistory",
+        "description": "Version history of a single profile assertion."
+      },
+      "ProfileAssertionModifyRequest": {
+        "properties": {
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "New value or rule."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason for the change."
+          }
+        },
+        "type": "object",
+        "required": [
+          "value_or_rule",
+          "reason"
+        ],
+        "title": "ProfileAssertionModifyRequest",
+        "description": "Request to modify an active profile assertion, creating a new version."
+      },
+      "ProfileAssertionRollbackRequest": {
+        "properties": {
+          "to_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "To Version",
+            "description": "Target historical version number."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason for the rollback."
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_version",
+          "reason"
+        ],
+        "title": "ProfileAssertionRollbackRequest",
+        "description": "Request to roll an assertion back to a previous version."
+      },
+      "ProfileAssertionVersion": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "title": "Version Id",
+            "description": "Stable version snapshot identifier."
+          },
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "Assertion this version belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Assertion version number this snapshot records."
+          },
+          "canonical_dimension": {
+            "type": "string",
+            "title": "Canonical Dimension",
+            "description": "Profile dimension."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "title": "Value Or Rule",
+            "description": "Value or rule at this version."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssertionStatus",
+            "description": "Assertion status at this version."
+          },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "default": "preference"
+          },
+          "promoted_from_candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted From Candidate Id"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "SHA-256 hash of value and scenes."
+          },
+          "changed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Changed At",
+            "description": "When this version was created."
+          },
+          "changed_by": {
+            "type": "string",
+            "title": "Changed By",
+            "description": "Actor that created this version."
+          },
+          "change_reason": {
+            "type": "string",
+            "title": "Change Reason",
+            "description": "Human-readable reason for the change."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version_id",
+          "assertion_id",
+          "owner_account_id",
+          "version",
+          "canonical_dimension",
+          "value_or_rule",
+          "status",
+          "content_hash",
+          "changed_at",
+          "changed_by",
+          "change_reason"
+        ],
+        "title": "ProfileAssertionVersion",
+        "description": "Immutable snapshot of a profile assertion at a point in its history.\n\nRollback creates a new active version from a prior snapshot without erasing\nthe audit chain. Each version retains only the hash of the value, not the\nfull provenance body, so deleted content is not kept in the audit trail."
+      },
       "ProfileCandidate": {
         "properties": {
           "candidate_id": {
@@ -9293,6 +9971,21 @@
         "title": "ProfileCandidateCreateRequest",
         "description": "Request to propose a candidate profile from observations."
       },
+      "ProfileDeleteRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason for deletion."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ProfileDeleteRequest",
+        "description": "Request to delete a profile assertion."
+      },
       "ProfileError": {
         "properties": {
           "error": {
@@ -9319,6 +10012,167 @@
         ],
         "title": "ProfileError",
         "description": "Uniform profile error response."
+      },
+      "ProfileExport": {
+        "properties": {
+          "export_id": {
+            "type": "string",
+            "title": "Export Id",
+            "description": "Stable export identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Account the export belongs to."
+          },
+          "exported_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Exported At",
+            "description": "Export generation timestamp."
+          },
+          "assertions": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileExportAssertion"
+            },
+            "type": "array",
+            "title": "Assertions",
+            "description": "Current assertions."
+          },
+          "history": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ProfileAssertionHistory"
+            },
+            "type": "object",
+            "title": "History",
+            "description": "Version history keyed by assertion identifier."
+          },
+          "audit_event_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Audit Event Refs",
+            "description": "References to governance audit events included in this export."
+          }
+        },
+        "type": "object",
+        "required": [
+          "export_id",
+          "owner_account_id",
+          "exported_at"
+        ],
+        "title": "ProfileExport",
+        "description": "Structured, portable export of a user's evidence-backed profile.\n\nExports include assertion metadata and content hashes so the user can verify\nintegrity, but they omit deleted observed content and audit-unfriendly body\ncopies. The export is itself scope-bound to the requesting account."
+      },
+      "ProfileExportAssertion": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "Stable assertion identifier."
+          },
+          "canonical_dimension": {
+            "type": "string",
+            "title": "Canonical Dimension",
+            "description": "Profile dimension."
+          },
+          "status": {
+            "$ref": "#/components/schemas/AssertionStatus",
+            "description": "Current lifecycle status."
+          },
+          "value_or_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Or Rule",
+            "description": "Current value; redacted when the assertion has been deleted."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "Current optimistic concurrency version."
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "SHA-256 hash of current value and scenes."
+          },
+          "promoted_from_candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Promoted From Candidate Id"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the assertion was first promoted."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "When the assertion was last changed."
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "canonical_dimension",
+          "status",
+          "version",
+          "content_hash",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ProfileExportAssertion",
+        "description": "One assertion as it appears in a user export."
+      },
+      "ProfileFreezeRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable reason for freezing."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ProfileFreezeRequest",
+        "description": "Request to freeze a profile assertion."
       },
       "ProfileObservation": {
         "properties": {

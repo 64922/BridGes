@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from science_companion.contracts.profiles import (
     ProfileAssertion,
+    ProfileAssertionVersion,
     ProfileCandidate,
     ProfileObservation,
     ProfileSlice,
@@ -27,6 +28,7 @@ class InMemoryProfileRepository(ProfileRepository):
         self._candidates: dict[str, ProfileCandidate] = {}
         self._assertions: dict[str, ProfileAssertion] = {}
         self._slices: dict[str, ProfileSlice] = {}
+        self._assertion_versions: dict[str, list[ProfileAssertionVersion]] = {}
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -110,3 +112,34 @@ class InMemoryProfileRepository(ProfileRepository):
             if slice_.slice_id == slice_id:
                 return slice_
         raise ProfileError("对象不存在或没有访问权限。")
+
+    def get_assertion(self, owner_id: str, assertion_id: str) -> ProfileAssertion:
+        assertion = self._assertions.get(self._key(owner_id, assertion_id))
+        if assertion is None:
+            raise ProfileError("对象不存在或没有访问权限。")
+        return assertion
+
+    def save_assertion_version(
+        self, version: ProfileAssertionVersion
+    ) -> ProfileAssertionVersion:
+        key = self._key(version.owner_account_id, version.assertion_id)
+        self._assertion_versions.setdefault(key, []).append(version)
+        return version
+
+    def list_assertion_versions(
+        self, owner_id: str, assertion_id: str
+    ) -> list[ProfileAssertionVersion]:
+        versions = self._assertion_versions.get(self._key(owner_id, assertion_id), [])
+        return list(versions)
+
+    def list_slices_containing_assertion(
+        self, owner_id: str, assertion_id: str
+    ) -> list[ProfileSlice]:
+        slices = [
+            slice_
+            for slice_ in self._slices.values()
+            if slice_.owner_account_id == owner_id
+            and any(item.assertion_id == assertion_id for item in slice_.included_items)
+        ]
+        slices.sort(key=lambda s: s.compiled_at, reverse=True)
+        return slices

@@ -7,6 +7,7 @@ import secrets
 from datetime import UTC, datetime, timedelta
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
+from science_companion.contracts.observability import AuditAction, AuditResult
 from science_companion.contracts.profiles import (
     AssertionStatus,
     CandidateDecision,
@@ -16,7 +17,11 @@ from science_companion.contracts.profiles import (
     HumanDecision,
     ObservationStatus,
     ProfileAssertion,
+    ProfileAssertionHistory,
+    ProfileAssertionVersion,
     ProfileCandidate,
+    ProfileExport,
+    ProfileExportAssertion,
     ProfileObservation,
     ProfileObservationCreateRequest,
     ProfileSensitivityClass,
@@ -28,6 +33,9 @@ from science_companion.contracts.profiles import (
     SliceStatus,
     UnusedSliceItem,
 )
+from science_companion.contracts.projects import ObjectDomain, ObjectRef
+from science_companion.invalidation import InvalidationService
+from science_companion.observability.service import ObservabilityService
 from science_companion.profiles.adapters import ProfileError
 from science_companion.profiles.ports import ProfileRepository
 from science_companion.scope import ScopeEnforcer
@@ -72,9 +80,13 @@ class ProfileService:
         self,
         repository: ProfileRepository,
         scope_enforcer: ScopeEnforcer | None = None,
+        invalidation_service: InvalidationService | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self._repository = repository
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
+        self._invalidation_service = invalidation_service
+        self._observability_service = observability_service
 
     def _subject(self, account_id: str) -> SubjectContext:
         return SubjectContext(
@@ -196,6 +208,10 @@ class ProfileService:
         """List candidates for the account."""
         return self._repository.list_candidates(account_id)
 
+    def get_assertion(self, account_id: str, assertion_id: str) -> ProfileAssertion:
+        """Return a promoted assertion if the account owns it."""
+        return self._repository.get_assertion(account_id, assertion_id)
+
     def _can_promote(self, candidate: ProfileCandidate) -> bool:
         """Deterministic promotion gate before an accepted candidate becomes active.
 
@@ -288,6 +304,88 @@ class ProfileService:
         """List promoted profile assertions for the account."""
         return self._repository.list_assertions(account_id)
 
+    def _hash_assertion_value(self, value_or_rule: str, applicable_scenes: list[str]) -> str:
+        payload = "|".join([value_or_rule, *sorted(applicable_scenes)])
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    def _assertion_object_ref(self, assertion: ProfileAssertion) -> ObjectRef:
+        return ObjectRef(
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=assertion.owner_account_id,
+            object_id=assertion.assertion_id,
+            version=assertion.version,
+        )
+
+    def _snapshot_assertion(
+        self,
+        assertion: ProfileAssertion,
+        reason: str,
+        changed_by: str,
+    ) -> ProfileAssertionVersion:
+        return ProfileAssertionVersion(
+            version_id=_new_id(),
+            assertion_id=assertion.assertion_id,
+            owner_account_id=assertion.owner_account_id,
+            version=assertion.version,
+            canonical_dimension=assertion.canonical_dimension,
+            value_or_rule=assertion.value_or_rule,
+            applicable_scenes=list(assertion.applicable_scenes),
+            status=assertion.status,
+            sensitivity_class=assertion.sensitivity_class,
+            promoted_from_candidate_id=assertion.promoted_from_candidate_id,
+            content_hash=self._hash_assertion_value(
+                assertion.value_or_rule, assertion.applicable_scenes
+            ),
+            changed_at=_now(),
+            changed_by=changed_by,
+            change_reason=reason,
+        )
+
+    def _audit(
+        self,
+        account_id: str,
+        action: AuditAction,
+        result: AuditResult,
+        object_refs: list[str],
+        reason: str,
+        details: dict[str, object] | None = None,
+    ) -> str | None:
+        if self._observability_service is None:
+            return None
+        event = self._observability_service.log_audit(
+            actor_account_id=account_id,
+            action=action,
+            result=result,
+            object_refs=object_refs,
+            reason=reason,
+            details=details,
+        )
+        return event.event_id
+
+    def find_slices_for_assertion(
+        self, account_id: str, assertion_id: str
+    ) -> list[ProfileSlice]:
+        """Return active slices that include the assertion.
+
+        Public so the invalidation service's profile impact resolver can build
+        scope-correct downstream entries without accessing the repository directly.
+        """
+        return self._repository.list_slices_containing_assertion(account_id, assertion_id)
+
+    def _invalidate_slices_for_assertion(
+        self, account_id: str, assertion_id: str, reason: str
+    ) -> list[str]:
+        invalidated: list[str] = []
+        for slice_ in self.find_slices_for_assertion(account_id, assertion_id):
+            if slice_.status != SliceStatus.ACTIVE:
+                continue
+            slice_.status = SliceStatus.REVOKED
+            slice_.invalidated_at = _now()
+            slice_.invalidation_reason = reason
+            self._repository.save_slice(slice_)
+            invalidated.append(slice_.slice_id)
+        return invalidated
+
     def _is_assertion_expired(self, assertion: ProfileAssertion, now: datetime) -> bool:
         return assertion.expires_at is not None and assertion.expires_at <= now
 
@@ -301,6 +399,283 @@ class ProfileService:
         if allowed is None or not allowed:
             return sensitivity != ProfileSensitivityClass.PROHIBITED
         return sensitivity in allowed
+
+    def freeze_assertion(
+        self, account_id: str, assertion_id: str, reason: str
+    ) -> ProfileAssertion:
+        """Freeze a profile assertion so it is no longer recalled for new runs.
+
+        Freezing creates a version snapshot and emits an audit event. Existing
+        compiled slices that contain the assertion are revoked so models cannot
+        continue using it.
+        """
+        assertion = self._repository.get_assertion(account_id, assertion_id)
+        if assertion.status != AssertionStatus.ACTIVE:
+            raise ProfileError("只能冻结处于活跃状态的画像断言。")
+
+        previous_version = assertion.version
+        self._repository.save_assertion_version(
+            self._snapshot_assertion(assertion, reason, account_id)
+        )
+        assertion.status = AssertionStatus.FROZEN
+        assertion.version = previous_version + 1
+        assertion.updated_at = _now()
+        self._repository.save_assertion(assertion)
+
+        invalidated_slices = self._invalidate_slices_for_assertion(
+            account_id, assertion_id, f"assertion frozen: {reason}"
+        )
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_FREEZE,
+            result=AuditResult.SUCCESS,
+            object_refs=[assertion_id],
+            reason=reason,
+            details={
+                "previous_version": previous_version,
+                "content_hash": self._hash_assertion_value(
+                    assertion.value_or_rule, assertion.applicable_scenes
+                ),
+                "invalidated_slice_ids": invalidated_slices,
+            },
+        )
+        return assertion
+
+    def modify_assertion(
+        self,
+        account_id: str,
+        assertion_id: str,
+        value_or_rule: str,
+        applicable_scenes: list[str],
+        reason: str,
+    ) -> ProfileAssertion:
+        """Modify an active assertion, creating a new version.
+
+        The previous value is preserved in the version history so the user can
+        later roll back. Existing slices using the old value are revoked.
+        """
+        assertion = self._repository.get_assertion(account_id, assertion_id)
+        if assertion.status != AssertionStatus.ACTIVE:
+            raise ProfileError("只能修改处于活跃状态的画像断言。")
+
+        previous_version = assertion.version
+        self._repository.save_assertion_version(
+            self._snapshot_assertion(assertion, reason, account_id)
+        )
+        assertion.value_or_rule = value_or_rule
+        assertion.applicable_scenes = list(applicable_scenes)
+        assertion.version = previous_version + 1
+        assertion.updated_at = _now()
+        self._repository.save_assertion(assertion)
+
+        invalidated_slices = self._invalidate_slices_for_assertion(
+            account_id, assertion_id, f"assertion modified: {reason}"
+        )
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_MODIFY,
+            result=AuditResult.SUCCESS,
+            object_refs=[assertion_id],
+            reason=reason,
+            details={
+                "previous_version": previous_version,
+                "new_content_hash": self._hash_assertion_value(
+                    value_or_rule, applicable_scenes
+                ),
+                "invalidated_slice_ids": invalidated_slices,
+            },
+        )
+        return assertion
+
+    def delete_assertion(
+        self, account_id: str, assertion_id: str, reason: str
+    ) -> ProfileAssertion:
+        """Delete a profile assertion by writing a tombstone first.
+
+        Deletion records an immutable tombstone through the invalidation service,
+        marks the assertion deleted, revokes any slices that included it, and
+        produces an invalidation plan covering cache, index and derived impacts.
+        """
+        assertion = self._repository.get_assertion(account_id, assertion_id)
+        if assertion.status == AssertionStatus.DELETED:
+            raise ProfileError("画像断言已被删除。")
+
+        previous_version = assertion.version
+        self._repository.save_assertion_version(
+            self._snapshot_assertion(assertion, reason, account_id)
+        )
+        assertion.status = AssertionStatus.DELETED
+        assertion.version = previous_version + 1
+        assertion.updated_at = _now()
+        self._repository.save_assertion(assertion)
+
+        if self._invalidation_service is None:
+            raise ProfileError("删除服务未配置。")
+
+        object_ref = self._assertion_object_ref(assertion)
+        event, tombstone = self._invalidation_service.record_tombstone(
+            self._subject(account_id), object_ref, reason
+        )
+        plan = self._invalidation_service.plan_invalidation(event.event_id)
+
+        invalidated_slices = self._invalidate_slices_for_assertion(
+            account_id, assertion_id, f"assertion deleted: {reason}"
+        )
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_DELETE,
+            result=AuditResult.SUCCESS,
+            object_refs=[assertion_id],
+            reason=reason,
+            details={
+                "previous_version": previous_version,
+                "tombstone_id": tombstone.tombstone_id,
+                "event_id": event.event_id,
+                "plan_id": plan.plan_id,
+                "content_hash": self._hash_assertion_value(
+                    assertion.value_or_rule, assertion.applicable_scenes
+                ),
+                "invalidated_slice_ids": invalidated_slices,
+            },
+        )
+        return assertion
+
+    def rollback_assertion(
+        self,
+        account_id: str,
+        assertion_id: str,
+        to_version: int,
+        reason: str,
+    ) -> ProfileAssertion:
+        """Roll an assertion back to a previous version snapshot.
+
+        Rollback creates a new active version from the chosen historical snapshot
+        without erasing the audit chain. Slices that used the superseded value are
+        revoked.
+        """
+        assertion = self._repository.get_assertion(account_id, assertion_id)
+        if assertion.status == AssertionStatus.DELETED:
+            raise ProfileError("已删除的画像断言不能回滚。")
+        if assertion.status == AssertionStatus.FROZEN:
+            raise ProfileError("已冻结的画像断言不能回滚。")
+
+        history = self._repository.list_assertion_versions(account_id, assertion_id)
+        target = next((v for v in history if v.version == to_version), None)
+        if target is None:
+            raise ProfileError("目标版本不存在。")
+
+        previous_version = assertion.version
+        self._repository.save_assertion_version(
+            self._snapshot_assertion(assertion, reason, account_id)
+        )
+        assertion.value_or_rule = target.value_or_rule
+        assertion.applicable_scenes = list(target.applicable_scenes)
+        assertion.status = AssertionStatus.ACTIVE
+        assertion.version = previous_version + 1
+        assertion.updated_at = _now()
+        self._repository.save_assertion(assertion)
+
+        invalidated_slices = self._invalidate_slices_for_assertion(
+            account_id, assertion_id, f"assertion rolled back to version {to_version}: {reason}"
+        )
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_ROLLBACK,
+            result=AuditResult.SUCCESS,
+            object_refs=[assertion_id],
+            reason=reason,
+            details={
+                "previous_version": previous_version,
+                "rolled_back_to_version": to_version,
+                "new_content_hash": self._hash_assertion_value(
+                    assertion.value_or_rule, assertion.applicable_scenes
+                ),
+                "invalidated_slice_ids": invalidated_slices,
+            },
+        )
+        return assertion
+
+    def export_profile_data(self, account_id: str) -> ProfileExport:
+        """Export a structured, account-scoped view of the user's profile.
+
+        The export includes active and frozen assertions, version history and
+        governance audit events. Deleted assertions are listed with metadata but
+        their value is redacted so the export does not retain deleted body.
+        """
+        assertions = self._repository.list_assertions(account_id)
+        export_assertions: list[ProfileExportAssertion] = []
+        history: dict[str, ProfileAssertionHistory] = {}
+
+        for assertion in assertions:
+            versions = self._repository.list_assertion_versions(
+                account_id, assertion.assertion_id
+            )
+            history[assertion.assertion_id] = ProfileAssertionHistory(
+                assertion_id=assertion.assertion_id,
+                owner_account_id=assertion.owner_account_id,
+                current_version=assertion.version,
+                versions=versions,
+            )
+            export_assertions.append(
+                ProfileExportAssertion(
+                    assertion_id=assertion.assertion_id,
+                    canonical_dimension=assertion.canonical_dimension,
+                    status=assertion.status,
+                    value_or_rule=(
+                        None
+                        if assertion.status == AssertionStatus.DELETED
+                        else assertion.value_or_rule
+                    ),
+                    applicable_scenes=list(assertion.applicable_scenes),
+                    version=assertion.version,
+                    content_hash=self._hash_assertion_value(
+                        assertion.value_or_rule, assertion.applicable_scenes
+                    ),
+                    promoted_from_candidate_id=assertion.promoted_from_candidate_id,
+                    created_at=assertion.created_at,
+                    updated_at=assertion.updated_at,
+                    deleted_at=(
+                        assertion.updated_at
+                        if assertion.status == AssertionStatus.DELETED
+                        else None
+                    ),
+                )
+            )
+
+        audit_event_refs: list[str] = []
+        if self._observability_service is not None:
+            for action in {
+                AuditAction.PROFILE_FREEZE,
+                AuditAction.PROFILE_MODIFY,
+                AuditAction.PROFILE_DELETE,
+                AuditAction.PROFILE_ROLLBACK,
+                AuditAction.PROFILE_EXPORT,
+            }:
+                events = self._observability_service.list_audit_events(
+                    account_id=account_id, action=action
+                )
+                audit_event_refs.extend(e.event_id for e in events)
+
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_EXPORT,
+            result=AuditResult.SUCCESS,
+            object_refs=[],
+            reason="User requested profile export.",
+            details={
+                "assertion_count": len(export_assertions),
+                "history_count": len(history),
+            },
+        )
+
+        return ProfileExport(
+            export_id=_new_id(),
+            owner_account_id=account_id,
+            exported_at=_now(),
+            assertions=export_assertions,
+            history=history,
+            audit_event_refs=audit_event_refs,
+        )
 
     def compile_memory_slice(
         self,
