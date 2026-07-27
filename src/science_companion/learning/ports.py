@@ -15,6 +15,8 @@ from science_companion.contracts.learning import (
     LearningMission,
     LearningPath,
     LearningRecord,
+    ReviewSchedule,
+    ReviewTask,
     ShortLesson,
     TeachingPlan,
 )
@@ -182,3 +184,27 @@ class LearningRepository(ABC):
         self, owner_id: str, mission_id: str
     ) -> LearningPath | None:
         """Return the latest learning path for a mission, if any."""
+
+    @abstractmethod
+    def save_review_task(self, task: ReviewTask) -> ReviewTask:
+        """Persist a review task."""
+
+    @abstractmethod
+    def get_review_task(self, owner_id: str, task_id: str) -> ReviewTask:
+        """Return a review task or raise a domain error."""
+
+    @abstractmethod
+    def list_review_tasks(
+        self, owner_id: str, mission_id: str
+    ) -> list[ReviewTask]:
+        """List review tasks for a mission, most recent first."""
+
+    @abstractmethod
+    def save_review_schedule(self, schedule: ReviewSchedule) -> ReviewSchedule:
+        """Persist a review schedule."""
+
+    @abstractmethod
+    def get_review_schedule_for_mission(
+        self, owner_id: str, mission_id: str
+    ) -> ReviewSchedule | None:
+        """Return the latest review schedule for a mission, if any."""

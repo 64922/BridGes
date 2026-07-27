@@ -1499,7 +1499,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Lessons
+         * @description List short lessons for a teaching plan.
+         */
+        get: operations["list_lessons_learning_plans__plan_id__lessons_get"];
         put?: never;
         /**
          * Generate Short Lesson
@@ -1546,6 +1550,258 @@ export interface paths {
          * @description Submit an attempt for a retrieval exercise.
          */
         post: operations["submit_exercise_attempt_learning_lessons__lesson_id__exercises__exercise_id__attempts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/learning-records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Learning Records
+         * @description List learning records for a mission.
+         */
+        get: operations["list_learning_records_learning_missions__mission_id__learning_records_get"];
+        put?: never;
+        /**
+         * Create Learning Record
+         * @description Record a qualified learning evidence item.
+         */
+        post: operations["create_learning_record_learning_missions__mission_id__learning_records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/knowledge-state-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Knowledge State Proposals
+         * @description List knowledge-state proposals for a mission.
+         */
+        get: operations["list_knowledge_state_proposals_learning_missions__mission_id__knowledge_state_proposals_get"];
+        put?: never;
+        /**
+         * Propose Knowledge State Update
+         * @description Propose a knowledge-state update from learning records.
+         */
+        post: operations["propose_knowledge_state_update_learning_missions__mission_id__knowledge_state_proposals_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/knowledge-state-proposals/{proposal_id}/decide": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Decide Knowledge State Proposal
+         * @description Accept, reject or modify a knowledge-state proposal.
+         */
+        post: operations["decide_knowledge_state_proposal_learning_knowledge_state_proposals__proposal_id__decide_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/learning-path": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Learning Path
+         * @description Get the current learning path for a mission.
+         */
+        get: operations["get_learning_path_learning_missions__mission_id__learning_path_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/review-schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review Schedule
+         * @description Get the latest review schedule for a mission.
+         */
+        get: operations["get_review_schedule_learning_missions__mission_id__review_schedule_get"];
+        put?: never;
+        /**
+         * Schedule Reviews
+         * @description Compute and persist review tasks for a mission.
+         */
+        post: operations["schedule_reviews_learning_missions__mission_id__review_schedule_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/review-tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Pending Review Tasks
+         * @description List pending review tasks for a mission, interleaved by concept.
+         */
+        get: operations["list_pending_review_tasks_learning_missions__mission_id__review_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/review-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Review Task
+         * @description Get a review task by ID.
+         */
+        get: operations["get_review_task_learning_review_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/review-tasks/{task_id}/postpone": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Postpone Review Task
+         * @description Postpone a review task to a new due date.
+         */
+        post: operations["postpone_review_task_learning_review_tasks__task_id__postpone_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/review-tasks/{task_id}/adjust": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adjust Review Task
+         * @description Adjust a review task's due date or interval.
+         */
+        post: operations["adjust_review_task_learning_review_tasks__task_id__adjust_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/review-tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Review Task
+         * @description Cancel a review task.
+         */
+        post: operations["cancel_review_task_learning_review_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/review-tasks/{task_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Review Task
+         * @description Complete a review task and record the result as new learning evidence.
+         */
+        post: operations["complete_review_task_learning_review_tasks__task_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/review-tasks/{task_id}/work-order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Review Task As Work Order
+         * @description Materialize a review task as a WorkOrder on the task stage.
+         */
+        post: operations["submit_review_task_as_work_order_learning_review_tasks__task_id__work_order_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2567,6 +2823,23 @@ export interface components {
             reason: string;
             /** Detail */
             detail?: string | null;
+        };
+        /**
+         * DecideKnowledgeStateProposalRequest
+         * @description Request to accept, reject or modify a knowledge-state proposal.
+         */
+        DecideKnowledgeStateProposalRequest: {
+            /** @description Decision type. */
+            decision: components["schemas"]["HumanDecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+            /** @description Modified status when decision is 'modify'. */
+            modified_status?: components["schemas"]["KnowledgeStateStatus"] | null;
+            /** @description Modified confidence when decision is 'modify'. */
+            modified_confidence?: components["schemas"]["KnowledgeConfidence"] | null;
         };
         /**
          * DecisionType
@@ -3852,49 +4125,11 @@ export interface components {
          */
         HealthStatus: "pass" | "fail" | "unknown";
         /**
-         * HumanDecision
-         * @description Named human decision on a candidate profile.
+         * HumanDecisionType
+         * @description Named human decision on a proposed knowledge-state or path change.
+         * @enum {string}
          */
-        HumanDecision: {
-            /**
-             * Decision Id
-             * @description Stable decision identifier.
-             */
-            decision_id: string;
-            /**
-             * Candidate Id
-             * @description Candidate the decision applies to.
-             */
-            candidate_id: string;
-            /**
-             * Account Id
-             * @description Account that made the decision.
-             */
-            account_id: string;
-            /** @description Decision type. */
-            decision: components["schemas"]["DecisionType"];
-            /**
-             * Reason
-             * @description Human-readable rationale.
-             */
-            reason: string;
-            /**
-             * Modified Value Or Rule
-             * @description Modified value when decision is 'modify'.
-             */
-            modified_value_or_rule?: string | null;
-            /**
-             * Modified Applicable Scenes
-             * @description Modified applicable scenes when decision is 'modify'.
-             */
-            modified_applicable_scenes?: string[] | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When the decision was recorded.
-             */
-            created_at: string;
-        };
+        HumanDecisionType: "accept" | "reject" | "modify";
         /**
          * HumanTodoItem
          * @description A named human decision attached to a run.
@@ -4123,6 +4358,95 @@ export interface components {
             reason: string;
         };
         /**
+         * KnowledgeStateProposal
+         * @description A proposed update to a knowledge state derived from learning records.
+         *
+         *     The proposal is only a candidate until the user accepts, rejects or modifies
+         *     it. Rejected proposals remain auditable and cannot be silently re-applied by
+         *     the model.
+         */
+        KnowledgeStateProposal: {
+            /**
+             * Proposal Id
+             * @description Stable proposal identifier.
+             */
+            proposal_id: string;
+            /**
+             * Mission Id
+             * @description Mission this proposal belongs to.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Concept Id
+             * @description Concept being updated.
+             */
+            concept_id: string;
+            /** @description Proposed state. */
+            proposed_status: components["schemas"]["KnowledgeStateStatus"];
+            /**
+             * @description Proposed confidence.
+             * @default low
+             */
+            proposed_confidence: components["schemas"]["KnowledgeConfidence"];
+            /**
+             * Supporting Record Ids
+             * @description Records that support the proposal.
+             */
+            supporting_record_ids?: string[];
+            /**
+             * Refuting Record Ids
+             * @description Records that refute or limit it.
+             */
+            refuting_record_ids?: string[];
+            /**
+             * Uncertainty Reason
+             * @description Why confidence is not higher.
+             */
+            uncertainty_reason?: string | null;
+            /**
+             * Scope
+             * @description Scope within which the state applies.
+             */
+            scope: string;
+            /**
+             * Next Validation Task
+             * @description Next task to validate or refine the state.
+             */
+            next_validation_task: string;
+            /** @default pending */
+            status: components["schemas"]["KnowledgeStateProposalStatus"];
+            /** @description Recorded human decision, if any. */
+            decision?: components["schemas"]["science_companion__contracts__learning__HumanDecision"] | null;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Decided At
+             * @description When the proposal was decided.
+             */
+            decided_at?: string | null;
+        };
+        /**
+         * KnowledgeStateProposalStatus
+         * @description Lifecycle status of a knowledge-state update proposal.
+         * @enum {string}
+         */
+        KnowledgeStateProposalStatus: "pending" | "accepted" | "rejected" | "superseded";
+        /**
          * KnowledgeStateStatus
          * @description Current judgement of knowledge for a single concept.
          * @enum {string}
@@ -4251,6 +4575,228 @@ export interface components {
              */
             project_id?: string | null;
         };
+        /**
+         * LearningPath
+         * @description A per-user learning route driven by confirmed knowledge states.
+         *
+         *     The path is recomputed when knowledge states change. It is anchored to the
+         *     learning mission and each node traces back to learning records.
+         */
+        LearningPath: {
+            /**
+             * Path Id
+             * @description Stable path identifier.
+             */
+            path_id: string;
+            /**
+             * Mission Id
+             * @description Mission the path serves.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Title
+             * @description Path title.
+             */
+            title: string;
+            /** Nodes */
+            nodes?: components["schemas"]["LearningPathNode"][];
+            /**
+             * Current Node Id
+             * @description Next recommended node.
+             */
+            current_node_id?: string | null;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * LearningPathNode
+         * @description A single step on a learning path bound to evidence.
+         */
+        LearningPathNode: {
+            /**
+             * Node Id
+             * @description Stable node identifier.
+             */
+            node_id: string;
+            /**
+             * Concept Id
+             * @description Concept addressed by this node.
+             */
+            concept_id: string;
+            /**
+             * Title
+             * @description Short node title.
+             */
+            title: string;
+            /**
+             * Description
+             * @description What the learner should do.
+             */
+            description: string;
+            /** @default pending */
+            status: components["schemas"]["LearningPathNodeStatus"];
+            /**
+             * Evidence Record Ids
+             * @description Learning records that justify this node's placement.
+             */
+            evidence_record_ids?: string[];
+            /**
+             * Depends On Node Ids
+             * @description Nodes that should be addressed first.
+             */
+            depends_on_node_ids?: string[];
+        };
+        /**
+         * LearningPathNodeStatus
+         * @description Lifecycle status of a node on a learning path.
+         * @enum {string}
+         */
+        LearningPathNodeStatus: "pending" | "completed" | "skipped";
+        /**
+         * LearningRecord
+         * @description Evidence-backed record of a learning event that can update knowledge state.
+         *
+         *     A learning record references the concrete response, misconception correction
+         *     or prerequisite evidence that justifies a knowledge-state change. It is
+         *     versioned, scoped to a mission and never derived from browsing or completion.
+         */
+        LearningRecord: {
+            /**
+             * Record Id
+             * @description Stable record identifier.
+             */
+            record_id: string;
+            /**
+             * Mission Id
+             * @description Mission this record belongs to.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Concept Id
+             * @description Concept the record evidences.
+             */
+            concept_id: string;
+            /** @description Kind of learning evidence. */
+            record_type: components["schemas"]["LearningRecordType"];
+            /** @description Origin of the evidence. */
+            source_type: components["schemas"]["LearningRecordSource"];
+            /**
+             * Source Id
+             * @description Id of the source object (attempt id, answer id, correction id).
+             */
+            source_id: string;
+            /**
+             * Response Text
+             * @description User response or product when applicable.
+             */
+            response_text?: string | null;
+            /** @description Evaluated result when applicable. */
+            evaluated_state?: components["schemas"]["AnswerEvaluatedState"] | null;
+            /**
+             * Misconception Corrected
+             * @description Misconception that was corrected, if any.
+             */
+            misconception_corrected?: string | null;
+            /**
+             * Evidence Refs
+             * @description Scientific evidence grounding the record.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Record Reason
+             * @description Why this record counts as qualified learning evidence.
+             */
+            record_reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the record was created.
+             */
+            created_at: string;
+        };
+        /**
+         * LearningRecordCreateRequest
+         * @description Request to create a qualified learning record.
+         */
+        LearningRecordCreateRequest: {
+            /**
+             * Concept Id
+             * @description Concept the record evidences.
+             */
+            concept_id: string;
+            /** @description Kind of learning evidence. */
+            record_type: components["schemas"]["LearningRecordType"];
+            /** @description Origin of the evidence. */
+            source_type: components["schemas"]["LearningRecordSource"];
+            /**
+             * Source Id
+             * @description Id of the source object.
+             */
+            source_id: string;
+            /**
+             * Response Text
+             * @description User response.
+             */
+            response_text?: string | null;
+            /** @description Evaluated result. */
+            evaluated_state?: components["schemas"]["AnswerEvaluatedState"] | null;
+            /**
+             * Misconception Corrected
+             * @description Corrected misconception.
+             */
+            misconception_corrected?: string | null;
+            /**
+             * Evidence Refs
+             * @description Evidence grounding the record.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Record Reason
+             * @description Why this is qualified evidence.
+             */
+            record_reason: string;
+        };
+        /**
+         * LearningRecordSource
+         * @description Origin of a learning record.
+         * @enum {string}
+         */
+        LearningRecordSource: "diagnostic_answer" | "exercise_attempt" | "user_correction";
+        /**
+         * LearningRecordType
+         * @description Kind of observable learning evidence that may update a knowledge state.
+         *
+         *     Browsing and completion-only activities are deliberately excluded; they are
+         *     stored as ``LearningActivity`` and never promoted to learning records.
+         * @enum {string}
+         */
+        LearningRecordType: "exercise_attempt" | "misconception_correction" | "prerequisite_evidence" | "delayed_retrieval" | "transfer_task";
         /**
          * LessonEvidenceBundle
          * @description Evidence and fact-lock input carried from a claim graph (T016) into a lesson.
@@ -4849,7 +5395,7 @@ export interface components {
              */
             expires_at?: string | null;
             /** @description Recorded human decision, if any. */
-            human_decision?: components["schemas"]["HumanDecision"] | null;
+            human_decision?: components["schemas"]["science_companion__contracts__profiles__HumanDecision"] | null;
         };
         /**
          * ProfileCandidateCreateRequest
@@ -5544,6 +6090,22 @@ export interface components {
             description?: string | null;
         };
         /**
+         * ProposeKnowledgeStateUpdateRequest
+         * @description Request to propose a knowledge-state update from learning records.
+         */
+        ProposeKnowledgeStateUpdateRequest: {
+            /**
+             * Concept Id
+             * @description Concept to update.
+             */
+            concept_id: string;
+            /**
+             * Record Ids
+             * @description Records to base the proposal on; auto-select if omitted.
+             */
+            record_ids?: string[] | null;
+        };
+        /**
          * PublishGateCheck
          * @description Named checks performed by the publish gate.
          * @enum {string}
@@ -5770,6 +6332,224 @@ export interface components {
          * @enum {string}
          */
         RetrievalExerciseType: "recall" | "explanation" | "computation" | "comparison" | "application";
+        /**
+         * ReviewSchedule
+         * @description Collection of pending review tasks for a learning mission.
+         */
+        ReviewSchedule: {
+            /**
+             * Schedule Id
+             * @description Stable schedule identifier.
+             */
+            schedule_id: string;
+            /**
+             * Mission Id
+             * @description Mission the schedule serves.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Task Ids
+             * @description Tasks in this schedule.
+             */
+            task_ids?: string[];
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * ReviewTask
+         * @description A single spaced-repetition or interleaved-practice task.
+         *
+         *     The task is justified by learning records, a knowledge state, and the
+         *     learning mission. It can be postponed, adjusted, cancelled, or completed.
+         *     Completing a task creates a new learning record rather than overwriting the
+         *     old knowledge state.
+         */
+        ReviewTask: {
+            /**
+             * Task Id
+             * @description Stable task identifier.
+             */
+            task_id: string;
+            /**
+             * Mission Id
+             * @description Mission this task belongs to.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Concept Id
+             * @description Concept being reviewed.
+             */
+            concept_id: string;
+            /** @description Spaced repetition or interleaved practice. */
+            task_type: components["schemas"]["ReviewTaskType"];
+            /** @default scheduled */
+            status: components["schemas"]["ReviewTaskStatus"];
+            /**
+             * Due At
+             * Format: date-time
+             * @description When the task is due.
+             */
+            due_at: string;
+            /**
+             * Reason
+             * @description Human-readable justification referencing records, state, forgetting evidence and the learning mission.
+             */
+            reason: string;
+            /**
+             * Source Record Ids
+             * @description Learning records that justify this scheduling decision.
+             */
+            source_record_ids?: string[];
+            /**
+             * Knowledge State Id
+             * @description Knowledge-state snapshot at scheduling time.
+             */
+            knowledge_state_id?: string | null;
+            /**
+             * Interval Days
+             * @description Scheduled interval in days.
+             * @default 1
+             */
+            interval_days: number;
+            /**
+             * Postponed To
+             * @description New due date when the task is postponed.
+             */
+            postponed_to?: string | null;
+            /**
+             * Cancellation Reason
+             * @description Why the task was cancelled.
+             */
+            cancellation_reason?: string | null;
+            /**
+             * Run Id
+             * @description Optional workflow run id if materialized as a WorkOrder.
+             */
+            run_id?: string | null;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * ReviewTaskAdjustRequest
+         * @description Request to adjust the due date or interval of a review task.
+         */
+        ReviewTaskAdjustRequest: {
+            /**
+             * New Due At
+             * @description New due date if any.
+             */
+            new_due_at?: string | null;
+            /**
+             * New Interval Days
+             * @description New interval in days if any.
+             */
+            new_interval_days?: number | null;
+            /**
+             * Reason
+             * @description Why the task is being adjusted.
+             */
+            reason: string;
+        };
+        /**
+         * ReviewTaskCancelRequest
+         * @description Request to cancel a review task.
+         */
+        ReviewTaskCancelRequest: {
+            /**
+             * Reason
+             * @description Why the task is being cancelled.
+             */
+            reason: string;
+        };
+        /**
+         * ReviewTaskCompleteRequest
+         * @description Request to complete a review task and record the result as evidence.
+         */
+        ReviewTaskCompleteRequest: {
+            /**
+             * Response Text
+             * @description User's response during the review.
+             */
+            response_text: string;
+            /** @description Evaluated result. */
+            evaluated_state: components["schemas"]["AnswerEvaluatedState"];
+            /**
+             * Record Reason
+             * @description Why this result counts as evidence.
+             */
+            record_reason: string;
+        };
+        /**
+         * ReviewTaskPostponeRequest
+         * @description Request to postpone a review task to a new due date.
+         */
+        ReviewTaskPostponeRequest: {
+            /**
+             * New Due At
+             * Format: date-time
+             * @description New due date.
+             */
+            new_due_at: string;
+            /**
+             * Reason
+             * @description Why the task is being postponed.
+             */
+            reason: string;
+        };
+        /**
+         * ReviewTaskStatus
+         * @description Lifecycle status of a scheduled review task.
+         * @enum {string}
+         */
+        ReviewTaskStatus: "scheduled" | "postponed" | "completed" | "cancelled";
+        /**
+         * ReviewTaskType
+         * @description Kind of review task: spaced repetition or interleaved practice.
+         * @enum {string}
+         */
+        ReviewTaskType: "spaced_repetition" | "interleaved_practice";
         /**
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.
@@ -7180,6 +7960,89 @@ export interface components {
              * @description How the todo is resolved.
              */
             resolution: string;
+        };
+        /**
+         * HumanDecision
+         * @description A named, auditable human decision on a knowledge-state proposal.
+         */
+        science_companion__contracts__learning__HumanDecision: {
+            /**
+             * Decision Id
+             * @description Stable decision identifier.
+             */
+            decision_id: string;
+            /**
+             * Target Id
+             * @description Proposal the decision applies to.
+             */
+            target_id: string;
+            /**
+             * Account Id
+             * @description Account that made the decision.
+             */
+            account_id: string;
+            /** @description Decision type. */
+            decision: components["schemas"]["HumanDecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+            /**
+             * Modified Value
+             * @description Modified value when decision is 'modify'.
+             */
+            modified_value?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the decision was recorded.
+             */
+            created_at: string;
+        };
+        /**
+         * HumanDecision
+         * @description Named human decision on a candidate profile.
+         */
+        science_companion__contracts__profiles__HumanDecision: {
+            /**
+             * Decision Id
+             * @description Stable decision identifier.
+             */
+            decision_id: string;
+            /**
+             * Candidate Id
+             * @description Candidate the decision applies to.
+             */
+            candidate_id: string;
+            /**
+             * Account Id
+             * @description Account that made the decision.
+             */
+            account_id: string;
+            /** @description Decision type. */
+            decision: components["schemas"]["DecisionType"];
+            /**
+             * Reason
+             * @description Human-readable rationale.
+             */
+            reason: string;
+            /**
+             * Modified Value Or Rule
+             * @description Modified value when decision is 'modify'.
+             */
+            modified_value_or_rule?: string | null;
+            /**
+             * Modified Applicable Scenes
+             * @description Modified applicable scenes when decision is 'modify'.
+             */
+            modified_applicable_scenes?: string[] | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the decision was recorded.
+             */
+            created_at: string;
         };
     };
     responses: never;
@@ -11281,6 +12144,48 @@ export interface operations {
             };
         };
     };
+    list_lessons_learning_plans__plan_id__lessons_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLesson"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     generate_short_lesson_learning_plans__plan_id__lessons_post: {
         parameters: {
             query?: never;
@@ -11403,6 +12308,723 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExerciseAttempt"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_learning_records_learning_missions__mission_id__learning_records_get: {
+        parameters: {
+            query?: {
+                concept_id?: string | null;
+            };
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningRecord"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_learning_record_learning_missions__mission_id__learning_records_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningRecordCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningRecord"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_knowledge_state_proposals_learning_missions__mission_id__knowledge_state_proposals_get: {
+        parameters: {
+            query?: {
+                concept_id?: string | null;
+                proposal_status?: components["schemas"]["KnowledgeStateProposalStatus"] | null;
+            };
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeStateProposal"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_knowledge_state_update_learning_missions__mission_id__knowledge_state_proposals_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProposeKnowledgeStateUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeStateProposal"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_knowledge_state_proposal_learning_knowledge_state_proposals__proposal_id__decide_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                proposal_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DecideKnowledgeStateProposalRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeStateProposal"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_learning_path_learning_missions__mission_id__learning_path_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningPath"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_schedule_learning_missions__mission_id__review_schedule_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSchedule"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    schedule_reviews_learning_missions__mission_id__review_schedule_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewSchedule"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_pending_review_tasks_learning_missions__mission_id__review_tasks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"][];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_review_task_learning_review_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    postpone_review_task_learning_review_tasks__task_id__postpone_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewTaskPostponeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adjust_review_task_learning_review_tasks__task_id__adjust_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewTaskAdjustRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_review_task_learning_review_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewTaskCancelRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewTask"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_review_task_learning_review_tasks__task_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewTaskCompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningRecord"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_review_task_as_work_order_learning_review_tasks__task_id__work_order_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                task_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunProjection"];
                 };
             };
             /** @description Bad Request */

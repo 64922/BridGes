@@ -26,6 +26,7 @@ from science_companion.learning import (
     InMemoryLearningRepository,
     LearningPathService,
     LearningService,
+    ReviewSchedulingService,
     TeachingService,
 )
 from science_companion.learning.api import router as learning_router
@@ -123,6 +124,25 @@ def _register_builtin_workflows(service: WorkflowService) -> None:
                 "node_name": "生成产物",
                 "human_gate": False,
                 "capability_name": "qwen_structured_output",
+                "capability_version": "1",
+            },
+        ],
+        terminal_states=[
+            WorkflowRunStatus.SUCCEEDED,
+            WorkflowRunStatus.BLOCKED,
+            WorkflowRunStatus.CANCELLED,
+        ],
+    )
+    # T024: review tasks can be materialized as timed workflow runs.
+    service.register_workflow(
+        name="review_task",
+        version="1",
+        nodes=[
+            {
+                "node_id": "review_prompt",
+                "node_name": "复习提示",
+                "human_gate": False,
+                "capability_name": "qwen_text_chat",
                 "capability_version": "1",
             },
         ],
@@ -355,10 +375,19 @@ def create_app() -> FastAPI:
     # T022: attach the in-memory teaching service for short lessons and retrieval.
     app.state.teaching_service = TeachingService(repository=learning_repository)
 
+    # T024: attach the in-memory review scheduling service. It depends on the
+    # same learning repository and is injected into the learning-path service so
+    # that path changes automatically cancel or reschedule future review tasks.
+    review_scheduling_service = ReviewSchedulingService(repository=learning_repository)
+    app.state.review_scheduling_service = review_scheduling_service
+
     # T023: attach the in-memory learning-path service for recording learning
     # evidence, proposing knowledge-state updates, human confirmation and path
     # recompilation. Rejected proposals cannot be silently reapplied.
-    app.state.learning_path_service = LearningPathService(repository=learning_repository)
+    app.state.learning_path_service = LearningPathService(
+        repository=learning_repository,
+        review_scheduler=review_scheduling_service,
+    )
 
     app.include_router(auth.router)
     app.include_router(projects.router)

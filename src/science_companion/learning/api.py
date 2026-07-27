@@ -27,11 +27,24 @@ from science_companion.contracts.learning import (
     LearningRecord,
     LearningRecordCreateRequest,
     ProposeKnowledgeStateUpdateRequest,
+    ReviewSchedule,
+    ReviewTask,
+    ReviewTaskAdjustRequest,
+    ReviewTaskCancelRequest,
+    ReviewTaskCompleteRequest,
+    ReviewTaskPostponeRequest,
     ShortLesson,
     TeachingPlan,
 )
-from science_companion.learning import LearningPathService, LearningService, TeachingService
+from science_companion.contracts.workflows import RunProjection
+from science_companion.learning import (
+    LearningPathService,
+    LearningService,
+    ReviewSchedulingService,
+    TeachingService,
+)
 from science_companion.learning.adapters import LearningError as LearningAdapterError
+from science_companion.workflows import WorkflowError, WorkflowService
 
 router = APIRouter(prefix="/learning", tags=["learning"])
 
@@ -66,6 +79,30 @@ def _get_learning_path_service(request: Request) -> LearningPathService:
 
 
 LearningPathServiceDep = Annotated[LearningPathService, Depends(_get_learning_path_service)]
+
+
+def _get_review_scheduling_service(request: Request) -> ReviewSchedulingService:
+    service: ReviewSchedulingService | None = getattr(
+        request.app.state, "review_scheduling_service", None
+    )
+    if service is None:
+        raise RuntimeError("ReviewSchedulingService not attached to application state.")
+    return service
+
+
+ReviewSchedulingServiceDep = Annotated[
+    ReviewSchedulingService, Depends(_get_review_scheduling_service)
+]
+
+
+def _get_workflow_service(request: Request) -> WorkflowService:
+    service: WorkflowService | None = getattr(request.app.state, "workflow_service", None)
+    if service is None:
+        raise RuntimeError("WorkflowService not attached to application state.")
+    return service
+
+
+WorkflowServiceDep = Annotated[WorkflowService, Depends(_get_workflow_service)]
 
 
 def _error(status_code: int, error: str, message: str) -> HTTPException:
@@ -501,5 +538,205 @@ async def get_learning_path(
         return path_service.get_learning_path(subject.account_id, mission_id)
     except LearningAdapterError as exc:
         raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.post(
+    "/missions/{mission_id}/review-schedule",
+    response_model=ReviewSchedule,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def schedule_reviews(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+) -> ReviewSchedule:
+    """Compute and persist review tasks for a mission."""
+    try:
+        return review_service.schedule_reviews_for_mission(
+            subject.account_id, mission_id
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.get(
+    "/missions/{mission_id}/review-schedule",
+    response_model=ReviewSchedule,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def get_review_schedule(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+) -> ReviewSchedule:
+    """Get the latest review schedule for a mission."""
+    try:
+        return review_service.get_review_schedule(subject.account_id, mission_id)
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.get(
+    "/missions/{mission_id}/review-tasks",
+    response_model=list[ReviewTask],
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def list_pending_review_tasks(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    mission_id: str,
+) -> list[ReviewTask]:
+    """List pending review tasks for a mission, interleaved by concept."""
+    try:
+        return review_service.list_pending_tasks(subject.account_id, mission_id)
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
+
+
+@router.get(
+    "/review-tasks/{task_id}",
+    response_model=ReviewTask,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def get_review_task(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    task_id: str,
+) -> ReviewTask:
+    """Get a review task by ID."""
+    try:
+        return review_service.get_review_task(subject.account_id, task_id)
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "task_not_found", str(exc)) from exc
+
+
+@router.post(
+    "/review-tasks/{task_id}/postpone",
+    response_model=ReviewTask,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def postpone_review_task(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    task_id: str,
+    request: ReviewTaskPostponeRequest,
+) -> ReviewTask:
+    """Postpone a review task to a new due date."""
+    try:
+        return review_service.postpone_review_task(
+            subject.account_id, task_id, request
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "postpone_failed", str(exc)) from exc
+
+
+@router.post(
+    "/review-tasks/{task_id}/adjust",
+    response_model=ReviewTask,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def adjust_review_task(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    task_id: str,
+    request: ReviewTaskAdjustRequest,
+) -> ReviewTask:
+    """Adjust a review task's due date or interval."""
+    try:
+        return review_service.adjust_review_task(
+            subject.account_id, task_id, request
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "adjust_failed", str(exc)) from exc
+
+
+@router.post(
+    "/review-tasks/{task_id}/cancel",
+    response_model=ReviewTask,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def cancel_review_task(
+    review_service: ReviewSchedulingServiceDep,
+    workflow_service: WorkflowServiceDep,
+    subject: SubjectDep,
+    task_id: str,
+    request: ReviewTaskCancelRequest,
+) -> ReviewTask:
+    """Cancel a review task and, if materialized, its workflow run."""
+    try:
+        return review_service.cancel_review_task(
+            subject.account_id, task_id, request, workflow_service=workflow_service
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "cancel_failed", str(exc)) from exc
+
+
+@router.post(
+    "/review-tasks/{task_id}/complete",
+    response_model=LearningRecord,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def complete_review_task(
+    review_service: ReviewSchedulingServiceDep,
+    subject: SubjectDep,
+    task_id: str,
+    request: ReviewTaskCompleteRequest,
+) -> LearningRecord:
+    """Complete a review task and record the result as new learning evidence."""
+    try:
+        _task, record = review_service.complete_review_task(
+            subject.account_id, task_id, request
+        )
+        return record
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "complete_failed", str(exc)) from exc
+
+
+@router.post(
+    "/review-tasks/{task_id}/work-order",
+    response_model=RunProjection,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def submit_review_task_as_work_order(
+    review_service: ReviewSchedulingServiceDep,
+    workflow_service: WorkflowServiceDep,
+    subject: SubjectDep,
+    task_id: str,
+) -> RunProjection:
+    """Materialize a review task as a WorkOrder on the task stage."""
+    try:
+        return review_service.submit_review_as_work_order(
+            subject.account_id, task_id, workflow_service
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "task_not_found", str(exc)) from exc
+    except WorkflowError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "workorder_failed", str(exc)) from exc
 
 

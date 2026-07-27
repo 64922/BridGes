@@ -707,6 +707,107 @@ class LearningPath(BaseModel):
     updated_at: datetime = Field(description="Last update timestamp.")
 
 
+class ReviewTaskType(StrEnum):
+    """Kind of review task: spaced repetition or interleaved practice."""
+
+    SPACED_REPETITION = "spaced_repetition"
+    INTERLEAVED_PRACTICE = "interleaved_practice"
+
+
+class ReviewTaskStatus(StrEnum):
+    """Lifecycle status of a scheduled review task."""
+
+    SCHEDULED = "scheduled"
+    POSTPONED = "postponed"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class ReviewTask(BaseModel):
+    """A single spaced-repetition or interleaved-practice task.
+
+    The task is justified by learning records, a knowledge state, and the
+    learning mission. It can be postponed, adjusted, cancelled, or completed.
+    Completing a task creates a new learning record rather than overwriting the
+    old knowledge state.
+    """
+
+    task_id: str = Field(description="Stable task identifier.")
+    mission_id: str = Field(description="Mission this task belongs to.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    concept_id: str = Field(description="Concept being reviewed.")
+    task_type: ReviewTaskType = Field(description="Spaced repetition or interleaved practice.")
+    status: ReviewTaskStatus = Field(default=ReviewTaskStatus.SCHEDULED)
+    due_at: datetime = Field(description="When the task is due.")
+    reason: str = Field(
+        description="Human-readable justification referencing records, state, "
+        "forgetting evidence and the learning mission."
+    )
+    source_record_ids: list[str] = Field(
+        default_factory=list,
+        description="Learning records that justify this scheduling decision.",
+    )
+    knowledge_state_id: str | None = Field(
+        default=None, description="Knowledge-state snapshot at scheduling time."
+    )
+    interval_days: int = Field(
+        default=1, ge=1, description="Scheduled interval in days."
+    )
+    postponed_to: datetime | None = Field(
+        default=None, description="New due date when the task is postponed."
+    )
+    cancellation_reason: str | None = Field(default=None, description="Why the task was cancelled.")
+    run_id: str | None = Field(
+        default=None, description="Optional workflow run id if materialized as a WorkOrder."
+    )
+    version: int = Field(default=1, ge=1, description="Optimistic concurrency version.")
+    created_at: datetime = Field(description="Creation timestamp.")
+    updated_at: datetime = Field(description="Last update timestamp.")
+
+
+class ReviewSchedule(BaseModel):
+    """Collection of pending review tasks for a learning mission."""
+
+    schedule_id: str = Field(description="Stable schedule identifier.")
+    mission_id: str = Field(description="Mission the schedule serves.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    task_ids: list[str] = Field(default_factory=list, description="Tasks in this schedule.")
+    version: int = Field(default=1, ge=1, description="Optimistic concurrency version.")
+    created_at: datetime = Field(description="Creation timestamp.")
+    updated_at: datetime = Field(description="Last update timestamp.")
+
+
+class ReviewTaskPostponeRequest(BaseModel):
+    """Request to postpone a review task to a new due date."""
+
+    new_due_at: datetime = Field(description="New due date.")
+    reason: str = Field(description="Why the task is being postponed.", min_length=1)
+
+
+class ReviewTaskAdjustRequest(BaseModel):
+    """Request to adjust the due date or interval of a review task."""
+
+    new_due_at: datetime | None = Field(default=None, description="New due date if any.")
+    new_interval_days: int | None = Field(
+        default=None, description="New interval in days if any.", ge=1
+    )
+    reason: str = Field(description="Why the task is being adjusted.", min_length=1)
+
+
+class ReviewTaskCancelRequest(BaseModel):
+    """Request to cancel a review task."""
+
+    reason: str = Field(description="Why the task is being cancelled.", min_length=1)
+
+
+class ReviewTaskCompleteRequest(BaseModel):
+    """Request to complete a review task and record the result as evidence."""
+
+    response_text: str = Field(description="User's response during the review.", min_length=1)
+    evaluated_state: AnswerEvaluatedState = Field(description="Evaluated result.")
+    record_reason: str = Field(description="Why this result counts as evidence.", min_length=1)
+
+
 class LearningError(BaseModel):
     """Uniform learning-domain error response."""
 

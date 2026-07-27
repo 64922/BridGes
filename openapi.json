@@ -7396,6 +7396,719 @@
         }
       }
     },
+    "/learning/missions/{mission_id}/review-schedule": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Schedule Reviews",
+        "description": "Compute and persist review tasks for a mission.",
+        "operationId": "schedule_reviews_learning_missions__mission_id__review_schedule_post",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSchedule"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Review Schedule",
+        "description": "Get the latest review schedule for a mission.",
+        "operationId": "get_review_schedule_learning_missions__mission_id__review_schedule_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewSchedule"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/missions/{mission_id}/review-tasks": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "List Pending Review Tasks",
+        "description": "List pending review tasks for a mission, interleaved by concept.",
+        "operationId": "list_pending_review_tasks_learning_missions__mission_id__review_tasks_get",
+        "parameters": [
+          {
+            "name": "mission_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Mission Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewTask"
+                  },
+                  "title": "Response List Pending Review Tasks Learning Missions  Mission Id  Review Tasks Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/review-tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Review Task",
+        "description": "Get a review task by ID.",
+        "operationId": "get_review_task_learning_review_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/review-tasks/{task_id}/postpone": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Postpone Review Task",
+        "description": "Postpone a review task to a new due date.",
+        "operationId": "postpone_review_task_learning_review_tasks__task_id__postpone_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewTaskPostponeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/review-tasks/{task_id}/adjust": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Adjust Review Task",
+        "description": "Adjust a review task's due date or interval.",
+        "operationId": "adjust_review_task_learning_review_tasks__task_id__adjust_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewTaskAdjustRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/review-tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Cancel Review Task",
+        "description": "Cancel a review task and, if materialized, its workflow run.",
+        "operationId": "cancel_review_task_learning_review_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewTaskCancelRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewTask"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/review-tasks/{task_id}/complete": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Complete Review Task",
+        "description": "Complete a review task and record the result as new learning evidence.",
+        "operationId": "complete_review_task_learning_review_tasks__task_id__complete_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewTaskCompleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningRecord"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/review-tasks/{task_id}/work-order": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Submit Review Task As Work Order",
+        "description": "Materialize a review task as a WorkOrder on the task stage.",
+        "operationId": "submit_review_task_as_work_order_learning_review_tasks__task_id__work_order_post",
+        "parameters": [
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProjection"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -14499,6 +15212,331 @@
         ],
         "title": "RetrievalExerciseType",
         "description": "Retrieval-practice exercise types that require active recall.\n\nBrowsing or completion-only activities are deliberately excluded."
+      },
+      "ReviewSchedule": {
+        "properties": {
+          "schedule_id": {
+            "type": "string",
+            "title": "Schedule Id",
+            "description": "Stable schedule identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission the schedule serves."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "task_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Task Ids",
+            "description": "Tasks in this schedule."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "schedule_id",
+          "mission_id",
+          "owner_account_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReviewSchedule",
+        "description": "Collection of pending review tasks for a learning mission."
+      },
+      "ReviewTask": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id",
+            "description": "Stable task identifier."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission this task belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being reviewed."
+          },
+          "task_type": {
+            "$ref": "#/components/schemas/ReviewTaskType",
+            "description": "Spaced repetition or interleaved practice."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ReviewTaskStatus",
+            "default": "scheduled"
+          },
+          "due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Due At",
+            "description": "When the task is due."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Human-readable justification referencing records, state, forgetting evidence and the learning mission."
+          },
+          "source_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Record Ids",
+            "description": "Learning records that justify this scheduling decision."
+          },
+          "knowledge_state_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge State Id",
+            "description": "Knowledge-state snapshot at scheduling time."
+          },
+          "interval_days": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Interval Days",
+            "description": "Scheduled interval in days.",
+            "default": 1
+          },
+          "postponed_to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Postponed To",
+            "description": "New due date when the task is postponed."
+          },
+          "cancellation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancellation Reason",
+            "description": "Why the task was cancelled."
+          },
+          "run_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Id",
+            "description": "Optional workflow run id if materialized as a WorkOrder."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "mission_id",
+          "owner_account_id",
+          "concept_id",
+          "task_type",
+          "due_at",
+          "reason",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ReviewTask",
+        "description": "A single spaced-repetition or interleaved-practice task.\n\nThe task is justified by learning records, a knowledge state, and the\nlearning mission. It can be postponed, adjusted, cancelled, or completed.\nCompleting a task creates a new learning record rather than overwriting the\nold knowledge state."
+      },
+      "ReviewTaskAdjustRequest": {
+        "properties": {
+          "new_due_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Due At",
+            "description": "New due date if any."
+          },
+          "new_interval_days": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Interval Days",
+            "description": "New interval in days if any."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Why the task is being adjusted."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ReviewTaskAdjustRequest",
+        "description": "Request to adjust the due date or interval of a review task."
+      },
+      "ReviewTaskCancelRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Why the task is being cancelled."
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "ReviewTaskCancelRequest",
+        "description": "Request to cancel a review task."
+      },
+      "ReviewTaskCompleteRequest": {
+        "properties": {
+          "response_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Response Text",
+            "description": "User's response during the review."
+          },
+          "evaluated_state": {
+            "$ref": "#/components/schemas/AnswerEvaluatedState",
+            "description": "Evaluated result."
+          },
+          "record_reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Record Reason",
+            "description": "Why this result counts as evidence."
+          }
+        },
+        "type": "object",
+        "required": [
+          "response_text",
+          "evaluated_state",
+          "record_reason"
+        ],
+        "title": "ReviewTaskCompleteRequest",
+        "description": "Request to complete a review task and record the result as evidence."
+      },
+      "ReviewTaskPostponeRequest": {
+        "properties": {
+          "new_due_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "New Due At",
+            "description": "New due date."
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Why the task is being postponed."
+          }
+        },
+        "type": "object",
+        "required": [
+          "new_due_at",
+          "reason"
+        ],
+        "title": "ReviewTaskPostponeRequest",
+        "description": "Request to postpone a review task to a new due date."
+      },
+      "ReviewTaskStatus": {
+        "type": "string",
+        "enum": [
+          "scheduled",
+          "postponed",
+          "completed",
+          "cancelled"
+        ],
+        "title": "ReviewTaskStatus",
+        "description": "Lifecycle status of a scheduled review task."
+      },
+      "ReviewTaskType": {
+        "type": "string",
+        "enum": [
+          "spaced_repetition",
+          "interleaved_practice"
+        ],
+        "title": "ReviewTaskType",
+        "description": "Kind of review task: spaced repetition or interleaved practice."
       },
       "RunContextEnvelope": {
         "properties": {

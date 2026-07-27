@@ -13,6 +13,8 @@ from science_companion.contracts.learning import (
     LearningMission,
     LearningPath,
     LearningRecord,
+    ReviewSchedule,
+    ReviewTask,
     ShortLesson,
     TeachingPlan,
 )
@@ -43,6 +45,9 @@ class InMemoryLearningRepository(LearningRepository):
         self._proposals: dict[str, KnowledgeStateProposal] = {}
         self._paths: dict[str, LearningPath] = {}
         self._mission_paths: dict[str, LearningPath] = {}
+        self._review_tasks: dict[str, ReviewTask] = {}
+        self._review_schedules: dict[str, ReviewSchedule] = {}
+        self._mission_schedules: dict[str, ReviewSchedule] = {}
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -265,3 +270,36 @@ class InMemoryLearningRepository(LearningRepository):
         self, owner_id: str, mission_id: str
     ) -> LearningPath | None:
         return self._mission_paths.get(self._key(owner_id, mission_id))
+
+    def save_review_task(self, task: ReviewTask) -> ReviewTask:
+        self._review_tasks[self._key(task.owner_account_id, task.task_id)] = task
+        return task
+
+    def get_review_task(self, owner_id: str, task_id: str) -> ReviewTask:
+        task = self._review_tasks.get(self._key(owner_id, task_id))
+        if task is None:
+            raise LearningError("复习任务不存在或没有访问权限。")
+        return task
+
+    def list_review_tasks(
+        self, owner_id: str, mission_id: str
+    ) -> list[ReviewTask]:
+        tasks = [
+            t
+            for t in self._review_tasks.values()
+            if t.owner_account_id == owner_id and t.mission_id == mission_id
+        ]
+        tasks.sort(key=lambda t: t.created_at, reverse=True)
+        return tasks
+
+    def save_review_schedule(self, schedule: ReviewSchedule) -> ReviewSchedule:
+        owner_key = self._key(schedule.owner_account_id, schedule.schedule_id)
+        mission_key = self._key(schedule.owner_account_id, schedule.mission_id)
+        self._review_schedules[owner_key] = schedule
+        self._mission_schedules[mission_key] = schedule
+        return schedule
+
+    def get_review_schedule_for_mission(
+        self, owner_id: str, mission_id: str
+    ) -> ReviewSchedule | None:
+        return self._mission_schedules.get(self._key(owner_id, mission_id))

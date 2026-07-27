@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from science_companion.contracts.learning import (
     AnswerEvaluatedState,
@@ -27,12 +28,14 @@ from science_companion.contracts.learning import (
     LearningPathNodeStatus,
     LearningRecord,
     LearningRecordCreateRequest,
-    LearningRecordSource,
     LearningRecordType,
     ProposeKnowledgeStateUpdateRequest,
 )
 from science_companion.learning.adapters import LearningError
 from science_companion.learning.ports import LearningRepository
+
+if TYPE_CHECKING:
+    from science_companion.learning.review_scheduler import ReviewSchedulingService
 
 
 def _now() -> datetime:
@@ -46,8 +49,13 @@ def _new_id() -> str:
 class LearningPathService:
     """Application service for evidence-backed knowledge-state and path updates."""
 
-    def __init__(self, repository: LearningRepository) -> None:
+    def __init__(
+        self,
+        repository: LearningRepository,
+        review_scheduler: ReviewSchedulingService | None = None,
+    ) -> None:
         self._repository = repository
+        self._review_scheduler = review_scheduler
 
     def record_learning_record(
         self,
@@ -116,10 +124,6 @@ class LearningPathService:
             raise LearningError(
                 "没有可用于提出知识状态更新的学习记录。"
             )
-
-        current = self._repository.get_knowledge_state(
-            account_id, mission_id, request.concept_id
-        )
 
         supporting_ids, refuting_ids, proposed_status, proposed_confidence = (
             self._derive_state_from_records(records)
@@ -295,10 +299,6 @@ class LearningPathService:
         )
         now = _now()
 
-        if current is not None:
-            # 旧状态将在 save_knowledge_state 中被自动标记为已取代。
-            pass  # save_knowledge_state 的适配器逻辑会处理版本链。
-
         new_state = KnowledgeState(
             state_id=proposal.proposal_id,
             mission_id=proposal.mission_id,
@@ -412,4 +412,9 @@ class LearningPathService:
             created_at=_now(),
             updated_at=_now(),
         )
-        return self._repository.save_learning_path(path)
+        saved_path = self._repository.save_learning_path(path)
+        if self._review_scheduler is not None:
+            self._review_scheduler.cancel_or_reschedule_on_path_change(
+                account_id, mission_id
+            )
+        return saved_path
