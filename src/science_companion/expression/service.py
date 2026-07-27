@@ -27,6 +27,8 @@ from science_companion.contracts.expression import (
     ArgumentNode,
     ArgumentNodeRole,
     ArgumentPlan,
+    ConvertGenreRequest,
+    ConvertGenreResult,
     DraftSpan,
     ExpressionBrief,
     ExpressionDraft,
@@ -37,6 +39,14 @@ from science_companion.contracts.expression import (
     ExpressionGateResult,
     Genre,
     GenreContract,
+    GenreConversionInvariance,
+    GenreElementRole,
+    LectureScriptElement,
+    PopularScienceElement,
+    ReviewFinding,
+    ReviewFindingKind,
+    ReviewFindingSeverity,
+    ReviewReport,
     RiskTier,
 )
 from science_companion.contracts.identity import SubjectContext
@@ -236,24 +246,31 @@ class _DeterministicDraftGenerator:
                 )
             )
 
-        # If the brief asks for a task goal framing, add a non-claim transition
-        # span that still binds to the brief so it is auditable.
-        if brief.task_goal:
-            spans.insert(
-                0,
+        # Render non-claim argument nodes as spans so genre-specific element
+        # builders (T026) can bind to them. These spans do not invent new claims;
+        # they realize the argument plan nodes (question, limitation, explanation,
+        # example, action) created from the brief and graph.
+        node_texts: dict[ArgumentNodeRole, str] = {
+            ArgumentNodeRole.QUESTION: brief.task_goal,
+            ArgumentNodeRole.LIMITATION: "（适用边界与关键限制）",
+            ArgumentNodeRole.EXPLANATION: "（类比与解释性说明）",
+            ArgumentNodeRole.EXAMPLE: "（受控示例或演示）",
+            ArgumentNodeRole.PREREQUISITE: "（先备知识与前置要求）",
+            ArgumentNodeRole.ACTION: "（行动建议或下一步）",
+        }
+        for node in argument_plan.nodes:
+            if node.role not in node_texts:
+                continue
+            spans.append(
                 DraftSpan(
                     span_id=_token("span"),
-                    text=brief.task_goal,
-                    argument_node_ids=[
-                        node.argument_node_id
-                        for node in argument_plan.nodes
-                        if node.role == ArgumentNodeRole.QUESTION
-                    ],
-                    claim_ids=[],
+                    text=node_texts[node.role],
+                    argument_node_ids=[node.argument_node_id],
+                    claim_ids=list(node.claim_ids),
                     citation_ids=[],
                     fact_lock_ids=[],
                     generated_by_run=run_context.run_id if run_context else None,
-                ),
+                )
             )
 
         return spans
@@ -349,6 +366,45 @@ class ExpressionService:
                         omission_policy="required"
                         if claim.importance == ClaimImportance.KEY
                         else "optional",
+                    )
+                )
+                order += 1
+
+            # T026: popular science benefits from an explicit explanation/analogy
+            # node; lecture scripts benefit from a controlled example node and a
+            # prerequisite node that states what learners should already know.
+            if brief.genre == Genre.POPULAR_SCIENCE:
+                nodes.append(
+                    ArgumentNode(
+                        argument_node_id=_token("node"),
+                        role=ArgumentNodeRole.EXPLANATION,
+                        claim_ids=[claim.claim_id],
+                        depends_on=[node.argument_node_id],
+                        audience_purpose="用类比或情境解释核心概念，同时保留边界",
+                        order=order,
+                    )
+                )
+                order += 1
+            elif brief.genre == Genre.LECTURE_SCRIPT:
+                nodes.append(
+                    ArgumentNode(
+                        argument_node_id=_token("node"),
+                        role=ArgumentNodeRole.PREREQUISITE,
+                        claim_ids=[claim.claim_id],
+                        depends_on=[node.argument_node_id],
+                        audience_purpose="说明学习者需要先具备的知识",
+                        order=order,
+                    )
+                )
+                order += 1
+                nodes.append(
+                    ArgumentNode(
+                        argument_node_id=_token("node"),
+                        role=ArgumentNodeRole.EXAMPLE,
+                        claim_ids=[claim.claim_id],
+                        depends_on=[node.argument_node_id],
+                        audience_purpose="提供一个受控例子或演示",
+                        order=order,
                     )
                 )
                 order += 1
@@ -493,6 +549,26 @@ class ExpressionService:
         else:
             draft_status = ExpressionDraftStatus.DRAFTED
 
+        # T026: genre-specific structural elements must be present for the two
+        # genres delivered in this ticket. The check is informational when the
+        # draft is blocked for other reasons, but becomes blocking if the genre
+        # contract is known and the elements are empty after generation.
+        if brief.genre == Genre.POPULAR_SCIENCE:
+            checks[ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT] = True
+        elif brief.genre == Genre.LECTURE_SCRIPT:
+            checks[ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT] = True
+
+        passed = all(checks.values())
+        failed = [check for check, ok in checks.items() if not ok]
+
+        if failed:
+            if ExpressionGateCheck.RISK_TIER_HUMAN_REVIEW in failed:
+                draft_status = ExpressionDraftStatus.WAITING_HUMAN
+            else:
+                draft_status = ExpressionDraftStatus.BLOCKED
+        else:
+            draft_status = ExpressionDraftStatus.DRAFTED
+
         return ExpressionGateResult(
             passed=passed,
             draft_status=draft_status,
@@ -500,6 +576,228 @@ class ExpressionService:
             failed_checks=failed,
             blocked_claim_ids=list(set(blocked_claim_ids)),
             reason="；".join(reasons) if reasons else None,
+        )
+
+    def _build_popular_science_elements(
+        self, draft: ExpressionDraft
+    ) -> list[PopularScienceElement]:
+        """Build popular-science structural elements from the draft plan and spans.
+
+        The deterministic generator does not invent analogies, so analogy elements
+        are anchored to explanation/example nodes when present. The boundary note
+        is generated deterministically to satisfy the genre contract.
+        """
+        elements: list[PopularScienceElement] = []
+        claim_span_ids: list[str] = []
+        analogy_span_ids: list[str] = []
+        action_span_ids: list[str] = []
+
+        for span in draft.spans:
+            node_roles = {
+                node.role
+                for node in draft.argument_plan.nodes
+                if node.argument_node_id in span.argument_node_ids
+            }
+            if ArgumentNodeRole.CLAIM in node_roles:
+                claim_span_ids.append(span.span_id)
+            if {ArgumentNodeRole.EXPLANATION, ArgumentNodeRole.EXAMPLE} & node_roles:
+                analogy_span_ids.append(span.span_id)
+            if ArgumentNodeRole.ACTION in node_roles:
+                action_span_ids.append(span.span_id)
+
+        if claim_span_ids:
+            elements.append(
+                PopularScienceElement(
+                    element_id=_token("pse"),
+                    role=GenreElementRole.CORE_CONCEPT,
+                    span_ids=claim_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                )
+            )
+
+        if analogy_span_ids:
+            elements.append(
+                PopularScienceElement(
+                    element_id=_token("pse"),
+                    role=GenreElementRole.ANALOGY,
+                    span_ids=analogy_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                    analogy_target="具体生活情境",
+                )
+            )
+            elements.append(
+                PopularScienceElement(
+                    element_id=_token("pse"),
+                    role=GenreElementRole.ANALOGY_BOUNDARY,
+                    span_ids=analogy_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                    boundary_note="类比仅帮助建立直觉，不替代具体机制或实验证据。",
+                )
+            )
+
+        if action_span_ids:
+            elements.append(
+                PopularScienceElement(
+                    element_id=_token("pse"),
+                    role=GenreElementRole.ACTION_RELEVANCE,
+                    span_ids=action_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                    action_relevance="帮助受众判断该科学结论与日常决策的相关性。",
+                )
+            )
+
+        return elements
+
+    def _build_lecture_script_elements(
+        self, draft: ExpressionDraft
+    ) -> list[LectureScriptElement]:
+        """Build lecture-script structural elements from the draft plan and spans.
+
+        Elements expose learning objectives, prerequisites, comprehension checks
+        and practice pauses so the teacher can review them independently of wording.
+        """
+        elements: list[LectureScriptElement] = []
+        objective_span_ids: list[str] = []
+        prerequisite_span_ids: list[str] = []
+        claim_span_ids: list[str] = []
+
+        for span in draft.spans:
+            node_roles = {
+                node.role
+                for node in draft.argument_plan.nodes
+                if node.argument_node_id in span.argument_node_ids
+            }
+            if ArgumentNodeRole.QUESTION in node_roles:
+                objective_span_ids.append(span.span_id)
+            if ArgumentNodeRole.PREREQUISITE in node_roles:
+                prerequisite_span_ids.append(span.span_id)
+            if ArgumentNodeRole.CLAIM in node_roles:
+                claim_span_ids.append(span.span_id)
+
+        if objective_span_ids:
+            elements.append(
+                LectureScriptElement(
+                    element_id=_token("lse"),
+                    role=GenreElementRole.LEARNING_OBJECTIVE,
+                    span_ids=objective_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                )
+            )
+
+        if prerequisite_span_ids:
+            elements.append(
+                LectureScriptElement(
+                    element_id=_token("lse"),
+                    role=GenreElementRole.PREREQUISITE,
+                    span_ids=prerequisite_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                )
+            )
+
+        if claim_span_ids:
+            elements.append(
+                LectureScriptElement(
+                    element_id=_token("lse"),
+                    role=GenreElementRole.COMPREHENSION_CHECK,
+                    span_ids=claim_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                    checkpoint_question="能否用自己的话复述核心判断，并指出其适用边界？",
+                    expected_answer="复述核心判断，并至少说明一个关键限制或适用条件。",
+                )
+            )
+            elements.append(
+                LectureScriptElement(
+                    element_id=_token("lse"),
+                    role=GenreElementRole.PRACTICE_PAUSE,
+                    span_ids=claim_span_ids,
+                    claim_ids=[cid for s in draft.spans for cid in s.claim_ids],
+                    pause_prompt="停顿 30 秒，让学习者先尝试举一个自己的例子。",
+                )
+            )
+
+        return elements
+
+    def _review_genre_compliance(
+        self, draft: ExpressionDraft, genre_contract: GenreContract
+    ) -> ReviewReport:
+        """Produce a user-visible review report explaining rule application."""
+        findings: list[ReviewFinding] = []
+
+        for required in genre_contract.required_sections:
+            findings.append(
+                ReviewFinding(
+                    finding_id=_token("find"),
+                    kind=ReviewFindingKind.REQUIRED,
+                    severity=ReviewFindingSeverity.INFO,
+                    rule=f"体裁要求包含：{required}",
+                    reason=(
+                        f"{draft.brief_id} 的体裁 {draft.genre.value} "
+                        "要求此部分以满足受众预期。"
+                    ),
+                )
+            )
+
+        for prohibited in genre_contract.prohibited_behaviors:
+            findings.append(
+                ReviewFinding(
+                    finding_id=_token("find"),
+                    kind=ReviewFindingKind.PROHIBITED,
+                    severity=ReviewFindingSeverity.WARNING,
+                    rule=f"体裁禁止：{prohibited}",
+                    reason=f"{prohibited} 会削弱科学可信度或误导受众。",
+                    remediation="若草稿中出现，请改写为受证据约束的表述。",
+                )
+            )
+
+        if draft.popular_science_elements:
+            has_boundary = any(
+                e.role == GenreElementRole.ANALOGY_BOUNDARY
+                for e in draft.popular_science_elements
+            )
+            findings.append(
+                ReviewFinding(
+                    finding_id=_token("find"),
+                    kind=ReviewFindingKind.PRESERVED if has_boundary else ReviewFindingKind.MISSING,
+                    severity=(
+                        ReviewFindingSeverity.WARNING
+                        if not has_boundary
+                        else ReviewFindingSeverity.INFO
+                    ),
+                    rule="科普类比必须标注失效边界",
+                    reason="防止受众把类比误当作底层机制。",
+                    remediation=None if has_boundary else "补充类比失效边界说明。",
+                )
+            )
+
+        if draft.lecture_script_elements:
+            has_check = any(
+                e.role == GenreElementRole.COMPREHENSION_CHECK
+                for e in draft.lecture_script_elements
+            )
+            findings.append(
+                ReviewFinding(
+                    finding_id=_token("find"),
+                    kind=ReviewFindingKind.PRESERVED if has_check else ReviewFindingKind.MISSING,
+                    severity=(
+                        ReviewFindingSeverity.WARNING
+                        if not has_check
+                        else ReviewFindingSeverity.INFO
+                    ),
+                    rule="课程讲稿必须包含理解检查",
+                    reason="避免把听懂误认为掌握。",
+                    remediation=None if has_check else "插入理解检查或练习停顿。",
+                )
+            )
+
+        passed = not any(
+            f.severity == ReviewFindingSeverity.BLOCKING for f in findings
+        )
+        return ReviewReport(
+            report_id=_token("report"),
+            draft_id=draft.draft_id,
+            genre=genre_contract.genre,
+            passed=passed,
+            findings=findings,
         )
 
     def create_draft(
@@ -552,6 +850,8 @@ class ExpressionService:
         draft = ExpressionDraft(
             draft_id=_token("draft"),
             brief_id=brief.brief_id,
+            genre=brief.genre,
+            brief=brief,
             graph_id=graph.graph_id,
             account_id=subject.account_id,
             project_id=request.project_id,
@@ -566,6 +866,26 @@ class ExpressionService:
             model_run_lock=model_lock,
             created_at=_now(),
         )
+
+        # T026: populate genre-specific elements and review report.
+        genre_contract = _genre_contract(brief.genre)
+        if brief.genre == Genre.POPULAR_SCIENCE:
+            draft.popular_science_elements = self._build_popular_science_elements(draft)
+        elif brief.genre == Genre.LECTURE_SCRIPT:
+            draft.lecture_script_elements = self._build_lecture_script_elements(draft)
+        draft.review_report = self._review_genre_compliance(draft, genre_contract)
+
+        # Re-evaluate gate now that genre-specific elements are populated.
+        if brief.genre == Genre.POPULAR_SCIENCE and not draft.popular_science_elements:
+            gate.checks[ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT] = False
+            gate.failed_checks.append(ExpressionGateCheck.POPULAR_SCIENCE_ELEMENTS_PRESENT)
+            gate.passed = False
+            draft.status = ExpressionDraftStatus.BLOCKED
+        elif brief.genre == Genre.LECTURE_SCRIPT and not draft.lecture_script_elements:
+            gate.checks[ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT] = False
+            gate.failed_checks.append(ExpressionGateCheck.LECTURE_SCRIPT_ELEMENTS_PRESENT)
+            gate.passed = False
+            draft.status = ExpressionDraftStatus.BLOCKED
 
         return ExpressionDraftResult(
             draft=draft,
@@ -589,6 +909,62 @@ class ExpressionService:
         result = self.create_draft(subject, request)
         self._drafts[result.draft.draft_id] = result.draft
         return result
+
+    def convert_genre(
+        self,
+        subject: SubjectContext,
+        draft_id: str,
+        request: ConvertGenreRequest,
+    ) -> ConvertGenreResult:
+        """Render the same fact-lock set under a different genre.
+
+        The conversion regenerates the argument plan and genre-specific elements
+        for the target genre while preserving the original claim graph, fact lock
+        set, citations and evidence-derived wording strength ceiling.
+        """
+        original = self.get_draft(subject.account_id, draft_id)
+        if original.account_id != subject.account_id:
+            raise ExpressionServiceError("草稿不存在或没有访问权限。")
+
+        brief = original.brief.model_copy(update={"genre": request.target_genre})
+        draft_request = ExpressionDraftRequest(
+            brief=brief,
+            graph_id=original.graph_id,
+            project_id=request.project_id or original.project_id,
+            memory_slice_id=original.memory_slice_id,
+        )
+        converted_result = self.create_draft(subject, draft_request)
+        converted = converted_result.draft
+
+        original_claim_ids = {cid for s in original.spans for cid in s.claim_ids}
+        converted_claim_ids = {cid for s in converted.spans for cid in s.claim_ids}
+        original_citation_ids = {cid for s in original.spans for cid in s.citation_ids}
+        converted_citation_ids = {cid for s in converted.spans for cid in s.citation_ids}
+
+        invariance = GenreConversionInvariance(
+            original_genre=original.genre,
+            target_genre=request.target_genre,
+            fact_lock_set_id_preserved=converted.fact_lock_set_id == original.fact_lock_set_id,
+            citation_ids_preserved=original_citation_ids == converted_citation_ids,
+            claim_ids_preserved=original_claim_ids == converted_claim_ids,
+            wording_strength_ceiling_preserved=(
+                converted.wording_strength_ceiling == original.wording_strength_ceiling
+            ),
+            passed=False,
+        )
+        invariance.passed = (
+            invariance.fact_lock_set_id_preserved
+            and invariance.citation_ids_preserved
+            and invariance.claim_ids_preserved
+            and invariance.wording_strength_ceiling_preserved
+        )
+
+        self._drafts[converted.draft_id] = converted
+        return ConvertGenreResult(
+            original_draft_id=original.draft_id,
+            converted_draft=converted,
+            invariance=invariance,
+        )
 
 
 __all__ = [

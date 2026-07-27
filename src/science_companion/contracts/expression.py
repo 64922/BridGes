@@ -54,9 +54,29 @@ class ArgumentNodeRole(StrEnum):
     EXPLANATION = "explanation"
     EXAMPLE = "example"
     LIMITATION = "limitation"
+    PREREQUISITE = "prerequisite"
     COUNTERPOINT = "counterpoint"
     TRANSITION = "transition"
     ACTION = "action"
+
+
+class GenreElementRole(StrEnum):
+    """Role of a genre-specific structural element within a draft.
+
+    Popular science and lecture script genres expose their required sections as
+    first-class, auditable elements so users can verify that analogies, analogy
+    boundaries, learning objectives and comprehension checks are present and
+    distinct.
+    """
+
+    CORE_CONCEPT = "core_concept"
+    ANALOGY = "analogy"
+    ANALOGY_BOUNDARY = "analogy_boundary"
+    ACTION_RELEVANCE = "action_relevance"
+    LEARNING_OBJECTIVE = "learning_objective"
+    PREREQUISITE = "prerequisite"
+    COMPREHENSION_CHECK = "comprehension_check"
+    PRACTICE_PAUSE = "practice_pause"
 
 
 class AudienceModel(BaseModel):
@@ -191,6 +211,70 @@ class ArgumentPlan(BaseModel):
     nodes: list[ArgumentNode] = Field(default_factory=list, description="Plan nodes.")
 
 
+class PopularScienceElement(BaseModel):
+    """A structural element required by the popular-science genre contract.
+
+    The element distinguishes the core concept from analogies, marks the boundary
+    where an analogy stops being a mechanism, and links the content to audience
+    action relevance.
+    """
+
+    element_id: str = Field(description="Stable element identifier.")
+    role: GenreElementRole = Field(description="Role of this element.")
+    span_ids: list[str] = Field(
+        default_factory=list,
+        description="Draft spans that realize this element.",
+    )
+    claim_ids: list[str] = Field(
+        default_factory=list,
+        description="Claims bound to this element.",
+    )
+    analogy_target: str | None = Field(
+        default=None,
+        description="For analogies: the concrete target the abstract concept is mapped to.",
+    )
+    boundary_note: str | None = Field(
+        default=None,
+        description="For analogy boundaries: where the analogy no longer applies.",
+    )
+    action_relevance: str | None = Field(
+        default=None,
+        description="For action relevance: why this matters to the audience.",
+    )
+
+
+class LectureScriptElement(BaseModel):
+    """A structural element required by the lecture-script genre contract.
+
+    The element exposes learning objectives, prerequisites, comprehension checks
+    and practice pauses as first-class objects so a teacher can review and
+    adjust them independently of the wording.
+    """
+
+    element_id: str = Field(description="Stable element identifier.")
+    role: GenreElementRole = Field(description="Role of this element.")
+    span_ids: list[str] = Field(
+        default_factory=list,
+        description="Draft spans that realize this element.",
+    )
+    claim_ids: list[str] = Field(
+        default_factory=list,
+        description="Claims bound to this element.",
+    )
+    checkpoint_question: str | None = Field(
+        default=None,
+        description="For comprehension checks: the question posed to learners.",
+    )
+    expected_answer: str | None = Field(
+        default=None,
+        description="For comprehension checks: the expected answer or key elements.",
+    )
+    pause_prompt: str | None = Field(
+        default=None,
+        description="For practice pauses: the facilitator prompt.",
+    )
+
+
 class DraftSpan(BaseModel):
     """A single text span in the expression draft.
 
@@ -222,11 +306,68 @@ class DraftSpan(BaseModel):
     style_policy_version: str = Field(default="1", description="Style policy version.")
 
 
+class ReviewFindingKind(StrEnum):
+    """Kind of genre-rule finding."""
+
+    REQUIRED = "required"
+    PROHIBITED = "prohibited"
+    MISSING = "missing"
+    PRESERVED = "preserved"
+
+
+class ReviewFindingSeverity(StrEnum):
+    """Severity of a review finding."""
+
+    INFO = "info"
+    WARNING = "warning"
+    BLOCKING = "blocking"
+
+
+class ReviewFinding(BaseModel):
+    """A single finding explaining why a genre rule requires or prohibits content.
+
+    Findings are user-visible justifications tied to spans, claims or the whole
+    draft. They answer "why must this be here?" or "why is this not allowed?".
+    """
+
+    finding_id: str = Field(description="Stable finding identifier.")
+    kind: ReviewFindingKind = Field(description="Kind of finding.")
+    severity: ReviewFindingSeverity = Field(description="Severity of the finding.")
+    rule: str = Field(description="The genre rule that was checked.")
+    span_id: str | None = Field(
+        default=None, description="Span affected, if applicable."
+    )
+    claim_id: str | None = Field(
+        default=None, description="Claim affected, if applicable."
+    )
+    reason: str = Field(description="Why the rule requires or prohibits this.")
+    remediation: str | None = Field(
+        default=None,
+        description="What to do if the finding indicates a problem.",
+    )
+
+
+class ReviewReport(BaseModel):
+    """Genre-rule compliance review report for an expression draft."""
+
+    report_id: str = Field(description="Stable report identifier.")
+    draft_id: str = Field(description="Draft this report reviews.")
+    genre: Genre = Field(description="Genre the report evaluates.")
+    passed: bool = Field(
+        description="Whether the draft satisfies all blocking genre rules."
+    )
+    findings: list[ReviewFinding] = Field(
+        default_factory=list, description="Findings explaining rule application."
+    )
+
+
 class ExpressionDraft(BaseModel):
     """A fact-lock-bound expression draft."""
 
     draft_id: str = Field(description="Stable draft identifier.")
     brief_id: str = Field(description="Brief this draft serves.")
+    genre: Genre = Field(description="Genre this draft was generated for.")
+    brief: ExpressionBrief = Field(description="Expression brief this draft serves.")
     graph_id: str = Field(description="Claim graph the draft is built from.")
     account_id: str = Field(description="Owning account.")
     project_id: str | None = Field(default=None, description="Project scope if any.")
@@ -248,6 +389,18 @@ class ExpressionDraft(BaseModel):
     )
     model_run_lock: ModelRunLock | None = Field(
         default=None, description="Model run lock for the generator.")
+    popular_science_elements: list[PopularScienceElement] = Field(
+        default_factory=list,
+        description="Genre-specific elements for popular science (T026).",
+    )
+    lecture_script_elements: list[LectureScriptElement] = Field(
+        default_factory=list,
+        description="Genre-specific elements for lecture script (T026).",
+    )
+    review_report: ReviewReport | None = Field(
+        default=None,
+        description="Genre-rule compliance review report (T026).",
+    )
     created_at: datetime = Field(description="Draft creation timestamp.")
 
 
@@ -261,6 +414,8 @@ class ExpressionGateCheck(StrEnum):
     GENRE_DUTY_KNOWN = "genre_duty_known"
     SOURCE_EVIDENCE_PRESENT = "source_evidence_present"
     RISK_TIER_HUMAN_REVIEW = "risk_tier_human_review"
+    POPULAR_SCIENCE_ELEMENTS_PRESENT = "popular_science_elements_present"
+    LECTURE_SCRIPT_ELEMENTS_PRESENT = "lecture_script_elements_present"
 
 
 class ExpressionGateResult(BaseModel):
@@ -295,6 +450,48 @@ class ExpressionDraftResult(BaseModel):
     )
 
 
+class GenreConversionInvariance(BaseModel):
+    """Evidence that a genre conversion preserved scientific boundaries (T026).
+
+    When the same fact-lock set is rendered under a different genre, the
+    conversion must not change claims, citations, fact locks or the evidence-
+    derived wording strength ceiling.
+    """
+
+    original_genre: Genre = Field(description="Genre before conversion.")
+    target_genre: Genre = Field(description="Genre after conversion.")
+    fact_lock_set_id_preserved: bool = Field(
+        description="Whether the same fact lock set id is used."
+    )
+    citation_ids_preserved: bool = Field(
+        description="Whether all citation ids are preserved across spans."
+    )
+    claim_ids_preserved: bool = Field(
+        description="Whether all claim ids are preserved across spans."
+    )
+    wording_strength_ceiling_preserved: bool = Field(
+        description="Whether the wording strength ceiling is unchanged."
+    )
+    passed: bool = Field(description="Whether all invariants hold.")
+
+
+class ConvertGenreRequest(BaseModel):
+    """Request to convert an existing draft to a different genre."""
+
+    target_genre: Genre = Field(description="Genre to convert the draft into.")
+    project_id: str | None = Field(default=None, description="Project scope.")
+
+
+class ConvertGenreResult(BaseModel):
+    """Result of converting a draft to a different genre."""
+
+    original_draft_id: str = Field(description="Original draft identifier.")
+    converted_draft: ExpressionDraft = Field(description="Draft in the target genre.")
+    invariance: GenreConversionInvariance = Field(
+        description="Invariance evidence for the conversion."
+    )
+
+
 class ExpressionError(BaseModel):
     """Uniform expression error response."""
 
@@ -311,16 +508,26 @@ __all__ = [
     "RiskTier",
     "ExpressionDraftStatus",
     "ArgumentNodeRole",
+    "GenreElementRole",
     "AudienceModel",
     "ExpressionBrief",
     "GenreContract",
     "ArgumentNode",
     "ArgumentPlan",
+    "PopularScienceElement",
+    "LectureScriptElement",
     "DraftSpan",
+    "ReviewFindingKind",
+    "ReviewFindingSeverity",
+    "ReviewFinding",
+    "ReviewReport",
     "ExpressionDraft",
     "ExpressionGateCheck",
     "ExpressionGateResult",
     "ExpressionDraftRequest",
     "ExpressionDraftResult",
+    "GenreConversionInvariance",
+    "ConvertGenreRequest",
+    "ConvertGenreResult",
     "ExpressionError",
 ]

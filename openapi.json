@@ -8720,6 +8720,7 @@
           "explanation",
           "example",
           "limitation",
+          "prerequisite",
           "counterpoint",
           "transition",
           "action"
@@ -12121,6 +12122,14 @@
             "title": "Brief Id",
             "description": "Brief this draft serves."
           },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "Genre this draft was generated for."
+          },
+          "brief": {
+            "$ref": "#/components/schemas/ExpressionBrief",
+            "description": "Expression brief this draft serves."
+          },
           "graph_id": {
             "type": "string",
             "title": "Graph Id",
@@ -12216,6 +12225,33 @@
             ],
             "description": "Model run lock for the generator."
           },
+          "popular_science_elements": {
+            "items": {
+              "$ref": "#/components/schemas/PopularScienceElement"
+            },
+            "type": "array",
+            "title": "Popular Science Elements",
+            "description": "Genre-specific elements for popular science (T026)."
+          },
+          "lecture_script_elements": {
+            "items": {
+              "$ref": "#/components/schemas/LectureScriptElement"
+            },
+            "type": "array",
+            "title": "Lecture Script Elements",
+            "description": "Genre-specific elements for lecture script (T026)."
+          },
+          "review_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReviewReport"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Genre-rule compliance review report (T026)."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -12227,6 +12263,8 @@
         "required": [
           "draft_id",
           "brief_id",
+          "genre",
+          "brief",
           "graph_id",
           "account_id",
           "status",
@@ -12357,7 +12395,9 @@
           "memory_slice_usable",
           "genre_duty_known",
           "source_evidence_present",
-          "risk_tier_human_review"
+          "risk_tier_human_review",
+          "popular_science_elements_present",
+          "lecture_script_elements_present"
         ],
         "title": "ExpressionGateCheck",
         "description": "Named checks performed by the expression quality gate."
@@ -12605,6 +12645,21 @@
         ],
         "title": "Genre",
         "description": "Supported scientific expression genres."
+      },
+      "GenreElementRole": {
+        "type": "string",
+        "enum": [
+          "core_concept",
+          "analogy",
+          "analogy_boundary",
+          "action_relevance",
+          "learning_objective",
+          "prerequisite",
+          "comprehension_check",
+          "practice_pause"
+        ],
+        "title": "GenreElementRole",
+        "description": "Role of a genre-specific structural element within a draft.\n\nPopular science and lecture script genres expose their required sections as\nfirst-class, auditable elements so users can verify that analogies, analogy\nboundaries, learning objectives and comprehension checks are present and\ndistinct."
       },
       "HTTPValidationError": {
         "properties": {
@@ -13724,6 +13779,78 @@
         "title": "LearningRecordType",
         "description": "Kind of observable learning evidence that may update a knowledge state.\n\nBrowsing and completion-only activities are deliberately excluded; they are\nstored as ``LearningActivity`` and never promoted to learning records."
       },
+      "LectureScriptElement": {
+        "properties": {
+          "element_id": {
+            "type": "string",
+            "title": "Element Id",
+            "description": "Stable element identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/GenreElementRole",
+            "description": "Role of this element."
+          },
+          "span_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Span Ids",
+            "description": "Draft spans that realize this element."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "Claims bound to this element."
+          },
+          "checkpoint_question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Checkpoint Question",
+            "description": "For comprehension checks: the question posed to learners."
+          },
+          "expected_answer": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Answer",
+            "description": "For comprehension checks: the expected answer or key elements."
+          },
+          "pause_prompt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pause Prompt",
+            "description": "For practice pauses: the facilitator prompt."
+          }
+        },
+        "type": "object",
+        "required": [
+          "element_id",
+          "role"
+        ],
+        "title": "LectureScriptElement",
+        "description": "A structural element required by the lecture-script genre contract.\n\nThe element exposes learning objectives, prerequisites, comprehension checks\nand practice pauses as first-class objects so a teacher can review and\nadjust them independently of the wording."
+      },
       "LessonEvidenceBundle": {
         "properties": {
           "graph_id": {
@@ -14208,6 +14335,78 @@
         ],
         "title": "ObservationStatus",
         "description": "Lifecycle status of a profile observation."
+      },
+      "PopularScienceElement": {
+        "properties": {
+          "element_id": {
+            "type": "string",
+            "title": "Element Id",
+            "description": "Stable element identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/GenreElementRole",
+            "description": "Role of this element."
+          },
+          "span_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Span Ids",
+            "description": "Draft spans that realize this element."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "Claims bound to this element."
+          },
+          "analogy_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Analogy Target",
+            "description": "For analogies: the concrete target the abstract concept is mapped to."
+          },
+          "boundary_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Boundary Note",
+            "description": "For analogy boundaries: where the analogy no longer applies."
+          },
+          "action_relevance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Action Relevance",
+            "description": "For action relevance: why this matters to the audience."
+          }
+        },
+        "type": "object",
+        "required": [
+          "element_id",
+          "role"
+        ],
+        "title": "PopularScienceElement",
+        "description": "A structural element required by the popular-science genre contract.\n\nThe element distinguishes the core concept from analogies, marks the boundary\nwhere an analogy stops being a mechanism, and links the content to audience\naction relevance."
       },
       "ProfileAssertion": {
         "properties": {
@@ -16084,6 +16283,140 @@
         ],
         "title": "RetrievalExerciseType",
         "description": "Retrieval-practice exercise types that require active recall.\n\nBrowsing or completion-only activities are deliberately excluded."
+      },
+      "ReviewFinding": {
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "title": "Finding Id",
+            "description": "Stable finding identifier."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ReviewFindingKind",
+            "description": "Kind of finding."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/ReviewFindingSeverity",
+            "description": "Severity of the finding."
+          },
+          "rule": {
+            "type": "string",
+            "title": "Rule",
+            "description": "The genre rule that was checked."
+          },
+          "span_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Span Id",
+            "description": "Span affected, if applicable."
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id",
+            "description": "Claim affected, if applicable."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the rule requires or prohibits this."
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remediation",
+            "description": "What to do if the finding indicates a problem."
+          }
+        },
+        "type": "object",
+        "required": [
+          "finding_id",
+          "kind",
+          "severity",
+          "rule",
+          "reason"
+        ],
+        "title": "ReviewFinding",
+        "description": "A single finding explaining why a genre rule requires or prohibits content.\n\nFindings are user-visible justifications tied to spans, claims or the whole\ndraft. They answer \"why must this be here?\" or \"why is this not allowed?\"."
+      },
+      "ReviewFindingKind": {
+        "type": "string",
+        "enum": [
+          "required",
+          "prohibited",
+          "missing",
+          "preserved"
+        ],
+        "title": "ReviewFindingKind",
+        "description": "Kind of genre-rule finding."
+      },
+      "ReviewFindingSeverity": {
+        "type": "string",
+        "enum": [
+          "info",
+          "warning",
+          "blocking"
+        ],
+        "title": "ReviewFindingSeverity",
+        "description": "Severity of a review finding."
+      },
+      "ReviewReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "Stable report identifier."
+          },
+          "draft_id": {
+            "type": "string",
+            "title": "Draft Id",
+            "description": "Draft this report reviews."
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "Genre the report evaluates."
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether the draft satisfies all blocking genre rules."
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewFinding"
+            },
+            "type": "array",
+            "title": "Findings",
+            "description": "Findings explaining rule application."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "draft_id",
+          "genre",
+          "passed"
+        ],
+        "title": "ReviewReport",
+        "description": "Genre-rule compliance review report for an expression draft."
       },
       "ReviewSchedule": {
         "properties": {

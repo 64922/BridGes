@@ -2123,7 +2123,7 @@ export interface components {
          * @description Role of a node in the argument plan.
          * @enum {string}
          */
-        ArgumentNodeRole: "question" | "claim" | "evidence" | "explanation" | "example" | "limitation" | "counterpoint" | "transition" | "action";
+        ArgumentNodeRole: "question" | "claim" | "evidence" | "explanation" | "example" | "limitation" | "prerequisite" | "counterpoint" | "transition" | "action";
         /**
          * ArgumentPlan
          * @description Ordered plan that structures the draft before wording is chosen.
@@ -4235,6 +4235,10 @@ export interface components {
              * @description Brief this draft serves.
              */
             brief_id: string;
+            /** @description Genre this draft was generated for. */
+            genre: components["schemas"]["Genre"];
+            /** @description Expression brief this draft serves. */
+            brief: components["schemas"]["ExpressionBrief"];
             /**
              * Graph Id
              * @description Claim graph the draft is built from.
@@ -4286,6 +4290,18 @@ export interface components {
             wording_strength_ceiling: components["schemas"]["WordingStrength"];
             /** @description Model run lock for the generator. */
             model_run_lock?: components["schemas"]["ModelRunLock"] | null;
+            /**
+             * Popular Science Elements
+             * @description Genre-specific elements for popular science (T026).
+             */
+            popular_science_elements?: components["schemas"]["PopularScienceElement"][];
+            /**
+             * Lecture Script Elements
+             * @description Genre-specific elements for lecture script (T026).
+             */
+            lecture_script_elements?: components["schemas"]["LectureScriptElement"][];
+            /** @description Genre-rule compliance review report (T026). */
+            review_report?: components["schemas"]["ReviewReport"] | null;
             /**
              * Created At
              * Format: date-time
@@ -4362,7 +4378,7 @@ export interface components {
          * @description Named checks performed by the expression quality gate.
          * @enum {string}
          */
-        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review";
+        ExpressionGateCheck: "brief_complete" | "required_claims_present" | "key_claims_fact_locked" | "memory_slice_usable" | "genre_duty_known" | "source_evidence_present" | "risk_tier_human_review" | "popular_science_elements_present" | "lecture_script_elements_present";
         /**
          * ExpressionGateResult
          * @description Result of running the expression quality gate over a draft.
@@ -4513,6 +4529,17 @@ export interface components {
          * @enum {string}
          */
         Genre: "popular_science" | "lecture_script" | "research_report" | "paper_assist";
+        /**
+         * GenreElementRole
+         * @description Role of a genre-specific structural element within a draft.
+         *
+         *     Popular science and lecture script genres expose their required sections as
+         *     first-class, auditable elements so users can verify that analogies, analogy
+         *     boundaries, learning objectives and comprehension checks are present and
+         *     distinct.
+         * @enum {string}
+         */
+        GenreElementRole: "core_concept" | "analogy" | "analogy_boundary" | "action_relevance" | "learning_objective" | "prerequisite" | "comprehension_check" | "practice_pause";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5236,6 +5263,48 @@ export interface components {
          */
         LearningRecordType: "exercise_attempt" | "misconception_correction" | "prerequisite_evidence" | "delayed_retrieval" | "transfer_task";
         /**
+         * LectureScriptElement
+         * @description A structural element required by the lecture-script genre contract.
+         *
+         *     The element exposes learning objectives, prerequisites, comprehension checks
+         *     and practice pauses as first-class objects so a teacher can review and
+         *     adjust them independently of the wording.
+         */
+        LectureScriptElement: {
+            /**
+             * Element Id
+             * @description Stable element identifier.
+             */
+            element_id: string;
+            /** @description Role of this element. */
+            role: components["schemas"]["GenreElementRole"];
+            /**
+             * Span Ids
+             * @description Draft spans that realize this element.
+             */
+            span_ids?: string[];
+            /**
+             * Claim Ids
+             * @description Claims bound to this element.
+             */
+            claim_ids?: string[];
+            /**
+             * Checkpoint Question
+             * @description For comprehension checks: the question posed to learners.
+             */
+            checkpoint_question?: string | null;
+            /**
+             * Expected Answer
+             * @description For comprehension checks: the expected answer or key elements.
+             */
+            expected_answer?: string | null;
+            /**
+             * Pause Prompt
+             * @description For practice pauses: the facilitator prompt.
+             */
+            pause_prompt?: string | null;
+        };
+        /**
          * LessonEvidenceBundle
          * @description Evidence and fact-lock input carried from a claim graph (T016) into a lesson.
          *
@@ -5539,6 +5608,48 @@ export interface components {
          * @enum {string}
          */
         ObservationStatus: "active" | "discarded";
+        /**
+         * PopularScienceElement
+         * @description A structural element required by the popular-science genre contract.
+         *
+         *     The element distinguishes the core concept from analogies, marks the boundary
+         *     where an analogy stops being a mechanism, and links the content to audience
+         *     action relevance.
+         */
+        PopularScienceElement: {
+            /**
+             * Element Id
+             * @description Stable element identifier.
+             */
+            element_id: string;
+            /** @description Role of this element. */
+            role: components["schemas"]["GenreElementRole"];
+            /**
+             * Span Ids
+             * @description Draft spans that realize this element.
+             */
+            span_ids?: string[];
+            /**
+             * Claim Ids
+             * @description Claims bound to this element.
+             */
+            claim_ids?: string[];
+            /**
+             * Analogy Target
+             * @description For analogies: the concrete target the abstract concept is mapped to.
+             */
+            analogy_target?: string | null;
+            /**
+             * Boundary Note
+             * @description For analogy boundaries: where the analogy no longer applies.
+             */
+            boundary_note?: string | null;
+            /**
+             * Action Relevance
+             * @description For action relevance: why this matters to the audience.
+             */
+            action_relevance?: string | null;
+        };
         /**
          * ProfileAssertion
          * @description Stable, promoted profile entry that may enter a memory slice.
@@ -6770,6 +6881,89 @@ export interface components {
          * @enum {string}
          */
         RetrievalExerciseType: "recall" | "explanation" | "computation" | "comparison" | "application";
+        /**
+         * ReviewFinding
+         * @description A single finding explaining why a genre rule requires or prohibits content.
+         *
+         *     Findings are user-visible justifications tied to spans, claims or the whole
+         *     draft. They answer "why must this be here?" or "why is this not allowed?".
+         */
+        ReviewFinding: {
+            /**
+             * Finding Id
+             * @description Stable finding identifier.
+             */
+            finding_id: string;
+            /** @description Kind of finding. */
+            kind: components["schemas"]["ReviewFindingKind"];
+            /** @description Severity of the finding. */
+            severity: components["schemas"]["ReviewFindingSeverity"];
+            /**
+             * Rule
+             * @description The genre rule that was checked.
+             */
+            rule: string;
+            /**
+             * Span Id
+             * @description Span affected, if applicable.
+             */
+            span_id?: string | null;
+            /**
+             * Claim Id
+             * @description Claim affected, if applicable.
+             */
+            claim_id?: string | null;
+            /**
+             * Reason
+             * @description Why the rule requires or prohibits this.
+             */
+            reason: string;
+            /**
+             * Remediation
+             * @description What to do if the finding indicates a problem.
+             */
+            remediation?: string | null;
+        };
+        /**
+         * ReviewFindingKind
+         * @description Kind of genre-rule finding.
+         * @enum {string}
+         */
+        ReviewFindingKind: "required" | "prohibited" | "missing" | "preserved";
+        /**
+         * ReviewFindingSeverity
+         * @description Severity of a review finding.
+         * @enum {string}
+         */
+        ReviewFindingSeverity: "info" | "warning" | "blocking";
+        /**
+         * ReviewReport
+         * @description Genre-rule compliance review report for an expression draft.
+         */
+        ReviewReport: {
+            /**
+             * Report Id
+             * @description Stable report identifier.
+             */
+            report_id: string;
+            /**
+             * Draft Id
+             * @description Draft this report reviews.
+             */
+            draft_id: string;
+            /** @description Genre the report evaluates. */
+            genre: components["schemas"]["Genre"];
+            /**
+             * Passed
+             * @description Whether the draft satisfies all blocking genre rules.
+             */
+            passed: boolean;
+            /**
+             * Findings
+             * @description Findings explaining rule application.
+             */
+            findings?: components["schemas"]["ReviewFinding"][];
+        };
         /**
          * ReviewSchedule
          * @description Collection of pending review tasks for a learning mission.

@@ -25,31 +25,32 @@ import re
 import secrets
 from collections import Counter
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.invalidation import InvalidationService
-from science_companion.contracts.scope import ScopeAction, ScopeEnvelope
-from science_companion.scope import ScopeEnforcer
 from science_companion.contracts.science import (
     CoverageGap,
-    LifecycleStatus,
     RetrievalCandidate,
     RetrievalChannel,
     SearchRequest,
     SearchResult,
     SourceStatus,
 )
+from science_companion.contracts.scope import ScopeAction, ScopeEnvelope
+from science_companion.invalidation import InvalidationService
 from science_companion.science.service import ScienceError, ScienceSourceService, SearchableChunk
-
+from science_companion.scope import ScopeEnforcer
 
 _RRF_K = 60
 """Reciprocal rank fusion constant."""
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
 def _tokenize(text: str) -> list[str]:
@@ -59,7 +60,11 @@ def _tokenize(text: str) -> list[str]:
     non-alphanumeric boundaries and lowercased.
     """
     lowered = text.lower()
-    parts = re.split(r"[^\w\u4e00-\u9fff]+", lowered)
+    # Separate CJK characters so each becomes an individual token; this keeps
+    # the lightweight seam testable for Chinese queries without requiring an
+    # external segmentation library.
+    spaced = _CJK_RE.sub(r" \g<0> ", lowered)
+    parts = re.split(r"[^\w\u4e00-\u9fff]+", spaced)
     return [p for p in parts if p]
 
 
@@ -126,9 +131,10 @@ class ScienceSearchService:
         object_domain = request.object_domain
         # Shared project sources are scoped by project_id as owner.
         project_id_for_scope = None
-        if object_domain == ObjectDomain.SHARED_PROJECT:
-            project_id_for_scope = request.project_id
-        elif object_domain == ObjectDomain.PERSONAL_VAULT:
+        if object_domain in {
+            ObjectDomain.SHARED_PROJECT,
+            ObjectDomain.PERSONAL_VAULT,
+        }:
             project_id_for_scope = request.project_id
         return self._scope_enforcer.compile_scope(
             subject,
@@ -165,8 +171,8 @@ class ScienceSearchService:
         if not query_tokens:
             return []
 
-        N = len(index)
-        if N == 0:
+        n_docs = len(index)
+        if n_docs == 0:
             return []
 
         # Document frequency for query terms across the scoped index.
@@ -179,11 +185,13 @@ class ScienceSearchService:
         query_counts = Counter(query_tokens)
         for chunk_id, indexed in index.items():
             score = 0.0
-            for term, qtf in query_counts.items():
+            for term, _qtf in query_counts.items():
                 tf = indexed.token_counts.get(term, 0)
                 if tf == 0:
                     continue
-                idf = math.log(1 + (N - df.get(term, 0) + 0.5) / (df.get(term, 0) + 0.5))
+                idf = math.log(
+                    1 + (n_docs - df.get(term, 0) + 0.5) / (df.get(term, 0) + 0.5)
+                )
                 score += idf * (tf * (1.2 + 1)) / (tf + 1.2)
             if score > 0:
                 scores.append((chunk_id, score))
