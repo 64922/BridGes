@@ -7,9 +7,11 @@ from abc import ABC, abstractmethod
 from science_companion.contracts.learning import (
     DiagnosticResult,
     DiagnosticRun,
+    ExerciseAttempt,
     KnowledgeState,
     LearningActivity,
     LearningMission,
+    ShortLesson,
     TeachingPlan,
 )
 
@@ -87,6 +89,30 @@ class LearningRepository(ABC):
         self, owner_id: str, mission_id: str
     ) -> list[TeachingPlan]:
         """List teaching plans for a mission, most recent first."""
+
+    @abstractmethod
+    def save_lesson(self, lesson: ShortLesson) -> ShortLesson:
+        """Persist a short lesson."""
+
+    @abstractmethod
+    def get_lesson(self, owner_id: str, lesson_id: str) -> ShortLesson:
+        """Return a short lesson or raise a domain error."""
+
+    @abstractmethod
+    def list_lessons_for_plan(
+        self, owner_id: str, plan_id: str
+    ) -> list[ShortLesson]:
+        """List lessons for a teaching plan, most recent first."""
+
+    @abstractmethod
+    def save_exercise_attempt(self, attempt: ExerciseAttempt) -> ExerciseAttempt:
+        """Persist an exercise attempt."""
+
+    @abstractmethod
+    def list_attempts_for_exercise(
+        self, owner_id: str, exercise_id: str
+    ) -> list[ExerciseAttempt]:
+        """List attempts for an exercise, most recent first."""
 
     @abstractmethod
     def save_activity(self, activity: LearningActivity) -> LearningActivity:

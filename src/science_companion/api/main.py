@@ -22,7 +22,7 @@ from science_companion.evaluation import EvaluationService
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
-from science_companion.learning import InMemoryLearningRepository, LearningService
+from science_companion.learning import InMemoryLearningRepository, LearningService, TeachingService
 from science_companion.learning.api import router as learning_router
 from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
@@ -346,6 +346,9 @@ def create_app() -> FastAPI:
     learning_repository = InMemoryLearningRepository()
     learning_service = LearningService(repository=learning_repository)
     app.state.learning_service = learning_service
+
+    # T022: attach the in-memory teaching service for short lessons and retrieval.
+    app.state.teaching_service = TeachingService(repository=learning_repository)
 
     app.include_router(auth.router)
     app.include_router(projects.router)

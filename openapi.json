@@ -6556,6 +6556,340 @@
         }
       }
     },
+    "/learning/plans/{plan_id}/lessons": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "List Lessons",
+        "description": "List short lessons for a teaching plan.",
+        "operationId": "list_lessons_learning_plans__plan_id__lessons_get",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ShortLesson"
+                  },
+                  "title": "Response List Lessons Learning Plans  Plan Id  Lessons Get"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Generate Short Lesson",
+        "description": "Generate a short lesson from a teaching plan.",
+        "operationId": "generate_short_lesson_learning_plans__plan_id__lessons_post",
+        "parameters": [
+          {
+            "name": "plan_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plan Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/GenerateLessonRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLesson"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/lessons/{lesson_id}": {
+      "get": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Get Lesson",
+        "description": "Get a short lesson by ID.",
+        "operationId": "get_lesson_learning_lessons__lesson_id__get",
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShortLesson"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning/lessons/{lesson_id}/exercises/{exercise_id}/attempts": {
+      "post": {
+        "tags": [
+          "learning"
+        ],
+        "summary": "Submit Exercise Attempt",
+        "description": "Submit an attempt for a retrieval exercise.",
+        "operationId": "submit_exercise_attempt_learning_lessons__lesson_id__exercises__exercise_id__attempts_post",
+        "parameters": [
+          {
+            "name": "lesson_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Lesson Id"
+            }
+          },
+          {
+            "name": "exercise_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Exercise Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExerciseAttemptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExerciseAttempt"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -9883,6 +10217,84 @@
         "title": "EvidenceState",
         "description": "Aggregated evidence state for a single claim."
       },
+      "ExerciseAttempt": {
+        "properties": {
+          "attempt_id": {
+            "type": "string",
+            "title": "Attempt Id",
+            "description": "Stable attempt identifier."
+          },
+          "exercise_id": {
+            "type": "string",
+            "title": "Exercise Id",
+            "description": "Exercise being attempted."
+          },
+          "lesson_id": {
+            "type": "string",
+            "title": "Lesson Id",
+            "description": "Lesson the exercise belongs to."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "response_text": {
+            "type": "string",
+            "title": "Response Text",
+            "description": "User's response."
+          },
+          "evaluated_state": {
+            "$ref": "#/components/schemas/AnswerEvaluatedState",
+            "description": "Result of evaluation."
+          },
+          "evaluator": {
+            "type": "string",
+            "title": "Evaluator",
+            "description": "Agent that evaluated the attempt."
+          },
+          "feedback": {
+            "$ref": "#/components/schemas/ImmediateFeedback",
+            "description": "Immediate feedback."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "When the attempt was recorded."
+          }
+        },
+        "type": "object",
+        "required": [
+          "attempt_id",
+          "exercise_id",
+          "lesson_id",
+          "owner_account_id",
+          "response_text",
+          "evaluated_state",
+          "evaluator",
+          "feedback",
+          "created_at"
+        ],
+        "title": "ExerciseAttempt",
+        "description": "A user's attempt at a retrieval exercise."
+      },
+      "ExerciseAttemptRequest": {
+        "properties": {
+          "response_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Response Text",
+            "description": "User's response."
+          }
+        },
+        "type": "object",
+        "required": [
+          "response_text"
+        ],
+        "title": "ExerciseAttemptRequest",
+        "description": "Request to submit an exercise attempt."
+      },
       "FactLock": {
         "properties": {
           "lock_id": {
@@ -10041,6 +10453,24 @@
         ],
         "title": "GateResult",
         "description": "Result of a single input quality gate."
+      },
+      "GenerateLessonRequest": {
+        "properties": {
+          "evidence_bundle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LessonEvidenceBundle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional evidence and fact-lock bundle from T016."
+          }
+        },
+        "type": "object",
+        "title": "GenerateLessonRequest",
+        "description": "Request to generate a short lesson from a teaching plan."
       },
       "HTTPValidationError": {
         "properties": {
@@ -10259,6 +10689,53 @@
         ],
         "title": "HumanTodoStatus",
         "description": "Status of a named human decision attached to a run."
+      },
+      "ImmediateFeedback": {
+        "properties": {
+          "is_correct": {
+            "type": "boolean",
+            "title": "Is Correct",
+            "description": "Whether the response is correct."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Explanation of why the response is correct or not."
+          },
+          "misconception": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Misconception",
+            "description": "Identified misconception if any."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence supporting the feedback."
+          },
+          "next_step": {
+            "type": "string",
+            "title": "Next Step",
+            "description": "Recommended next action."
+          }
+        },
+        "type": "object",
+        "required": [
+          "is_correct",
+          "explanation",
+          "next_step"
+        ],
+        "title": "ImmediateFeedback",
+        "description": "Specific feedback for a single exercise attempt, bound to evidence."
       },
       "IngestionRunRef": {
         "properties": {
@@ -10695,6 +11172,102 @@
         ],
         "title": "LearningMissionCreateRequest",
         "description": "Request to create a learning mission."
+      },
+      "LessonEvidenceBundle": {
+        "properties": {
+          "graph_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Graph Id",
+            "description": "Source claim graph id."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence references grounding the lesson."
+          },
+          "fact_locks": {
+            "items": {
+              "$ref": "#/components/schemas/FactLock"
+            },
+            "type": "array",
+            "title": "Fact Locks",
+            "description": "Fact locks constraining the lesson."
+          }
+        },
+        "type": "object",
+        "title": "LessonEvidenceBundle",
+        "description": "Evidence and fact-lock input carried from a claim graph (T016) into a lesson.\n\nThe bundle is the minimal authoritative context the teaching service needs to\nbind explanations, examples, answers and feedback to evidence without directly\ndepending on the science module's internal services."
+      },
+      "LessonExample": {
+        "properties": {
+          "example_id": {
+            "type": "string",
+            "title": "Example Id",
+            "description": "Stable example identifier."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept the example illustrates."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Short example title."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Example explanation."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence grounding the example."
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids",
+            "description": "Fact locks the example must respect."
+          }
+        },
+        "type": "object",
+        "required": [
+          "example_id",
+          "concept_id",
+          "title",
+          "explanation"
+        ],
+        "title": "LessonExample",
+        "description": "A worked example bound to evidence and fact locks."
+      },
+      "LessonStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "evidence_bound",
+          "qualified",
+          "degraded",
+          "blocked"
+        ],
+        "title": "LessonStatus",
+        "description": "Lifecycle status of a generated short lesson."
       },
       "LicenseState": {
         "type": "string",
@@ -12851,6 +13424,86 @@
         "title": "RetrievalChannel",
         "description": "Channel that produced a retrieval candidate."
       },
+      "RetrievalExercise": {
+        "properties": {
+          "exercise_id": {
+            "type": "string",
+            "title": "Exercise Id",
+            "description": "Stable exercise identifier."
+          },
+          "lesson_id": {
+            "type": "string",
+            "title": "Lesson Id",
+            "description": "Lesson this exercise belongs to."
+          },
+          "concept_id": {
+            "type": "string",
+            "title": "Concept Id",
+            "description": "Concept being exercised."
+          },
+          "exercise_type": {
+            "$ref": "#/components/schemas/RetrievalExerciseType",
+            "description": "Type of retrieval task."
+          },
+          "question_text": {
+            "type": "string",
+            "title": "Question Text",
+            "description": "Question text."
+          },
+          "expected_answer": {
+            "type": "string",
+            "title": "Expected Answer",
+            "description": "Expected answer or key elements."
+          },
+          "misconception_hints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Misconception Hints",
+            "description": "Common misconceptions this exercise surfaces."
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence grounding the answer."
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids",
+            "description": "Fact locks the answer must respect."
+          }
+        },
+        "type": "object",
+        "required": [
+          "exercise_id",
+          "lesson_id",
+          "concept_id",
+          "exercise_type",
+          "question_text",
+          "expected_answer"
+        ],
+        "title": "RetrievalExercise",
+        "description": "A single retrieval-practice exercise bound to evidence and fact locks."
+      },
+      "RetrievalExerciseType": {
+        "type": "string",
+        "enum": [
+          "recall",
+          "explanation",
+          "computation",
+          "comparison",
+          "application"
+        ],
+        "title": "RetrievalExerciseType",
+        "description": "Retrieval-practice exercise types that require active recall.\n\nBrowsing or completion-only activities are deliberately excluded."
+      },
       "RunContextEnvelope": {
         "properties": {
           "run_id": {
@@ -13515,6 +14168,136 @@
         "title": "SessionResponse",
         "description": "Response for an existing session lookup."
       },
+      "ShortLesson": {
+        "properties": {
+          "lesson_id": {
+            "type": "string",
+            "title": "Lesson Id",
+            "description": "Stable lesson identifier."
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id",
+            "description": "Teaching plan this lesson serves."
+          },
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "Mission the lesson serves."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Lesson title."
+          },
+          "learning_objective": {
+            "type": "string",
+            "title": "Learning Objective",
+            "description": "Single learning victory."
+          },
+          "target_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Concepts",
+            "description": "Concepts addressed in this lesson."
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "Core explanation of the learning objective."
+          },
+          "examples": {
+            "items": {
+              "$ref": "#/components/schemas/LessonExample"
+            },
+            "type": "array",
+            "title": "Examples"
+          },
+          "exercises": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalExercise"
+            },
+            "type": "array",
+            "title": "Exercises"
+          },
+          "evidence_refs": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceRef"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "Evidence grounding the lesson."
+          },
+          "fact_lock_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Set Id",
+            "description": "Optional fact lock set id from T016."
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids",
+            "description": "Fact locks constraining the lesson."
+          },
+          "quality_gate": {
+            "$ref": "#/components/schemas/TeachingQualityGateResult",
+            "description": "Teaching quality gate result."
+          },
+          "status": {
+            "$ref": "#/components/schemas/LessonStatus",
+            "default": "draft"
+          },
+          "human_gate_required": {
+            "type": "boolean",
+            "title": "Human Gate Required",
+            "default": false
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Optimistic concurrency version.",
+            "default": 1
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lesson_id",
+          "plan_id",
+          "mission_id",
+          "owner_account_id",
+          "title",
+          "learning_objective",
+          "target_concepts",
+          "explanation",
+          "quality_gate",
+          "created_at"
+        ],
+        "title": "ShortLesson",
+        "description": "A short lesson around a single learning victory.\n\nExplanations, examples, exercises and feedback are bound to an EvidenceSet and\nconstrained by fact locks. The lesson status is independent of workflow run\nstatus; it reflects the teaching quality gate outcome."
+      },
       "SliceStatus": {
         "type": "string",
         "enum": [
@@ -14144,6 +14927,79 @@
         ],
         "title": "TeachingPlanStatus",
         "description": "Lifecycle status of a teaching plan."
+      },
+      "TeachingQualityGateCheck": {
+        "type": "string",
+        "enum": [
+          "mission_bound",
+          "evidence_bound",
+          "fact_lock_bound",
+          "exercise_requires_retrieval",
+          "no_high_risk_without_human_gate",
+          "single_learning_victory"
+        ],
+        "title": "TeachingQualityGateCheck",
+        "description": "Named checks performed by the teaching quality gate."
+      },
+      "TeachingQualityGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "Whether the lesson passes the gate."
+          },
+          "checks": {
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/TeachingQualityGateCheck"
+            },
+            "type": "object",
+            "title": "Checks"
+          },
+          "failed_checks": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingQualityGateCheck"
+            },
+            "type": "array",
+            "title": "Failed Checks"
+          },
+          "requires_human_gate": {
+            "type": "boolean",
+            "title": "Requires Human Gate",
+            "default": false
+          },
+          "human_gate_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Gate Reason"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason",
+            "description": "Human-readable gate summary."
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed"
+        ],
+        "title": "TeachingQualityGateResult",
+        "description": "Result of running the teaching quality gate over a short lesson."
       },
       "TemporaryTaskCapsule": {
         "properties": {

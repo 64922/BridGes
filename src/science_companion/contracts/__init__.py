@@ -14,15 +14,6 @@ from .identity import (
     SessionResponse,
     SubjectContext,
 )
-from .scope import (
-    BackgroundTaskEnvelope,
-    RLSContext,
-    ScopeAction,
-    ScopeCacheKey,
-    ScopeEnvelope,
-    ScopeIsolationError,
-    ScopeViolationReport,
-)
 from .learning import (
     AnswerEvaluatedState,
     DiagnosticAnswer,
@@ -34,6 +25,10 @@ from .learning import (
     DiagnosticRun,
     DiagnosticRunStatus,
     EvidenceRef,
+    ExerciseAttempt,
+    ExerciseAttemptRequest,
+    GenerateLessonRequest,
+    ImmediateFeedback,
     KnowledgeConfidence,
     KnowledgeState,
     KnowledgeStateCorrection,
@@ -43,8 +38,16 @@ from .learning import (
     LearningError,
     LearningMission,
     LearningMissionCreateRequest,
+    LessonEvidenceBundle,
+    LessonExample,
+    LessonStatus,
+    RetrievalExercise,
+    RetrievalExerciseType,
+    ShortLesson,
     TeachingPlan,
     TeachingPlanStatus,
+    TeachingQualityGateCheck,
+    TeachingQualityGateResult,
 )
 from .science import (
     ChunkCorrection,
@@ -55,8 +58,8 @@ from .science import (
     IngestionRunRef,
     IngestionStatus,
     InputQualityGate,
-    LifecycleStatus,
     LicenseState,
+    LifecycleStatus,
     MediaType,
     ParseResult,
     Source,
@@ -69,6 +72,15 @@ from .science import (
     SourceTrustAssertion,
     SourceUploadRequest,
     SourceVersionRequest,
+)
+from .scope import (
+    BackgroundTaskEnvelope,
+    RLSContext,
+    ScopeAction,
+    ScopeCacheKey,
+    ScopeEnvelope,
+    ScopeIsolationError,
+    ScopeViolationReport,
 )
 
 __all__ = [
@@ -113,8 +125,20 @@ __all__ = [
     "LearningError",
     "LearningMission",
     "LearningMissionCreateRequest",
+    "LessonExample",
+    "LessonEvidenceBundle",
+    "LessonStatus",
+    "RetrievalExercise",
+    "RetrievalExerciseType",
+    "ShortLesson",
+    "ExerciseAttempt",
+    "ExerciseAttemptRequest",
+    "GenerateLessonRequest",
+    "ImmediateFeedback",
     "TeachingPlan",
     "TeachingPlanStatus",
+    "TeachingQualityGateCheck",
+    "TeachingQualityGateResult",
     # Science source contracts
     "ChunkCorrection",
     "ChunkStructurePath",

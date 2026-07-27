@@ -12,15 +12,18 @@ from science_companion.contracts.learning import (
     DiagnosticQuestionCreateRequest,
     DiagnosticResult,
     DiagnosticRun,
+    ExerciseAttempt,
+    ExerciseAttemptRequest,
+    GenerateLessonRequest,
     KnowledgeState,
     KnowledgeStateCorrection,
-    LearningActivityType,
     LearningError,
     LearningMission,
     LearningMissionCreateRequest,
+    ShortLesson,
     TeachingPlan,
 )
-from science_companion.learning import LearningService
+from science_companion.learning import LearningService, TeachingService
 from science_companion.learning.adapters import LearningError as LearningAdapterError
 
 router = APIRouter(prefix="/learning", tags=["learning"])
@@ -34,6 +37,16 @@ def _get_learning_service(request: Request) -> LearningService:
 
 
 LearningServiceDep = Annotated[LearningService, Depends(_get_learning_service)]
+
+
+def _get_teaching_service(request: Request) -> TeachingService:
+    service: TeachingService | None = getattr(request.app.state, "teaching_service", None)
+    if service is None:
+        raise RuntimeError("TeachingService not attached to application state.")
+    return service
+
+
+TeachingServiceDep = Annotated[TeachingService, Depends(_get_teaching_service)]
 
 
 def _error(status_code: int, error: str, message: str) -> HTTPException:
@@ -90,7 +103,7 @@ async def get_mission(
     try:
         return service.get_mission(subject.account_id, mission_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc))
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
 
 
 @router.post(
@@ -114,7 +127,7 @@ async def create_diagnostic_run(
             subject.account_id, mission_id, questions=questions
         )
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc))
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
 
 
 @router.get(
@@ -133,7 +146,7 @@ async def get_diagnostic_run(
     try:
         return service.get_diagnostic_run(subject.account_id, run_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_404_NOT_FOUND, "run_not_found", str(exc))
+        raise _error(status.HTTP_404_NOT_FOUND, "run_not_found", str(exc)) from exc
 
 
 @router.post(
@@ -155,7 +168,7 @@ async def record_answer(
         service.record_answer(subject.account_id, run_id, request)
         return service.get_diagnostic_run(subject.account_id, run_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_400_BAD_REQUEST, "answer_failed", str(exc))
+        raise _error(status.HTTP_400_BAD_REQUEST, "answer_failed", str(exc)) from exc
 
 
 @router.post(
@@ -175,7 +188,7 @@ async def complete_diagnostic(
     try:
         return service.complete_diagnostic(subject.account_id, run_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_400_BAD_REQUEST, "complete_failed", str(exc))
+        raise _error(status.HTTP_400_BAD_REQUEST, "complete_failed", str(exc)) from exc
 
 
 @router.get(
@@ -194,7 +207,7 @@ async def get_diagnostic_result(
     try:
         return service.get_diagnostic_result(subject.account_id, result_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_404_NOT_FOUND, "result_not_found", str(exc))
+        raise _error(status.HTTP_404_NOT_FOUND, "result_not_found", str(exc)) from exc
 
 
 @router.get(
@@ -210,7 +223,7 @@ async def list_knowledge_states(
     try:
         return service.list_knowledge_states(subject.account_id, mission_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc))
+        raise _error(status.HTTP_404_NOT_FOUND, "mission_not_found", str(exc)) from exc
 
 
 @router.post(
@@ -233,7 +246,7 @@ async def correct_knowledge_state(
             subject.account_id, mission_id, correction
         )
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_400_BAD_REQUEST, "correction_failed", str(exc))
+        raise _error(status.HTTP_400_BAD_REQUEST, "correction_failed", str(exc)) from exc
 
 
 @router.get(
@@ -252,4 +265,91 @@ async def compile_teaching_plan(
     try:
         return service.compile_teaching_plan(subject.account_id, mission_id)
     except LearningAdapterError as exc:
-        raise _error(status.HTTP_404_NOT_FOUND, "plan_failed", str(exc))
+        raise _error(status.HTTP_404_NOT_FOUND, "plan_failed", str(exc)) from exc
+
+
+@router.get(
+    "/plans/{plan_id}/lessons",
+    response_model=list[ShortLesson],
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def list_lessons(
+    teaching_service: TeachingServiceDep,
+    subject: SubjectDep,
+    plan_id: str,
+) -> list[ShortLesson]:
+    """List short lessons for a teaching plan."""
+    try:
+        return teaching_service.list_lessons_for_plan(subject.account_id, plan_id)
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "plan_not_found", str(exc)) from exc
+
+
+@router.post(
+    "/plans/{plan_id}/lessons",
+    response_model=ShortLesson,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def generate_short_lesson(
+    teaching_service: TeachingServiceDep,
+    subject: SubjectDep,
+    plan_id: str,
+    request: GenerateLessonRequest | None = None,
+) -> ShortLesson:
+    """Generate a short lesson from a teaching plan."""
+    try:
+        return teaching_service.generate_short_lesson(
+            subject.account_id, plan_id, request=request or GenerateLessonRequest()
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "plan_not_found", str(exc)) from exc
+
+
+@router.get(
+    "/lessons/{lesson_id}",
+    response_model=ShortLesson,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+    },
+)
+async def get_lesson(
+    teaching_service: TeachingServiceDep,
+    subject: SubjectDep,
+    lesson_id: str,
+) -> ShortLesson:
+    """Get a short lesson by ID."""
+    try:
+        return teaching_service.get_lesson(subject.account_id, lesson_id)
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_404_NOT_FOUND, "lesson_not_found", str(exc)) from exc
+
+
+@router.post(
+    "/lessons/{lesson_id}/exercises/{exercise_id}/attempts",
+    response_model=ExerciseAttempt,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_404_NOT_FOUND: {"model": LearningError},
+        status.HTTP_400_BAD_REQUEST: {"model": LearningError},
+    },
+)
+async def submit_exercise_attempt(
+    teaching_service: TeachingServiceDep,
+    subject: SubjectDep,
+    lesson_id: str,
+    exercise_id: str,
+    request: ExerciseAttemptRequest,
+) -> ExerciseAttempt:
+    """Submit an attempt for a retrieval exercise."""
+    try:
+        return teaching_service.submit_exercise_attempt(
+            subject.account_id, lesson_id, exercise_id, request.response_text
+        )
+    except LearningAdapterError as exc:
+        raise _error(status.HTTP_400_BAD_REQUEST, "attempt_failed", str(exc)) from exc

@@ -562,6 +562,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/assertions/{assertion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Assertion
+         * @description Return a single promoted profile assertion.
+         */
+        get: operations["get_assertion_profiles_assertions__assertion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Freeze Assertion
+         * @description Freeze a profile assertion so it is no longer used in new runs.
+         */
+        post: operations["freeze_assertion_profiles_assertions__assertion_id__freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/modify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Modify Assertion
+         * @description Modify a profile assertion, creating a new version.
+         */
+        post: operations["modify_assertion_profiles_assertions__assertion_id__modify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rollback Assertion
+         * @description Roll a profile assertion back to a previous version.
+         */
+        post: operations["rollback_assertion_profiles_assertions__assertion_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Assertion
+         * @description Delete a profile assertion and propagate the deletion downstream.
+         */
+        post: operations["delete_assertion_profiles_assertions__assertion_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Profile
+         * @description Export the current account's profile assertions and governance history.
+         */
+        get: operations["export_profile_profiles_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/work-orders": {
         parameters: {
             query?: never;
@@ -1168,6 +1288,270 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/learning/missions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Missions
+         * @description List learning missions for the current user.
+         */
+        get: operations["list_missions_learning_missions_get"];
+        put?: never;
+        /**
+         * Create Mission
+         * @description Create a learning mission for the current user.
+         */
+        post: operations["create_mission_learning_missions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Mission
+         * @description Get a learning mission by ID.
+         */
+        get: operations["get_mission_learning_missions__mission_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Diagnostic Run
+         * @description Create a diagnostic run for a mission.
+         */
+        post: operations["create_diagnostic_run_learning_missions__mission_id__runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Diagnostic Run
+         * @description Get a diagnostic run by ID.
+         */
+        get: operations["get_diagnostic_run_learning_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/runs/{run_id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record Answer
+         * @description Record a diagnostic answer and return the updated run.
+         */
+        post: operations["record_answer_learning_runs__run_id__answers_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/runs/{run_id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete Diagnostic
+         * @description Complete a diagnostic run and compute evidence-backed knowledge states.
+         */
+        post: operations["complete_diagnostic_learning_runs__run_id__complete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/results/{result_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Diagnostic Result
+         * @description Get a diagnostic result by ID.
+         */
+        get: operations["get_diagnostic_result_learning_results__result_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/states": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Knowledge States
+         * @description List knowledge states for a mission.
+         */
+        get: operations["list_knowledge_states_learning_missions__mission_id__states_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/states/correct": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Correct Knowledge State
+         * @description Correct a knowledge state with a user-supplied judgement.
+         */
+        post: operations["correct_knowledge_state_learning_missions__mission_id__states_correct_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/missions/{mission_id}/teaching-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compile Teaching Plan
+         * @description Compile a minimal teaching plan from the mission and current states.
+         */
+        get: operations["compile_teaching_plan_learning_missions__mission_id__teaching_plan_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/plans/{plan_id}/lessons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Short Lesson
+         * @description Generate a short lesson from a teaching plan.
+         */
+        post: operations["generate_short_lesson_learning_plans__plan_id__lessons_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/lessons/{lesson_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Lesson
+         * @description Get a short lesson by ID.
+         */
+        get: operations["get_lesson_learning_lessons__lesson_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning/lessons/{lesson_id}/exercises/{exercise_id}/attempts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Exercise Attempt
+         * @description Submit an attempt for a retrieval exercise.
+         */
+        post: operations["submit_exercise_attempt_learning_lessons__lesson_id__exercises__exercise_id__attempts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -1371,6 +1755,12 @@ export interface components {
             agreed_to_terms: boolean;
         };
         /**
+         * AnswerEvaluatedState
+         * @description Result of evaluating a single diagnostic answer.
+         * @enum {string}
+         */
+        AnswerEvaluatedState: "correct" | "partial" | "incorrect" | "needs_review";
+        /**
          * ArtifactTrustStatus
          * @description Lifecycle status of the scientific artifact produced by a run.
          * @enum {string}
@@ -1381,7 +1771,7 @@ export interface components {
          * @description Lifecycle status of a promoted profile assertion.
          * @enum {string}
          */
-        AssertionStatus: "active" | "frozen" | "stale";
+        AssertionStatus: "active" | "frozen" | "stale" | "deleted";
         /**
          * AuthError
          * @description Uniform authentication error response.
@@ -2234,6 +2624,278 @@ export interface components {
             can_retry_at?: string | null;
         };
         /**
+         * DiagnosticAnswer
+         * @description A user's answer to one diagnostic question, with evidence-backed evaluation.
+         */
+        DiagnosticAnswer: {
+            /**
+             * Answer Id
+             * @description Stable answer identifier.
+             */
+            answer_id: string;
+            /**
+             * Run Id
+             * @description Diagnostic run this answer belongs to.
+             */
+            run_id: string;
+            /**
+             * Question Id
+             * @description Question being answered.
+             */
+            question_id: string;
+            /**
+             * Response Text
+             * @description User's response.
+             */
+            response_text: string;
+            /**
+             * Evidence Refs
+             * @description Evidence the user cited to support the answer.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /** @description Evaluated result. */
+            evaluated_state: components["schemas"]["AnswerEvaluatedState"];
+            /**
+             * Evaluator
+             * @description Agent that evaluated the answer: rule, model, human.
+             */
+            evaluator: string;
+            /**
+             * Evaluation Reason
+             * @description Transparent reason for the evaluation.
+             */
+            evaluation_reason: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the answer was recorded.
+             */
+            created_at: string;
+        };
+        /**
+         * DiagnosticAnswerCreateRequest
+         * @description Request to record a user's answer to a diagnostic question.
+         */
+        DiagnosticAnswerCreateRequest: {
+            /**
+             * Question Id
+             * @description Question being answered.
+             */
+            question_id: string;
+            /**
+             * Response Text
+             * @description User's response.
+             */
+            response_text: string;
+            /**
+             * Evidence Refs
+             * @description Evidence the user cited to support the answer.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /** @description Evaluated result. */
+            evaluated_state: components["schemas"]["AnswerEvaluatedState"];
+            /**
+             * Evaluator
+             * @description Agent that evaluated the answer: rule, model, human.
+             */
+            evaluator: string;
+            /**
+             * Evaluation Reason
+             * @description Transparent reason for the evaluation.
+             */
+            evaluation_reason: string;
+        };
+        /**
+         * DiagnosticQuestion
+         * @description A single diagnostic question bound to evidence and a concept.
+         */
+        DiagnosticQuestion: {
+            /**
+             * Question Id
+             * @description Stable question identifier.
+             */
+            question_id: string;
+            /**
+             * Mission Id
+             * @description Mission this question belongs to.
+             */
+            mission_id: string;
+            /**
+             * Concept Id
+             * @description Concept being diagnosed.
+             */
+            concept_id: string;
+            /**
+             * Question Text
+             * @description Question text.
+             */
+            question_text: string;
+            /** @description Kind of question. */
+            question_type: components["schemas"]["DiagnosticQuestionType"];
+            /**
+             * Expected Answer Hints
+             * @description Hints for what a correct answer must contain; not the only truth.
+             */
+            expected_answer_hints?: string[];
+            /**
+             * Evidence Refs
+             * @description Scientific evidence that grounds the question.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Version
+             * @description Question version.
+             * @default 1
+             */
+            version: number;
+        };
+        /**
+         * DiagnosticQuestionCreateRequest
+         * @description Request to add a question to a diagnostic run.
+         */
+        DiagnosticQuestionCreateRequest: {
+            /**
+             * Concept Id
+             * @description Concept being diagnosed.
+             */
+            concept_id: string;
+            /**
+             * Question Text
+             * @description Question text.
+             */
+            question_text: string;
+            /** @description Kind of question. */
+            question_type: components["schemas"]["DiagnosticQuestionType"];
+            /**
+             * Expected Answer Hints
+             * @description Hints for a correct answer.
+             */
+            expected_answer_hints?: string[];
+            /**
+             * Evidence Refs
+             * @description Scientific evidence grounding the question.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+        };
+        /**
+         * DiagnosticQuestionType
+         * @description Kind of diagnostic question.
+         * @enum {string}
+         */
+        DiagnosticQuestionType: "recall" | "explanation" | "comparison" | "application" | "computation" | "meta_cognitive";
+        /**
+         * DiagnosticResult
+         * @description Outcome of completing a diagnostic run, including ZPD and explanation.
+         */
+        DiagnosticResult: {
+            /**
+             * Result Id
+             * @description Stable result identifier.
+             */
+            result_id: string;
+            /**
+             * Run Id
+             * @description Diagnostic run that produced the result.
+             */
+            run_id: string;
+            /**
+             * Mission Id
+             * @description Mission the result belongs to.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Knowledge States
+             * @description Computed states per concept.
+             */
+            knowledge_states: components["schemas"]["KnowledgeState"][];
+            /**
+             * Zpd Concepts
+             * @description Concepts within the zone of proximal development.
+             */
+            zpd_concepts?: string[];
+            /**
+             * Ready Concepts
+             * @description Concepts judged robust or supported.
+             */
+            ready_concepts?: string[];
+            /**
+             * Unknown Concepts
+             * @description Concepts with no evidence or judged unknown.
+             */
+            unknown_concepts?: string[];
+            /**
+             * Evidence Based Explanation
+             * @description Human-readable explanation grounded in diagnostic evidence.
+             */
+            evidence_based_explanation: string;
+            /**
+             * Next Recommended Task
+             * @description Next task to advance the mission.
+             */
+            next_recommended_task: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Result timestamp.
+             */
+            created_at: string;
+        };
+        /**
+         * DiagnosticRun
+         * @description A versioned diagnostic session for a learning mission.
+         */
+        DiagnosticRun: {
+            /**
+             * Run Id
+             * @description Stable run identifier.
+             */
+            run_id: string;
+            /**
+             * Mission Id
+             * @description Mission being diagnosed.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /** @default draft */
+            status: components["schemas"]["DiagnosticRunStatus"];
+            /** Questions */
+            questions?: components["schemas"]["DiagnosticQuestion"][];
+            /** Answers */
+            answers?: components["schemas"]["DiagnosticAnswer"][];
+            /**
+             * Version
+             * @description Run version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Completed At
+             * @description Completion timestamp.
+             */
+            completed_at?: string | null;
+        };
+        /**
+         * DiagnosticRunStatus
+         * @description Lifecycle status of a diagnostic run.
+         * @enum {string}
+         */
+        DiagnosticRunStatus: "draft" | "running" | "completed" | "cancelled";
+        /**
          * DocumentVersion
          * @description Immutable content snapshot of a source.
          *
@@ -2919,6 +3581,41 @@ export interface components {
             model_run_lock_id?: string | null;
         };
         /**
+         * EvidenceRef
+         * @description Reference to a scientific evidence item that grounds a question or answer.
+         *
+         *     Evidence refs point into the claim--evidence--citation graph (T015) or into
+         *     imported sources (T013). They carry enough identity to audit the grounding
+         *     without copying private source body.
+         */
+        EvidenceRef: {
+            /**
+             * Claim Id
+             * @description Claim identifier.
+             */
+            claim_id?: string | null;
+            /**
+             * Evidence Id
+             * @description Evidence identifier.
+             */
+            evidence_id?: string | null;
+            /**
+             * Source Id
+             * @description Source entry identifier.
+             */
+            source_id?: string | null;
+            /**
+             * Document Id
+             * @description Document version identifier.
+             */
+            document_id?: string | null;
+            /**
+             * Reason
+             * @description Why this evidence grounds the question or answer.
+             */
+            reason: string;
+        };
+        /**
          * EvidenceRelation
          * @description Relationship between a source fragment and a claim.
          * @enum {string}
@@ -2930,6 +3627,63 @@ export interface components {
          * @enum {string}
          */
         EvidenceState: "supported" | "refuted" | "limited" | "unknown" | "insufficient" | "conflicted";
+        /**
+         * ExerciseAttempt
+         * @description A user's attempt at a retrieval exercise.
+         */
+        ExerciseAttempt: {
+            /**
+             * Attempt Id
+             * @description Stable attempt identifier.
+             */
+            attempt_id: string;
+            /**
+             * Exercise Id
+             * @description Exercise being attempted.
+             */
+            exercise_id: string;
+            /**
+             * Lesson Id
+             * @description Lesson the exercise belongs to.
+             */
+            lesson_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Response Text
+             * @description User's response.
+             */
+            response_text: string;
+            /** @description Result of evaluation. */
+            evaluated_state: components["schemas"]["AnswerEvaluatedState"];
+            /**
+             * Evaluator
+             * @description Agent that evaluated the attempt.
+             */
+            evaluator: string;
+            /** @description Immediate feedback. */
+            feedback: components["schemas"]["ImmediateFeedback"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the attempt was recorded.
+             */
+            created_at: string;
+        };
+        /**
+         * ExerciseAttemptRequest
+         * @description Request to submit an exercise attempt.
+         */
+        ExerciseAttemptRequest: {
+            /**
+             * Response Text
+             * @description User's response.
+             */
+            response_text: string;
+        };
         /**
          * FactLock
          * @description A single locked fact derived from a claim and its evidence.
@@ -3040,6 +3794,14 @@ export interface components {
          * @enum {string}
          */
         GateResult: "pass" | "wait" | "fail";
+        /**
+         * GenerateLessonRequest
+         * @description Request to generate a short lesson from a teaching plan.
+         */
+        GenerateLessonRequest: {
+            /** @description Optional evidence and fact-lock bundle from T016. */
+            evidence_bundle?: components["schemas"]["LessonEvidenceBundle"] | null;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -3176,6 +3938,37 @@ export interface components {
          */
         HumanTodoStatus: "open" | "resolved" | "blocked";
         /**
+         * ImmediateFeedback
+         * @description Specific feedback for a single exercise attempt, bound to evidence.
+         */
+        ImmediateFeedback: {
+            /**
+             * Is Correct
+             * @description Whether the response is correct.
+             */
+            is_correct: boolean;
+            /**
+             * Explanation
+             * @description Explanation of why the response is correct or not.
+             */
+            explanation: string;
+            /**
+             * Misconception
+             * @description Identified misconception if any.
+             */
+            misconception?: string | null;
+            /**
+             * Evidence Refs
+             * @description Evidence supporting the feedback.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Next Step
+             * @description Recommended next action.
+             */
+            next_step: string;
+        };
+        /**
          * IngestionRunRef
          * @description Reference to an asynchronous ingestion run.
          */
@@ -3220,6 +4013,311 @@ export interface components {
          * @enum {string}
          */
         InputQualityGate: "mime_type" | "magic_number" | "size_limit" | "decompression_bomb" | "malicious_content" | "license" | "parse" | "scope";
+        /**
+         * KnowledgeConfidence
+         * @description Calibration of the knowledge-state judgement, not a percentage.
+         * @enum {string}
+         */
+        KnowledgeConfidence: "low" | "moderate" | "high";
+        /**
+         * KnowledgeState
+         * @description A revocable judgement of a user's current mastery of one concept.
+         *
+         *     Knowledge states are updated only by observable learning evidence. They carry
+         *     uncertainty, supporting and refuting records, scope, and the next task that
+         *     would best validate the state.
+         */
+        KnowledgeState: {
+            /**
+             * State Id
+             * @description Stable state identifier.
+             */
+            state_id: string;
+            /**
+             * Mission Id
+             * @description Mission this state belongs to.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Concept Id
+             * @description Concept being judged.
+             */
+            concept_id: string;
+            /** @description Current knowledge state. */
+            status: components["schemas"]["KnowledgeStateStatus"];
+            /**
+             * @description Calibration of the judgement.
+             * @default low
+             */
+            confidence: components["schemas"]["KnowledgeConfidence"];
+            /**
+             * Supporting Record Ids
+             * @description Answer/record ids that support the state.
+             */
+            supporting_record_ids?: string[];
+            /**
+             * Refuting Record Ids
+             * @description Answer/record ids that refute or limit it.
+             */
+            refuting_record_ids?: string[];
+            /**
+             * Uncertainty Reason
+             * @description Why confidence is not higher, or why state is unknown.
+             */
+            uncertainty_reason?: string | null;
+            /**
+             * Scope
+             * @description Scope within which the state applies.
+             */
+            scope: string;
+            /**
+             * Next Validation Task
+             * @description Next task to validate or refine the state.
+             */
+            next_validation_task: string;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Superseded By State Id
+             * @description Newer state version that replaces this one.
+             */
+            superseded_by_state_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * KnowledgeStateCorrection
+         * @description User correction of a knowledge-state judgement.
+         */
+        KnowledgeStateCorrection: {
+            /**
+             * Concept Id
+             * @description Concept being corrected.
+             */
+            concept_id: string;
+            /** @description Corrected state. */
+            corrected_state: components["schemas"]["KnowledgeStateStatus"];
+            /**
+             * Reason
+             * @description Why the correction is being made.
+             */
+            reason: string;
+        };
+        /**
+         * KnowledgeStateStatus
+         * @description Current judgement of knowledge for a single concept.
+         * @enum {string}
+         */
+        KnowledgeStateStatus: "unknown" | "emerging" | "supported" | "robust" | "stale";
+        /**
+         * LearningError
+         * @description Uniform learning-domain error response.
+         */
+        LearningError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * LearningMission
+         * @description A user's real learning goal and the contract that teaching must serve.
+         */
+        LearningMission: {
+            /**
+             * Mission Id
+             * @description Stable mission identifier.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /**
+             * Title
+             * @description Short human-readable title.
+             */
+            title: string;
+            /**
+             * Goal
+             * @description Real learning goal.
+             */
+            goal: string;
+            /**
+             * Scope Concepts
+             * @description Concepts covered by the mission.
+             */
+            scope_concepts: string[];
+            /**
+             * Constraints
+             * @description Constraints and scope limits.
+             */
+            constraints?: string[];
+            /**
+             * Success Criteria
+             * @description Observable success criteria.
+             */
+            success_criteria: string[];
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * LearningMissionCreateRequest
+         * @description Request to create a learning mission.
+         */
+        LearningMissionCreateRequest: {
+            /**
+             * Title
+             * @description Short human-readable title.
+             */
+            title: string;
+            /**
+             * Goal
+             * @description Real learning goal.
+             */
+            goal: string;
+            /**
+             * Scope Concepts
+             * @description Concepts covered by the mission.
+             */
+            scope_concepts: string[];
+            /**
+             * Constraints
+             * @description Constraints and scope limits.
+             */
+            constraints?: string[];
+            /**
+             * Success Criteria
+             * @description Observable success criteria.
+             */
+            success_criteria: string[];
+            /**
+             * Project Id
+             * @description Optional project scope.
+             */
+            project_id?: string | null;
+        };
+        /**
+         * LessonEvidenceBundle
+         * @description Evidence and fact-lock input carried from a claim graph (T016) into a lesson.
+         *
+         *     The bundle is the minimal authoritative context the teaching service needs to
+         *     bind explanations, examples, answers and feedback to evidence without directly
+         *     depending on the science module's internal services.
+         */
+        LessonEvidenceBundle: {
+            /**
+             * Graph Id
+             * @description Source claim graph id.
+             */
+            graph_id?: string | null;
+            /**
+             * Evidence Refs
+             * @description Evidence references grounding the lesson.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Fact Locks
+             * @description Fact locks constraining the lesson.
+             */
+            fact_locks?: components["schemas"]["FactLock"][];
+        };
+        /**
+         * LessonExample
+         * @description A worked example bound to evidence and fact locks.
+         */
+        LessonExample: {
+            /**
+             * Example Id
+             * @description Stable example identifier.
+             */
+            example_id: string;
+            /**
+             * Concept Id
+             * @description Concept the example illustrates.
+             */
+            concept_id: string;
+            /**
+             * Title
+             * @description Short example title.
+             */
+            title: string;
+            /**
+             * Explanation
+             * @description Example explanation.
+             */
+            explanation: string;
+            /**
+             * Evidence Refs
+             * @description Evidence grounding the example.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Fact Lock Ids
+             * @description Fact locks the example must respect.
+             */
+            fact_lock_ids?: string[];
+        };
+        /**
+         * LessonStatus
+         * @description Lifecycle status of a generated short lesson.
+         * @enum {string}
+         */
+        LessonStatus: "draft" | "evidence_bound" | "qualified" | "degraded" | "blocked";
         /**
          * LicenseState
          * @description License/Access state for the document.
@@ -3530,6 +4628,137 @@ export interface components {
             updated_at: string;
         };
         /**
+         * ProfileAssertionHistory
+         * @description Version history of a single profile assertion.
+         */
+        ProfileAssertionHistory: {
+            /**
+             * Assertion Id
+             * @description Assertion identifier.
+             */
+            assertion_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Current Version
+             * @description Current optimistic concurrency version.
+             */
+            current_version: number;
+            /**
+             * Versions
+             * @description Historical snapshots, oldest first.
+             */
+            versions?: components["schemas"]["ProfileAssertionVersion"][];
+        };
+        /**
+         * ProfileAssertionModifyRequest
+         * @description Request to modify an active profile assertion, creating a new version.
+         */
+        ProfileAssertionModifyRequest: {
+            /**
+             * Value Or Rule
+             * @description New value or rule.
+             */
+            value_or_rule: string;
+            /** Applicable Scenes */
+            applicable_scenes?: string[];
+            /**
+             * Reason
+             * @description Human-readable reason for the change.
+             */
+            reason: string;
+        };
+        /**
+         * ProfileAssertionRollbackRequest
+         * @description Request to roll an assertion back to a previous version.
+         */
+        ProfileAssertionRollbackRequest: {
+            /**
+             * To Version
+             * @description Target historical version number.
+             */
+            to_version: number;
+            /**
+             * Reason
+             * @description Human-readable reason for the rollback.
+             */
+            reason: string;
+        };
+        /**
+         * ProfileAssertionVersion
+         * @description Immutable snapshot of a profile assertion at a point in its history.
+         *
+         *     Rollback creates a new active version from a prior snapshot without erasing
+         *     the audit chain. Each version stores the value and metadata at that point so
+         *     that rollback is possible, but audit events and exports retain only the
+         *     content hash rather than the full value, ensuring deleted content body is not
+         *     preserved in the governance audit trail.
+         */
+        ProfileAssertionVersion: {
+            /**
+             * Version Id
+             * @description Stable version snapshot identifier.
+             */
+            version_id: string;
+            /**
+             * Assertion Id
+             * @description Assertion this version belongs to.
+             */
+            assertion_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Version
+             * @description Assertion version number this snapshot records.
+             */
+            version: number;
+            /**
+             * Canonical Dimension
+             * @description Profile dimension.
+             */
+            canonical_dimension: string;
+            /**
+             * Value Or Rule
+             * @description Value or rule at this version.
+             */
+            value_or_rule: string;
+            /** Applicable Scenes */
+            applicable_scenes?: string[];
+            /** @description Assertion status at this version. */
+            status: components["schemas"]["AssertionStatus"];
+            /** @default preference */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /** Promoted From Candidate Id */
+            promoted_from_candidate_id?: string | null;
+            /**
+             * Content Hash
+             * @description SHA-256 hash of value and scenes.
+             */
+            content_hash: string;
+            /**
+             * Changed At
+             * Format: date-time
+             * @description When this version was created.
+             */
+            changed_at: string;
+            /**
+             * Changed By
+             * @description Actor that created this version.
+             */
+            changed_by: string;
+            /**
+             * Change Reason
+             * @description Human-readable reason for the change.
+             */
+            change_reason: string;
+        };
+        /**
          * ProfileCandidate
          * @description Explainable candidate profile awaiting human review.
          */
@@ -3676,6 +4905,17 @@ export interface components {
             expires_at?: string | null;
         };
         /**
+         * ProfileDeleteRequest
+         * @description Request to delete a profile assertion.
+         */
+        ProfileDeleteRequest: {
+            /**
+             * Reason
+             * @description Human-readable reason for deletion.
+             */
+            reason: string;
+        };
+        /**
          * ProfileError
          * @description Uniform profile error response.
          */
@@ -3697,6 +4937,111 @@ export interface components {
             details?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * ProfileExport
+         * @description Structured, portable export of a user's evidence-backed profile.
+         *
+         *     Exports include assertion metadata and content hashes so the user can verify
+         *     integrity, but they omit deleted observed content and audit-unfriendly body
+         *     copies. The export is itself scope-bound to the requesting account.
+         */
+        ProfileExport: {
+            /**
+             * Export Id
+             * @description Stable export identifier.
+             */
+            export_id: string;
+            /**
+             * Owner Account Id
+             * @description Account the export belongs to.
+             */
+            owner_account_id: string;
+            /**
+             * Exported At
+             * Format: date-time
+             * @description Export generation timestamp.
+             */
+            exported_at: string;
+            /**
+             * Assertions
+             * @description Current assertions.
+             */
+            assertions?: components["schemas"]["ProfileExportAssertion"][];
+            /**
+             * History
+             * @description Version history keyed by assertion identifier.
+             */
+            history?: {
+                [key: string]: components["schemas"]["ProfileAssertionHistory"];
+            };
+            /**
+             * Audit Event Refs
+             * @description References to governance audit events included in this export.
+             */
+            audit_event_refs?: string[];
+        };
+        /**
+         * ProfileExportAssertion
+         * @description One assertion as it appears in a user export.
+         */
+        ProfileExportAssertion: {
+            /**
+             * Assertion Id
+             * @description Stable assertion identifier.
+             */
+            assertion_id: string;
+            /**
+             * Canonical Dimension
+             * @description Profile dimension.
+             */
+            canonical_dimension: string;
+            /** @description Current lifecycle status. */
+            status: components["schemas"]["AssertionStatus"];
+            /**
+             * Value Or Rule
+             * @description Current value; redacted when the assertion has been deleted.
+             */
+            value_or_rule?: string | null;
+            /** Applicable Scenes */
+            applicable_scenes?: string[];
+            /**
+             * Version
+             * @description Current optimistic concurrency version.
+             */
+            version: number;
+            /**
+             * Content Hash
+             * @description SHA-256 hash of current value and scenes.
+             */
+            content_hash: string;
+            /** Promoted From Candidate Id */
+            promoted_from_candidate_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the assertion was first promoted.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description When the assertion was last changed.
+             */
+            updated_at: string;
+            /** Deleted At */
+            deleted_at?: string | null;
+        };
+        /**
+         * ProfileFreezeRequest
+         * @description Request to freeze a profile assertion.
+         */
+        ProfileFreezeRequest: {
+            /**
+             * Reason
+             * @description Human-readable reason for freezing.
+             */
+            reason: string;
         };
         /**
          * ProfileObservation
@@ -4370,6 +5715,62 @@ export interface components {
          */
         RetrievalChannel: "lexical" | "vector";
         /**
+         * RetrievalExercise
+         * @description A single retrieval-practice exercise bound to evidence and fact locks.
+         */
+        RetrievalExercise: {
+            /**
+             * Exercise Id
+             * @description Stable exercise identifier.
+             */
+            exercise_id: string;
+            /**
+             * Lesson Id
+             * @description Lesson this exercise belongs to.
+             */
+            lesson_id: string;
+            /**
+             * Concept Id
+             * @description Concept being exercised.
+             */
+            concept_id: string;
+            /** @description Type of retrieval task. */
+            exercise_type: components["schemas"]["RetrievalExerciseType"];
+            /**
+             * Question Text
+             * @description Question text.
+             */
+            question_text: string;
+            /**
+             * Expected Answer
+             * @description Expected answer or key elements.
+             */
+            expected_answer: string;
+            /**
+             * Misconception Hints
+             * @description Common misconceptions this exercise surfaces.
+             */
+            misconception_hints?: string[];
+            /**
+             * Evidence Refs
+             * @description Evidence grounding the answer.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Fact Lock Ids
+             * @description Fact locks the answer must respect.
+             */
+            fact_lock_ids?: string[];
+        };
+        /**
+         * RetrievalExerciseType
+         * @description Retrieval-practice exercise types that require active recall.
+         *
+         *     Browsing or completion-only activities are deliberately excluded.
+         * @enum {string}
+         */
+        RetrievalExerciseType: "recall" | "explanation" | "computation" | "comparison" | "application";
+        /**
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.
          *
@@ -4812,6 +6213,96 @@ export interface components {
             subject: components["schemas"]["SubjectContext"];
         };
         /**
+         * ShortLesson
+         * @description A short lesson around a single learning victory.
+         *
+         *     Explanations, examples, exercises and feedback are bound to an EvidenceSet and
+         *     constrained by fact locks. The lesson status is independent of workflow run
+         *     status; it reflects the teaching quality gate outcome.
+         */
+        ShortLesson: {
+            /**
+             * Lesson Id
+             * @description Stable lesson identifier.
+             */
+            lesson_id: string;
+            /**
+             * Plan Id
+             * @description Teaching plan this lesson serves.
+             */
+            plan_id: string;
+            /**
+             * Mission Id
+             * @description Mission the lesson serves.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Title
+             * @description Lesson title.
+             */
+            title: string;
+            /**
+             * Learning Objective
+             * @description Single learning victory.
+             */
+            learning_objective: string;
+            /**
+             * Target Concepts
+             * @description Concepts addressed in this lesson.
+             */
+            target_concepts: string[];
+            /**
+             * Explanation
+             * @description Core explanation of the learning objective.
+             */
+            explanation: string;
+            /** Examples */
+            examples?: components["schemas"]["LessonExample"][];
+            /** Exercises */
+            exercises?: components["schemas"]["RetrievalExercise"][];
+            /**
+             * Evidence Refs
+             * @description Evidence grounding the lesson.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /**
+             * Fact Lock Set Id
+             * @description Optional fact lock set id from T016.
+             */
+            fact_lock_set_id?: string | null;
+            /**
+             * Fact Lock Ids
+             * @description Fact locks constraining the lesson.
+             */
+            fact_lock_ids?: string[];
+            /** @description Teaching quality gate result. */
+            quality_gate: components["schemas"]["TeachingQualityGateResult"];
+            /** @default draft */
+            status: components["schemas"]["LessonStatus"];
+            /**
+             * Human Gate Required
+             * @default false
+             */
+            human_gate_required: boolean;
+            /**
+             * Version
+             * @description Optimistic concurrency version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+        };
+        /**
          * SliceStatus
          * @description Lifecycle status of a compiled memory slice bound to a run.
          * @enum {string}
@@ -5082,6 +6573,116 @@ export interface components {
              * @description Device identifier when known.
              */
             device_id?: string | null;
+        };
+        /**
+         * TeachingPlan
+         * @description A minimal teaching plan derived from a mission and its knowledge states.
+         *
+         *     T022 will expand this into short lessons, examples and retrieval exercises.
+         *     T021 only needs the plan as a stable contract that traces back to the mission
+         *     and evidence.
+         */
+        TeachingPlan: {
+            /**
+             * Plan Id
+             * @description Stable plan identifier.
+             */
+            plan_id: string;
+            /**
+             * Mission Id
+             * @description Mission the plan serves.
+             */
+            mission_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /**
+             * Title
+             * @description Plan title.
+             */
+            title: string;
+            /**
+             * Learning Objective
+             * @description Single learning victory.
+             */
+            learning_objective: string;
+            /**
+             * Target Concepts
+             * @description Concepts to address next.
+             */
+            target_concepts: string[];
+            /**
+             * Prerequisites
+             * @description Concepts assumed or to review first.
+             */
+            prerequisites: string[];
+            /**
+             * Validation Task
+             * @description Task that will validate the learning objective.
+             */
+            validation_task: string;
+            /**
+             * Evidence Refs
+             * @description Evidence grounding the plan.
+             */
+            evidence_refs?: components["schemas"]["EvidenceRef"][];
+            /** @default draft */
+            status: components["schemas"]["TeachingPlanStatus"];
+            /**
+             * Version
+             * @description Plan version.
+             * @default 1
+             */
+            version: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+        };
+        /**
+         * TeachingPlanStatus
+         * @description Lifecycle status of a teaching plan.
+         * @enum {string}
+         */
+        TeachingPlanStatus: "draft" | "qualified" | "blocked";
+        /**
+         * TeachingQualityGateCheck
+         * @description Named checks performed by the teaching quality gate.
+         * @enum {string}
+         */
+        TeachingQualityGateCheck: "mission_bound" | "evidence_bound" | "fact_lock_bound" | "exercise_requires_retrieval" | "no_high_risk_without_human_gate" | "single_learning_victory";
+        /**
+         * TeachingQualityGateResult
+         * @description Result of running the teaching quality gate over a short lesson.
+         */
+        TeachingQualityGateResult: {
+            /**
+             * Passed
+             * @description Whether the lesson passes the gate.
+             */
+            passed: boolean;
+            /** Checks */
+            checks?: {
+                [key: string]: boolean;
+            };
+            /** Failed Checks */
+            failed_checks?: components["schemas"]["TeachingQualityGateCheck"][];
+            /**
+             * Requires Human Gate
+             * @default false
+             */
+            requires_human_gate: boolean;
+            /** Human Gate Reason */
+            human_gate_reason?: string | null;
+            /**
+             * Reason
+             * @description Human-readable gate summary.
+             */
+            reason?: string | null;
         };
         /**
          * TemporaryTaskCapsule
@@ -7102,6 +8703,317 @@ export interface operations {
             };
         };
     };
+    get_assertion_profiles_assertions__assertion_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    freeze_assertion_profiles_assertions__assertion_id__freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    modify_assertion_profiles_assertions__assertion_id__modify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileAssertionModifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    rollback_assertion_profiles_assertions__assertion_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileAssertionRollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    delete_assertion_profiles_assertions__assertion_id__delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    export_profile_profiles_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     submit_work_order_projects__project_id__work_orders_post: {
         parameters: {
             query?: never;
@@ -8871,6 +10783,644 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SourceError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_missions_learning_missions_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningMission"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_mission_learning_missions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningMissionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningMission"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+        };
+    };
+    get_mission_learning_missions__mission_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningMission"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_diagnostic_run_learning_missions__mission_id__runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["DiagnosticQuestionCreateRequest"][] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticRun"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+        };
+    };
+    get_diagnostic_run_learning_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticRun"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_answer_learning_runs__run_id__answers_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DiagnosticAnswerCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticRun"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    complete_diagnostic_learning_runs__run_id__complete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_diagnostic_result_learning_results__result_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                result_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DiagnosticResult"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_knowledge_states_learning_missions__mission_id__states_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeState"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    correct_knowledge_state_learning_missions__mission_id__states_correct_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KnowledgeStateCorrection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeState"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compile_teaching_plan_learning_missions__mission_id__teaching_plan_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                mission_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeachingPlan"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_short_lesson_learning_plans__plan_id__lessons_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plan_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["GenerateLessonRequest"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLesson"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_lesson_learning_lessons__lesson_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lesson_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShortLesson"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_exercise_attempt_learning_lessons__lesson_id__exercises__exercise_id__attempts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                lesson_id: string;
+                exercise_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ExerciseAttemptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExerciseAttempt"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningError"];
                 };
             };
             /** @description Validation Error */

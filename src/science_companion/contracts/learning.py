@@ -14,6 +14,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from science_companion.contracts.science import FactLock
+
 
 class DiagnosticQuestionType(StrEnum):
     """Kind of diagnostic question."""
@@ -308,6 +310,180 @@ class LearningActivity(BaseModel):
         default_factory=dict, description="Opaque activity details safe to log."
     )
     created_at: datetime = Field(description="Activity timestamp.")
+
+
+class LessonStatus(StrEnum):
+    """Lifecycle status of a generated short lesson."""
+
+    DRAFT = "draft"
+    EVIDENCE_BOUND = "evidence_bound"
+    QUALIFIED = "qualified"
+    DEGRADED = "degraded"
+    BLOCKED = "blocked"
+
+
+class RetrievalExerciseType(StrEnum):
+    """Retrieval-practice exercise types that require active recall.
+
+    Browsing or completion-only activities are deliberately excluded.
+    """
+
+    RECALL = "recall"
+    EXPLANATION = "explanation"
+    COMPUTATION = "computation"
+    COMPARISON = "comparison"
+    APPLICATION = "application"
+
+
+class LessonExample(BaseModel):
+    """A worked example bound to evidence and fact locks."""
+
+    example_id: str = Field(description="Stable example identifier.")
+    concept_id: str = Field(description="Concept the example illustrates.")
+    title: str = Field(description="Short example title.")
+    explanation: str = Field(description="Example explanation.")
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence grounding the example."
+    )
+    fact_lock_ids: list[str] = Field(
+        default_factory=list, description="Fact locks the example must respect."
+    )
+
+
+class RetrievalExercise(BaseModel):
+    """A single retrieval-practice exercise bound to evidence and fact locks."""
+
+    exercise_id: str = Field(description="Stable exercise identifier.")
+    lesson_id: str = Field(description="Lesson this exercise belongs to.")
+    concept_id: str = Field(description="Concept being exercised.")
+    exercise_type: RetrievalExerciseType = Field(description="Type of retrieval task.")
+    question_text: str = Field(description="Question text.")
+    expected_answer: str = Field(description="Expected answer or key elements.")
+    misconception_hints: list[str] = Field(
+        default_factory=list,
+        description="Common misconceptions this exercise surfaces.",
+    )
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence grounding the answer."
+    )
+    fact_lock_ids: list[str] = Field(
+        default_factory=list, description="Fact locks the answer must respect."
+    )
+
+
+class ImmediateFeedback(BaseModel):
+    """Specific feedback for a single exercise attempt, bound to evidence."""
+
+    is_correct: bool = Field(description="Whether the response is correct.")
+    explanation: str = Field(description="Explanation of why the response is correct or not.")
+    misconception: str | None = Field(
+        default=None, description="Identified misconception if any."
+    )
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence supporting the feedback."
+    )
+    next_step: str = Field(description="Recommended next action.")
+
+
+class ExerciseAttempt(BaseModel):
+    """A user's attempt at a retrieval exercise."""
+
+    attempt_id: str = Field(description="Stable attempt identifier.")
+    exercise_id: str = Field(description="Exercise being attempted.")
+    lesson_id: str = Field(description="Lesson the exercise belongs to.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    response_text: str = Field(description="User's response.")
+    evaluated_state: AnswerEvaluatedState = Field(description="Result of evaluation.")
+    evaluator: str = Field(description="Agent that evaluated the attempt.")
+    feedback: ImmediateFeedback = Field(description="Immediate feedback.")
+    created_at: datetime = Field(description="When the attempt was recorded.")
+
+
+class ExerciseAttemptRequest(BaseModel):
+    """Request to submit an exercise attempt."""
+
+    response_text: str = Field(description="User's response.", min_length=1)
+
+
+class LessonEvidenceBundle(BaseModel):
+    """Evidence and fact-lock input carried from a claim graph (T016) into a lesson.
+
+    The bundle is the minimal authoritative context the teaching service needs to
+    bind explanations, examples, answers and feedback to evidence without directly
+    depending on the science module's internal services.
+    """
+
+    graph_id: str | None = Field(default=None, description="Source claim graph id.")
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence references grounding the lesson."
+    )
+    fact_locks: list[FactLock] = Field(
+        default_factory=list, description="Fact locks constraining the lesson."
+    )
+
+
+class TeachingQualityGateCheck(StrEnum):
+    """Named checks performed by the teaching quality gate."""
+
+    MISSION_BOUND = "mission_bound"
+    EVIDENCE_BOUND = "evidence_bound"
+    FACT_LOCK_BOUND = "fact_lock_bound"
+    EXERCISE_REQUIRES_RETRIEVAL = "exercise_requires_retrieval"
+    NO_HIGH_RISK_WITHOUT_HUMAN_GATE = "no_high_risk_without_human_gate"
+    SINGLE_LEARNING_VICTORY = "single_learning_victory"
+
+
+class TeachingQualityGateResult(BaseModel):
+    """Result of running the teaching quality gate over a short lesson."""
+
+    passed: bool = Field(description="Whether the lesson passes the gate.")
+    checks: dict[TeachingQualityGateCheck, bool] = Field(default_factory=dict)
+    failed_checks: list[TeachingQualityGateCheck] = Field(default_factory=list)
+    requires_human_gate: bool = Field(default=False)
+    human_gate_reason: str | None = Field(default=None)
+    reason: str | None = Field(default=None, description="Human-readable gate summary.")
+
+
+class ShortLesson(BaseModel):
+    """A short lesson around a single learning victory.
+
+    Explanations, examples, exercises and feedback are bound to an EvidenceSet and
+    constrained by fact locks. The lesson status is independent of workflow run
+    status; it reflects the teaching quality gate outcome.
+    """
+
+    lesson_id: str = Field(description="Stable lesson identifier.")
+    plan_id: str = Field(description="Teaching plan this lesson serves.")
+    mission_id: str = Field(description="Mission the lesson serves.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    title: str = Field(description="Lesson title.")
+    learning_objective: str = Field(description="Single learning victory.")
+    target_concepts: list[str] = Field(description="Concepts addressed in this lesson.")
+    explanation: str = Field(description="Core explanation of the learning objective.")
+    examples: list[LessonExample] = Field(default_factory=list)
+    exercises: list[RetrievalExercise] = Field(default_factory=list)
+    evidence_refs: list[EvidenceRef] = Field(
+        default_factory=list, description="Evidence grounding the lesson."
+    )
+    fact_lock_set_id: str | None = Field(
+        default=None, description="Optional fact lock set id from T016."
+    )
+    fact_lock_ids: list[str] = Field(
+        default_factory=list, description="Fact locks constraining the lesson."
+    )
+    quality_gate: TeachingQualityGateResult = Field(description="Teaching quality gate result.")
+    status: LessonStatus = Field(default=LessonStatus.DRAFT)
+    human_gate_required: bool = Field(default=False)
+    version: int = Field(default=1, ge=1, description="Optimistic concurrency version.")
+    created_at: datetime = Field(description="Creation timestamp.")
+
+
+class GenerateLessonRequest(BaseModel):
+    """Request to generate a short lesson from a teaching plan."""
+
+    evidence_bundle: LessonEvidenceBundle | None = Field(
+        default=None, description="Optional evidence and fact-lock bundle from T016."
+    )
 
 
 class LearningError(BaseModel):

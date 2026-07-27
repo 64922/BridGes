@@ -5,9 +5,11 @@ from __future__ import annotations
 from science_companion.contracts.learning import (
     DiagnosticResult,
     DiagnosticRun,
+    ExerciseAttempt,
     KnowledgeState,
     LearningActivity,
     LearningMission,
+    ShortLesson,
     TeachingPlan,
 )
 from science_companion.learning.ports import LearningRepository
@@ -31,6 +33,8 @@ class InMemoryLearningRepository(LearningRepository):
         self._results: dict[str, DiagnosticResult] = {}
         self._plans: dict[str, TeachingPlan] = {}
         self._activities: dict[str, LearningActivity] = {}
+        self._lessons: dict[str, ShortLesson] = {}
+        self._attempts: dict[str, ExerciseAttempt] = {}
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -138,6 +142,42 @@ class InMemoryLearningRepository(LearningRepository):
         ]
         plans.sort(key=lambda p: p.created_at, reverse=True)
         return plans
+
+    def save_lesson(self, lesson: ShortLesson) -> ShortLesson:
+        self._lessons[self._key(lesson.owner_account_id, lesson.lesson_id)] = lesson
+        return lesson
+
+    def get_lesson(self, owner_id: str, lesson_id: str) -> ShortLesson:
+        lesson = self._lessons.get(self._key(owner_id, lesson_id))
+        if lesson is None:
+            raise LearningError("短课不存在或没有访问权限。")
+        return lesson
+
+    def list_lessons_for_plan(
+        self, owner_id: str, plan_id: str
+    ) -> list[ShortLesson]:
+        lessons = [
+            lesson
+            for lesson in self._lessons.values()
+            if lesson.owner_account_id == owner_id and lesson.plan_id == plan_id
+        ]
+        lessons.sort(key=lambda lesson: lesson.created_at, reverse=True)
+        return lessons
+
+    def save_exercise_attempt(self, attempt: ExerciseAttempt) -> ExerciseAttempt:
+        self._attempts[self._key(attempt.owner_account_id, attempt.attempt_id)] = attempt
+        return attempt
+
+    def list_attempts_for_exercise(
+        self, owner_id: str, exercise_id: str
+    ) -> list[ExerciseAttempt]:
+        attempts = [
+            a
+            for a in self._attempts.values()
+            if a.owner_account_id == owner_id and a.exercise_id == exercise_id
+        ]
+        attempts.sort(key=lambda a: a.created_at, reverse=True)
+        return attempts
 
     def save_activity(self, activity: LearningActivity) -> LearningActivity:
         self._activities[self._key(activity.owner_account_id, activity.activity_id)] = activity
