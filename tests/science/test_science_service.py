@@ -9,12 +9,11 @@ propagates to index, cache and run downstreams.
 from __future__ import annotations
 
 import base64
-from typing import Any
 
 import pytest
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationEventType, InvalidationState
+from science_companion.contracts.invalidation import InvalidationState
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
     ChunkCorrection,
@@ -319,12 +318,9 @@ class TestInvalidationIntegration:
         alice: SubjectContext,
     ) -> None:
         source_id = _upload_text(service, alice.account_id, "To be revoked")
-        source_ref = service.revoke_source(alice.account_id, source_id, "撤权")
+        source_ref, event = service.revoke_source(alice.account_id, source_id, "撤权")
+        assert event is not None
 
-        # Record a formal invalidation event through the invalidation service.
-        event = invalidation_service.record_invalidation_event(
-            alice, source_ref, InvalidationEventType.SOURCE_RETRACTED, "来源撤回"
-        )
         plan = invalidation_service.plan_invalidation(event.event_id)
 
         downstream_types = {d.downstream_type for d in plan.impact_set.affected_downstreams}

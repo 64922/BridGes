@@ -16,12 +16,9 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import UTC, datetime, timedelta
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
 from science_companion.contracts.invalidation import (
     AffectedDownstream,
     ImpactResolver,
@@ -39,6 +36,8 @@ from science_companion.contracts.invalidation import (
     RevalidationStatus,
     Tombstone,
 )
+from science_companion.contracts.projects import ObjectDomain, ObjectRef
+from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
 from science_companion.scope import ScopeEnforcer
 
 
@@ -63,7 +62,21 @@ class _ObjectLog:
 
 
 class InvalidationService:
-    """Core invalidation service enforcing immutable history and tombstone priority."""
+    """Core invalidation service enforcing immutable history and tombstone priority.
+
+    Not every invalidation event revokes the object itself. Some events (e.g.
+    source version superseded) only notify downstream consumers that they must
+    revalidate; the object remains active for new reads. Revoking event types
+    are those that make ``require_active`` fail closed.
+    """
+
+    _REVOKING_EVENT_TYPES: set[InvalidationEventType] = {
+        InvalidationEventType.REVOKE,
+        InvalidationEventType.KEY_EPOCH_ROLLOVER,
+        InvalidationEventType.POLICY_VERSION_CHANGE,
+        InvalidationEventType.SOURCE_RETRACTED,
+        InvalidationEventType.SOURCE_STATUS_UNKNOWN,
+    }
 
     def __init__(self, scope_enforcer: ScopeEnforcer | None = None) -> None:
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
@@ -75,7 +88,7 @@ class InvalidationService:
         self._revalidation_handlers: dict[str, RevalidationHandler] = {}
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     def _object_key(self, object_ref: ObjectRef) -> str:
         """Stable key for the in-memory invalidation log.
@@ -228,10 +241,16 @@ class InvalidationService:
                 reason=log.tombstone.reason,
             )
 
-        # Find the most recent non-delete event.
-        non_delete_events = [e for e in log.events if e.event_type != InvalidationEventType.DELETE]
-        if non_delete_events:
-            latest = max(non_delete_events, key=lambda e: e.sequence)
+        # Find the most recent event that actually revokes the object. Events such
+        # as SOURCE_VERSION_SUPERSEDED only trigger downstream revalidation and do
+        # not block new reads of the object itself.
+        revoking_events = [
+            e
+            for e in log.events
+            if e.event_type in self._REVOKING_EVENT_TYPES
+        ]
+        if revoking_events:
+            latest = max(revoking_events, key=lambda e: e.sequence)
             return InvalidationCheckResult(
                 object_ref=object_ref,
                 state=InvalidationState.REVOKED,

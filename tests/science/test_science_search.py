@@ -14,7 +14,7 @@ import base64
 import pytest
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationEventType, InvalidationState
+from science_companion.contracts.invalidation import InvalidationState
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
     LicenseState,
@@ -25,7 +25,7 @@ from science_companion.contracts.science import (
     SourceUploadRequest,
 )
 from science_companion.invalidation import InvalidationService
-from science_companion.science import ScienceError, ScienceSourceService
+from science_companion.science import ScienceSourceService
 from science_companion.science.search import ScienceSearchService
 from science_companion.scope import ScopeEnforcer
 
@@ -167,10 +167,7 @@ class TestHybridRetrieval:
         source_id = _upload_text(
             source_service, alice.account_id, "Revoked content about black holes."
         )
-        source_ref = source_service.revoke_source(alice.account_id, source_id, "撤权")
-        invalidation_service.record_invalidation_event(
-            alice, source_ref, InvalidationEventType.SOURCE_RETRACTED, "来源撤回"
-        )
+        source_service.revoke_source(alice.account_id, source_id, "撤权", subject=alice)
 
         result = search_service.search(alice, SearchRequest(query="black holes"))
         assert result.candidates == []
@@ -312,10 +309,7 @@ class TestHybridRetrieval:
         )
 
         # Simulate a race: the source is revoked between index read and output.
-        source_ref = source_service.revoke_source(alice.account_id, source_id, "撤权")
-        invalidation_service.record_invalidation_event(
-            alice, source_ref, InvalidationEventType.SOURCE_RETRACTED, "来源撤回"
-        )
+        source_service.revoke_source(alice.account_id, source_id, "撤权", subject=alice)
 
         result = search_service.search(alice, SearchRequest(query="exoplanets"))
         assert result.candidates == []

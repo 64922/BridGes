@@ -26,6 +26,14 @@ from typing import Any, Protocol
 from science_companion.ai import ModelGateway
 from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
 from science_companion.contracts.identity import SubjectContext
+from science_companion.contracts.invalidation import (
+    AffectedDownstream,
+    ImpactResolver,
+    InvalidationEvent,
+    InvalidationEventType,
+    RevalidationResult,
+    RevalidationSchedule,
+)
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
     Citation,
@@ -800,6 +808,97 @@ class ClaimEvidenceService:
             raise RuntimeError("Expected scientific gate result from honest-degradation analysis.")
         return report.scientific_gate
 
+    def find_graphs_by_source(self, source_id: str) -> list[ClaimGraph]:
+        """Return all claim graphs that cite the given source."""
+        result: list[ClaimGraph] = []
+        for stored in self._graphs.values():
+            for citation in stored.graph.citations:
+                evidence = next(
+                    (e for e in stored.graph.evidence if e.evidence_id == citation.evidence_id),
+                    None,
+                )
+                if evidence is None or not evidence.chunk_ids:
+                    continue
+                searchable = self._find_chunk_across_sources(evidence.chunk_ids[0])
+                if searchable is not None and searchable.source.source_id == source_id:
+                    result.append(stored.graph)
+                    break
+        return result
+
+    def _create_revalidated_graph_version(
+        self, old_graph: ClaimGraph, source_id: str
+    ) -> ClaimGraph:
+        """Create a new claim graph version reflecting current source invalidation state.
+
+        The original graph is preserved as an immutable run snapshot. The new
+        graph version records the current citation verification status and
+        evidence validity without overwriting history.
+        """
+        new_graph_id = secrets.token_urlsafe(16)
+        now = _now()
+
+        new_graph = old_graph.model_copy(
+            update={
+                "graph_id": new_graph_id,
+                "version_number": old_graph.version_number + 1,
+                "created_at": now,
+                "superseded_by_graph_id": None,
+            }
+        )
+        new_graph.claims = [c.model_copy() for c in old_graph.claims]
+        new_graph.evidence = [e.model_copy() for e in old_graph.evidence]
+        new_graph.citations = [c.model_copy() for c in old_graph.citations]
+
+        evidence_index = {e.evidence_id: e for e in new_graph.evidence}
+        for citation in new_graph.citations:
+            evidence = evidence_index.get(citation.evidence_id)
+            if evidence is None or not evidence.chunk_ids:
+                continue
+            searchable = self._find_chunk_across_sources(evidence.chunk_ids[0])
+            if searchable is None or searchable.source.source_id != source_id:
+                continue
+
+            evidence.invalidated_at = now
+            if searchable.source.status in {SourceStatus.RETRACTED, SourceStatus.BLOCKED}:
+                citation.verification_status = CitationVerificationStatus.SOURCE_REVOKED
+                citation.verification_reason = "来源已被撤权或阻塞。"
+            elif searchable.source.current_version_id != evidence.document_id:
+                citation.verification_status = CitationVerificationStatus.SOURCE_SUPERSEDED
+                citation.verification_reason = "来源已有新版本。"
+            else:
+                citation.verification_status = CitationVerificationStatus.STALE
+                citation.verification_reason = "来源状态需要重新验证。"
+
+        self._refresh_all_citations(new_graph)
+        stored = self._graphs[old_graph.graph_id]
+        validation_report = apply_honest_degradation(
+            new_graph, had_candidates=bool(stored.search_result.candidates)
+        )
+        update_claim_graph_with_report(new_graph, validation_report)
+
+        old_graph.superseded_by_graph_id = new_graph_id
+        self._graphs[new_graph_id] = _StoredGraph(
+            graph=new_graph,
+            search_result=self._graphs[old_graph.graph_id].search_result,
+            account_id=old_graph.account_id,
+        )
+        return new_graph
+
+    def revalidate_graphs_for_source(self, account_id: str, source_id: str) -> list[str]:
+        """Create new claim graph versions for every graph that cites the source.
+
+        Returns the ids of the newly created graph versions. The original graphs
+        remain as immutable run snapshots.
+        """
+        graphs = [
+            g for g in self.find_graphs_by_source(source_id) if g.account_id == account_id
+        ]
+        new_ids: list[str] = []
+        for graph in graphs:
+            new_graph = self._create_revalidated_graph_version(graph, source_id)
+            new_ids.append(new_graph.graph_id)
+        return new_ids
+
     def invalidate_citations_for_source(
         self,
         account_id: str,
@@ -807,36 +906,111 @@ class ClaimEvidenceService:
         *,
         reason: str = "来源版本变化或撤权",
     ) -> list[str]:
-        """Mark all citations pointing to a source as stale or revoked.
+        """Revalidate every claim graph that cites the source.
 
-        This is the downstream effect of invalidation events (T011/T017). It
-        returns the list of affected graph ids.
+        Instead of mutating existing graphs in place, this creates new graph
+        versions that reflect the current invalidation state. The original graphs
+        are preserved as run snapshots.
+
+        Note: ``reason`` is kept for backward compatibility; the revalidation
+        reason is derived from the citation verification status.
         """
-        affected_graph_ids: list[str] = []
-        for graph_id, stored in self._graphs.items():
-            if stored.account_id != account_id:
+        return self.revalidate_graphs_for_source(account_id, source_id)
+
+
+def build_claim_impact_resolver(
+    claim_service: ClaimEvidenceService,
+) -> ImpactResolver:
+    """Build an impact resolver that locates affected claim graphs and fact locks.
+
+    The resolver scans claim graphs owned by the source's account and returns
+    downstream entries for revalidation. It never expands scope beyond the event.
+    """
+
+    def _resolver(event: InvalidationEvent) -> list[AffectedDownstream]:
+        if event.event_type not in {
+            InvalidationEventType.SOURCE_RETRACTED,
+            InvalidationEventType.SOURCE_STATUS_UNKNOWN,
+            InvalidationEventType.SOURCE_VERSION_SUPERSEDED,
+        }:
+            return []
+
+        source_id = event.object_ref.object_id
+        affected_graphs = [
+            g
+            for g in claim_service.find_graphs_by_source(source_id)
+            if g.account_id == event.scope_envelope.account_id
+        ]
+        if not affected_graphs:
+            return []
+
+        fact_lock_set_ids: list[str] = []
+        for graph in affected_graphs:
+            try:
+                fact_lock_set = claim_service.compile_fact_locks(
+                    graph.account_id, graph.graph_id
+                )
+                fact_lock_set_ids.append(fact_lock_set.set_id)
+            except ScienceError:
                 continue
-            changed = False
-            for citation in stored.graph.citations:
-                evidence = next(
-                    (e for e in stored.graph.evidence if e.evidence_id == citation.evidence_id),
-                    None,
+
+        downstreams: list[AffectedDownstream] = [
+            AffectedDownstream(
+                downstream_id=f"claim_graph:{source_id}",
+                downstream_type="claim_graph",
+                object_refs=[g.graph_id for g in affected_graphs],
+                scope_envelope=event.scope_envelope,
+                action="revalidate",
+            )
+        ]
+        if fact_lock_set_ids:
+            downstreams.append(
+                AffectedDownstream(
+                    downstream_id=f"fact_lock_set:{source_id}",
+                    downstream_type="fact_lock_set",
+                    object_refs=fact_lock_set_ids,
+                    scope_envelope=event.scope_envelope,
+                    action="revalidate",
                 )
-                if evidence is None:
-                    continue
-                # Find the source that owns this evidence's document.
-                searchable = (
-                    self._find_chunk_across_sources(evidence.chunk_ids[0])
-                    if evidence.chunk_ids
-                    else None
-                )
-                if searchable is not None and searchable.source.source_id == source_id:
-                    if searchable.source.status in {SourceStatus.RETRACTED, SourceStatus.BLOCKED}:
-                        citation.verification_status = CitationVerificationStatus.SOURCE_REVOKED
-                    else:
-                        citation.verification_status = CitationVerificationStatus.STALE
-                    citation.verification_reason = reason
-                    changed = True
-            if changed:
-                affected_graph_ids.append(graph_id)
-        return affected_graph_ids
+            )
+        return downstreams
+
+    return _resolver
+
+
+class ClaimGraphRevalidationHandler:
+    """Revalidation handler that creates new claim graph versions for a source."""
+
+    def __init__(
+        self,
+        claim_service: ClaimEvidenceService,
+    ) -> None:
+        self._claim_service = claim_service
+
+    def __call__(self, schedule: RevalidationSchedule) -> RevalidationResult:
+        source_id = schedule.object_ref.object_id
+        account_id = schedule.scope_envelope.account_id
+        try:
+            new_graph_ids = self._claim_service.revalidate_graphs_for_source(
+                account_id, source_id
+            )
+            return RevalidationResult(
+                schedule_id=schedule.schedule_id,
+                success=True,
+                reason=f"为来源 {source_id} 创建了 {len(new_graph_ids)} 个新 Claim Graph 版本。",
+                details={"new_graph_ids": new_graph_ids},
+            )
+        except ScienceError as exc:
+            return RevalidationResult(
+                schedule_id=schedule.schedule_id,
+                success=False,
+                reason=str(exc),
+            )
+
+
+__all__ = [
+    "ClaimEvidenceService",
+    "ClaimGeneratorPort",
+    "build_claim_impact_resolver",
+    "ClaimGraphRevalidationHandler",
+]

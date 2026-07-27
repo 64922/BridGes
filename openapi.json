@@ -9237,7 +9237,8 @@
           "parsed",
           "quarantined",
           "blocked",
-          "retracted"
+          "retracted",
+          "status_unknown"
         ],
         "title": "SourceStatus",
         "description": "Current status of a source entry."

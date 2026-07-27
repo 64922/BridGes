@@ -17,31 +17,26 @@ import base64
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
 from science_companion.contracts.invalidation import (
     AffectedDownstream,
+    ImpactResolver,
+    InvalidationEvent,
     InvalidationEventType,
 )
-from science_companion.invalidation import InvalidationService
+from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
-    ChunkCorrection,
     ChunkVersion,
     DocumentVersion,
     GateResult,
     IngestionRunRef,
     IngestionStatus,
     InputQualityGate,
-    LifecycleStatus,
     LicenseState,
-    MediaType,
-    ParseResult,
+    LifecycleStatus,
     Source,
-    SourceError,
     SourceKind,
     SourceLicense,
     SourceProjection,
@@ -50,18 +45,19 @@ from science_companion.contracts.science import (
     SourceUploadRequest,
     SourceVersionRequest,
 )
-from science_companion.invalidation import InvalidationError
-from science_companion.scope import ScopeEnforcer
+from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
+from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.science.parser import (
     ParserError,
     parser_id_for,
     parser_version_for,
     select_parser,
 )
+from science_companion.scope import ScopeEnforcer
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _sha256(data: bytes) -> str:
@@ -239,7 +235,7 @@ class ScienceSourceService:
         try:
             # Authorize creation before touching storage.
             try:
-                scope = self._authorize_source(account_id, source, ScopeAction.CREATE)
+                self._authorize_source(account_id, source, ScopeAction.CREATE)
             except ScienceError as exc:
                 run_ref.status = IngestionStatus.FAILED
                 run_ref.error = str(exc)
@@ -387,7 +383,6 @@ class ScienceSourceService:
         project_id: str | None = None,
     ) -> list[SourceSummary]:
         """List source summaries visible to the account."""
-        subject = self._subject(account_id)
         summaries: list[SourceSummary] = []
         for stored in self._sources.values():
             source = stored.source
@@ -441,6 +436,7 @@ class ScienceSourceService:
         account_id: str,
         source_id: str,
         request: SourceVersionRequest,
+        subject: SubjectContext | None = None,
     ) -> DocumentVersion:
         """Create a new document version by applying chunk corrections.
 
@@ -455,6 +451,7 @@ class ScienceSourceService:
         if base_document is None:
             raise ScienceError("基础文档版本不存在或没有访问权限。")
 
+        source_ref = _source_ref(source)
         now = _now()
         new_document_id = secrets.token_urlsafe(16)
         version_number = self._document_version_number(source_id)
@@ -535,11 +532,23 @@ class ScienceSourceService:
 
         # Mark base document as superseded by the new version.
         base_document.superseded_by_document_id = new_document.document_id
+        base_document.lifecycle_status = LifecycleStatus.SUPERSEDED
         stored.documents[new_document.document_id] = new_document
 
         source.current_version_id = new_document.document_id
         source.status = SourceStatus.PARSED
         source.updated_at = now
+
+        # Record a version-superseded invalidation event so downstream claim
+        # graphs and fact lock sets can be revalidated against the new version.
+        if self._invalidation is not None:
+            actor = subject or self._subject(account_id)
+            self._invalidation.record_invalidation_event(
+                actor,
+                source_ref,
+                InvalidationEventType.SOURCE_VERSION_SUPERSEDED,
+                f"新版本 {new_document.version_label} 取代 {base_document.version_label}",
+            )
 
         return new_document
 
@@ -554,7 +563,6 @@ class ScienceSourceService:
         evidence admission: only parsed, active, non-quarantined sources owned by
         the account (and optionally project) are exposed.
         """
-        subject = self._subject(account_id)
         results: list[SearchableChunk] = []
         for stored in self._sources.values():
             source = stored.source
@@ -594,12 +602,70 @@ class ScienceSourceService:
                 results.append(SearchableChunk(source=source, document=document, chunk=chunk))
         return results
 
-    def revoke_source(self, account_id: str, source_id: str, reason: str) -> ObjectRef:
-        """Revoke a source, blocking it from entering new evidence."""
+    def revoke_source(
+        self,
+        account_id: str,
+        source_id: str,
+        reason: str,
+        subject: SubjectContext | None = None,
+    ) -> tuple[ObjectRef, InvalidationEvent | None]:
+        """Revoke a source, blocking it from entering new evidence.
+
+        Records an immutable SOURCE_RETRACTED invalidation event so the general
+        invalidation foundation can propagate the impact to index, cache, runs,
+        claim graphs and fact lock sets.
+
+        Returns the source ObjectRef and the recorded invalidation event (None
+        when no invalidation service is attached, e.g. in isolated unit tests).
+        """
         source, _scope = self._authorize_source_id(account_id, source_id, ScopeAction.DELETE)
         source.status = SourceStatus.RETRACTED
         source.updated_at = _now()
-        return _source_ref(source)
+        source_ref = _source_ref(source)
+
+        event: InvalidationEvent | None = None
+        if self._invalidation is not None:
+            actor = subject or self._subject(account_id)
+            event = self._invalidation.record_invalidation_event(
+                actor,
+                source_ref,
+                InvalidationEventType.SOURCE_RETRACTED,
+                reason,
+            )
+
+        return source_ref, event
+
+    def mark_source_status_unknown(
+        self,
+        account_id: str,
+        source_id: str,
+        reason: str,
+        subject: SubjectContext | None = None,
+    ) -> tuple[ObjectRef, InvalidationEvent | None]:
+        """Mark a source's status as unknown and record an invalidation event.
+
+        This is used when external metadata APIs return ambiguous or missing
+        lifecycle information for a source already in use. New tasks and publish
+        gates must treat the source as not safely usable until re-verified.
+
+        Returns the source ObjectRef and the recorded invalidation event.
+        """
+        source, _scope = self._authorize_source_id(account_id, source_id, ScopeAction.UPDATE)
+        source.status = SourceStatus.STATUS_UNKNOWN
+        source.updated_at = _now()
+        source_ref = _source_ref(source)
+
+        event: InvalidationEvent | None = None
+        if self._invalidation is not None:
+            actor = subject or self._subject(account_id)
+            event = self._invalidation.record_invalidation_event(
+                actor,
+                source_ref,
+                InvalidationEventType.SOURCE_STATUS_UNKNOWN,
+                reason,
+            )
+
+        return source_ref, event
 
     def get_ingestion_run(self, account_id: str, run_id: str) -> IngestionRunRef:
         """Return an ingestion run if it belongs to the account's sources."""
@@ -612,16 +678,16 @@ class ScienceSourceService:
 
 def build_source_impact_resolver(
     science_service: ScienceSourceService,
-) -> Any:
+) -> ImpactResolver:
     """Build an impact resolver for source invalidation events.
 
-    Returns a callable compatible with InvalidationService.register_impact_resolver.
+    Returns an ImpactResolver compatible with InvalidationService.register_impact_resolver.
     The resolver does not call back into source reads (which would be blocked by
     the invalidation it is reacting to); it derives the affected downstreams
     directly from the event.
     """
 
-    def _resolver(event: Any) -> list[AffectedDownstream]:
+    def _resolver(event: InvalidationEvent) -> list[AffectedDownstream]:
         source_id = event.object_ref.object_id
         affected: list[AffectedDownstream] = []
         # Index projection must be revalidated.

@@ -13,7 +13,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import ObjectRef
@@ -28,16 +28,18 @@ class InvalidationEventType(str, Enum):
     KEY_EPOCH_ROLLOVER = "key_epoch_rollover"
     POLICY_VERSION_CHANGE = "policy_version_change"
     SOURCE_RETRACTED = "source_retracted"
+    SOURCE_STATUS_UNKNOWN = "source_status_unknown"
+    SOURCE_VERSION_SUPERSEDED = "source_version_superseded"
 
 
-def _immutable_model() -> dict[str, bool]:
+def _immutable_model() -> ConfigDict:
     """Return shared model_config that enforces frozen (immutable) semantics.
 
     Sets frozen=True so that InvalidationEvent, Tombstone and related models
     truly enforce the append-only / never-overwritten contract at the Python
     level. Accidental mutation raises a TypeError instead of silently passing.
     """
-    return {"frozen": True}
+    return ConfigDict(frozen=True)
 
 
 class InvalidationState(str, Enum):
@@ -207,7 +209,7 @@ class RevalidationSchedule(BaseModel):
 
     schedule_id: str = Field(description="Stable schedule identifier.")
     object_ref: ObjectRef = Field(description="Object to revalidate.")
-    revalidation_type: str = Field(description="Logical revalidation kind, e.g. index, claim_graph.")
+    revalidation_type: str = Field(description="Logical revalidation kind.")
     due_at: datetime = Field(description="Earliest time the revalidation should run.")
     idempotency_key: str = Field(description="Deterministic key for deduplication.")
     status: RevalidationStatus = Field(default=RevalidationStatus.SCHEDULED)
@@ -244,7 +246,7 @@ class InvalidationPlan(BaseModel):
     plan_id: str = Field(description="Stable plan identifier.")
     trigger_event_id: str = Field(description="Invalidation event that produced the plan.")
     event: InvalidationEvent = Field(description="Triggering invalidation event.")
-    tombstone: Tombstone | None = Field(default=None, description="Tombstone if the event was a deletion.")
+    tombstone: Tombstone | None = Field(default=None, description="Tombstone for deletion events.")
     impact_set: ImpactSet = Field(description="Resolved downstream impact set.")
     outbox_entries: list[OutboxEntry] = Field(
         default_factory=list,

@@ -14,7 +14,10 @@ import base64
 import pytest
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationEventType
+from science_companion.contracts.invalidation import (
+    InvalidationEventType,
+    RevalidationStatus,
+)
 from science_companion.contracts.science import (
     CitationVerificationStatus,
     ClaimImportance,
@@ -29,6 +32,10 @@ from science_companion.contracts.science import (
 )
 from science_companion.invalidation import InvalidationService
 from science_companion.science import ClaimEvidenceService, ScienceSourceService
+from science_companion.science.claims import (
+    ClaimGraphRevalidationHandler,
+    build_claim_impact_resolver,
+)
 from science_companion.science.search import ScienceSearchService
 from science_companion.scope import ScopeEnforcer
 
@@ -73,11 +80,18 @@ def claim_service(
     search_service: ScienceSearchService,
     invalidation_service: InvalidationService,
 ) -> ClaimEvidenceService:
-    return ClaimEvidenceService(
+    svc = ClaimEvidenceService(
         source_service=source_service,
         search_service=search_service,
         invalidation_service=invalidation_service,
     )
+    invalidation_service.register_impact_resolver(
+        "claim_graph", build_claim_impact_resolver(svc)
+    )
+    invalidation_service.register_revalidation_handler(
+        "claim_graph", ClaimGraphRevalidationHandler(svc)
+    )
+    return svc
 
 
 @pytest.fixture
@@ -261,7 +275,7 @@ class TestCitationVerification:
             == CitationVerificationStatus.SOURCE_SUPERSEDED
         )
 
-    def test_revoked_source_marks_citation_revoked(
+    def test_revoked_source_creates_new_graph_version_and_blocks_publish(
         self,
         claim_service: ClaimEvidenceService,
         source_service: ScienceSourceService,
@@ -275,21 +289,49 @@ class TestCitationVerification:
         )
         request = ClaimRequest(query="exoplanets")
         result = claim_service.generate_claim_graph(alice, request)
-        graph_id = result.graph.graph_id
+        old_graph_id = result.graph.graph_id
         citation_id = result.graph.claims[0].citation_ids[0]
 
-        source_ref = source_service.revoke_source(alice.account_id, source_id, "撤权")
-        invalidation_service.record_invalidation_event(
-            alice, source_ref, InvalidationEventType.SOURCE_RETRACTED, "来源撤回"
+        source_ref, event = source_service.revoke_source(
+            alice.account_id, source_id, "撤权", subject=alice
         )
-        affected = claim_service.invalidate_citations_for_source(
-            alice.account_id, source_id, reason="来源撤回"
-        )
+        assert event is not None
+        assert event.event_type == InvalidationEventType.SOURCE_RETRACTED
 
-        assert graph_id in affected
-        graph = claim_service.get_claim_graph(alice.account_id, graph_id)
-        citation = next(c for c in graph.citations if c.citation_id == citation_id)
-        assert citation.verification_status == CitationVerificationStatus.SOURCE_REVOKED
+        # Build the invalidation plan: the claim_graph resolver adds downstreams.
+        plan = invalidation_service.plan_invalidation(event.event_id)
+        downstream_types = {d.downstream_type for d in plan.impact_set.affected_downstreams}
+        assert "claim_graph" in downstream_types
+        assert "fact_lock_set" in downstream_types
+
+        # Run the scheduled revalidation: it creates a new graph version.
+        schedule = next(
+            s for s in plan.revalidation_schedules if s.revalidation_type == "claim_graph"
+        )
+        revalidation_result = invalidation_service.run_revalidation(schedule.schedule_id)
+        assert revalidation_result.success is True
+        updated_schedule = invalidation_service.get_revalidation_schedule(schedule.schedule_id)
+        assert updated_schedule is not None
+        assert updated_schedule.status == RevalidationStatus.COMPLETED
+
+        new_graph_ids = revalidation_result.details.get("new_graph_ids", [])
+        assert len(new_graph_ids) == 1
+        new_graph_id = new_graph_ids[0]
+
+        # The original graph is preserved as an immutable run snapshot.
+        old_graph = claim_service.get_claim_graph(alice.account_id, old_graph_id)
+        assert old_graph.superseded_by_graph_id == new_graph_id
+        old_citation = next(c for c in old_graph.citations if c.citation_id == citation_id)
+        assert old_citation.verification_status == CitationVerificationStatus.VERIFIED
+
+        # The new graph version shows the current revoked state.
+        new_graph = claim_service.get_claim_graph(alice.account_id, new_graph_id)
+        new_citation = next(c for c in new_graph.citations if c.citation_id == citation_id)
+        assert new_citation.verification_status == CitationVerificationStatus.SOURCE_REVOKED
+
+        # The new graph's publish gate fails.
+        publish_gate = claim_service.run_publish_gate(alice.account_id, new_graph_id)
+        assert publish_gate.passed is False
 
 
 class TestClaimVersioning:

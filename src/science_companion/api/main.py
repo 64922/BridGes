@@ -9,16 +9,30 @@ from science_companion import __version__
 from science_companion.ai import CapabilityRegistry, ModelGateway, StubQwenAdapter
 from science_companion.api import auth, evaluation, projects, science, scope, vault, workflows
 from science_companion.config import get_settings
-from science_companion.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus, FallbackPolicy, RetryPolicy
-from science_companion.evaluation import EvaluationService
+from science_companion.contracts.ai import (
+    CapabilityKind,
+    CapabilityRecord,
+    CapabilityStatus,
+    FallbackPolicy,
+    RetryPolicy,
+)
 from science_companion.contracts.health import HealthProjection, HealthStatus
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
+from science_companion.evaluation import EvaluationService
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.observability.service import ObservabilityService
 from science_companion.projects import ProjectService
-from science_companion.science import ClaimEvidenceService, ScienceSearchService, ScienceSourceService
+from science_companion.science import (
+    ClaimEvidenceService,
+    ScienceSearchService,
+    ScienceSourceService,
+)
+from science_companion.science.claims import (
+    ClaimGraphRevalidationHandler,
+    build_claim_impact_resolver,
+)
 from science_companion.science.service import build_source_impact_resolver
 from science_companion.scope import ScopeEnforcer
 from science_companion.vault import (
@@ -266,11 +280,21 @@ def create_app() -> FastAPI:
     )
 
     # T015: attach the claim--evidence--citation service.
-    app.state.claim_evidence_service = ClaimEvidenceService(
+    claim_evidence_service = ClaimEvidenceService(
         source_service=science_source_service,
         search_service=app.state.science_search_service,
         invalidation_service=invalidation_service,
         model_gateway=model_gateway,
+    )
+    app.state.claim_evidence_service = claim_evidence_service
+
+    # T017: source invalidation must propagate to claim graphs and fact lock sets,
+    # and revalidation must create new graph versions rather than overwrite history.
+    invalidation_service.register_impact_resolver(
+        "claim_graph", build_claim_impact_resolver(claim_evidence_service)
+    )
+    invalidation_service.register_revalidation_handler(
+        "claim_graph", ClaimGraphRevalidationHandler(claim_evidence_service)
     )
 
     app.include_router(auth.router)

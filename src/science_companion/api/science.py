@@ -11,7 +11,6 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from science_companion.api.auth import SubjectDep
-from science_companion.contracts.invalidation import InvalidationEventType
 from science_companion.contracts.science import (
     ChunkVersion,
     CitationValidationResult,
@@ -32,7 +31,6 @@ from science_companion.contracts.science import (
     SourceVersionRequest,
     ValidationReport,
 )
-from science_companion.invalidation import InvalidationService
 from science_companion.science import (
     ClaimEvidenceService,
     ScienceError,
@@ -285,33 +283,25 @@ async def revoke_source(
     service: ScienceServiceDep,
     subject: SubjectDep,
     source_id: str,
-    request: Request,
 ) -> dict[str, Any]:
     """Revoke a source so it cannot be used in new evidence."""
     try:
-        source_ref = service.revoke_source(
+        source_ref, event = service.revoke_source(
             account_id=subject.account_id,
             source_id=source_id,
             reason="用户撤权",
+            subject=subject,
         )
     except ScienceError as exc:
         raise _science_error(
             status.HTTP_404_NOT_FOUND, "source_not_found", str(exc)
         ) from exc
 
-    # Record an invalidation event so downstream guards (cache, index, runs) activate.
-    invalidation_service: InvalidationService = request.app.state.invalidation_service
-    invalidation_service.record_invalidation_event(
-        subject,
-        source_ref,
-        InvalidationEventType.SOURCE_RETRACTED,
-        "用户撤权",
-    )
-
     return {
         "source_id": source_id,
         "status": "revoked",
         "object_ref": source_ref.model_dump(),
+        "invalidation_event_id": event.event_id if event is not None else None,
     }
 
 

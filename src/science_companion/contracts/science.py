@@ -59,6 +59,7 @@ class SourceStatus(str, Enum):
     QUARANTINED = "quarantined"
     BLOCKED = "blocked"
     RETRACTED = "retracted"
+    STATUS_UNKNOWN = "status_unknown"
 
 
 class IngestionStatus(str, Enum):
