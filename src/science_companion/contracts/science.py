@@ -652,7 +652,6 @@ class PublishGateCheck(str, Enum):
     SOURCE_ACTIVE = "source_active"
     SOURCE_CURRENT_VERSION = "source_current_version"
     NO_FABRICATED_CITATIONS = "no_fabricated_citations"
-    HIGH_CONFIDENCE_EVIDENCE = "high_confidence_evidence"
 
 
 class PublishGateResult(BaseModel):

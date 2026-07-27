@@ -3318,7 +3318,7 @@ export interface components {
          * @description Named checks performed by the publish gate.
          * @enum {string}
          */
-        PublishGateCheck: "key_claim_coverage" | "citation_locatable" | "source_active" | "source_current_version" | "no_fabricated_citations" | "high_confidence_evidence";
+        PublishGateCheck: "key_claim_coverage" | "citation_locatable" | "source_active" | "source_current_version" | "no_fabricated_citations";
         /**
          * PublishGateResult
          * @description Result of running the claim-graph publish gate.

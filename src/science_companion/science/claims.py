@@ -675,7 +675,6 @@ class ClaimEvidenceService:
             PublishGateCheck.SOURCE_ACTIVE: True,
             PublishGateCheck.SOURCE_CURRENT_VERSION: True,
             PublishGateCheck.NO_FABRICATED_CITATIONS: True,
-            PublishGateCheck.HIGH_CONFIDENCE_EVIDENCE: True,
         }
         blocked_claim_ids: list[str] = []
         reasons: list[str] = []
@@ -729,12 +728,6 @@ class ClaimEvidenceService:
 
         passed = all(checks.values())
         failed = [check for check, ok in checks.items() if not ok]
-
-        if graph.status == ClaimTrustStatus.BLOCKED:
-            passed = False
-            if PublishGateCheck.HIGH_CONFIDENCE_EVIDENCE not in failed:
-                failed.append(PublishGateCheck.HIGH_CONFIDENCE_EVIDENCE)
-                checks[PublishGateCheck.HIGH_CONFIDENCE_EVIDENCE] = False
 
         graph_status = graph.status
         if not passed and graph_status in {ClaimTrustStatus.VERIFIED, ClaimTrustStatus.QUALIFIED}:
@@ -903,17 +896,12 @@ class ClaimEvidenceService:
         self,
         account_id: str,
         source_id: str,
-        *,
-        reason: str = "来源版本变化或撤权",
     ) -> list[str]:
         """Revalidate every claim graph that cites the source.
 
         Instead of mutating existing graphs in place, this creates new graph
         versions that reflect the current invalidation state. The original graphs
         are preserved as run snapshots.
-
-        Note: ``reason`` is kept for backward compatibility; the revalidation
-        reason is derived from the citation verification status.
         """
         return self.revalidate_graphs_for_source(account_id, source_id)
 

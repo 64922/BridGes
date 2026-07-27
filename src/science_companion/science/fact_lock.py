@@ -317,7 +317,7 @@ def _extract_strength_lock(
 
 
 def _assess_evidence_state(
-    _claim: Claim, claim_evidence: list[Evidence]
+    claim_evidence: list[Evidence],
 ) -> EvidenceState:
     """Aggregate evidence relations for a claim into a single evidence state."""
     if not claim_evidence:
@@ -370,10 +370,11 @@ def compile_fact_locks(graph: ClaimGraph) -> FactLockSet:
             for cid in claim.citation_ids
             if cid in citation_index
         ]
-        evidence_ids = [e.evidence_id for e in claim_evidence]
+        active_evidence = [e for e in claim_evidence if e.invalidated_at is None]
+        evidence_ids = [e.evidence_id for e in active_evidence]
 
-        state = _assess_evidence_state(claim, claim_evidence)
-        has_limits = any(e.relation == EvidenceRelation.LIMITS for e in claim_evidence)
+        state = _assess_evidence_state(claim_evidence)
+        has_limits = any(e.relation == EvidenceRelation.LIMITS for e in active_evidence)
 
         locks.extend(_extract_citation_locks(claim, claim_citations))
         locks.extend(_extract_number_unit_locks(claim, evidence_ids))
@@ -610,7 +611,7 @@ def apply_honest_degradation(
             for eid in claim.evidence_ids
             if eid in evidence_index
         ]
-        state = _assess_evidence_state(claim, claim_evidence)
+        state = _assess_evidence_state(claim_evidence)
         evidence_states[claim.claim_id] = state
 
         has_limits = any(e.relation == EvidenceRelation.LIMITS for e in claim_evidence)

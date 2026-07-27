@@ -8047,8 +8047,7 @@
           "citation_locatable",
           "source_active",
           "source_current_version",
-          "no_fabricated_citations",
-          "high_confidence_evidence"
+          "no_fabricated_citations"
         ],
         "title": "PublishGateCheck",
         "description": "Named checks performed by the publish gate."
