@@ -1,5 +1,6 @@
-"""Multimodal media ingestion and correction module for T030."""
+"""Multimodal media ingestion, correction and generation module for T030/T032."""
 
+from science_companion.media.generation import MediaGenerationService, MediaGenerationError
 from science_companion.media.service import (
     MediaError,
     MediaIngestionService,
@@ -8,6 +9,8 @@ from science_companion.media.service import (
 
 __all__ = [
     "MediaError",
+    "MediaGenerationError",
+    "MediaGenerationService",
     "MediaIngestionService",
     "build_media_impact_resolver",
 ]

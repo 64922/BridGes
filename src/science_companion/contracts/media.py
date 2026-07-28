@@ -14,6 +14,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from science_companion.contracts.ai import ModelRunLock
 from science_companion.contracts.science import (
     LicenseState,
     MediaType,
@@ -460,4 +461,291 @@ class MediaError(BaseModel):
     details: dict[str, Any] = Field(
         default_factory=dict,
         description="Opaque detail safe for logging; must not expose internal state.",
+    )
+
+
+# ── T032: 可编辑静态科学图与数据图表 ──────────────────────────────────
+
+
+class ChartMark(StrEnum):
+    """Visual mark type for a data chart."""
+
+    BAR = "bar"
+    LINE = "line"
+    POINT = "point"
+    AREA = "area"
+    SCATTER = "scatter"
+    ERROR_BAR = "error_bar"
+    HISTOGRAM = "histogram"
+
+
+class ChartAxisType(StrEnum):
+    """Scale type of a chart axis."""
+
+    LINEAR = "linear"
+    LOG = "log"
+    CATEGORICAL = "categorical"
+    TEMPORAL = "temporal"
+
+
+class MediaObjectType(StrEnum):
+    """Type of a generated scientific media object."""
+
+    CHART = "chart"
+    SCIENTIFIC_FIGURE = "scientific_figure"
+
+
+class GenerationStatus(StrEnum):
+    """Lifecycle status of a media generation task."""
+
+    PENDING = "pending"
+    GENERATING = "generating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    VALIDATION_FAILED = "validation_failed"
+
+
+class ChartAxis(BaseModel):
+    """Axis specification for a chart."""
+
+    field: str = Field(description="Data field bound to this axis.")
+    label: str = Field(description="Axis display label.")
+    unit: str | None = Field(default=None, description="Physical unit if applicable.")
+    axis_type: ChartAxisType = Field(default=ChartAxisType.LINEAR)
+    domain_min: float | None = Field(default=None)
+    domain_max: float | None = Field(default=None)
+    ticks: list[float] | None = Field(default=None)
+
+
+class ChartEncodingMapping(BaseModel):
+    """Mapping from a visual encoding channel to a data field."""
+
+    encoding: str = Field(
+        description="Encoding channel: x, y, color, shape, size, row, column."
+    )
+    field: str = Field(description="Data field mapped to this channel.")
+    label: str | None = Field(default=None, description="Legend label if applicable.")
+
+
+class ChartDataColumn(BaseModel):
+    """Schema of one column in chart source data."""
+
+    name: str = Field(description="Column name.")
+    data_type: str = Field(default="number", description="Inferred data type.")
+    unit: str | None = Field(default=None)
+
+
+class ChartDataPoint(BaseModel):
+    """A single data point in a chart dataset."""
+
+    values: dict[str, str | float | None] = Field(
+        description="Field -> value mapping."
+    )
+    is_missing: bool = Field(default=False)
+
+
+class ChartDataTable(BaseModel):
+    """Structured source data for a chart."""
+
+    columns: list[ChartDataColumn] = Field(default_factory=list)
+    rows: list[ChartDataPoint] = Field(default_factory=list)
+    source_note: str | None = Field(
+        default=None, description="Attribution or trace note."
+    )
+
+
+class ChartSpec(BaseModel):
+    """Declarative specification of a data chart.
+
+    The spec holds the source data, axis definitions, visual encoding mappings,
+    and rendering hints. It IS the editable source — users can modify the spec
+    and re-validate. The SVG is a derived rendering of this spec.
+    """
+
+    spec_id: str = Field(description="Stable spec identifier.")
+    title: str = Field(description="Chart title.")
+    mark: ChartMark = Field(description="Visual mark type.")
+    data: ChartDataTable = Field(description="Source data for the chart.")
+    axes: list[ChartAxis] = Field(default_factory=list)
+    encodings: list[ChartEncodingMapping] = Field(default_factory=list)
+    has_error_bars: bool = Field(default=False, description="Whether error bars are shown.")
+    aggregation: str | None = Field(
+        default=None,
+        description="Aggregation function if any: sum, mean, count, etc.",
+    )
+    color_legend_title: str | None = Field(default=None)
+    note: str | None = Field(default=None, description="Footnote or caveat.")
+
+
+class FigureElement(BaseModel):
+    """A labeled element in a scientific figure."""
+
+    element_id: str = Field(description="Stable element identifier.")
+    role: str = Field(
+        description="Semantic role: axis_label, curve, annotation, legend, scale_bar, etc."
+    )
+    label: str = Field(description="Display label text.")
+    claim_id: str | None = Field(default=None, description="Bound claim if any.")
+    svg_fragment: str | None = Field(
+        default=None, description="Inline SVG markup for this element."
+    )
+
+
+class ScientificFigureSpec(BaseModel):
+    """Declarative specification of a scientific figure.
+
+    A scientific figure consists of labeled elements with semantic roles,
+    optionally bound to claims. The SVG is derived from the element definitions.
+    """
+
+    spec_id: str = Field(description="Stable spec identifier.")
+    title: str = Field(description="Figure title.")
+    elements: list[FigureElement] = Field(default_factory=list)
+    description: str | None = Field(
+        default=None, description="Overall figure description."
+    )
+    note: str | None = Field(default=None)
+
+
+class EditableSource(BaseModel):
+    """An editable source that defines a scientific media object.
+
+    The source is the authority — rendered SVGs and PNGs are derived from it.
+    Users can edit the source and re-validate to ensure consistency.
+    """
+
+    source_id: str = Field(description="Stable source identifier.")
+    source_type: str = Field(
+        description="Type: chart_spec, figure_spec, svg."
+    )
+    content: str = Field(
+        description="JSON-encoded spec or raw SVG content."
+    )
+    format: str = Field(
+        default="application/json",
+        description="MIME type of the content field.",
+    )
+    version: int = Field(default=1, ge=1, description="Monotonic version.")
+
+
+class AccessibilityAlternative(BaseModel):
+    """Accessibility alternative for a visual media object."""
+
+    alt_text: str = Field(
+        description="Concise alternative text describing the visual.",
+        min_length=1,
+    )
+    long_description: str | None = Field(
+        default=None, description="Detailed description for complex visuals."
+    )
+    data_table: ChartDataTable | None = Field(
+        default=None,
+        description="Equivalent data table for charts; None for figures.",
+    )
+
+
+class ClaimVisualBinding(BaseModel):
+    """Binding from a visual element to a claim, evidence, or fact lock."""
+
+    binding_id: str = Field(description="Stable binding identifier.")
+    element_ref: str = Field(
+        description="Reference to the visual element: axis label, figure element id, etc."
+    )
+    claim_id: str | None = Field(default=None)
+    evidence_id: str | None = Field(default=None)
+    fact_lock_id: str | None = Field(default=None)
+
+
+class ScientificMediaObject(BaseModel):
+    """A generated scientific media object with editable source and bindings.
+
+    This is the output of the generation pipeline — a stand-alone media work
+    with its editable source, rendered SVG, claim bindings and accessibility
+    alternative. It is versioned and can enter the task stage artifact system.
+    """
+
+    media_object_id: str = Field(description="Stable media object identifier.")
+    account_id: str = Field(description="Owning account.")
+    project_id: str | None = Field(default=None)
+    media_type: MediaObjectType = Field(description="Chart or scientific figure.")
+    editable_source: EditableSource = Field(description="Editable source spec.")
+    svg_content: str | None = Field(
+        default=None, description="Rendered SVG output."
+    )
+    claim_bindings: list[ClaimVisualBinding] = Field(default_factory=list)
+    data_bindings: list[DataBinding] = Field(default_factory=list)
+    fact_lock_set_id: str | None = Field(default=None)
+    accessibility: AccessibilityAlternative = Field(
+        description="Alt text and equivalent data table."
+    )
+    validation_errors: list[str] = Field(default_factory=list)
+    status: GenerationStatus = Field(default=GenerationStatus.COMPLETED)
+    created_at: datetime = Field(description="Creation timestamp.")
+    updated_at: datetime = Field(description="Last update timestamp.")
+
+
+class ChartGenerationRequest(BaseModel):
+    """Request to generate a data chart from source data.
+
+    The caller provides structured data and describes what to plot.
+    """
+
+    title: str = Field(description="Chart title.", min_length=1)
+    mark: ChartMark = Field(description="Visual mark type.")
+    data: ChartDataTable = Field(description="Source data for the chart.")
+    x_field: str = Field(description="Field name for the x-axis.", min_length=1)
+    y_field: str = Field(description="Field name for the y-axis.", min_length=1)
+    color_field: str | None = Field(
+        default=None, description="Field name for color encoding."
+    )
+    error_field: str | None = Field(
+        default=None, description="Field name for error/uncertainty values."
+    )
+    x_label: str | None = Field(default=None, description="X-axis label (auto if omitted).")
+    y_label: str | None = Field(default=None, description="Y-axis label (auto if omitted).")
+    x_unit: str | None = Field(default=None)
+    y_unit: str | None = Field(default=None)
+    claim_ids: list[str] = Field(default_factory=list)
+    fact_lock_ids: list[str] = Field(default_factory=list)
+    aggregation: str | None = Field(default=None)
+    project_id: str | None = Field(default=None)
+
+
+class FigureGenerationRequest(BaseModel):
+    """Request to generate a scientific figure.
+
+    The caller provides element definitions and optional claim bindings.
+    """
+
+    title: str = Field(description="Figure title.", min_length=1)
+    elements: list[FigureElement] = Field(
+        default_factory=list,
+        description="Figure elements. When empty, the service generates defaults.",
+    )
+    claim_ids: list[str] = Field(default_factory=list)
+    fact_lock_ids: list[str] = Field(default_factory=list)
+    description: str | None = Field(default=None)
+    project_id: str | None = Field(default=None)
+
+
+class GenerationResult(BaseModel):
+    """Result of a media generation task."""
+
+    media_object: ScientificMediaObject = Field(description="Generated media object.")
+    model_run_lock: ModelRunLock | None = Field(
+        default=None, description="Model run lock when a model was used."
+    )
+
+
+class SpecValidationResult(BaseModel):
+    """Result of validating a chart/figure spec against source data and facts."""
+
+    valid: bool = Field(description="Whether the spec passes all checks.")
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    data_consistent: bool = Field(
+        default=True, description="Whether values match the source data."
+    )
+    claims_consistent: bool = Field(
+        default=True, description="Whether claim bindings are valid."
     )
