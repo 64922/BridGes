@@ -13,6 +13,7 @@ from science_companion.ai.adapters import (
 from science_companion.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
 from science_companion.ai.model_gateway import ModelGateway, ModelGatewayError
 from science_companion.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
+from science_companion.ai.qwen_asr_adapter import QwenAsrAdapter
 from science_companion.ai.qwen_client import CassetteStore, QwenApiClient
 from science_companion.ai.qwen_vision_adapters import QwenOcrAdapter, QwenVisionAdapter
 
@@ -27,6 +28,7 @@ __all__ = [
     "ModelGateway",
     "ModelGatewayError",
     "QwenApiClient",
+    "QwenAsrAdapter",
     "QwenOcrAdapter",
     "QwenStructuredOutputAdapter",
     "QwenTextChatAdapter",

@@ -16,6 +16,7 @@ from science_companion.ai import (
     CassetteStore,
     ModelGateway,
     QwenApiClient,
+    QwenAsrAdapter,
     QwenStructuredOutputAdapter,
     QwenTextChatAdapter,
 )
@@ -65,6 +66,18 @@ def _build_gateway() -> ModelGateway:
             output_schema_version="json-schema-v1",
         )
     )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_asr_short",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3-asr-flash",
+            input_schema_version="audio-upload-v1",
+            output_schema_version="transcript-v1",
+        )
+    )
 
     settings = get_settings()
     cassette_dir = (
@@ -84,6 +97,7 @@ def _build_gateway() -> ModelGateway:
     gateway.register_adapter(
         "qwen_structured_output", "1", QwenStructuredOutputAdapter(client)
     )
+    gateway.register_adapter("qwen_asr_short", "1", QwenAsrAdapter(client))
     return gateway
 
 
@@ -116,3 +130,24 @@ def test_structured_output_with_cassette() -> None:
     assert result.lock is not None
     assert result.lock.actual_model_id == "qwen3.6-flash"
     assert result.output == {"summary": "科学解释", "claims": []}
+
+
+def test_asr_short_with_cassette() -> None:
+    gateway = _build_gateway()
+    result = gateway.invoke(
+        "qwen_asr_short",
+        "1",
+        _context(),
+        payload={
+            "audio_base64": "SUQz",
+            "mime_type": "audio/mpeg",
+            "duration_seconds": 10.0,
+            "language": "zh",
+        },
+    )
+
+    assert result.status == ModelCallStatus.SUCCESS
+    assert result.lock is not None
+    assert result.lock.actual_model_id == "qwen3-asr-flash"
+    assert result.lock.region == "cn-beijing"
+    assert result.output == {"transcript": "欢迎收听科学讲座。", "language": "zh"}

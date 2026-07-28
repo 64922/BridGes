@@ -56,7 +56,12 @@ from science_companion.contracts.science import (
 from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
 from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.media.extraction import ExtractionError, ExtractionPort, select_extractor
-from science_companion.media.qwen_extraction import QwenOcrExtractor, build_run_context_for_ocr
+from science_companion.media.qwen_extraction import (
+    QwenAsrExtractor,
+    QwenOcrExtractor,
+    build_run_context_for_asr,
+    build_run_context_for_ocr,
+)
 from science_companion.scope import ScopeEnforcer
 
 
@@ -145,12 +150,15 @@ class MediaIngestionService:
     ) -> ExtractionPort:
         """Choose a model-backed extractor when a gateway is available.
 
-        Image, formula-image and table-image assets are routed to the real Qwen
-        OCR pipeline so the ingestion seam produces actual model-derived
+        Image, formula-image, table-image, audio and video assets are routed to
+        real Qwen pipelines so the ingestion seam produces actual model-derived
         structures. Other media types keep their deterministic extractors so
         local tests remain stable without an API key.
         """
-        if self._model_gateway is not None and media_type in {
+        if self._model_gateway is None:
+            return select_extractor(media_type)
+
+        if media_type in {
             MediaType.IMAGE_PNG,
             MediaType.IMAGE_JPEG,
             MediaType.IMAGE_WEBP,
@@ -160,6 +168,19 @@ class MediaIngestionService:
             return QwenOcrExtractor(
                 self._model_gateway, build_run_context_for_ocr(source_asset)
             )
+
+        if media_type in {
+            MediaType.AUDIO_MPEG,
+            MediaType.AUDIO_WAV,
+            MediaType.AUDIO_OGG,
+            MediaType.VIDEO_MP4,
+            MediaType.VIDEO_WEBM,
+            MediaType.VIDEO_OGG,
+        }:
+            return QwenAsrExtractor(
+                self._model_gateway, build_run_context_for_asr(source_asset)
+            )
+
         return select_extractor(media_type)
 
     def _next_manifest_version(self, asset_id: str) -> int:

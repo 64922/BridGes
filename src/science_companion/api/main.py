@@ -12,6 +12,7 @@ from science_companion.ai import (
     CassetteStore,
     ModelGateway,
     QwenApiClient,
+    QwenAsrAdapter,
     QwenOcrAdapter,
     QwenStructuredOutputAdapter,
     QwenTextChatAdapter,
@@ -177,9 +178,9 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             prompt_version="2026-07-24",
         )
     )
-    # T031: ASR capabilities for audio/video ingestion. Actual transcription is
-    # currently deterministic/stub-backed; the capability records an immutable
-    # model run lock for audit and future migration to real Qwen ASR spikes.
+    # T060: ASR capabilities for audio/video ingestion. Real Qwen ASR adapters
+    # are registered when an API key is available; otherwise the stub adapter
+    # keeps local tests deterministic.
     registry.register(
         CapabilityRecord(
             name="qwen_asr_short",
@@ -447,6 +448,12 @@ def create_app() -> FastAPI:
         )
         model_gateway.register_adapter(
             "qwen_vision", "1", QwenVisionAdapter(qwen_client)
+        )
+        model_gateway.register_adapter(
+            "qwen_asr_short", "1", QwenAsrAdapter(qwen_client)
+        )
+        model_gateway.register_adapter(
+            "qwen_asr_long", "1", QwenAsrAdapter(qwen_client)
         )
 
     stub_adapter = StubQwenAdapter()
