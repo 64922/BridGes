@@ -12,8 +12,10 @@ from science_companion.ai import (
     CassetteStore,
     ModelGateway,
     QwenApiClient,
+    QwenOcrAdapter,
     QwenStructuredOutputAdapter,
     QwenTextChatAdapter,
+    QwenVisionAdapter,
     StubQwenAdapter,
 )
 from science_companion.api import (
@@ -122,6 +124,39 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             output_schema_version="json-schema-v1",
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+    # T061: real Qwen OCR and vision capabilities for media/science ingestion.
+    registry.register(
+        CapabilityRecord(
+            name="qwen_ocr",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen-vl-ocr",
+            input_schema_version="image-ocr-v1",
+            output_schema_version="ocr-text-v1",
+            supported_modalities=["text", "image"],
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_vision",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3-vl-plus",
+            input_schema_version="image-vision-v1",
+            output_schema_version="vision-text-v1",
+            supported_modalities=["text", "image"],
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
             prompt_version="2026-07-24",
         )
     )
@@ -407,6 +442,12 @@ def create_app() -> FastAPI:
         model_gateway.register_adapter(
             "qwen_structured_output", "1", QwenStructuredOutputAdapter(qwen_client)
         )
+        model_gateway.register_adapter(
+            "qwen_ocr", "1", QwenOcrAdapter(qwen_client)
+        )
+        model_gateway.register_adapter(
+            "qwen_vision", "1", QwenVisionAdapter(qwen_client)
+        )
 
     stub_adapter = StubQwenAdapter()
     for capability in capability_registry.list_active():
@@ -435,6 +476,9 @@ def create_app() -> FastAPI:
     science_source_service = ScienceSourceService(
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
+        model_gateway=(
+            model_gateway if settings is not None and not settings.qwen_force_stub else None
+        ),
     )
     invalidation_service.register_impact_resolver(
         "science_source", build_source_impact_resolver(science_source_service)
@@ -471,6 +515,9 @@ def create_app() -> FastAPI:
     media_ingestion_service = MediaIngestionService(
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
+        model_gateway=(
+            model_gateway if settings is not None and not settings.qwen_force_stub else None
+        ),
     )
     invalidation_service.register_impact_resolver(
         "media_asset", build_media_impact_resolver(media_ingestion_service)

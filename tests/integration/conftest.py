@@ -8,12 +8,14 @@ scenario without re-implementing registration and setup logic.
 from __future__ import annotations
 
 import base64
+import os
 from typing import Any, Protocol, cast
 
 import pytest
 from fastapi.testclient import TestClient
 
 from science_companion.api.main import create_app
+from science_companion.config import get_settings
 
 
 class _RegisteredUser(Protocol):
@@ -46,9 +48,22 @@ class _SubmitWorkOrder(Protocol):
         ...
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _force_qwen_stub() -> None:
+    """Force Qwen adapters to stub mode for the whole integration test run.
+
+    Real model calls are exercised by dedicated adapter unit tests and manual
+    spikes; integration tests must remain deterministic and offline.
+    """
+    os.environ["SCIENCE_COMPANION_QWEN_FORCE_STUB"] = "true"
+    get_settings.cache_clear()
+
+
 @pytest.fixture
-def client() -> TestClient:
+def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     """Fresh API client with an isolated app instance."""
+    monkeypatch.setenv("SCIENCE_COMPANION_QWEN_FORCE_STUB", "true")
+    get_settings.cache_clear()
     return TestClient(create_app())
 
 

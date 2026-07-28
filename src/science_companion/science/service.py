@@ -19,6 +19,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
+from science_companion.ai import ModelGateway
 from science_companion.contracts.identity import AuthMethod, SubjectContext
 from science_companion.contracts.invalidation import (
     AffectedDownstream,
@@ -36,6 +37,7 @@ from science_companion.contracts.science import (
     InputQualityGate,
     LicenseState,
     LifecycleStatus,
+    MediaType,
     Source,
     SourceKind,
     SourceLicense,
@@ -46,13 +48,16 @@ from science_companion.contracts.science import (
     SourceVersionRequest,
 )
 from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
+from science_companion.contracts.workflows import RunContextEnvelope
 from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.science.parser import (
     ParserError,
+    ParserPort,
     parser_id_for,
     parser_version_for,
     select_parser,
 )
+from science_companion.science.qwen_parser import QwenOcrPDFParser
 from science_companion.scope import ScopeEnforcer
 
 
@@ -108,11 +113,13 @@ class ScienceSourceService:
         self,
         scope_enforcer: ScopeEnforcer | None = None,
         invalidation_service: InvalidationService | None = None,
+        model_gateway: ModelGateway | None = None,
     ) -> None:
         self._sources: dict[str, _StoredSource] = {}
         self._ingestion_runs: dict[str, IngestionRunRef] = {}
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
         self._invalidation = invalidation_service
+        self._model_gateway = model_gateway
 
     def _subject(self, account_id: str) -> SubjectContext:
         return SubjectContext(
@@ -129,6 +136,20 @@ class ScienceSourceService:
             self._invalidation.require_active(source_ref)
         except InvalidationError as exc:
             raise ScienceError(str(exc)) from exc
+
+    def _select_parser(self, source: Source, media_type: MediaType) -> ParserPort:
+        """Choose a model-backed parser for PDFs when a gateway is available."""
+        if media_type == MediaType.APPLICATION_PDF and self._model_gateway is not None:
+            run_context = RunContextEnvelope(
+                run_id=f"ocr-pdf-{source.source_id}",
+                account_id=source.account_id,
+                project_id=source.project_id or "",
+                workflow_name="science_source_ingestion",
+                workflow_version="1",
+                submitted_at=_now(),
+            )
+            return QwenOcrPDFParser(self._model_gateway, run_context)
+        return select_parser(media_type)
 
     def _authorize_source(
         self, account_id: str, source: Source, action: ScopeAction
@@ -251,7 +272,7 @@ class ScienceSourceService:
 
             # Parse.
             try:
-                parser = select_parser(request.media_type)
+                parser = self._select_parser(source, request.media_type)
                 document_id = secrets.token_urlsafe(16)
                 parse_result, rights_snapshot, parser_gates = parser.parse(
                     source.source_id, document_id, content
@@ -310,8 +331,12 @@ class ScienceSourceService:
                 language=parse_result.language,
                 rights_snapshot=rights_snapshot,
                 raw_blob_ref=raw_blob_ref,
-                parser_id=parser_id_for(request.media_type),
-                parser_version=parser_version_for(request.media_type),
+                parser_id=getattr(
+                    parser, "parser_id", parser_id_for(request.media_type)
+                ),
+                parser_version=getattr(
+                    parser, "parser_version", parser_version_for(request.media_type)
+                ),
                 chunk_ids=[c.chunk_id for c in parse_result.chunks],
                 created_at=now,
             )

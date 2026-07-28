@@ -16,6 +16,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from science_companion.ai import ModelGateway
 from science_companion.contracts.identity import AuthMethod, SubjectContext
 from science_companion.contracts.invalidation import (
     AffectedDownstream,
@@ -49,11 +50,13 @@ from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.science import (
     ClaimRequest,
     LicenseState,
+    MediaType,
     SourceLicense,
 )
 from science_companion.contracts.scope import ScopeAction, ScopeEnvelope, ScopeIsolationError
 from science_companion.invalidation import InvalidationError, InvalidationService
-from science_companion.media.extraction import ExtractionError, select_extractor
+from science_companion.media.extraction import ExtractionError, ExtractionPort, select_extractor
+from science_companion.media.qwen_extraction import QwenOcrExtractor, build_run_context_for_ocr
 from science_companion.scope import ScopeEnforcer
 
 
@@ -90,11 +93,13 @@ class MediaIngestionService:
         self,
         scope_enforcer: ScopeEnforcer | None = None,
         invalidation_service: InvalidationService | None = None,
+        model_gateway: ModelGateway | None = None,
     ) -> None:
         self._assets: dict[str, _StoredAsset] = {}
         self._ingestion_runs: dict[str, MediaIngestionRunRef] = {}
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
         self._invalidation = invalidation_service
+        self._model_gateway = model_gateway
 
     def _subject(self, account_id: str) -> SubjectContext:
         return SubjectContext(
@@ -134,6 +139,28 @@ class MediaIngestionService:
             self._invalidation.require_active(asset_ref)
         except InvalidationError as exc:
             raise MediaError(str(exc)) from exc
+
+    def _select_extractor(
+        self, source_asset: SourceAsset, media_type: MediaType
+    ) -> ExtractionPort:
+        """Choose a model-backed extractor when a gateway is available.
+
+        Image, formula-image and table-image assets are routed to the real Qwen
+        OCR pipeline so the ingestion seam produces actual model-derived
+        structures. Other media types keep their deterministic extractors so
+        local tests remain stable without an API key.
+        """
+        if self._model_gateway is not None and media_type in {
+            MediaType.IMAGE_PNG,
+            MediaType.IMAGE_JPEG,
+            MediaType.IMAGE_WEBP,
+            MediaType.APPLICATION_X_LATEX,
+            MediaType.APPLICATION_X_TEX,
+        }:
+            return QwenOcrExtractor(
+                self._model_gateway, build_run_context_for_ocr(source_asset)
+            )
+        return select_extractor(media_type)
 
     def _next_manifest_version(self, asset_id: str) -> int:
         stored = self._assets[asset_id]
@@ -240,7 +267,7 @@ class MediaIngestionService:
 
         # Select extractor and run gates.
         try:
-            extractor = select_extractor(request.media_type)
+            extractor = self._select_extractor(source_asset, request.media_type)
             gate_results = extractor.gate_results(content)
             run_ref.gate_results.update(gate_results)
         except ExtractionError as exc:
