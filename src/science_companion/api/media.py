@@ -1,7 +1,10 @@
-"""Media asset API routes for T030.
+"""Media asset API routes for T030 and T033.
 
-Routes implement uploading, retrieving, correcting and revoking scientific
+T030 routes: uploading, retrieving, correcting and revoking scientific
 images, scans, formulas and tables within the scope of an account and project.
+
+T033 routes: creating, updating and validating structured storyboards,
+generating source code, running in sandbox, and retrieving validation reports.
 """
 
 from __future__ import annotations
@@ -16,13 +19,27 @@ from science_companion.contracts.media import (
     MediaCorrectionRequest,
     MediaIngestionRunRef,
     MediaProjection,
+    MediaStoryboard,
     MediaUploadRequest,
+    SandboxRunRequest,
+    SandboxRunResult,
+    SandboxRunStatus,
+    StoryboardGenerationRequest,
+    StoryboardResult,
+    ValidationReport,
 )
 from science_companion.contracts.media import (
     MediaError as MediaErrorContract,
 )
 from science_companion.contracts.science import ClaimGraphResult, ClaimRequest
 from science_companion.media import MediaError, MediaIngestionService
+from science_companion.media.storyboard_service import (
+    SandboxError,
+    SandboxService,
+    StoryboardError,
+    StoryboardService,
+    build_validation_report,
+)
 from science_companion.science import ClaimEvidenceService
 
 router = APIRouter(prefix="/media", tags=["media"])
@@ -231,3 +248,248 @@ async def revoke_media_asset(
         "object_ref": asset_ref.model_dump(),
         "invalidation_event_id": event.event_id if event is not None else None,
     }
+
+
+# ── T033: Storyboard and sandbox routes ─────────────────────────────
+
+
+def _get_storyboard_service(request: Request) -> StoryboardService:
+    service: StoryboardService | None = getattr(
+        request.app.state, "storyboard_service", None
+    )
+    if service is None:
+        raise RuntimeError("StoryboardService not attached to application state.")
+    return service
+
+
+def _get_sandbox_service(request: Request) -> SandboxService:
+    service: SandboxService | None = getattr(
+        request.app.state, "sandbox_service", None
+    )
+    if service is None:
+        raise RuntimeError("SandboxService not attached to application state.")
+    return service
+
+
+StoryboardServiceDep = Annotated[StoryboardService, Depends(_get_storyboard_service)]
+SandboxServiceDep = Annotated[SandboxService, Depends(_get_sandbox_service)]
+
+
+@router.post(
+    "/storyboards",
+    response_model=StoryboardResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_403_FORBIDDEN: {"model": MediaErrorContract},
+    },
+)
+async def create_storyboard(
+    service: StoryboardServiceDep,
+    subject: SubjectDep,
+    request: StoryboardGenerationRequest,
+) -> StoryboardResult:
+    """Create a structured storyboard from a generation request."""
+    try:
+        return service.generate_storyboard(
+            request,
+            account_id=subject.account_id,
+        )
+    except StoryboardError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "storyboard_generation_failed",
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/storyboards/{storyboard_id}",
+    response_model=MediaStoryboard,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def get_storyboard(
+    service: StoryboardServiceDep,
+    subject: SubjectDep,
+    storyboard_id: str,
+) -> MediaStoryboard:
+    """Get a storyboard by ID."""
+    try:
+        return service.get_storyboard(storyboard_id)
+    except StoryboardError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "storyboard_not_found", str(exc)
+        ) from exc
+
+
+@router.put(
+    "/storyboards/{storyboard_id}",
+    response_model=MediaStoryboard,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def update_storyboard(
+    service: StoryboardServiceDep,
+    subject: SubjectDep,
+    storyboard_id: str,
+    title: str | None = None,
+    teaching_objectives: list[str] | None = None,
+) -> MediaStoryboard:
+    """Update a storyboard's metadata."""
+    try:
+        return service.update_storyboard(
+            storyboard_id,
+            title=title,
+            teaching_objectives=teaching_objectives,
+            account_id=subject.account_id,
+        )
+    except StoryboardError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "storyboard_update_failed", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/storyboards/{storyboard_id}/code",
+    response_model=dict,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def generate_storyboard_code(
+    service: StoryboardServiceDep,
+    subject: SubjectDep,
+    storyboard_id: str,
+    code_language: str = "html",
+) -> dict[str, object]:
+    """Generate executable source code from a storyboard."""
+    try:
+        source = service.generate_source_code(storyboard_id, code_language)
+        return {"editable_source": source.model_dump()}
+    except StoryboardError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "code_generation_failed", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/storyboards/{storyboard_id}/sandbox",
+    response_model=SandboxRunResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def run_storyboard_sandbox(
+    storyboard_service: StoryboardServiceDep,
+    sandbox_service: SandboxServiceDep,
+    subject: SubjectDep,
+    storyboard_id: str,
+    request: SandboxRunRequest,
+) -> SandboxRunResult:
+    """Run generated code in the isolated sandbox."""
+    try:
+        # Ensure the storyboard exists.
+        storyboard_service.get_storyboard(storyboard_id)
+        return sandbox_service.run(
+            request,
+            account_id=subject.account_id,
+        )
+    except (StoryboardError, SandboxError) as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "sandbox_run_failed",
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/sandbox-runs/{run_id}",
+    response_model=SandboxRunResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def get_sandbox_run(
+    sandbox_service: SandboxServiceDep,
+    subject: SubjectDep,
+    run_id: str,
+) -> SandboxRunResult:
+    """Get a sandbox run result by ID."""
+    try:
+        return sandbox_service.get_run(run_id)
+    except SandboxError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "sandbox_run_not_found", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/sandbox-runs/{run_id}/repair",
+    response_model=SandboxRunResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def repair_sandbox_run(
+    sandbox_service: SandboxServiceDep,
+    subject: SubjectDep,
+    run_id: str,
+    patch: str,
+    code_language: str = "python",
+    fact_lock_ids: list[str] | None = None,
+) -> SandboxRunResult:
+    """Attempt a limited repair on a failed sandbox run."""
+    try:
+        return sandbox_service.repair(
+            run_id,
+            patch,
+            fact_locks=None,
+            fact_lock_ids=fact_lock_ids or [],
+        )
+    except SandboxError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "sandbox_repair_failed",
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/storyboards/{storyboard_id}/validate",
+    response_model=ValidationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def validate_storyboard(
+    storyboard_service: StoryboardServiceDep,
+    sandbox_service: SandboxServiceDep,
+    subject: SubjectDep,
+    storyboard_id: str,
+    run_id: str,
+) -> ValidationReport:
+    """Get a validation report for a storyboard sandbox run."""
+    try:
+        return build_validation_report(
+            storyboard_service,
+            sandbox_service,
+            storyboard_id,
+            run_id,
+        )
+    except (StoryboardError, SandboxError) as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "validation_report_failed", str(exc)
+        ) from exc

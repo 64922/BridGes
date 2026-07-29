@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Science Companion API",
-    "description": "长期科学学习与表达伙伴 API",
+    "description": "\u957f\u671f\u79d1\u5b66\u5b66\u4e60\u4e0e\u8868\u8fbe\u4f19\u4f34 API",
     "version": "0.1.0"
   },
   "paths": {
@@ -5528,7 +5528,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ValidationReport"
+                  "$ref": "#/components/schemas/science_companion__contracts__science__ValidationReport"
                 }
               }
             }
@@ -7070,6 +7070,723 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Revoke Media Asset Media Assets  Asset Id  Revoke Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/storyboards": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Create Storyboard",
+        "description": "Create a structured storyboard from a generation request.",
+        "operationId": "create_storyboard_media_storyboards_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StoryboardGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StoryboardResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/storyboards/{storyboard_id}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Storyboard",
+        "description": "Get a storyboard by ID.",
+        "operationId": "get_storyboard_media_storyboards__storyboard_id__get",
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Storyboard Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaStoryboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Update Storyboard",
+        "description": "Update a storyboard's metadata.",
+        "operationId": "update_storyboard_media_storyboards__storyboard_id__put",
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Storyboard Id"
+            }
+          },
+          {
+            "name": "title",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Teaching Objectives"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaStoryboard"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/storyboards/{storyboard_id}/code": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Generate Storyboard Code",
+        "description": "Generate executable source code from a storyboard.",
+        "operationId": "generate_storyboard_code_media_storyboards__storyboard_id__code_post",
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Storyboard Id"
+            }
+          },
+          {
+            "name": "code_language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "html",
+              "title": "Code Language"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Generate Storyboard Code Media Storyboards  Storyboard Id  Code Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/storyboards/{storyboard_id}/sandbox": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Run Storyboard Sandbox",
+        "description": "Run generated code in the isolated sandbox.",
+        "operationId": "run_storyboard_sandbox_media_storyboards__storyboard_id__sandbox_post",
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Storyboard Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SandboxRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxRunResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/sandbox-runs/{run_id}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Sandbox Run",
+        "description": "Get a sandbox run result by ID.",
+        "operationId": "get_sandbox_run_media_sandbox_runs__run_id__get",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxRunResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/sandbox-runs/{run_id}/repair": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Repair Sandbox Run",
+        "description": "Attempt a limited repair on a failed sandbox run.",
+        "operationId": "repair_sandbox_run_media_sandbox_runs__run_id__repair_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "patch",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Patch"
+            }
+          },
+          {
+            "name": "code_language",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "python",
+              "title": "Code Language"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Fact Lock Ids"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SandboxRunResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/storyboards/{storyboard_id}/validate": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Validate Storyboard",
+        "description": "Get a validation report for a storyboard sandbox run.",
+        "operationId": "validate_storyboard_media_storyboards__storyboard_id__validate_get",
+        "parameters": [
+          {
+            "name": "storyboard_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Storyboard Id"
+            }
+          },
+          {
+            "name": "run_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/science_companion__contracts__media__ValidationReport"
                 }
               }
             }
@@ -11258,7 +11975,7 @@
           "validation_report": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/ValidationReport"
+                "$ref": "#/components/schemas/science_companion__contracts__science__ValidationReport"
               },
               {
                 "type": "null"
@@ -14416,6 +15133,45 @@
         "title": "FactLockType",
         "description": "Kind of fact locked for a claim."
       },
+      "FactLockViolation": {
+        "properties": {
+          "lock_id": {
+            "type": "string",
+            "title": "Lock Id",
+            "description": "\u89e6\u72af\u7684 FactLock ID\u3002"
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id",
+            "description": "\u5173\u8054\u7684 Claim ID\u3002"
+          },
+          "attempted_change": {
+            "type": "string",
+            "title": "Attempted Change",
+            "description": "\u8bd5\u56fe\u4fee\u6539\u7684\u503c\u3002"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "\u88ab\u62d2\u7edd\u7684\u539f\u56e0\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lock_id",
+          "attempted_change",
+          "reason"
+        ],
+        "title": "FactLockViolation",
+        "description": "\u6c99\u7bb1\u4fee\u590d\u8fc7\u7a0b\u4e2d\u89e6\u72af\u4e8b\u5b9e\u9501\u7684\u8bb0\u5f55\u3002"
+      },
       "FormulaBinding": {
         "properties": {
           "binding_id": {
@@ -15804,6 +16560,40 @@
         "title": "LicenseState",
         "description": "License/Access state for the document."
       },
+      "LifecycleStage": {
+        "properties": {
+          "stage": {
+            "type": "string",
+            "enum": [
+              "enter",
+              "hold",
+              "transform",
+              "exit"
+            ],
+            "title": "Stage",
+            "description": "\u9636\u6bb5\u7c7b\u578b\uff1a\u8fdb\u5165\u3001\u4fdd\u6301\u3001\u53d8\u6362\u3001\u9000\u51fa\u3002"
+          },
+          "timing_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Timing Seconds",
+            "description": "\u9636\u6bb5\u6301\u7eed\u65f6\u95f4\uff0c\u5355\u4f4d\u79d2\u3002"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "\u9636\u6bb5\u63cf\u8ff0\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "stage",
+          "timing_seconds",
+          "description"
+        ],
+        "title": "LifecycleStage",
+        "description": "\u52a8\u753b\u5bf9\u8c61\u7684\u4e00\u4e2a\u751f\u547d\u5468\u671f\u9636\u6bb5\u3002"
+      },
       "LifecycleStatus": {
         "type": "string",
         "enum": [
@@ -16205,6 +16995,90 @@
         ],
         "title": "MediaQualityGate",
         "description": "Named gates that imported media must pass before entering evidence."
+      },
+      "MediaStoryboard": {
+        "properties": {
+          "storyboard_id": {
+            "type": "string",
+            "title": "Storyboard Id",
+            "description": "\u7a33\u5b9a\u5206\u955c\u6807\u8bc6\u7b26\u3002"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "\u62e5\u6709\u8d26\u6237 ID\u3002"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "\u6240\u5c5e\u9879\u76ee ID\u3002"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "\u5206\u955c\u6807\u9898\u3002"
+          },
+          "teaching_objectives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Teaching Objectives",
+            "description": "\u6559\u5b66\u76ee\u6807\u5217\u8868\u3002"
+          },
+          "scenes": {
+            "items": {
+              "$ref": "#/components/schemas/StoryboardScene"
+            },
+            "type": "array",
+            "title": "Scenes",
+            "description": "\u955c\u5934\u5217\u8868\u3002"
+          },
+          "media_type": {
+            "type": "string",
+            "enum": [
+              "animation",
+              "interactive_html"
+            ],
+            "title": "Media Type",
+            "description": "\u5a92\u4f53\u7c7b\u578b\uff1aanimation\uff08\u52a8\u753b\uff09\u6216 interactive_html\uff08\u4ea4\u4e92 HTML\uff09\u3002"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StoryboardStatus",
+            "description": "\u5206\u955c\u72b6\u6001\u3002",
+            "default": "draft"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "\u6700\u540e\u66f4\u65b0\u65f6\u95f4\u6233\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "storyboard_id",
+          "account_id",
+          "title",
+          "media_type",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "MediaStoryboard",
+        "description": "\u7ed3\u6784\u5316\u5206\u955c\u2014\u2014\u955c\u5934\u65f6\u95f4\u5e8f\u5217\u3002\n\n\u5b9a\u4e49\u6559\u5b66\u76ee\u6807\u3001\u955c\u5934\u5e8f\u5217\uff08\u5f15\u7528 SceneSpec\uff09\u3001\u5a92\u4f53\u7c7b\u578b\u548c Claim \u7ed1\u5b9a\u3002\n\u6bcf\u4e2a\u955c\u5934\u5305\u542b\u65f6\u95f4\u3001\u8fc7\u6e21\u3001\u65c1\u767d\u548c\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
       },
       "MediaType": {
         "type": "string",
@@ -19766,6 +20640,374 @@
         "title": "RunProjection",
         "description": "Task-stage projection of a workflow run.\n\nIt separates workflow execution status from artifact trust status and\npublish eligibility, so that users do not confuse \"finished running\" with\n\"scientifically approved\" or \"ready to publish\"."
       },
+      "SandboxDependency": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "\u4f9d\u8d56\u540d\u79f0\u3002"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "\u7248\u672c\u3002"
+          },
+          "allowed": {
+            "type": "boolean",
+            "title": "Allowed",
+            "description": "\u662f\u5426\u5728\u767d\u540d\u5355\u4e2d\u3002",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "SandboxDependency",
+        "description": "\u6c99\u7bb1\u8fd0\u884c\u7684\u4f9d\u8d56\u9879\u8bb0\u5f55\u3002"
+      },
+      "SandboxResourceLimits": {
+        "properties": {
+          "max_cpu_seconds": {
+            "type": "number",
+            "minimum": 1.0,
+            "title": "Max Cpu Seconds",
+            "description": "\u6700\u5927 CPU \u65f6\u95f4\uff0c\u5355\u4f4d\u79d2\u3002",
+            "default": 30.0
+          },
+          "max_memory_mb": {
+            "type": "integer",
+            "minimum": 32.0,
+            "title": "Max Memory Mb",
+            "description": "\u6700\u5927\u5185\u5b58\uff0c\u5355\u4f4d MB\u3002",
+            "default": 512
+          },
+          "max_disk_mb": {
+            "type": "integer",
+            "minimum": 10.0,
+            "title": "Max Disk Mb",
+            "description": "\u6700\u5927\u78c1\u76d8\uff0c\u5355\u4f4d MB\u3002",
+            "default": 100
+          },
+          "max_processes": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Max Processes",
+            "description": "\u6700\u5927\u8fdb\u7a0b\u6570\u3002",
+            "default": 10
+          },
+          "network_allowed": {
+            "type": "boolean",
+            "title": "Network Allowed",
+            "description": "\u662f\u5426\u5141\u8bb8\u7f51\u7edc\u8bbf\u95ee\uff0c\u9ed8\u8ba4\u7981\u6b62\u3002",
+            "default": false
+          },
+          "keys_allowed": {
+            "type": "boolean",
+            "title": "Keys Allowed",
+            "description": "\u662f\u5426\u5141\u8bb8\u8bbf\u95ee\u5bc6\u94a5\uff0c\u9ed8\u8ba4\u7981\u6b62\u3002",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "SandboxResourceLimits",
+        "description": "\u6c99\u7bb1\u8d44\u6e90\u9650\u5236\u3002"
+      },
+      "SandboxResourceUsage": {
+        "properties": {
+          "cpu_time_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Cpu Time Ms",
+            "description": "CPU \u65f6\u95f4\uff0c\u5355\u4f4d\u6beb\u79d2\u3002",
+            "default": 0
+          },
+          "memory_bytes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Memory Bytes",
+            "description": "\u5185\u5b58\u4f7f\u7528\uff0c\u5355\u4f4d\u5b57\u8282\u3002",
+            "default": 0
+          },
+          "disk_bytes": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Disk Bytes",
+            "description": "\u78c1\u76d8\u4f7f\u7528\uff0c\u5355\u4f4d\u5b57\u8282\u3002",
+            "default": 0
+          },
+          "network_blocked": {
+            "type": "boolean",
+            "title": "Network Blocked",
+            "description": "\u7f51\u7edc\u662f\u5426\u88ab\u963b\u6b62\u3002",
+            "default": true
+          },
+          "keys_blocked": {
+            "type": "boolean",
+            "title": "Keys Blocked",
+            "description": "\u5bc6\u94a5\u8bbf\u95ee\u662f\u5426\u88ab\u963b\u6b62\u3002",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "SandboxResourceUsage",
+        "description": "\u6c99\u7bb1\u8fd0\u884c\u5b9e\u9645\u8d44\u6e90\u4f7f\u7528\u8bb0\u5f55\u3002"
+      },
+      "SandboxRunRequest": {
+        "properties": {
+          "storyboard_id": {
+            "type": "string",
+            "title": "Storyboard Id",
+            "description": "\u5173\u8054\u7684\u5206\u955c ID\u3002"
+          },
+          "source_code": {
+            "type": "string",
+            "title": "Source Code",
+            "description": "\u53ef\u6267\u884c\u4ee3\u7801\uff08Python/HTML/JS\uff09\u3002"
+          },
+          "code_language": {
+            "type": "string",
+            "title": "Code Language",
+            "description": "\u4ee3\u7801\u8bed\u8a00\uff1apython, html, javascript\u3002"
+          },
+          "repair_budget": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Repair Budget",
+            "description": "\u6709\u9650\u4fee\u590d\u6b21\u6570\u4e0a\u9650\u3002",
+            "default": 3
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids",
+            "description": "\u7981\u6b62\u89e6\u72af\u7684\u4e8b\u5b9e\u9501 ID \u5217\u8868\u3002"
+          },
+          "resource_limits": {
+            "$ref": "#/components/schemas/SandboxResourceLimits",
+            "description": "\u8d44\u6e90\u9650\u5236\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "storyboard_id",
+          "source_code",
+          "code_language"
+        ],
+        "title": "SandboxRunRequest",
+        "description": "\u63d0\u4ea4\u6c99\u7bb1\u8fd0\u884c\u7684\u8bf7\u6c42\u3002"
+      },
+      "SandboxRunResult": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "\u6c99\u7bb1\u8fd0\u884c\u6807\u8bc6\u7b26\u3002"
+          },
+          "storyboard_id": {
+            "type": "string",
+            "title": "Storyboard Id",
+            "description": "\u5173\u8054\u7684\u5206\u955c ID\u3002"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SandboxRunStatus",
+            "description": "\u8fd0\u884c\u72b6\u6001\u3002"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output",
+            "description": "\u6807\u51c6\u8f93\u51fa\u6216\u6e32\u67d3\u4ea7\u7269\u3002"
+          },
+          "error_log": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Error Log",
+            "description": "\u8fd0\u884c\u9519\u8bef\u65e5\u5fd7\u3002"
+          },
+          "resource_usage": {
+            "$ref": "#/components/schemas/SandboxResourceUsage",
+            "description": "\u8d44\u6e90\u4f7f\u7528\u8bb0\u5f55\u3002"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/SandboxDependency"
+            },
+            "type": "array",
+            "title": "Dependencies",
+            "description": "\u4f9d\u8d56\u9879\u8bb0\u5f55\u3002"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "\u8f93\u51fa\u5185\u5bb9 SHA-256 \u54c8\u5e0c\u3002"
+          },
+          "fact_lock_violations": {
+            "items": {
+              "$ref": "#/components/schemas/FactLockViolation"
+            },
+            "type": "array",
+            "title": "Fact Lock Violations",
+            "description": "\u89e6\u72af\u7684\u4e8b\u5b9e\u9501\u8bb0\u5f55\u3002"
+          },
+          "repair_attempts": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Repair Attempts",
+            "description": "\u5df2\u5c1d\u8bd5\u7684\u4fee\u590d\u6b21\u6570\u3002",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "\u5b8c\u6210\u65f6\u95f4\u6233\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "storyboard_id",
+          "status",
+          "content_hash",
+          "created_at"
+        ],
+        "title": "SandboxRunResult",
+        "description": "\u6c99\u7bb1\u8fd0\u884c\u7ed3\u679c\u3002"
+      },
+      "SandboxRunStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "SandboxRunStatus",
+        "description": "\u6c99\u7bb1\u8fd0\u884c\u72b6\u6001\uff0c\u53ea\u63cf\u8ff0\u8fd0\u884c\u672c\u8eab\u3002"
+      },
+      "SceneAccessibility": {
+        "properties": {
+          "alt_text": {
+            "type": "string",
+            "title": "Alt Text",
+            "description": "\u573a\u666f\u66ff\u4ee3\u6587\u672c\u3002"
+          },
+          "long_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Description",
+            "description": "\u573a\u666f\u957f\u63cf\u8ff0\uff0c\u7528\u4e8e\u590d\u6742\u89c6\u89c9\u573a\u666f\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alt_text"
+        ],
+        "title": "SceneAccessibility",
+        "description": "\u65e0\u969c\u788d\u63cf\u8ff0\u4fe1\u606f\uff0c\u9644\u52a0\u7ed9\u4e00\u4e2a\u573a\u666f\u3002"
+      },
+      "SceneSpec": {
+        "properties": {
+          "scene_spec_id": {
+            "type": "string",
+            "title": "Scene Spec Id",
+            "description": "\u7a33\u5b9a\u573a\u666f\u89c4\u683c\u6807\u8bc6\u7b26\u3002"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "\u573a\u666f\u6807\u9898\u3002"
+          },
+          "visual_objects": {
+            "items": {
+              "$ref": "#/components/schemas/VisualObject"
+            },
+            "type": "array",
+            "title": "Visual Objects",
+            "description": "\u573a\u666f\u4e2d\u7684\u89c6\u89c9\u5bf9\u8c61\u5217\u8868\u3002"
+          },
+          "layout_description": {
+            "type": "string",
+            "title": "Layout Description",
+            "description": "\u5e03\u5c40\u63cf\u8ff0\u3002",
+            "default": ""
+          },
+          "state_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Description",
+            "description": "\u573a\u666f\u72b6\u6001\u63cf\u8ff0\u3002"
+          },
+          "accessibility": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SceneAccessibility"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\u573a\u666f\u7ea7\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene_spec_id",
+          "title",
+          "created_at"
+        ],
+        "title": "SceneSpec",
+        "description": "\u5355\u573a\u666f\u89c6\u89c9\u5b9a\u4e49\uff0c\u53ef\u72ec\u7acb\u7f16\u8f91\u548c\u9a8c\u8bc1\u3002\n\nSceneSpec \u5b9a\u4e49\u5355\u4e2a\u573a\u666f\u7684\u9759\u6001\u89c6\u89c9\u8bbe\u8ba1\uff0c\u5305\u542b\u89c6\u89c9\u5bf9\u8c61\u5217\u8868\u3001\u5e03\u5c40\u3001\u72b6\u6001\u3001\n\u6570\u636e\u7ed1\u5b9a\u548c\u65e0\u969c\u788d\u63cf\u8ff0\u3002\u88ab MediaStoryboard \u4e2d\u7684\u955c\u5934\u5f15\u7528\u3002"
+      },
       "ScientificQualityGateCheck": {
         "type": "string",
         "enum": [
@@ -20967,6 +22209,328 @@
         "title": "SpatialTemporalLocator",
         "description": "Locator of a derived asset within its source asset."
       },
+      "StaticCheckResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "\u662f\u5426\u901a\u8fc7\u9759\u6001\u68c0\u67e5\u3002"
+          },
+          "ast_valid": {
+            "type": "boolean",
+            "title": "Ast Valid",
+            "description": "AST \u89e3\u6790\u662f\u5426\u6709\u6548\u3002",
+            "default": true
+          },
+          "deps_whitelisted": {
+            "type": "boolean",
+            "title": "Deps Whitelisted",
+            "description": "\u4f9d\u8d56\u662f\u5426\u5728\u767d\u540d\u5355\u4e2d\u3002",
+            "default": true
+          },
+          "lint_ok": {
+            "type": "boolean",
+            "title": "Lint Ok",
+            "description": "\u4ee3\u7801\u89c4\u8303\u68c0\u67e5\u662f\u5426\u901a\u8fc7\u3002",
+            "default": true
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors",
+            "description": "\u68c0\u67e5\u9519\u8bef\u5217\u8868\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed"
+        ],
+        "title": "StaticCheckResult",
+        "description": "\u4ee3\u7801\u751f\u6210\u540e\u7684\u9759\u6001\u68c0\u67e5\u7ed3\u679c\u3002"
+      },
+      "StoryboardClaimBinding": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id",
+            "description": "\u7a33\u5b9a\u7ed1\u5b9a\u6807\u8bc6\u7b26\u3002"
+          },
+          "scene_id": {
+            "type": "string",
+            "title": "Scene Id",
+            "description": "\u5173\u8054\u7684\u955c\u5934 ID\u3002"
+          },
+          "element_ref": {
+            "type": "string",
+            "title": "Element Ref",
+            "description": "\u5f15\u7528\u7684\u89c6\u89c9\u5143\u7d20\u5f15\u7528\u3002"
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id",
+            "description": "\u7ed1\u5b9a\u7684 Claim ID\u3002"
+          },
+          "fact_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Id",
+            "description": "\u7ed1\u5b9a\u7684 FactLock ID\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "binding_id",
+          "scene_id",
+          "element_ref"
+        ],
+        "title": "StoryboardClaimBinding",
+        "description": "\u5206\u955c\u573a\u666f\u4e2d\u89c6\u89c9\u5143\u7d20\u5230 Claim/FactLock \u7684\u7ed1\u5b9a\u3002"
+      },
+      "StoryboardGenerationRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title",
+            "description": "\u5206\u955c\u6807\u9898\u3002"
+          },
+          "teaching_objectives": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Teaching Objectives",
+            "description": "\u6559\u5b66\u76ee\u6807\u5217\u8868\u3002"
+          },
+          "media_type": {
+            "type": "string",
+            "enum": [
+              "animation",
+              "interactive_html"
+            ],
+            "title": "Media Type",
+            "description": "\u5a92\u4f53\u7c7b\u578b\u3002"
+          },
+          "scenes": {
+            "items": {
+              "$ref": "#/components/schemas/StoryboardScene"
+            },
+            "type": "array",
+            "title": "Scenes",
+            "description": "\u9884\u5b9a\u4e49\u7684\u955c\u5934\u5217\u8868\u3002\u4e3a\u7a7a\u65f6\u7531\u751f\u6210\u5668\u521b\u5efa\u9ed8\u8ba4\u5206\u955c\u3002"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "media_type"
+        ],
+        "title": "StoryboardGenerationRequest",
+        "description": "\u521b\u5efa\u7ed3\u6784\u5316\u5206\u955c\u7684\u8bf7\u6c42\u3002"
+      },
+      "StoryboardNarration": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "\u65c1\u767d\u6b63\u6587\u3002"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "\u65c1\u767d\u8bed\u8a00\u3002",
+            "default": "zh-CN"
+          },
+          "voice_over_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Voice Over Text",
+            "description": "\u5f55\u97f3\u6587\u672c\uff0c\u4e0e\u65c1\u767d\u4e0d\u540c\u65f6\u4f7f\u7528\u3002"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "\u672c\u65c1\u767d\u8986\u76d6\u7684 Claim ID \u5217\u8868\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "StoryboardNarration",
+        "description": "\u5206\u955c\u4e2d\u4e00\u4e2a\u955c\u5934\u7684\u65c1\u767d\u63cf\u8ff0\u3002"
+      },
+      "StoryboardResult": {
+        "properties": {
+          "storyboard": {
+            "$ref": "#/components/schemas/MediaStoryboard",
+            "description": "\u751f\u6210\u7684\u5206\u955c\u3002"
+          },
+          "scene_specs": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SceneSpec"
+            },
+            "type": "object",
+            "title": "Scene Specs",
+            "description": "\u5206\u955c\u5f15\u7528\u7684 SceneSpec \u5b57\u5178\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "storyboard"
+        ],
+        "title": "StoryboardResult",
+        "description": "\u5206\u955c\u751f\u6210\u7ed3\u679c\u3002"
+      },
+      "StoryboardScene": {
+        "properties": {
+          "scene_id": {
+            "type": "string",
+            "title": "Scene Id",
+            "description": "\u7a33\u5b9a\u955c\u5934\u6807\u8bc6\u7b26\u3002"
+          },
+          "scene_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Scene Number",
+            "description": "\u955c\u5934\u5e8f\u53f7\u3002"
+          },
+          "scene_spec_id": {
+            "type": "string",
+            "title": "Scene Spec Id",
+            "description": "\u5f15\u7528\u7684 SceneSpec ID\u3002"
+          },
+          "timing_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Timing Seconds",
+            "description": "\u955c\u5934\u6301\u7eed\u65f6\u95f4\uff0c\u5355\u4f4d\u79d2\u3002"
+          },
+          "transition_type": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "cut",
+                  "dissolve",
+                  "push"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transition Type",
+            "description": "\u955c\u5934\u95f4\u8fc7\u6e21\u7c7b\u578b\uff1acut\uff08\u76f4\u63a5\u5207\u6362\uff09\u3001dissolve\uff08\u6eb6\u89e3\uff09\u3001push\uff08\u63a8\u5165\uff09\u3002"
+          },
+          "narration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StoryboardNarration"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\u955c\u5934\u65c1\u767d\u3002"
+          },
+          "scene_claim_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/StoryboardClaimBinding"
+            },
+            "type": "array",
+            "title": "Scene Claim Bindings",
+            "description": "\u573a\u666f\u7ea7 Claim \u7ed1\u5b9a\u3002"
+          },
+          "scene_accessibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene Accessibility",
+            "description": "\u573a\u666f\u7ea7\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "scene_id",
+          "scene_number",
+          "scene_spec_id",
+          "timing_seconds"
+        ],
+        "title": "StoryboardScene",
+        "description": "\u5206\u955c\u4e2d\u7684\u4e00\u4e2a\u955c\u5934\uff0c\u5f15\u7528 SceneSpec\u3002\n\n\u955c\u5934\u662f\u65f6\u95f4\u5e8f\u5217\u4e2d\u7684\u4e00\u6bb5\uff0c\u5305\u542b\u5bf9 SceneSpec \u7684\u5f15\u7528\u3001\u6301\u7eed\u65f6\u95f4\u3001\n\u8fc7\u6e21\u7c7b\u578b\u3001\u65c1\u767d\u3001Claim \u7ed1\u5b9a\u548c\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+      },
+      "StoryboardStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "designing",
+          "source_generated",
+          "static_validated",
+          "sandbox_rendering",
+          "completed",
+          "repairable",
+          "repair_exhausted",
+          "quarantined",
+          "failed"
+        ],
+        "title": "StoryboardStatus",
+        "description": "\u7ed3\u6784\u5316\u5206\u955c\u751f\u547d\u5468\u671f\u72b6\u6001\uff0c\u72ec\u7acb\u4e8e T032 \u7684 GenerationStatus\u3002"
+      },
       "StyleDiagnosticFinding": {
         "properties": {
           "finding_id": {
@@ -21768,147 +23332,6 @@
         ],
         "title": "ValidationError"
       },
-      "ValidationReport": {
-        "properties": {
-          "report_id": {
-            "type": "string",
-            "title": "Report Id",
-            "description": "Stable validation report identifier."
-          },
-          "graph_id": {
-            "type": "string",
-            "title": "Graph Id",
-            "description": "Claim graph this report analyses."
-          },
-          "account_id": {
-            "type": "string",
-            "title": "Account Id",
-            "description": "Owning account."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope if any."
-          },
-          "status": {
-            "$ref": "#/components/schemas/ClaimTrustStatus",
-            "description": "Derived honest-degradation status."
-          },
-          "previous_status": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ClaimTrustStatus"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Status before this analysis."
-          },
-          "evidence_states": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/EvidenceState"
-            },
-            "type": "object",
-            "title": "Evidence States",
-            "description": "Claim id -> aggregated evidence state."
-          },
-          "conflicts": {
-            "items": {
-              "$ref": "#/components/schemas/Conflict"
-            },
-            "type": "array",
-            "title": "Conflicts"
-          },
-          "missing_evidence_claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Missing Evidence Claim Ids"
-          },
-          "blocked_claim_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Blocked Claim Ids"
-          },
-          "fact_lock_set_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fact Lock Set Id"
-          },
-          "wording_strength_ceiling": {
-            "$ref": "#/components/schemas/WordingStrength",
-            "description": "Global wording strength ceiling for the graph.",
-            "default": "unassessable"
-          },
-          "scientific_gate": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ScientificQualityGateResult"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "human_gate_required": {
-            "type": "boolean",
-            "title": "Human Gate Required",
-            "default": false
-          },
-          "human_gate_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Human Gate Reason"
-          },
-          "recovery_actions": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Recovery Actions",
-            "description": "Suggested actions: add_evidence, human_review, revise_claim, block_publish."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Report timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "report_id",
-          "graph_id",
-          "account_id",
-          "status",
-          "created_at"
-        ],
-        "title": "ValidationReport",
-        "description": "Report produced by honest-degradation analysis of a claim graph.\n\nThe report records the evidence state for each claim, detected conflicts,\nmissing evidence, fact lock set id, wording strength ceiling, scientific\nquality gate result, and recommended recovery actions. It is the input to\ndownstream expression nodes (T025) and to the task stage (T006)."
-      },
       "VaultError": {
         "properties": {
           "error": {
@@ -22258,6 +23681,83 @@
         "title": "VersionDifferenceField",
         "description": "Fields that can differ between two expression artifact versions."
       },
+      "VisualObject": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "\u7a33\u5b9a\u5bf9\u8c61\u6807\u8bc6\u7b26\u3002"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "\u5bf9\u8c61\u663e\u793a\u6807\u7b7e\u3002"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "\u8bed\u4e49\u89d2\u8272\uff0c\u5982 axis_label, curve, annotation, particle\u3002"
+          },
+          "initial_state": {
+            "type": "string",
+            "title": "Initial State",
+            "description": "\u521d\u59cb\u72b6\u6001\u63cf\u8ff0\u3002"
+          },
+          "final_state": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final State",
+            "description": "\u7ec8\u6001\u63cf\u8ff0\u3002"
+          },
+          "lifecycle_stages": {
+            "items": {
+              "$ref": "#/components/schemas/LifecycleStage"
+            },
+            "type": "array",
+            "title": "Lifecycle Stages",
+            "description": "\u52a8\u753b\u5bf9\u8c61\u7684\u8fdb\u5165/\u4fdd\u6301/\u53d8\u6362/\u9000\u51fa\u9636\u6bb5\u3002"
+          },
+          "motion_trajectory": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motion Trajectory",
+            "description": "\u8fd0\u52a8\u8f68\u8ff9\u63cf\u8ff0\uff0c\u52a8\u753b\u5173\u952e\u4fe1\u606f\u3002"
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id",
+            "description": "\u7ed1\u5b9a\u7684 Claim ID\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "label",
+          "role",
+          "initial_state"
+        ],
+        "title": "VisualObject",
+        "description": "\u5206\u955c\u573a\u666f\u4e2d\u7684\u4e00\u4e2a\u89c6\u89c9\u5bf9\u8c61\u3002"
+      },
       "WordingStrength": {
         "type": "string",
         "enum": [
@@ -22353,7 +23853,7 @@
           "confirmed": {
             "type": "boolean",
             "title": "Confirmed",
-            "description": "Must be true to leave the draft state — omitting this field is rejected so that accidental confirmation cannot happen."
+            "description": "Must be true to leave the draft state \u2014 omitting this field is rejected so that accidental confirmation cannot happen."
           }
         },
         "type": "object",
@@ -22590,6 +24090,94 @@
         "title": "HumanDecisionType",
         "description": "Named human decision on a proposed knowledge-state or path change."
       },
+      "science_companion__contracts__media__ValidationReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "\u7a33\u5b9a\u62a5\u544a\u6807\u8bc6\u7b26\u3002"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "\u5173\u8054\u7684\u6c99\u7bb1\u8fd0\u884c ID\u3002"
+          },
+          "storyboard_id": {
+            "type": "string",
+            "title": "Storyboard Id",
+            "description": "\u5173\u8054\u7684\u5206\u955c ID\u3002"
+          },
+          "static_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StaticCheckResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\u9759\u6001\u68c0\u67e5\u7ed3\u679c\u3002"
+          },
+          "sandbox_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SandboxRunResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "\u6c99\u7bb1\u8fd0\u884c\u7ed3\u679c\u3002"
+          },
+          "science_valid": {
+            "type": "boolean",
+            "title": "Science Valid",
+            "description": "\u79d1\u5b66\u4e00\u81f4\u6027\u9a8c\u8bc1\u662f\u5426\u901a\u8fc7\u3002",
+            "default": false
+          },
+          "fact_locks_preserved": {
+            "type": "boolean",
+            "title": "Fact Locks Preserved",
+            "description": "\u4e8b\u5b9e\u9501\u662f\u5426\u5b8c\u6574\u4fdd\u6301\u3002",
+            "default": false
+          },
+          "accessibility_checked": {
+            "type": "boolean",
+            "title": "Accessibility Checked",
+            "description": "\u662f\u5426\u8fdb\u884c\u4e86\u65e0\u969c\u788d\u68c0\u67e5\u3002",
+            "default": false
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "\u62a5\u544a\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "run_id",
+          "storyboard_id",
+          "created_at"
+        ],
+        "title": "ValidationReport",
+        "description": "\u5206\u955c\u6c99\u7bb1\u8fd0\u884c\u7684\u5b8c\u6574\u9a8c\u8bc1\u62a5\u544a\u3002"
+      },
       "science_companion__contracts__profiles__HumanDecision": {
         "properties": {
           "decision_id": {
@@ -22661,6 +24249,147 @@
         ],
         "title": "HumanDecision",
         "description": "Named human decision on a candidate profile."
+      },
+      "science_companion__contracts__science__ValidationReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "Stable validation report identifier."
+          },
+          "graph_id": {
+            "type": "string",
+            "title": "Graph Id",
+            "description": "Claim graph this report analyses."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "Project scope if any."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ClaimTrustStatus",
+            "description": "Derived honest-degradation status."
+          },
+          "previous_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ClaimTrustStatus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Status before this analysis."
+          },
+          "evidence_states": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/EvidenceState"
+            },
+            "type": "object",
+            "title": "Evidence States",
+            "description": "Claim id -> aggregated evidence state."
+          },
+          "conflicts": {
+            "items": {
+              "$ref": "#/components/schemas/Conflict"
+            },
+            "type": "array",
+            "title": "Conflicts"
+          },
+          "missing_evidence_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Evidence Claim Ids"
+          },
+          "blocked_claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Claim Ids"
+          },
+          "fact_lock_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Set Id"
+          },
+          "wording_strength_ceiling": {
+            "$ref": "#/components/schemas/WordingStrength",
+            "description": "Global wording strength ceiling for the graph.",
+            "default": "unassessable"
+          },
+          "scientific_gate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ScientificQualityGateResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "human_gate_required": {
+            "type": "boolean",
+            "title": "Human Gate Required",
+            "default": false
+          },
+          "human_gate_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Human Gate Reason"
+          },
+          "recovery_actions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Actions",
+            "description": "Suggested actions: add_evidence, human_review, revise_claim, block_publish."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Report timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "graph_id",
+          "account_id",
+          "status",
+          "created_at"
+        ],
+        "title": "ValidationReport",
+        "description": "Report produced by honest-degradation analysis of a claim graph.\n\nThe report records the evidence state for each claim, detected conflicts,\nmissing evidence, fact lock set id, wording strength ceiling, scientific\nquality gate result, and recommended recovery actions. It is the input to\ndownstream expression nodes (T025) and to the task stage (T006)."
       },
       "science_companion__contracts__workflows__ArtifactTrustStatus": {
         "type": "string",

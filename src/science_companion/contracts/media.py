@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -493,6 +493,8 @@ class MediaObjectType(StrEnum):
 
     CHART = "chart"
     SCIENTIFIC_FIGURE = "scientific_figure"
+    INTERACTIVE_HTML = "interactive_html"
+    ANIMATION = "animation"
 
 
 class GenerationStatus(StrEnum):
@@ -616,7 +618,7 @@ class EditableSource(BaseModel):
 
     source_id: str = Field(description="Stable source identifier.")
     source_type: str = Field(
-        description="Type: chart_spec, figure_spec, svg."
+        description="Type: chart_spec, figure_spec, svg, storyboard_spec, sandbox_code, static_validation_report."
     )
     content: str = Field(
         description="JSON-encoded spec or raw SVG content."
@@ -749,3 +751,352 @@ class SpecValidationResult(BaseModel):
     claims_consistent: bool = Field(
         default=True, description="Whether claim bindings are valid."
     )
+
+
+# ── T033: 结构化分镜与沙箱运行 ──────────────────────────────────────
+
+
+class SceneAccessibility(BaseModel):
+    """无障碍描述信息，附加给一个场景。"""
+
+    alt_text: str = Field(description="场景替代文本。")
+    long_description: str | None = Field(
+        default=None, description="场景长描述，用于复杂视觉场景。"
+    )
+
+
+class LifecycleStage(BaseModel):
+    """动画对象的一个生命周期阶段。"""
+
+    stage: Literal["enter", "hold", "transform", "exit"] = Field(
+        description="阶段类型：进入、保持、变换、退出。"
+    )
+    timing_seconds: float = Field(
+        ge=0.0, description="阶段持续时间，单位秒。"
+    )
+    description: str = Field(description="阶段描述。")
+
+
+class VisualObject(BaseModel):
+    """分镜场景中的一个视觉对象。"""
+
+    object_id: str = Field(description="稳定对象标识符。")
+    label: str = Field(description="对象显示标签。")
+    role: str = Field(
+        description="语义角色，如 axis_label, curve, annotation, particle。"
+    )
+    initial_state: str = Field(description="初始状态描述。")
+    final_state: str | None = Field(default=None, description="终态描述。")
+    lifecycle_stages: list[LifecycleStage] = Field(
+        default_factory=list,
+        description="动画对象的进入/保持/变换/退出阶段。",
+    )
+    motion_trajectory: str | None = Field(
+        default=None, description="运动轨迹描述，动画关键信息。"
+    )
+    claim_id: str | None = Field(default=None, description="绑定的 Claim ID。")
+
+
+class SceneSpec(BaseModel):
+    """单场景视觉定义，可独立编辑和验证。
+
+    SceneSpec 定义单个场景的静态视觉设计，包含视觉对象列表、布局、状态、
+    数据绑定和无障碍描述。被 MediaStoryboard 中的镜头引用。
+    """
+
+    scene_spec_id: str = Field(description="稳定场景规格标识符。")
+    title: str = Field(description="场景标题。")
+    visual_objects: list[VisualObject] = Field(
+        default_factory=list, description="场景中的视觉对象列表。"
+    )
+    layout_description: str = Field(
+        default="", description="布局描述。"
+    )
+    state_description: str | None = Field(
+        default=None, description="场景状态描述。"
+    )
+    accessibility: SceneAccessibility | None = Field(
+        default=None, description="场景级无障碍描述。"
+    )
+    created_at: datetime = Field(description="创建时间戳。")
+
+
+class StoryboardStatus(StrEnum):
+    """结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。"""
+
+    DRAFT = "draft"
+    DESIGNING = "designing"
+    SOURCE_GENERATED = "source_generated"
+    STATIC_VALIDATED = "static_validated"
+    SANDBOX_RENDERING = "sandbox_rendering"
+    COMPLETED = "completed"
+    REPAIRABLE = "repairable"
+    REPAIR_EXHAUSTED = "repair_exhausted"
+    QUARANTINED = "quarantined"
+    FAILED = "failed"
+
+
+class StoryboardNarration(BaseModel):
+    """分镜中一个镜头的旁白描述。"""
+
+    text: str = Field(description="旁白正文。")
+    language: str = Field(default="zh-CN", description="旁白语言。")
+    voice_over_text: str | None = Field(
+        default=None, description="录音文本，与旁白不同时使用。"
+    )
+    claim_ids: list[str] = Field(
+        default_factory=list, description="本旁白覆盖的 Claim ID 列表。"
+    )
+
+
+class StoryboardClaimBinding(BaseModel):
+    """分镜场景中视觉元素到 Claim/FactLock 的绑定。"""
+
+    binding_id: str = Field(description="稳定绑定标识符。")
+    scene_id: str = Field(description="关联的镜头 ID。")
+    element_ref: str = Field(description="引用的视觉元素引用。")
+    claim_id: str | None = Field(default=None, description="绑定的 Claim ID。")
+    fact_lock_id: str | None = Field(default=None, description="绑定的 FactLock ID。")
+
+
+class StoryboardScene(BaseModel):
+    """分镜中的一个镜头，引用 SceneSpec。
+
+    镜头是时间序列中的一段，包含对 SceneSpec 的引用、持续时间、
+    过渡类型、旁白、Claim 绑定和无障碍描述。
+    """
+
+    scene_id: str = Field(description="稳定镜头标识符。")
+    scene_number: int = Field(ge=1, description="镜头序号。")
+    scene_spec_id: str = Field(description="引用的 SceneSpec ID。")
+    timing_seconds: float = Field(
+        ge=0.0, description="镜头持续时间，单位秒。"
+    )
+    transition_type: Literal["cut", "dissolve", "push"] | None = Field(
+        default=None,
+        description="镜头间过渡类型：cut（直接切换）、dissolve（溶解）、push（推入）。",
+    )
+    narration: StoryboardNarration | None = Field(
+        default=None, description="镜头旁白。"
+    )
+    scene_claim_bindings: list[StoryboardClaimBinding] = Field(
+        default_factory=list, description="场景级 Claim 绑定。"
+    )
+    scene_accessibility: str | None = Field(
+        default=None, description="场景级无障碍描述。"
+    )
+
+
+class MediaStoryboard(BaseModel):
+    """结构化分镜——镜头时间序列。
+
+    定义教学目标、镜头序列（引用 SceneSpec）、媒体类型和 Claim 绑定。
+    每个镜头包含时间、过渡、旁白和无障碍描述。
+    """
+
+    storyboard_id: str = Field(description="稳定分镜标识符。")
+    account_id: str = Field(description="拥有账户 ID。")
+    project_id: str | None = Field(default=None, description="所属项目 ID。")
+    title: str = Field(description="分镜标题。")
+    teaching_objectives: list[str] = Field(
+        default_factory=list, description="教学目标列表。"
+    )
+    scenes: list[StoryboardScene] = Field(
+        default_factory=list, description="镜头列表。"
+    )
+    media_type: Literal["animation", "interactive_html"] = Field(
+        description="媒体类型：animation（动画）或 interactive_html（交互 HTML）。"
+    )
+    status: StoryboardStatus = Field(
+        default=StoryboardStatus.DRAFT, description="分镜状态。"
+    )
+    created_at: datetime = Field(description="创建时间戳。")
+    updated_at: datetime = Field(description="最后更新时间戳。")
+
+
+class StoryboardGenerationRequest(BaseModel):
+    """创建结构化分镜的请求。"""
+
+    title: str = Field(description="分镜标题。", min_length=1)
+    teaching_objectives: list[str] = Field(
+        default_factory=list, description="教学目标列表。"
+    )
+    media_type: Literal["animation", "interactive_html"] = Field(
+        description="媒体类型。"
+    )
+    scenes: list[StoryboardScene] = Field(
+        default_factory=list,
+        description="预定义的镜头列表。为空时由生成器创建默认分镜。",
+    )
+    claim_ids: list[str] = Field(default_factory=list)
+    fact_lock_ids: list[str] = Field(default_factory=list)
+    project_id: str | None = Field(default=None)
+
+
+class StoryboardResult(BaseModel):
+    """分镜生成结果。"""
+
+    storyboard: MediaStoryboard = Field(description="生成的分镜。")
+    scene_specs: dict[str, SceneSpec] = Field(
+        default_factory=dict, description="分镜引用的 SceneSpec 字典。"
+    )
+
+
+# ── T033: 沙箱运行 ──────────────────────────────────────────────────
+
+
+class SandboxRunStatus(StrEnum):
+    """沙箱运行状态，只描述运行本身。"""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class SandboxResourceLimits(BaseModel):
+    """沙箱资源限制。"""
+
+    max_cpu_seconds: float = Field(
+        default=30.0, ge=1.0, description="最大 CPU 时间，单位秒。"
+    )
+    max_memory_mb: int = Field(
+        default=512, ge=32, description="最大内存，单位 MB。"
+    )
+    max_disk_mb: int = Field(
+        default=100, ge=10, description="最大磁盘，单位 MB。"
+    )
+    max_processes: int = Field(
+        default=10, ge=1, description="最大进程数。"
+    )
+    network_allowed: bool = Field(
+        default=False, description="是否允许网络访问，默认禁止。"
+    )
+    keys_allowed: bool = Field(
+        default=False, description="是否允许访问密钥，默认禁止。"
+    )
+
+
+class SandboxDependency(BaseModel):
+    """沙箱运行的依赖项记录。"""
+
+    name: str = Field(description="依赖名称。")
+    version: str | None = Field(default=None, description="版本。")
+    allowed: bool = Field(
+        default=True, description="是否在白名单中。"
+    )
+
+
+class FactLockViolation(BaseModel):
+    """沙箱修复过程中触犯事实锁的记录。"""
+
+    lock_id: str = Field(description="触犯的 FactLock ID。")
+    claim_id: str | None = Field(default=None, description="关联的 Claim ID。")
+    attempted_change: str = Field(description="试图修改的值。")
+    reason: str = Field(description="被拒绝的原因。")
+
+
+class SandboxResourceUsage(BaseModel):
+    """沙箱运行实际资源使用记录。"""
+
+    cpu_time_ms: int = Field(default=0, ge=0, description="CPU 时间，单位毫秒。")
+    memory_bytes: int = Field(default=0, ge=0, description="内存使用，单位字节。")
+    disk_bytes: int = Field(default=0, ge=0, description="磁盘使用，单位字节。")
+    network_blocked: bool = Field(
+        default=True, description="网络是否被阻止。"
+    )
+    keys_blocked: bool = Field(
+        default=True, description="密钥访问是否被阻止。"
+    )
+
+
+class SandboxRunRequest(BaseModel):
+    """提交沙箱运行的请求。"""
+
+    storyboard_id: str = Field(description="关联的分镜 ID。")
+    source_code: str = Field(description="可执行代码（Python/HTML/JS）。")
+    code_language: str = Field(
+        description="代码语言：python, html, javascript。"
+    )
+    repair_budget: int = Field(
+        default=3, ge=0, description="有限修复次数上限。"
+    )
+    fact_lock_ids: list[str] = Field(
+        default_factory=list,
+        description="禁止触犯的事实锁 ID 列表。",
+    )
+    resource_limits: SandboxResourceLimits = Field(
+        default_factory=SandboxResourceLimits, description="资源限制。"
+    )
+
+
+class SandboxRunResult(BaseModel):
+    """沙箱运行结果。"""
+
+    run_id: str = Field(description="沙箱运行标识符。")
+    storyboard_id: str = Field(description="关联的分镜 ID。")
+    status: SandboxRunStatus = Field(description="运行状态。")
+    output: str | None = Field(default=None, description="标准输出或渲染产物。")
+    error_log: list[str] = Field(
+        default_factory=list, description="运行错误日志。"
+    )
+    resource_usage: SandboxResourceUsage = Field(
+        default_factory=SandboxResourceUsage, description="资源使用记录。"
+    )
+    dependencies: list[SandboxDependency] = Field(
+        default_factory=list, description="依赖项记录。"
+    )
+    content_hash: str = Field(description="输出内容 SHA-256 哈希。")
+    fact_lock_violations: list[FactLockViolation] = Field(
+        default_factory=list, description="触犯的事实锁记录。"
+    )
+    repair_attempts: int = Field(default=0, ge=0, description="已尝试的修复次数。")
+    created_at: datetime = Field(description="创建时间戳。")
+    completed_at: datetime | None = Field(
+        default=None, description="完成时间戳。"
+    )
+
+
+# ── T033: 静态检查与验证报告 ────────────────────────────────────────
+
+
+class StaticCheckResult(BaseModel):
+    """代码生成后的静态检查结果。"""
+
+    passed: bool = Field(description="是否通过静态检查。")
+    ast_valid: bool = Field(default=True, description="AST 解析是否有效。")
+    deps_whitelisted: bool = Field(
+        default=True, description="依赖是否在白名单中。"
+    )
+    lint_ok: bool = Field(
+        default=True, description="代码规范检查是否通过。"
+    )
+    errors: list[str] = Field(
+        default_factory=list, description="检查错误列表。"
+    )
+
+
+class ValidationReport(BaseModel):
+    """分镜沙箱运行的完整验证报告。"""
+
+    report_id: str = Field(description="稳定报告标识符。")
+    run_id: str = Field(description="关联的沙箱运行 ID。")
+    storyboard_id: str = Field(description="关联的分镜 ID。")
+    static_check: StaticCheckResult | None = Field(
+        default=None, description="静态检查结果。"
+    )
+    sandbox_result: SandboxRunResult | None = Field(
+        default=None, description="沙箱运行结果。"
+    )
+    science_valid: bool = Field(
+        default=False, description="科学一致性验证是否通过。"
+    )
+    fact_locks_preserved: bool = Field(
+        default=False, description="事实锁是否完整保持。"
+    )
+    accessibility_checked: bool = Field(
+        default=False, description="是否进行了无障碍检查。"
+    )
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(description="报告创建时间戳。")

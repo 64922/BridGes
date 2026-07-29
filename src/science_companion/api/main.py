@@ -53,7 +53,12 @@ from science_companion.learning import (
     TeachingService,
 )
 from science_companion.learning.api import router as learning_router
-from science_companion.media import MediaIngestionService, build_media_impact_resolver
+from science_companion.media import (
+    MediaIngestionService,
+    SandboxService,
+    StoryboardService,
+    build_media_impact_resolver,
+)
 from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
 from science_companion.profiles.api import router as profiles_router
@@ -530,6 +535,11 @@ def create_app() -> FastAPI:
         "media_asset", build_media_impact_resolver(media_ingestion_service)
     )
     app.state.media_ingestion_service = media_ingestion_service
+
+    # T033: attach the storyboard and sandbox services for structured storyboard
+    # generation and isolated code execution.
+    app.state.storyboard_service = StoryboardService()
+    app.state.sandbox_service = SandboxService()
 
     # T025/T029: attach the expression service. It consumes claim graphs and fact
     # locks from T016, memory slices from T019, records model run locks from T009,
