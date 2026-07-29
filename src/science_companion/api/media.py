@@ -1,10 +1,14 @@
-"""Media asset API routes for T030 and T033.
+"""Media asset API routes for T030, T033 and T034.
 
 T030 routes: uploading, retrieving, correcting and revoking scientific
 images, scans, formulas and tables within the scope of an account and project.
 
 T033 routes: creating, updating and validating structured storyboards,
 generating source code, running in sandbox, and retrieving validation reports.
+
+T034 routes: generating, retrieving and validating complete accessibility
+bundles (narration, captions, transcript, keyboard paths, reduced motion,
+sequential reading) and controlling playback of timed content.
 """
 
 from __future__ import annotations
@@ -15,12 +19,17 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from science_companion.api.auth import SubjectDep
 from science_companion.contracts.media import (
+    AccessibilityBundle,
+    AccessibilityBundleRequest,
+    AccessibilityValidationResult,
     DerivedAsset,
     MediaCorrectionRequest,
     MediaIngestionRunRef,
     MediaProjection,
     MediaStoryboard,
     MediaUploadRequest,
+    PlaybackControlRequest,
+    PlaybackState,
     SandboxRunRequest,
     SandboxRunResult,
     SandboxRunStatus,
@@ -33,6 +42,10 @@ from science_companion.contracts.media import (
 )
 from science_companion.contracts.science import ClaimGraphResult, ClaimRequest
 from science_companion.media import MediaError, MediaIngestionService
+from science_companion.media.accessibility_service import (
+    AccessibilityError,
+    AccessibilityService,
+)
 from science_companion.media.storyboard_service import (
     SandboxError,
     SandboxService,
@@ -492,4 +505,114 @@ async def validate_storyboard(
     except (StoryboardError, SandboxError) as exc:
         raise _media_error(
             status.HTTP_404_NOT_FOUND, "validation_report_failed", str(exc)
+        ) from exc
+
+
+# ── T034: Accessibility alternative routes ──────────────────────────
+
+
+def _get_accessibility_service(request: Request) -> AccessibilityService:
+    service: AccessibilityService | None = getattr(
+        request.app.state, "accessibility_service", None
+    )
+    if service is None:
+        raise RuntimeError("AccessibilityService not attached to application state.")
+    return service
+
+
+AccessibilityServiceDep = Annotated[
+    AccessibilityService, Depends(_get_accessibility_service)
+]
+
+
+@router.post(
+    "/accessibility/bundles",
+    response_model=AccessibilityBundle,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def generate_accessibility_bundle(
+    service: AccessibilityServiceDep,
+    subject: SubjectDep,
+    request: AccessibilityBundleRequest,
+) -> AccessibilityBundle:
+    """Generate a complete accessibility bundle for a media target."""
+    try:
+        return service.generate_bundle(request, account_id=subject.account_id)
+    except AccessibilityError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "accessibility_target_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/accessibility/bundles/{bundle_id}",
+    response_model=AccessibilityBundle,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def get_accessibility_bundle(
+    service: AccessibilityServiceDep,
+    subject: SubjectDep,
+    bundle_id: str,
+) -> AccessibilityBundle:
+    """Get an accessibility bundle by ID."""
+    try:
+        return service.get_bundle(bundle_id, account_id=subject.account_id)
+    except AccessibilityError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "accessibility_bundle_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/accessibility/bundles/{bundle_id}/validate",
+    response_model=AccessibilityValidationResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def validate_accessibility_bundle(
+    service: AccessibilityServiceDep,
+    subject: SubjectDep,
+    bundle_id: str,
+) -> AccessibilityValidationResult:
+    """Validate claim/version sharing, operability and science checks."""
+    try:
+        return service.validate_bundle(bundle_id, account_id=subject.account_id)
+    except AccessibilityError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "accessibility_bundle_not_found", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/accessibility/bundles/{bundle_id}/playback",
+    response_model=PlaybackState,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def control_accessibility_playback(
+    service: AccessibilityServiceDep,
+    subject: SubjectDep,
+    bundle_id: str,
+    request: PlaybackControlRequest,
+) -> PlaybackState:
+    """Pause, resume, seek and toggle reduced motion for timed content."""
+    try:
+        return service.control_playback(
+            bundle_id, request, account_id=subject.account_id
+        )
+    except AccessibilityError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "playback_control_failed", str(exc)
         ) from exc

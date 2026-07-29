@@ -54,6 +54,8 @@ from science_companion.learning import (
 )
 from science_companion.learning.api import router as learning_router
 from science_companion.media import (
+    AccessibilityService,
+    MediaGenerationService,
     MediaIngestionService,
     SandboxService,
     StoryboardService,
@@ -540,6 +542,16 @@ def create_app() -> FastAPI:
     # generation and isolated code execution.
     app.state.storyboard_service = StoryboardService()
     app.state.sandbox_service = SandboxService()
+
+    # T032/T034: attach the media generation service and the accessibility
+    # service that produces narration, captions, transcripts, keyboard paths,
+    # reduced-motion variants and sequential reading views for media targets.
+    app.state.media_generation_service = MediaGenerationService()
+    app.state.accessibility_service = AccessibilityService(
+        storyboard_service=app.state.storyboard_service,
+        generation_service=app.state.media_generation_service,
+        media_ingestion_service=media_ingestion_service,
+    )
 
     # T025/T029: attach the expression service. It consumes claim graphs and fact
     # locks from T016, memory slices from T019, records model run locks from T009,

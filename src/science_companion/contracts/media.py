@@ -241,6 +241,14 @@ class CaptionTrack(BaseModel):
     track_id: str = Field(description="Stable track identifier.")
     language: str | None = Field(default=None)
     captions: list[Caption] = Field(default_factory=list)
+    claim_ids: list[str] = Field(
+        default_factory=list,
+        description="T034: 字幕覆盖的科学 Claim ID 列表，与朗读和文字稿共享。",
+    )
+    source_version: str | None = Field(
+        default=None,
+        description="T034: 字幕绑定的源内容版本标识。",
+    )
 
 
 class Keyframe(BaseModel):
@@ -1100,3 +1108,274 @@ class ValidationReport(BaseModel):
     errors: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
     created_at: datetime = Field(description="报告创建时间戳。")
+
+
+# ── T034: 朗读、字幕与完整无障碍替代 ──────────────────────────────────
+
+
+class AccessibilityTargetKind(StrEnum):
+    """无障碍包的目标对象类型。"""
+
+    STORYBOARD = "storyboard"
+    MEDIA_OBJECT = "media_object"
+    MEDIA_ASSET = "media_asset"
+
+
+class NarrationSynthesisStatus(StrEnum):
+    """朗读音频的合成状态。
+
+    T034 使用确定性合成器；真实 Qwen TTS 适配器在 T062 接入。
+    未通过科学校验的文本保持 PENDING_SYNTHESIS，不直接合成语音。
+    """
+
+    PENDING_SYNTHESIS = "pending_synthesis"
+    SYNTHESIZED = "synthesized"
+    FAILED = "failed"
+
+
+class PronunciationNoteKind(StrEnum):
+    """需要发音处理的朗读内容类型。"""
+
+    NUMBER = "number"
+    UNIT = "unit"
+    FORMULA = "formula"
+    ABBREVIATION = "abbreviation"
+
+
+class PronunciationNote(BaseModel):
+    """朗读中数字、单位、公式和缩写的发音处理记录。"""
+
+    token: str = Field(description="原始文本片段。")
+    kind: PronunciationNoteKind = Field(description="片段类型。")
+    spoken_form: str | None = Field(
+        default=None, description="确定的口语化读法；无法可靠朗读时为 None。"
+    )
+    degraded: bool = Field(
+        default=False,
+        description="无法可靠朗读时的显式降级标记，提示查看可访问公式或文本。",
+    )
+
+
+class NarrationTimingEntry(BaseModel):
+    """句段到朗读音频时间轴的映射。"""
+
+    segment_id: str = Field(description="对应的文字稿句段 ID。")
+    text: str = Field(description="句段文本。")
+    start_time: float = Field(ge=0.0, description="开始时间，单位秒。")
+    end_time: float = Field(ge=0.0, description="结束时间，单位秒。")
+
+
+class NarrationAudio(BaseModel):
+    """科学媒体对象的朗读替代。
+
+    朗读文本必须来自与字幕/文字稿相同的、已经过科学校验的内容，
+    与它们共享同一 Claim 集合和源版本。
+    """
+
+    narration_id: str = Field(description="稳定朗读标识符。")
+    language: str = Field(default="zh-CN", description="朗读语言。")
+    text: str = Field(description="朗读正文，与文字稿同源。")
+    voice: str = Field(default="default", description="声音标识。")
+    status: NarrationSynthesisStatus = Field(
+        default=NarrationSynthesisStatus.PENDING_SYNTHESIS,
+        description="合成状态。",
+    )
+    audio_ref: str | None = Field(
+        default=None, description="合成音频的受控存储引用；未合成时为 None。"
+    )
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    timing: list[NarrationTimingEntry] = Field(
+        default_factory=list, description="句段到音频时间的映射。"
+    )
+    pronunciation_notes: list[PronunciationNote] = Field(default_factory=list)
+    claim_ids: list[str] = Field(default_factory=list)
+    source_version: str | None = Field(default=None)
+
+
+class Transcript(BaseModel):
+    """媒体对象的完整文字稿，与朗读、字幕共享 Claim 与版本。"""
+
+    transcript_id: str = Field(description="稳定文字稿标识符。")
+    language: str = Field(default="zh-CN")
+    segments: list[TranscriptSegment] = Field(default_factory=list)
+    full_text: str = Field(default="", description="全文文本。")
+    claim_ids: list[str] = Field(default_factory=list)
+    source_version: str | None = Field(default=None)
+
+
+class KeyboardPathStep(BaseModel):
+    """键盘路径中的一个操作步骤。"""
+
+    step_number: int = Field(ge=1, description="步骤序号。")
+    action: str = Field(description="操作描述。")
+    keys: str = Field(description="按键组合，如 Space、Tab、ArrowRight。")
+    screen_reader_announcement: str = Field(
+        description="屏幕阅读器在该步骤的播报文本。", min_length=1
+    )
+
+
+class KeyboardAccessPath(BaseModel):
+    """一个核心媒体任务的完整键盘操作路径。"""
+
+    path_id: str = Field(description="稳定路径标识符。")
+    task: str = Field(
+        description="任务标识：play_pause, seek, toggle_captions, "
+        "toggle_reduced_motion, open_transcript。"
+    )
+    steps: list[KeyboardPathStep] = Field(default_factory=list)
+
+
+class PlaybackControls(BaseModel):
+    """时间内容的播放控制能力声明。"""
+
+    can_pause: bool = Field(default=True)
+    can_seek: bool = Field(default=True)
+    can_change_speed: bool = Field(default=True)
+    captions_available: bool = Field(default=True)
+    reduced_motion_available: bool = Field(default=True)
+    keyboard_operable: bool = Field(default=True)
+
+
+class ReducedMotionFrame(BaseModel):
+    """减少动画模式下的一个静态帧。"""
+
+    frame_id: str = Field(description="稳定帧标识符。")
+    order: int = Field(ge=1, description="帧序号。")
+    source_ref: str = Field(description="对应的镜头/场景/元素引用。")
+    description: str = Field(description="帧的科学内容描述，与旁白一致。")
+    start_time: float = Field(default=0.0, ge=0.0)
+    end_time: float = Field(default=0.0, ge=0.0)
+    claim_ids: list[str] = Field(default_factory=list)
+
+
+class ReducedMotionVariant(BaseModel):
+    """减少动画合同：用静态帧序列替代连续动画。"""
+
+    variant_id: str = Field(description="稳定变体标识符。")
+    frames: list[ReducedMotionFrame] = Field(default_factory=list)
+    note: str | None = Field(
+        default=None, description="时间内容被逐帧展示的说明。"
+    )
+    claim_ids: list[str] = Field(default_factory=list)
+    source_version: str | None = Field(default=None)
+
+
+class SequentialReadingBlock(BaseModel):
+    """顺序阅读视图中的一个文本块。"""
+
+    order: int = Field(ge=1, description="阅读顺序。")
+    role: str = Field(
+        description="块角色：title, objective, scene_narration, description, data_row。"
+    )
+    text: str = Field(description="块文本。")
+    claim_ids: list[str] = Field(default_factory=list)
+
+
+class SequentialReadingView(BaseModel):
+    """顺序阅读合同：屏幕阅读器可线性遍历的内容版本。"""
+
+    view_id: str = Field(description="稳定视图标识符。")
+    blocks: list[SequentialReadingBlock] = Field(default_factory=list)
+    claim_ids: list[str] = Field(default_factory=list)
+    source_version: str | None = Field(default=None)
+
+
+class AccessibilityBundle(BaseModel):
+    """一个科学媒体对象的完整无障碍替代包。
+
+    汇集朗读、文字稿、字幕、替代文本、键盘路径、减少动画和顺序阅读版本。
+    所有替代共享同一 Claim 集合和源版本，并经过相同的科学校验。
+    """
+
+    bundle_id: str = Field(description="稳定无障碍包标识符。")
+    account_id: str = Field(description="拥有账户 ID。")
+    project_id: str | None = Field(default=None)
+    target_kind: AccessibilityTargetKind = Field(description="目标对象类型。")
+    target_id: str = Field(description="目标对象 ID。")
+    source_version: str = Field(description="目标内容版本标识（内容哈希或版本号）。")
+    language: str = Field(default="zh-CN")
+    claim_ids: list[str] = Field(default_factory=list)
+    alt_text: str = Field(description="简短替代文本。", min_length=1)
+    long_description: str | None = Field(default=None)
+    transcript: Transcript = Field(description="完整文字稿。")
+    caption_track: CaptionTrack = Field(description="字幕轨。")
+    narration: NarrationAudio = Field(description="朗读替代。")
+    keyboard_paths: list[KeyboardAccessPath] = Field(default_factory=list)
+    playback_controls: PlaybackControls = Field(default_factory=PlaybackControls)
+    reduced_motion: ReducedMotionVariant = Field(description="减少动画变体。")
+    sequential_view: SequentialReadingView = Field(description="顺序阅读视图。")
+    science_validated: bool = Field(
+        default=False,
+        description="无障碍替代是否通过了与主内容相同的科学校验。",
+    )
+    validation_errors: list[str] = Field(default_factory=list)
+    created_at: datetime = Field(description="创建时间戳。")
+    updated_at: datetime = Field(description="最后更新时间戳。")
+
+
+class AccessibilityBundleRequest(BaseModel):
+    """生成无障碍包的请求。"""
+
+    target_kind: AccessibilityTargetKind = Field(description="目标对象类型。")
+    target_id: str = Field(description="目标对象 ID。", min_length=1)
+    language: str = Field(default="zh-CN")
+    project_id: str | None = Field(default=None)
+
+
+class AccessibilityValidationResult(BaseModel):
+    """无障碍包的验证结果。"""
+
+    valid: bool = Field(description="是否通过全部检查。")
+    claims_consistent: bool = Field(
+        default=True, description="音频、字幕和文字稿是否共享同一 Claim 集合。"
+    )
+    version_consistent: bool = Field(
+        default=True, description="所有替代是否绑定同一源版本。"
+    )
+    keyboard_operable: bool = Field(
+        default=True, description="核心媒体任务是否可由键盘与屏幕阅读器完成。"
+    )
+    playback_controllable: bool = Field(
+        default=True, description="是否支持暂停、时间控制和减少动画。"
+    )
+    science_validated: bool = Field(
+        default=True, description="替代内容是否通过相同的科学校验。"
+    )
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class PlaybackControlRequest(BaseModel):
+    """播放控制请求。"""
+
+    action: Literal[
+        "start", "pause", "resume", "seek", "set_reduced_motion"
+    ] = Field(description="控制动作。")
+    position_seconds: float | None = Field(
+        default=None, ge=0.0, description="seek 目标位置，单位秒。"
+    )
+    enabled: bool | None = Field(
+        default=None, description="set_reduced_motion 的开关值。"
+    )
+
+
+class PlaybackState(BaseModel):
+    """一个无障碍包的播放状态，支持暂停、时间控制和减少动画。"""
+
+    state_id: str = Field(description="稳定状态标识符。")
+    bundle_id: str = Field(description="关联的无障碍包 ID。")
+    paused: bool = Field(default=False)
+    position_seconds: float = Field(default=0.0, ge=0.0)
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    speed: float = Field(default=1.0, gt=0.0)
+    reduced_motion_enabled: bool = Field(default=False)
+    captions_enabled: bool = Field(default=True)
+    active_caption_text: str | None = Field(
+        default=None, description="当前时间点的字幕文本。"
+    )
+    active_frame_description: str | None = Field(
+        default=None,
+        description="减少动画模式下当前时间点的静态帧描述。",
+    )
+    updated_at: datetime = Field(description="最后更新时间戳。")
+
