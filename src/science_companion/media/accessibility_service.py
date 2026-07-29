@@ -15,9 +15,14 @@ from __future__ import annotations
 import hashlib
 import re
 import secrets
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol, runtime_checkable
 
+import httpx
+
+from science_companion.ai import ModelGateway
+from science_companion.contracts.ai import ModelCallStatus
 from science_companion.contracts.media import (
     AccessibilityBundle,
     AccessibilityBundleRequest,
@@ -46,6 +51,7 @@ from science_companion.contracts.media import (
     TranscriptSegment,
 )
 from science_companion.contracts.science import FactLock
+from science_companion.contracts.workflows import RunContextEnvelope
 from science_companion.media.generation import (
     MediaGenerationError,
     MediaGenerationService,
@@ -106,13 +112,91 @@ def _sha256(content: str) -> str:
     return hashlib.sha256(content.encode("utf-8")).hexdigest()
 
 
+@dataclass
+class NarrationSynthesisContext:
+    """T062: 朗读合成所需的作用域上下文。
+
+    携带 account_id、project_id 和可选 run_id，供 QwenTtsNarrationSynthesizer
+    构造 RunContextEnvelope 并通过 ModelGateway 调用 TTS 能力。
+    """
+
+    account_id: str
+    project_id: str | None = None
+    run_id: str | None = None
+
+
+@dataclass
+class StoredAudio:
+    """T062: 转存到受控对象存储后的音频元数据。"""
+
+    storage_ref: str
+    mime_type: str
+    byte_size: int
+    content_hash: str
+
+
+@runtime_checkable
+class AudioStoragePort(Protocol):
+    """T062: 受控音频对象存储端口。
+
+    将供应商临时 URL 下载的音频字节转存到受控存储，记录 MIME、大小、
+    哈希和归属。默认实现为内存存储；生产环境替换为对象存储适配器。
+    """
+
+    def store(
+        self,
+        *,
+        audio_bytes: bytes,
+        mime_type: str,
+        account_id: str,
+        project_id: str | None,
+        narration_id: str,
+    ) -> StoredAudio:
+        """Store audio bytes and return a storage reference with metadata."""
+        ...
+
+
+class InMemoryAudioStorage:
+    """In-memory audio storage for testing and local development."""
+
+    def __init__(self) -> None:
+        self._store: dict[str, bytes] = {}
+
+    def store(
+        self,
+        *,
+        audio_bytes: bytes,
+        mime_type: str,
+        account_id: str,
+        project_id: str | None,
+        narration_id: str,
+    ) -> StoredAudio:
+        content_hash = hashlib.sha256(audio_bytes).hexdigest()
+        storage_ref = f"memory://tts/{account_id}/{narration_id}.{mime_type.split('/')[-1]}"
+        self._store[storage_ref] = audio_bytes
+        return StoredAudio(
+            storage_ref=storage_ref,
+            mime_type=mime_type,
+            byte_size=len(audio_bytes),
+            content_hash=content_hash,
+        )
+
+    def retrieve(self, storage_ref: str) -> bytes | None:
+        """Return stored audio bytes by reference, or None if not found."""
+        return self._store.get(storage_ref)
+
+
 class NarrationSynthesizer(Protocol):
     """朗读合成协议——T062 用真实 Qwen TTS 适配器替换默认实现。
 
     合同要求：只接受已通过事实锁科学校验的朗读文本。
     """
 
-    def synthesize(self, narration: NarrationAudio) -> NarrationAudio:
+    def synthesize(
+        self,
+        narration: NarrationAudio,
+        context: NarrationSynthesisContext | None = None,
+    ) -> NarrationAudio:
         """Synthesize audio for validated narration text."""
         ...
 
@@ -123,7 +207,11 @@ class DeterministicNarrationSynthesizer:
     Produces a stable in-memory audio reference without any model dependency.
     """
 
-    def synthesize(self, narration: NarrationAudio) -> NarrationAudio:
+    def synthesize(
+        self,
+        narration: NarrationAudio,
+        context: NarrationSynthesisContext | None = None,
+    ) -> NarrationAudio:
         return narration.model_copy(
             update={
                 "status": NarrationSynthesisStatus.SYNTHESIZED,
@@ -786,7 +874,14 @@ class AccessibilityService:
                     "updated_at": _now(),
                 }
             )
-        narration = self._synthesizer.synthesize(bundle.narration)
+        # T062: pass scope context so QwenTtsNarrationSynthesizer can create
+        # a RunContextEnvelope and call TTS through the model gateway.
+        context = NarrationSynthesisContext(
+            account_id=bundle.account_id,
+            project_id=bundle.project_id,
+            run_id=f"tts-{bundle.bundle_id}",
+        )
+        narration = self._synthesizer.synthesize(bundle.narration, context)
         return bundle.model_copy(
             update={
                 "science_validated": True,
@@ -855,10 +950,159 @@ class AccessibilityService:
         return sorted(claims)
 
 
+class QwenTtsNarrationSynthesizer:
+    """T062: 通过 ModelGateway 调用 Qwen TTS 的朗读合成器。
+
+    只接受已通过事实锁科学校验的朗读文本（由 AccessibilityService 在
+    调用 synthesize 前完成验证）。合成成功后将供应商临时 URL 转存到
+    受控对象存储；合成失败时文本回答仍可交付，朗读标记为 FAILED。
+    """
+
+    def __init__(
+        self,
+        *,
+        model_gateway: ModelGateway,
+        audio_storage: AudioStoragePort | None = None,
+        capability_name: str = "qwen_tts",
+        capability_version: str = "1",
+        voice: str = "Cherry",
+        language_type: str | None = None,
+        download_client: httpx.Client | None = None,
+    ) -> None:
+        self._gateway = model_gateway
+        self._audio_storage = audio_storage or InMemoryAudioStorage()
+        self._capability_name = capability_name
+        self._capability_version = capability_version
+        self._voice = voice
+        self._language_type = language_type
+        self._download_client = download_client or httpx.Client(timeout=120.0)
+
+    def synthesize(
+        self,
+        narration: NarrationAudio,
+        context: NarrationSynthesisContext | None = None,
+    ) -> NarrationAudio:
+        """Synthesize narration via Qwen TTS and transfer to controlled storage."""
+        if context is None:
+            # Without context we cannot create a scoped run; fall back to a
+            # deterministic failure so the text answer remains deliverable.
+            return narration.model_copy(
+                update={
+                    "status": NarrationSynthesisStatus.FAILED,
+                    "audio_ref": None,
+                }
+            )
+
+        run_context = RunContextEnvelope(
+            run_id=context.run_id or f"tts-{narration.narration_id}",
+            account_id=context.account_id,
+            project_id=context.project_id or "default",
+            workflow_name="accessibility_narration",
+            workflow_version="1",
+            submitted_at=datetime.now(UTC),
+        )
+
+        # Build pronunciation notes payload for the TTS adapter.
+        pronunciation_payload: list[dict[str, Any]] = [
+            {
+                "token": note.token,
+                "kind": note.kind.value,
+                "spoken_form": note.spoken_form,
+                "degraded": note.degraded,
+            }
+            for note in narration.pronunciation_notes
+        ]
+
+        payload: dict[str, Any] = {
+            "text": narration.text,
+            "voice": self._voice,
+            "pronunciation_notes": pronunciation_payload,
+        }
+        if self._language_type is not None:
+            payload["language_type"] = self._language_type
+        if narration.language:
+            payload.setdefault("language_type", narration.language)
+
+        result = self._gateway.invoke(
+            self._capability_name,
+            self._capability_version,
+            run_context,
+            payload=payload,
+        )
+
+        if result.status != ModelCallStatus.SUCCESS or result.output is None:
+            # TTS failure: text answer remains deliverable, narration marked failed.
+            return narration.model_copy(
+                update={
+                    "status": NarrationSynthesisStatus.FAILED,
+                    "audio_ref": None,
+                }
+            )
+
+        audio_url = result.output.get("audio_url")
+        mime_type = result.output.get("mime_type") or "audio/wav"
+        if not audio_url or not isinstance(audio_url, str):
+            return narration.model_copy(
+                update={
+                    "status": NarrationSynthesisStatus.FAILED,
+                    "audio_ref": None,
+                }
+            )
+
+        # Download the audio from the vendor temporary URL and transfer to
+        # controlled object storage before the URL expires.
+        try:
+            download_response = self._download_client.get(audio_url)
+            download_response.raise_for_status()
+            audio_bytes = download_response.content
+        except Exception:
+            return narration.model_copy(
+                update={
+                    "status": NarrationSynthesisStatus.FAILED,
+                    "audio_ref": None,
+                }
+            )
+
+        stored = self._audio_storage.store(
+            audio_bytes=audio_bytes,
+            mime_type=mime_type,
+            account_id=context.account_id,
+            project_id=context.project_id,
+            narration_id=narration.narration_id,
+        )
+
+        # Update pronunciation notes with degraded marks from TTS adapter output.
+        degraded_from_tts = result.output.get("degraded_pronunciation_notes") or []
+        degraded_tokens = {
+            note.get("token")
+            for note in degraded_from_tts
+            if isinstance(note, dict)
+        }
+        updated_notes = [
+            note.model_copy(update={"degraded": True})
+            if note.token in degraded_tokens and not note.degraded
+            else note
+            for note in narration.pronunciation_notes
+        ]
+
+        return narration.model_copy(
+            update={
+                "status": NarrationSynthesisStatus.SYNTHESIZED,
+                "audio_ref": stored.storage_ref,
+                "pronunciation_notes": updated_notes,
+            }
+        )
+
+
 __all__ = [
     "CORE_MEDIA_TASKS",
     "AccessibilityError",
     "AccessibilityService",
+    "AudioStoragePort",
     "DeterministicNarrationSynthesizer",
+    "InMemoryAudioStorage",
+    "NarrationSynthesisContext",
     "NarrationSynthesizer",
+    "QwenTtsNarrationSynthesizer",
+    "StoredAudio",
 ]

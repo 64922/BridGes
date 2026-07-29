@@ -389,6 +389,11 @@ class ModelGateway:
         for key in ("temperature", "max_tokens", "top_p"):
             if payload and key in payload:
                 params[key] = payload[key]
+        # TTS-specific parameters (T062). These are captured when present so
+        # the run lock records the voice, language and format used.
+        for key in ("voice", "language_type", "format", "sample_rate"):
+            if payload and key in payload:
+                params[key] = payload[key]
         if not params:
             params = {"temperature": 0.7, "max_tokens": 1024}
         return params

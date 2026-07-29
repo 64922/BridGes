@@ -16,6 +16,7 @@ from science_companion.ai import (
     QwenOcrAdapter,
     QwenStructuredOutputAdapter,
     QwenTextChatAdapter,
+    QwenTtsAdapter,
     QwenVisionAdapter,
     StubQwenAdapter,
 )
@@ -55,8 +56,10 @@ from science_companion.learning import (
 from science_companion.learning.api import router as learning_router
 from science_companion.media import (
     AccessibilityService,
+    InMemoryAudioStorage,
     MediaGenerationService,
     MediaIngestionService,
+    QwenTtsNarrationSynthesizer,
     SandboxService,
     StoryboardService,
     build_media_impact_resolver,
@@ -213,6 +216,45 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             model_id="qwen3-asr-flash-filetrans",
             input_schema_version="audio-file-v1",
             output_schema_version="transcript-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-07-24",
+        )
+    )
+    # T062: real Qwen TTS capabilities for accessibility narration synthesis.
+    # qwen3-tts-flash is the primary; qwen3-tts-instruct-flash is the fallback
+    # when instruction-controlled speech is needed.
+    registry.register(
+        CapabilityRecord(
+            name="qwen_tts",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3-tts-flash",
+            input_schema_version="tts-text-v1",
+            output_schema_version="tts-audio-v1",
+            supported_modalities=["text", "audio"],
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            fallback_policy=FallbackPolicy(
+                fallback_capability_name="qwen_tts_instruct",
+                fallback_capability_version="1",
+            ),
+            prompt_version="2026-07-24",
+        )
+    )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_tts_instruct",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3-tts-instruct-flash",
+            input_schema_version="tts-instruct-v1",
+            output_schema_version="tts-audio-v1",
+            supported_modalities=["text", "audio"],
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
@@ -462,6 +504,10 @@ def create_app() -> FastAPI:
         model_gateway.register_adapter(
             "qwen_asr_long", "1", QwenAsrAdapter(qwen_client)
         )
+        # T062: TTS adapters for accessibility narration synthesis.
+        tts_adapter = QwenTtsAdapter(qwen_client)
+        model_gateway.register_adapter("qwen_tts", "1", tts_adapter)
+        model_gateway.register_adapter("qwen_tts_instruct", "1", tts_adapter)
 
     stub_adapter = StubQwenAdapter()
     for capability in capability_registry.list_active():
@@ -546,11 +592,25 @@ def create_app() -> FastAPI:
     # T032/T034: attach the media generation service and the accessibility
     # service that produces narration, captions, transcripts, keyboard paths,
     # reduced-motion variants and sequential reading views for media targets.
+    # T062: when TTS is available, use QwenTtsNarrationSynthesizer to call
+    # real Qwen TTS and transfer audio to controlled storage.
     app.state.media_generation_service = MediaGenerationService()
+    narration_synthesizer = None
+    if (
+        settings is not None
+        and settings.qwen_api_key is not None
+        and not settings.qwen_force_stub
+        and model_gateway.is_adapter_registered("qwen_tts", "1")
+    ):
+        narration_synthesizer = QwenTtsNarrationSynthesizer(
+            model_gateway=model_gateway,
+            audio_storage=InMemoryAudioStorage(),
+        )
     app.state.accessibility_service = AccessibilityService(
         storyboard_service=app.state.storyboard_service,
         generation_service=app.state.media_generation_service,
         media_ingestion_service=media_ingestion_service,
+        narration_synthesizer=narration_synthesizer,
     )
 
     # T025/T029: attach the expression service. It consumes claim graphs and fact

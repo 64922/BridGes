@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Science Companion API",
-    "description": "\u957f\u671f\u79d1\u5b66\u5b66\u4e60\u4e0e\u8868\u8fbe\u4f19\u4f34 API",
+    "description": "长期科学学习与表达伙伴 API",
     "version": "0.1.0"
   },
   "paths": {
@@ -7824,6 +7824,333 @@
         }
       }
     },
+    "/media/accessibility/bundles": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Generate Accessibility Bundle",
+        "description": "Generate a complete accessibility bundle for a media target.",
+        "operationId": "generate_accessibility_bundle_media_accessibility_bundles_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccessibilityBundleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessibilityBundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/accessibility/bundles/{bundle_id}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Accessibility Bundle",
+        "description": "Get an accessibility bundle by ID.",
+        "operationId": "get_accessibility_bundle_media_accessibility_bundles__bundle_id__get",
+        "parameters": [
+          {
+            "name": "bundle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bundle Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessibilityBundle"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/accessibility/bundles/{bundle_id}/validate": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Validate Accessibility Bundle",
+        "description": "Validate claim/version sharing, operability and science checks.",
+        "operationId": "validate_accessibility_bundle_media_accessibility_bundles__bundle_id__validate_get",
+        "parameters": [
+          {
+            "name": "bundle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bundle Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccessibilityValidationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/accessibility/bundles/{bundle_id}/playback": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Control Accessibility Playback",
+        "description": "Pause, resume, seek and toggle reduced motion for timed content.",
+        "operationId": "control_accessibility_playback_media_accessibility_bundles__bundle_id__playback_post",
+        "parameters": [
+          {
+            "name": "bundle_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Bundle Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaybackControlRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybackState"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/learning/missions": {
       "post": {
         "tags": [
@@ -10426,6 +10753,253 @@
   },
   "components": {
     "schemas": {
+      "AccessibilityBundle": {
+        "properties": {
+          "bundle_id": {
+            "type": "string",
+            "title": "Bundle Id",
+            "description": "稳定无障碍包标识符。"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "拥有账户 ID。"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "target_kind": {
+            "$ref": "#/components/schemas/AccessibilityTargetKind",
+            "description": "目标对象类型。"
+          },
+          "target_id": {
+            "type": "string",
+            "title": "Target Id",
+            "description": "目标对象 ID。"
+          },
+          "source_version": {
+            "type": "string",
+            "title": "Source Version",
+            "description": "目标内容版本标识（内容哈希或版本号）。"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh-CN"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "alt_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Alt Text",
+            "description": "简短替代文本。"
+          },
+          "long_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Description"
+          },
+          "transcript": {
+            "$ref": "#/components/schemas/Transcript",
+            "description": "完整文字稿。"
+          },
+          "caption_track": {
+            "$ref": "#/components/schemas/CaptionTrack",
+            "description": "字幕轨。"
+          },
+          "narration": {
+            "$ref": "#/components/schemas/NarrationAudio",
+            "description": "朗读替代。"
+          },
+          "keyboard_paths": {
+            "items": {
+              "$ref": "#/components/schemas/KeyboardAccessPath"
+            },
+            "type": "array",
+            "title": "Keyboard Paths"
+          },
+          "playback_controls": {
+            "$ref": "#/components/schemas/PlaybackControls"
+          },
+          "reduced_motion": {
+            "$ref": "#/components/schemas/ReducedMotionVariant",
+            "description": "减少动画变体。"
+          },
+          "sequential_view": {
+            "$ref": "#/components/schemas/SequentialReadingView",
+            "description": "顺序阅读视图。"
+          },
+          "science_validated": {
+            "type": "boolean",
+            "title": "Science Validated",
+            "description": "无障碍替代是否通过了与主内容相同的科学校验。",
+            "default": false
+          },
+          "validation_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validation Errors"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间戳。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最后更新时间戳。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "bundle_id",
+          "account_id",
+          "target_kind",
+          "target_id",
+          "source_version",
+          "alt_text",
+          "transcript",
+          "caption_track",
+          "narration",
+          "reduced_motion",
+          "sequential_view",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AccessibilityBundle",
+        "description": "一个科学媒体对象的完整无障碍替代包。\n\n汇集朗读、文字稿、字幕、替代文本、键盘路径、减少动画和顺序阅读版本。\n所有替代共享同一 Claim 集合和源版本，并经过相同的科学校验。"
+      },
+      "AccessibilityBundleRequest": {
+        "properties": {
+          "target_kind": {
+            "$ref": "#/components/schemas/AccessibilityTargetKind",
+            "description": "目标对象类型。"
+          },
+          "target_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Target Id",
+            "description": "目标对象 ID。"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh-CN"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_kind",
+          "target_id"
+        ],
+        "title": "AccessibilityBundleRequest",
+        "description": "生成无障碍包的请求。"
+      },
+      "AccessibilityTargetKind": {
+        "type": "string",
+        "enum": [
+          "storyboard",
+          "media_object",
+          "media_asset"
+        ],
+        "title": "AccessibilityTargetKind",
+        "description": "无障碍包的目标对象类型。"
+      },
+      "AccessibilityValidationResult": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid",
+            "description": "是否通过全部检查。"
+          },
+          "claims_consistent": {
+            "type": "boolean",
+            "title": "Claims Consistent",
+            "description": "音频、字幕和文字稿是否共享同一 Claim 集合。",
+            "default": true
+          },
+          "version_consistent": {
+            "type": "boolean",
+            "title": "Version Consistent",
+            "description": "所有替代是否绑定同一源版本。",
+            "default": true
+          },
+          "keyboard_operable": {
+            "type": "boolean",
+            "title": "Keyboard Operable",
+            "description": "核心媒体任务是否可由键盘与屏幕阅读器完成。",
+            "default": true
+          },
+          "playback_controllable": {
+            "type": "boolean",
+            "title": "Playback Controllable",
+            "description": "是否支持暂停、时间控制和减少动画。",
+            "default": true
+          },
+          "science_validated": {
+            "type": "boolean",
+            "title": "Science Validated",
+            "description": "替代内容是否通过相同的科学校验。",
+            "default": true
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "title": "AccessibilityValidationResult",
+        "description": "无障碍包的验证结果。"
+      },
       "Account": {
         "properties": {
           "id": {
@@ -11123,6 +11697,103 @@
         ],
         "title": "CapsuleStatus",
         "description": "Lifecycle status of a temporary task capsule."
+      },
+      "Caption": {
+        "properties": {
+          "caption_id": {
+            "type": "string",
+            "title": "Caption Id",
+            "description": "Stable caption identifier."
+          },
+          "start_time": {
+            "type": "number",
+            "title": "Start Time",
+            "description": "Start time in seconds."
+          },
+          "end_time": {
+            "type": "number",
+            "title": "End Time",
+            "description": "End time in seconds."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Caption text."
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          }
+        },
+        "type": "object",
+        "required": [
+          "caption_id",
+          "start_time",
+          "end_time",
+          "text"
+        ],
+        "title": "Caption",
+        "description": "A single subtitle/caption cue."
+      },
+      "CaptionTrack": {
+        "properties": {
+          "track_id": {
+            "type": "string",
+            "title": "Track Id",
+            "description": "Stable track identifier."
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language"
+          },
+          "captions": {
+            "items": {
+              "$ref": "#/components/schemas/Caption"
+            },
+            "type": "array",
+            "title": "Captions"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids",
+            "description": "T034: 字幕覆盖的科学 Claim ID 列表，与朗读和文字稿共享。"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version",
+            "description": "T034: 字幕绑定的源内容版本标识。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "track_id"
+        ],
+        "title": "CaptionTrack",
+        "description": "Timed caption track for an audio or video asset."
       },
       "ChunkCorrection": {
         "properties": {
@@ -15138,7 +15809,7 @@
           "lock_id": {
             "type": "string",
             "title": "Lock Id",
-            "description": "\u89e6\u72af\u7684 FactLock ID\u3002"
+            "description": "触犯的 FactLock ID。"
           },
           "claim_id": {
             "anyOf": [
@@ -15150,17 +15821,17 @@
               }
             ],
             "title": "Claim Id",
-            "description": "\u5173\u8054\u7684 Claim ID\u3002"
+            "description": "关联的 Claim ID。"
           },
           "attempted_change": {
             "type": "string",
             "title": "Attempted Change",
-            "description": "\u8bd5\u56fe\u4fee\u6539\u7684\u503c\u3002"
+            "description": "试图修改的值。"
           },
           "reason": {
             "type": "string",
             "title": "Reason",
-            "description": "\u88ab\u62d2\u7edd\u7684\u539f\u56e0\u3002"
+            "description": "被拒绝的原因。"
           }
         },
         "type": "object",
@@ -15170,7 +15841,7 @@
           "reason"
         ],
         "title": "FactLockViolation",
-        "description": "\u6c99\u7bb1\u4fee\u590d\u8fc7\u7a0b\u4e2d\u89e6\u72af\u4e8b\u5b9e\u9501\u7684\u8bb0\u5f55\u3002"
+        "description": "沙箱修复过程中触犯事实锁的记录。"
       },
       "FormulaBinding": {
         "properties": {
@@ -15554,6 +16225,69 @@
         ],
         "title": "InputQualityGate",
         "description": "Named gates that imported content must pass before entering evidence."
+      },
+      "KeyboardAccessPath": {
+        "properties": {
+          "path_id": {
+            "type": "string",
+            "title": "Path Id",
+            "description": "稳定路径标识符。"
+          },
+          "task": {
+            "type": "string",
+            "title": "Task",
+            "description": "任务标识：play_pause, seek, toggle_captions, toggle_reduced_motion, open_transcript。"
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/KeyboardPathStep"
+            },
+            "type": "array",
+            "title": "Steps"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path_id",
+          "task"
+        ],
+        "title": "KeyboardAccessPath",
+        "description": "一个核心媒体任务的完整键盘操作路径。"
+      },
+      "KeyboardPathStep": {
+        "properties": {
+          "step_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Step Number",
+            "description": "步骤序号。"
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "操作描述。"
+          },
+          "keys": {
+            "type": "string",
+            "title": "Keys",
+            "description": "按键组合，如 Space、Tab、ArrowRight。"
+          },
+          "screen_reader_announcement": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Screen Reader Announcement",
+            "description": "屏幕阅读器在该步骤的播报文本。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "step_number",
+          "action",
+          "keys",
+          "screen_reader_announcement"
+        ],
+        "title": "KeyboardPathStep",
+        "description": "键盘路径中的一个操作步骤。"
       },
       "KnowledgeConfidence": {
         "type": "string",
@@ -16571,18 +17305,18 @@
               "exit"
             ],
             "title": "Stage",
-            "description": "\u9636\u6bb5\u7c7b\u578b\uff1a\u8fdb\u5165\u3001\u4fdd\u6301\u3001\u53d8\u6362\u3001\u9000\u51fa\u3002"
+            "description": "阶段类型：进入、保持、变换、退出。"
           },
           "timing_seconds": {
             "type": "number",
             "minimum": 0.0,
             "title": "Timing Seconds",
-            "description": "\u9636\u6bb5\u6301\u7eed\u65f6\u95f4\uff0c\u5355\u4f4d\u79d2\u3002"
+            "description": "阶段持续时间，单位秒。"
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "\u9636\u6bb5\u63cf\u8ff0\u3002"
+            "description": "阶段描述。"
           }
         },
         "type": "object",
@@ -16592,7 +17326,7 @@
           "description"
         ],
         "title": "LifecycleStage",
-        "description": "\u52a8\u753b\u5bf9\u8c61\u7684\u4e00\u4e2a\u751f\u547d\u5468\u671f\u9636\u6bb5\u3002"
+        "description": "动画对象的一个生命周期阶段。"
       },
       "LifecycleStatus": {
         "type": "string",
@@ -17001,12 +17735,12 @@
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "\u7a33\u5b9a\u5206\u955c\u6807\u8bc6\u7b26\u3002"
+            "description": "稳定分镜标识符。"
           },
           "account_id": {
             "type": "string",
             "title": "Account Id",
-            "description": "\u62e5\u6709\u8d26\u6237 ID\u3002"
+            "description": "拥有账户 ID。"
           },
           "project_id": {
             "anyOf": [
@@ -17018,12 +17752,12 @@
               }
             ],
             "title": "Project Id",
-            "description": "\u6240\u5c5e\u9879\u76ee ID\u3002"
+            "description": "所属项目 ID。"
           },
           "title": {
             "type": "string",
             "title": "Title",
-            "description": "\u5206\u955c\u6807\u9898\u3002"
+            "description": "分镜标题。"
           },
           "teaching_objectives": {
             "items": {
@@ -17031,7 +17765,7 @@
             },
             "type": "array",
             "title": "Teaching Objectives",
-            "description": "\u6559\u5b66\u76ee\u6807\u5217\u8868\u3002"
+            "description": "教学目标列表。"
           },
           "scenes": {
             "items": {
@@ -17039,7 +17773,7 @@
             },
             "type": "array",
             "title": "Scenes",
-            "description": "\u955c\u5934\u5217\u8868\u3002"
+            "description": "镜头列表。"
           },
           "media_type": {
             "type": "string",
@@ -17048,24 +17782,24 @@
               "interactive_html"
             ],
             "title": "Media Type",
-            "description": "\u5a92\u4f53\u7c7b\u578b\uff1aanimation\uff08\u52a8\u753b\uff09\u6216 interactive_html\uff08\u4ea4\u4e92 HTML\uff09\u3002"
+            "description": "媒体类型：animation（动画）或 interactive_html（交互 HTML）。"
           },
           "status": {
             "$ref": "#/components/schemas/StoryboardStatus",
-            "description": "\u5206\u955c\u72b6\u6001\u3002",
+            "description": "分镜状态。",
             "default": "draft"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+            "description": "创建时间戳。"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Updated At",
-            "description": "\u6700\u540e\u66f4\u65b0\u65f6\u95f4\u6233\u3002"
+            "description": "最后更新时间戳。"
           }
         },
         "type": "object",
@@ -17078,7 +17812,7 @@
           "updated_at"
         ],
         "title": "MediaStoryboard",
-        "description": "\u7ed3\u6784\u5316\u5206\u955c\u2014\u2014\u955c\u5934\u65f6\u95f4\u5e8f\u5217\u3002\n\n\u5b9a\u4e49\u6559\u5b66\u76ee\u6807\u3001\u955c\u5934\u5e8f\u5217\uff08\u5f15\u7528 SceneSpec\uff09\u3001\u5a92\u4f53\u7c7b\u578b\u548c Claim \u7ed1\u5b9a\u3002\n\u6bcf\u4e2a\u955c\u5934\u5305\u542b\u65f6\u95f4\u3001\u8fc7\u6e21\u3001\u65c1\u767d\u548c\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+        "description": "结构化分镜——镜头时间序列。\n\n定义教学目标、镜头序列（引用 SceneSpec）、媒体类型和 Claim 绑定。\n每个镜头包含时间、过渡、旁白和无障碍描述。"
       },
       "MediaType": {
         "type": "string",
@@ -17332,6 +18066,140 @@
         "title": "ModelRunLock",
         "description": "Immutable snapshot of one model invocation.\n\nThe lock records the exact capability, model, region, parameters, prompt\nversion and contract that were used, so the call can be replayed and audited."
       },
+      "NarrationAudio": {
+        "properties": {
+          "narration_id": {
+            "type": "string",
+            "title": "Narration Id",
+            "description": "稳定朗读标识符。"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "description": "朗读语言。",
+            "default": "zh-CN"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "朗读正文，与文字稿同源。"
+          },
+          "voice": {
+            "type": "string",
+            "title": "Voice",
+            "description": "声音标识。",
+            "default": "default"
+          },
+          "status": {
+            "$ref": "#/components/schemas/NarrationSynthesisStatus",
+            "description": "合成状态。",
+            "default": "pending_synthesis"
+          },
+          "audio_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Ref",
+            "description": "合成音频的受控存储引用；未合成时为 None。"
+          },
+          "duration_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Duration Seconds",
+            "default": 0.0
+          },
+          "timing": {
+            "items": {
+              "$ref": "#/components/schemas/NarrationTimingEntry"
+            },
+            "type": "array",
+            "title": "Timing",
+            "description": "句段到音频时间的映射。"
+          },
+          "pronunciation_notes": {
+            "items": {
+              "$ref": "#/components/schemas/PronunciationNote"
+            },
+            "type": "array",
+            "title": "Pronunciation Notes"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "narration_id",
+          "text"
+        ],
+        "title": "NarrationAudio",
+        "description": "科学媒体对象的朗读替代。\n\n朗读文本必须来自与字幕/文字稿相同的、已经过科学校验的内容，\n与它们共享同一 Claim 集合和源版本。"
+      },
+      "NarrationSynthesisStatus": {
+        "type": "string",
+        "enum": [
+          "pending_synthesis",
+          "synthesized",
+          "failed"
+        ],
+        "title": "NarrationSynthesisStatus",
+        "description": "朗读音频的合成状态。\n\nT034 使用确定性合成器；真实 Qwen TTS 适配器在 T062 接入。\n未通过科学校验的文本保持 PENDING_SYNTHESIS，不直接合成语音。"
+      },
+      "NarrationTimingEntry": {
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "title": "Segment Id",
+            "description": "对应的文字稿句段 ID。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "句段文本。"
+          },
+          "start_time": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start Time",
+            "description": "开始时间，单位秒。"
+          },
+          "end_time": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "End Time",
+            "description": "结束时间，单位秒。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "segment_id",
+          "text",
+          "start_time",
+          "end_time"
+        ],
+        "title": "NarrationTimingEntry",
+        "description": "句段到朗读音频时间轴的映射。"
+      },
       "NodeProgress": {
         "properties": {
           "node_id": {
@@ -17567,6 +18435,175 @@
         ],
         "title": "PatchAction",
         "description": "User decision on a single revision patch."
+      },
+      "PlaybackControlRequest": {
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "start",
+              "pause",
+              "resume",
+              "seek",
+              "set_reduced_motion"
+            ],
+            "title": "Action",
+            "description": "控制动作。"
+          },
+          "position_seconds": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Seconds",
+            "description": "seek 目标位置，单位秒。"
+          },
+          "enabled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enabled",
+            "description": "set_reduced_motion 的开关值。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "action"
+        ],
+        "title": "PlaybackControlRequest",
+        "description": "播放控制请求。"
+      },
+      "PlaybackControls": {
+        "properties": {
+          "can_pause": {
+            "type": "boolean",
+            "title": "Can Pause",
+            "default": true
+          },
+          "can_seek": {
+            "type": "boolean",
+            "title": "Can Seek",
+            "default": true
+          },
+          "can_change_speed": {
+            "type": "boolean",
+            "title": "Can Change Speed",
+            "default": true
+          },
+          "captions_available": {
+            "type": "boolean",
+            "title": "Captions Available",
+            "default": true
+          },
+          "reduced_motion_available": {
+            "type": "boolean",
+            "title": "Reduced Motion Available",
+            "default": true
+          },
+          "keyboard_operable": {
+            "type": "boolean",
+            "title": "Keyboard Operable",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "PlaybackControls",
+        "description": "时间内容的播放控制能力声明。"
+      },
+      "PlaybackState": {
+        "properties": {
+          "state_id": {
+            "type": "string",
+            "title": "State Id",
+            "description": "稳定状态标识符。"
+          },
+          "bundle_id": {
+            "type": "string",
+            "title": "Bundle Id",
+            "description": "关联的无障碍包 ID。"
+          },
+          "paused": {
+            "type": "boolean",
+            "title": "Paused",
+            "default": false
+          },
+          "position_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Position Seconds",
+            "default": 0.0
+          },
+          "duration_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Duration Seconds",
+            "default": 0.0
+          },
+          "speed": {
+            "type": "number",
+            "exclusiveMinimum": 0.0,
+            "title": "Speed",
+            "default": 1.0
+          },
+          "reduced_motion_enabled": {
+            "type": "boolean",
+            "title": "Reduced Motion Enabled",
+            "default": false
+          },
+          "captions_enabled": {
+            "type": "boolean",
+            "title": "Captions Enabled",
+            "default": true
+          },
+          "active_caption_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Caption Text",
+            "description": "当前时间点的字幕文本。"
+          },
+          "active_frame_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active Frame Description",
+            "description": "减少动画模式下当前时间点的静态帧描述。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最后更新时间戳。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state_id",
+          "bundle_id",
+          "updated_at"
+        ],
+        "title": "PlaybackState",
+        "description": "一个无障碍包的播放状态，支持暂停、时间控制和减少动画。"
       },
       "PopularScienceElement": {
         "properties": {
@@ -19134,6 +20171,55 @@
         "title": "ProjectUpdateRequest",
         "description": "Request to rename or update a project."
       },
+      "PronunciationNote": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "title": "Token",
+            "description": "原始文本片段。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PronunciationNoteKind",
+            "description": "片段类型。"
+          },
+          "spoken_form": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spoken Form",
+            "description": "确定的口语化读法；无法可靠朗读时为 None。"
+          },
+          "degraded": {
+            "type": "boolean",
+            "title": "Degraded",
+            "description": "无法可靠朗读时的显式降级标记，提示查看可访问公式或文本。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "token",
+          "kind"
+        ],
+        "title": "PronunciationNote",
+        "description": "朗读中数字、单位、公式和缩写的发音处理记录。"
+      },
+      "PronunciationNoteKind": {
+        "type": "string",
+        "enum": [
+          "number",
+          "unit",
+          "formula",
+          "abbreviation"
+        ],
+        "title": "PronunciationNoteKind",
+        "description": "需要发音处理的朗读内容类型。"
+      },
       "ProposeKnowledgeStateUpdateRequest": {
         "properties": {
           "concept_id": {
@@ -19372,6 +20458,111 @@
         ],
         "title": "RecoveryReset",
         "description": "Reset password using a recovery token."
+      },
+      "ReducedMotionFrame": {
+        "properties": {
+          "frame_id": {
+            "type": "string",
+            "title": "Frame Id",
+            "description": "稳定帧标识符。"
+          },
+          "order": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Order",
+            "description": "帧序号。"
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "对应的镜头/场景/元素引用。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "帧的科学内容描述，与旁白一致。"
+          },
+          "start_time": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Start Time",
+            "default": 0.0
+          },
+          "end_time": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "End Time",
+            "default": 0.0
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "frame_id",
+          "order",
+          "source_ref",
+          "description"
+        ],
+        "title": "ReducedMotionFrame",
+        "description": "减少动画模式下的一个静态帧。"
+      },
+      "ReducedMotionVariant": {
+        "properties": {
+          "variant_id": {
+            "type": "string",
+            "title": "Variant Id",
+            "description": "稳定变体标识符。"
+          },
+          "frames": {
+            "items": {
+              "$ref": "#/components/schemas/ReducedMotionFrame"
+            },
+            "type": "array",
+            "title": "Frames"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "时间内容被逐帧展示的说明。"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "variant_id"
+        ],
+        "title": "ReducedMotionVariant",
+        "description": "减少动画合同：用静态帧序列替代连续动画。"
       },
       "RejectedSliceItem": {
         "properties": {
@@ -20645,7 +21836,7 @@
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "\u4f9d\u8d56\u540d\u79f0\u3002"
+            "description": "依赖名称。"
           },
           "version": {
             "anyOf": [
@@ -20657,12 +21848,12 @@
               }
             ],
             "title": "Version",
-            "description": "\u7248\u672c\u3002"
+            "description": "版本。"
           },
           "allowed": {
             "type": "boolean",
             "title": "Allowed",
-            "description": "\u662f\u5426\u5728\u767d\u540d\u5355\u4e2d\u3002",
+            "description": "是否在白名单中。",
             "default": true
           }
         },
@@ -20671,7 +21862,7 @@
           "name"
         ],
         "title": "SandboxDependency",
-        "description": "\u6c99\u7bb1\u8fd0\u884c\u7684\u4f9d\u8d56\u9879\u8bb0\u5f55\u3002"
+        "description": "沙箱运行的依赖项记录。"
       },
       "SandboxResourceLimits": {
         "properties": {
@@ -20679,46 +21870,46 @@
             "type": "number",
             "minimum": 1.0,
             "title": "Max Cpu Seconds",
-            "description": "\u6700\u5927 CPU \u65f6\u95f4\uff0c\u5355\u4f4d\u79d2\u3002",
+            "description": "最大 CPU 时间，单位秒。",
             "default": 30.0
           },
           "max_memory_mb": {
             "type": "integer",
             "minimum": 32.0,
             "title": "Max Memory Mb",
-            "description": "\u6700\u5927\u5185\u5b58\uff0c\u5355\u4f4d MB\u3002",
+            "description": "最大内存，单位 MB。",
             "default": 512
           },
           "max_disk_mb": {
             "type": "integer",
             "minimum": 10.0,
             "title": "Max Disk Mb",
-            "description": "\u6700\u5927\u78c1\u76d8\uff0c\u5355\u4f4d MB\u3002",
+            "description": "最大磁盘，单位 MB。",
             "default": 100
           },
           "max_processes": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Max Processes",
-            "description": "\u6700\u5927\u8fdb\u7a0b\u6570\u3002",
+            "description": "最大进程数。",
             "default": 10
           },
           "network_allowed": {
             "type": "boolean",
             "title": "Network Allowed",
-            "description": "\u662f\u5426\u5141\u8bb8\u7f51\u7edc\u8bbf\u95ee\uff0c\u9ed8\u8ba4\u7981\u6b62\u3002",
+            "description": "是否允许网络访问，默认禁止。",
             "default": false
           },
           "keys_allowed": {
             "type": "boolean",
             "title": "Keys Allowed",
-            "description": "\u662f\u5426\u5141\u8bb8\u8bbf\u95ee\u5bc6\u94a5\uff0c\u9ed8\u8ba4\u7981\u6b62\u3002",
+            "description": "是否允许访问密钥，默认禁止。",
             "default": false
           }
         },
         "type": "object",
         "title": "SandboxResourceLimits",
-        "description": "\u6c99\u7bb1\u8d44\u6e90\u9650\u5236\u3002"
+        "description": "沙箱资源限制。"
       },
       "SandboxResourceUsage": {
         "properties": {
@@ -20726,62 +21917,62 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Cpu Time Ms",
-            "description": "CPU \u65f6\u95f4\uff0c\u5355\u4f4d\u6beb\u79d2\u3002",
+            "description": "CPU 时间，单位毫秒。",
             "default": 0
           },
           "memory_bytes": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Memory Bytes",
-            "description": "\u5185\u5b58\u4f7f\u7528\uff0c\u5355\u4f4d\u5b57\u8282\u3002",
+            "description": "内存使用，单位字节。",
             "default": 0
           },
           "disk_bytes": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Disk Bytes",
-            "description": "\u78c1\u76d8\u4f7f\u7528\uff0c\u5355\u4f4d\u5b57\u8282\u3002",
+            "description": "磁盘使用，单位字节。",
             "default": 0
           },
           "network_blocked": {
             "type": "boolean",
             "title": "Network Blocked",
-            "description": "\u7f51\u7edc\u662f\u5426\u88ab\u963b\u6b62\u3002",
+            "description": "网络是否被阻止。",
             "default": true
           },
           "keys_blocked": {
             "type": "boolean",
             "title": "Keys Blocked",
-            "description": "\u5bc6\u94a5\u8bbf\u95ee\u662f\u5426\u88ab\u963b\u6b62\u3002",
+            "description": "密钥访问是否被阻止。",
             "default": true
           }
         },
         "type": "object",
         "title": "SandboxResourceUsage",
-        "description": "\u6c99\u7bb1\u8fd0\u884c\u5b9e\u9645\u8d44\u6e90\u4f7f\u7528\u8bb0\u5f55\u3002"
+        "description": "沙箱运行实际资源使用记录。"
       },
       "SandboxRunRequest": {
         "properties": {
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "\u5173\u8054\u7684\u5206\u955c ID\u3002"
+            "description": "关联的分镜 ID。"
           },
           "source_code": {
             "type": "string",
             "title": "Source Code",
-            "description": "\u53ef\u6267\u884c\u4ee3\u7801\uff08Python/HTML/JS\uff09\u3002"
+            "description": "可执行代码（Python/HTML/JS）。"
           },
           "code_language": {
             "type": "string",
             "title": "Code Language",
-            "description": "\u4ee3\u7801\u8bed\u8a00\uff1apython, html, javascript\u3002"
+            "description": "代码语言：python, html, javascript。"
           },
           "repair_budget": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Repair Budget",
-            "description": "\u6709\u9650\u4fee\u590d\u6b21\u6570\u4e0a\u9650\u3002",
+            "description": "有限修复次数上限。",
             "default": 3
           },
           "fact_lock_ids": {
@@ -20790,11 +21981,11 @@
             },
             "type": "array",
             "title": "Fact Lock Ids",
-            "description": "\u7981\u6b62\u89e6\u72af\u7684\u4e8b\u5b9e\u9501 ID \u5217\u8868\u3002"
+            "description": "禁止触犯的事实锁 ID 列表。"
           },
           "resource_limits": {
             "$ref": "#/components/schemas/SandboxResourceLimits",
-            "description": "\u8d44\u6e90\u9650\u5236\u3002"
+            "description": "资源限制。"
           }
         },
         "type": "object",
@@ -20804,23 +21995,23 @@
           "code_language"
         ],
         "title": "SandboxRunRequest",
-        "description": "\u63d0\u4ea4\u6c99\u7bb1\u8fd0\u884c\u7684\u8bf7\u6c42\u3002"
+        "description": "提交沙箱运行的请求。"
       },
       "SandboxRunResult": {
         "properties": {
           "run_id": {
             "type": "string",
             "title": "Run Id",
-            "description": "\u6c99\u7bb1\u8fd0\u884c\u6807\u8bc6\u7b26\u3002"
+            "description": "沙箱运行标识符。"
           },
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "\u5173\u8054\u7684\u5206\u955c ID\u3002"
+            "description": "关联的分镜 ID。"
           },
           "status": {
             "$ref": "#/components/schemas/SandboxRunStatus",
-            "description": "\u8fd0\u884c\u72b6\u6001\u3002"
+            "description": "运行状态。"
           },
           "output": {
             "anyOf": [
@@ -20832,7 +22023,7 @@
               }
             ],
             "title": "Output",
-            "description": "\u6807\u51c6\u8f93\u51fa\u6216\u6e32\u67d3\u4ea7\u7269\u3002"
+            "description": "标准输出或渲染产物。"
           },
           "error_log": {
             "items": {
@@ -20840,11 +22031,11 @@
             },
             "type": "array",
             "title": "Error Log",
-            "description": "\u8fd0\u884c\u9519\u8bef\u65e5\u5fd7\u3002"
+            "description": "运行错误日志。"
           },
           "resource_usage": {
             "$ref": "#/components/schemas/SandboxResourceUsage",
-            "description": "\u8d44\u6e90\u4f7f\u7528\u8bb0\u5f55\u3002"
+            "description": "资源使用记录。"
           },
           "dependencies": {
             "items": {
@@ -20852,12 +22043,12 @@
             },
             "type": "array",
             "title": "Dependencies",
-            "description": "\u4f9d\u8d56\u9879\u8bb0\u5f55\u3002"
+            "description": "依赖项记录。"
           },
           "content_hash": {
             "type": "string",
             "title": "Content Hash",
-            "description": "\u8f93\u51fa\u5185\u5bb9 SHA-256 \u54c8\u5e0c\u3002"
+            "description": "输出内容 SHA-256 哈希。"
           },
           "fact_lock_violations": {
             "items": {
@@ -20865,20 +22056,20 @@
             },
             "type": "array",
             "title": "Fact Lock Violations",
-            "description": "\u89e6\u72af\u7684\u4e8b\u5b9e\u9501\u8bb0\u5f55\u3002"
+            "description": "触犯的事实锁记录。"
           },
           "repair_attempts": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Repair Attempts",
-            "description": "\u5df2\u5c1d\u8bd5\u7684\u4fee\u590d\u6b21\u6570\u3002",
+            "description": "已尝试的修复次数。",
             "default": 0
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+            "description": "创建时间戳。"
           },
           "completed_at": {
             "anyOf": [
@@ -20891,7 +22082,7 @@
               }
             ],
             "title": "Completed At",
-            "description": "\u5b8c\u6210\u65f6\u95f4\u6233\u3002"
+            "description": "完成时间戳。"
           }
         },
         "type": "object",
@@ -20903,7 +22094,7 @@
           "created_at"
         ],
         "title": "SandboxRunResult",
-        "description": "\u6c99\u7bb1\u8fd0\u884c\u7ed3\u679c\u3002"
+        "description": "沙箱运行结果。"
       },
       "SandboxRunStatus": {
         "type": "string",
@@ -20914,14 +22105,14 @@
           "failed"
         ],
         "title": "SandboxRunStatus",
-        "description": "\u6c99\u7bb1\u8fd0\u884c\u72b6\u6001\uff0c\u53ea\u63cf\u8ff0\u8fd0\u884c\u672c\u8eab\u3002"
+        "description": "沙箱运行状态，只描述运行本身。"
       },
       "SceneAccessibility": {
         "properties": {
           "alt_text": {
             "type": "string",
             "title": "Alt Text",
-            "description": "\u573a\u666f\u66ff\u4ee3\u6587\u672c\u3002"
+            "description": "场景替代文本。"
           },
           "long_description": {
             "anyOf": [
@@ -20933,7 +22124,7 @@
               }
             ],
             "title": "Long Description",
-            "description": "\u573a\u666f\u957f\u63cf\u8ff0\uff0c\u7528\u4e8e\u590d\u6742\u89c6\u89c9\u573a\u666f\u3002"
+            "description": "场景长描述，用于复杂视觉场景。"
           }
         },
         "type": "object",
@@ -20941,19 +22132,19 @@
           "alt_text"
         ],
         "title": "SceneAccessibility",
-        "description": "\u65e0\u969c\u788d\u63cf\u8ff0\u4fe1\u606f\uff0c\u9644\u52a0\u7ed9\u4e00\u4e2a\u573a\u666f\u3002"
+        "description": "无障碍描述信息，附加给一个场景。"
       },
       "SceneSpec": {
         "properties": {
           "scene_spec_id": {
             "type": "string",
             "title": "Scene Spec Id",
-            "description": "\u7a33\u5b9a\u573a\u666f\u89c4\u683c\u6807\u8bc6\u7b26\u3002"
+            "description": "稳定场景规格标识符。"
           },
           "title": {
             "type": "string",
             "title": "Title",
-            "description": "\u573a\u666f\u6807\u9898\u3002"
+            "description": "场景标题。"
           },
           "visual_objects": {
             "items": {
@@ -20961,12 +22152,12 @@
             },
             "type": "array",
             "title": "Visual Objects",
-            "description": "\u573a\u666f\u4e2d\u7684\u89c6\u89c9\u5bf9\u8c61\u5217\u8868\u3002"
+            "description": "场景中的视觉对象列表。"
           },
           "layout_description": {
             "type": "string",
             "title": "Layout Description",
-            "description": "\u5e03\u5c40\u63cf\u8ff0\u3002",
+            "description": "布局描述。",
             "default": ""
           },
           "state_description": {
@@ -20979,7 +22170,7 @@
               }
             ],
             "title": "State Description",
-            "description": "\u573a\u666f\u72b6\u6001\u63cf\u8ff0\u3002"
+            "description": "场景状态描述。"
           },
           "accessibility": {
             "anyOf": [
@@ -20990,13 +22181,13 @@
                 "type": "null"
               }
             ],
-            "description": "\u573a\u666f\u7ea7\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+            "description": "场景级无障碍描述。"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+            "description": "创建时间戳。"
           }
         },
         "type": "object",
@@ -21006,7 +22197,7 @@
           "created_at"
         ],
         "title": "SceneSpec",
-        "description": "\u5355\u573a\u666f\u89c6\u89c9\u5b9a\u4e49\uff0c\u53ef\u72ec\u7acb\u7f16\u8f91\u548c\u9a8c\u8bc1\u3002\n\nSceneSpec \u5b9a\u4e49\u5355\u4e2a\u573a\u666f\u7684\u9759\u6001\u89c6\u89c9\u8bbe\u8ba1\uff0c\u5305\u542b\u89c6\u89c9\u5bf9\u8c61\u5217\u8868\u3001\u5e03\u5c40\u3001\u72b6\u6001\u3001\n\u6570\u636e\u7ed1\u5b9a\u548c\u65e0\u969c\u788d\u63cf\u8ff0\u3002\u88ab MediaStoryboard \u4e2d\u7684\u955c\u5934\u5f15\u7528\u3002"
+        "description": "单场景视觉定义，可独立编辑和验证。\n\nSceneSpec 定义单个场景的静态视觉设计，包含视觉对象列表、布局、状态、\n数据绑定和无障碍描述。被 MediaStoryboard 中的镜头引用。"
       },
       "ScientificQualityGateCheck": {
         "type": "string",
@@ -21336,6 +22527,81 @@
         ],
         "title": "SearchResult",
         "description": "Result of a scoped hybrid search.\n\nCarries the compiled scope envelope so callers can audit the scope snapshot\nthat was enforced, and so downstream claim/evidence steps can bind the same\nscope. Coverage gaps are reported explicitly rather than silently dropping\nchannels."
+      },
+      "SequentialReadingBlock": {
+        "properties": {
+          "order": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Order",
+            "description": "阅读顺序。"
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "块角色：title, objective, scene_narration, description, data_row。"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "块文本。"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "order",
+          "role",
+          "text"
+        ],
+        "title": "SequentialReadingBlock",
+        "description": "顺序阅读视图中的一个文本块。"
+      },
+      "SequentialReadingView": {
+        "properties": {
+          "view_id": {
+            "type": "string",
+            "title": "View Id",
+            "description": "稳定视图标识符。"
+          },
+          "blocks": {
+            "items": {
+              "$ref": "#/components/schemas/SequentialReadingBlock"
+            },
+            "type": "array",
+            "title": "Blocks"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "view_id"
+        ],
+        "title": "SequentialReadingView",
+        "description": "顺序阅读合同：屏幕阅读器可线性遍历的内容版本。"
       },
       "Session": {
         "properties": {
@@ -22214,24 +23480,24 @@
           "passed": {
             "type": "boolean",
             "title": "Passed",
-            "description": "\u662f\u5426\u901a\u8fc7\u9759\u6001\u68c0\u67e5\u3002"
+            "description": "是否通过静态检查。"
           },
           "ast_valid": {
             "type": "boolean",
             "title": "Ast Valid",
-            "description": "AST \u89e3\u6790\u662f\u5426\u6709\u6548\u3002",
+            "description": "AST 解析是否有效。",
             "default": true
           },
           "deps_whitelisted": {
             "type": "boolean",
             "title": "Deps Whitelisted",
-            "description": "\u4f9d\u8d56\u662f\u5426\u5728\u767d\u540d\u5355\u4e2d\u3002",
+            "description": "依赖是否在白名单中。",
             "default": true
           },
           "lint_ok": {
             "type": "boolean",
             "title": "Lint Ok",
-            "description": "\u4ee3\u7801\u89c4\u8303\u68c0\u67e5\u662f\u5426\u901a\u8fc7\u3002",
+            "description": "代码规范检查是否通过。",
             "default": true
           },
           "errors": {
@@ -22240,7 +23506,7 @@
             },
             "type": "array",
             "title": "Errors",
-            "description": "\u68c0\u67e5\u9519\u8bef\u5217\u8868\u3002"
+            "description": "检查错误列表。"
           }
         },
         "type": "object",
@@ -22248,24 +23514,24 @@
           "passed"
         ],
         "title": "StaticCheckResult",
-        "description": "\u4ee3\u7801\u751f\u6210\u540e\u7684\u9759\u6001\u68c0\u67e5\u7ed3\u679c\u3002"
+        "description": "代码生成后的静态检查结果。"
       },
       "StoryboardClaimBinding": {
         "properties": {
           "binding_id": {
             "type": "string",
             "title": "Binding Id",
-            "description": "\u7a33\u5b9a\u7ed1\u5b9a\u6807\u8bc6\u7b26\u3002"
+            "description": "稳定绑定标识符。"
           },
           "scene_id": {
             "type": "string",
             "title": "Scene Id",
-            "description": "\u5173\u8054\u7684\u955c\u5934 ID\u3002"
+            "description": "关联的镜头 ID。"
           },
           "element_ref": {
             "type": "string",
             "title": "Element Ref",
-            "description": "\u5f15\u7528\u7684\u89c6\u89c9\u5143\u7d20\u5f15\u7528\u3002"
+            "description": "引用的视觉元素引用。"
           },
           "claim_id": {
             "anyOf": [
@@ -22277,7 +23543,7 @@
               }
             ],
             "title": "Claim Id",
-            "description": "\u7ed1\u5b9a\u7684 Claim ID\u3002"
+            "description": "绑定的 Claim ID。"
           },
           "fact_lock_id": {
             "anyOf": [
@@ -22289,7 +23555,7 @@
               }
             ],
             "title": "Fact Lock Id",
-            "description": "\u7ed1\u5b9a\u7684 FactLock ID\u3002"
+            "description": "绑定的 FactLock ID。"
           }
         },
         "type": "object",
@@ -22299,7 +23565,7 @@
           "element_ref"
         ],
         "title": "StoryboardClaimBinding",
-        "description": "\u5206\u955c\u573a\u666f\u4e2d\u89c6\u89c9\u5143\u7d20\u5230 Claim/FactLock \u7684\u7ed1\u5b9a\u3002"
+        "description": "分镜场景中视觉元素到 Claim/FactLock 的绑定。"
       },
       "StoryboardGenerationRequest": {
         "properties": {
@@ -22307,7 +23573,7 @@
             "type": "string",
             "minLength": 1,
             "title": "Title",
-            "description": "\u5206\u955c\u6807\u9898\u3002"
+            "description": "分镜标题。"
           },
           "teaching_objectives": {
             "items": {
@@ -22315,7 +23581,7 @@
             },
             "type": "array",
             "title": "Teaching Objectives",
-            "description": "\u6559\u5b66\u76ee\u6807\u5217\u8868\u3002"
+            "description": "教学目标列表。"
           },
           "media_type": {
             "type": "string",
@@ -22324,7 +23590,7 @@
               "interactive_html"
             ],
             "title": "Media Type",
-            "description": "\u5a92\u4f53\u7c7b\u578b\u3002"
+            "description": "媒体类型。"
           },
           "scenes": {
             "items": {
@@ -22332,7 +23598,7 @@
             },
             "type": "array",
             "title": "Scenes",
-            "description": "\u9884\u5b9a\u4e49\u7684\u955c\u5934\u5217\u8868\u3002\u4e3a\u7a7a\u65f6\u7531\u751f\u6210\u5668\u521b\u5efa\u9ed8\u8ba4\u5206\u955c\u3002"
+            "description": "预定义的镜头列表。为空时由生成器创建默认分镜。"
           },
           "claim_ids": {
             "items": {
@@ -22366,19 +23632,19 @@
           "media_type"
         ],
         "title": "StoryboardGenerationRequest",
-        "description": "\u521b\u5efa\u7ed3\u6784\u5316\u5206\u955c\u7684\u8bf7\u6c42\u3002"
+        "description": "创建结构化分镜的请求。"
       },
       "StoryboardNarration": {
         "properties": {
           "text": {
             "type": "string",
             "title": "Text",
-            "description": "\u65c1\u767d\u6b63\u6587\u3002"
+            "description": "旁白正文。"
           },
           "language": {
             "type": "string",
             "title": "Language",
-            "description": "\u65c1\u767d\u8bed\u8a00\u3002",
+            "description": "旁白语言。",
             "default": "zh-CN"
           },
           "voice_over_text": {
@@ -22391,7 +23657,7 @@
               }
             ],
             "title": "Voice Over Text",
-            "description": "\u5f55\u97f3\u6587\u672c\uff0c\u4e0e\u65c1\u767d\u4e0d\u540c\u65f6\u4f7f\u7528\u3002"
+            "description": "录音文本，与旁白不同时使用。"
           },
           "claim_ids": {
             "items": {
@@ -22399,7 +23665,7 @@
             },
             "type": "array",
             "title": "Claim Ids",
-            "description": "\u672c\u65c1\u767d\u8986\u76d6\u7684 Claim ID \u5217\u8868\u3002"
+            "description": "本旁白覆盖的 Claim ID 列表。"
           }
         },
         "type": "object",
@@ -22407,13 +23673,13 @@
           "text"
         ],
         "title": "StoryboardNarration",
-        "description": "\u5206\u955c\u4e2d\u4e00\u4e2a\u955c\u5934\u7684\u65c1\u767d\u63cf\u8ff0\u3002"
+        "description": "分镜中一个镜头的旁白描述。"
       },
       "StoryboardResult": {
         "properties": {
           "storyboard": {
             "$ref": "#/components/schemas/MediaStoryboard",
-            "description": "\u751f\u6210\u7684\u5206\u955c\u3002"
+            "description": "生成的分镜。"
           },
           "scene_specs": {
             "additionalProperties": {
@@ -22421,7 +23687,7 @@
             },
             "type": "object",
             "title": "Scene Specs",
-            "description": "\u5206\u955c\u5f15\u7528\u7684 SceneSpec \u5b57\u5178\u3002"
+            "description": "分镜引用的 SceneSpec 字典。"
           }
         },
         "type": "object",
@@ -22429,31 +23695,31 @@
           "storyboard"
         ],
         "title": "StoryboardResult",
-        "description": "\u5206\u955c\u751f\u6210\u7ed3\u679c\u3002"
+        "description": "分镜生成结果。"
       },
       "StoryboardScene": {
         "properties": {
           "scene_id": {
             "type": "string",
             "title": "Scene Id",
-            "description": "\u7a33\u5b9a\u955c\u5934\u6807\u8bc6\u7b26\u3002"
+            "description": "稳定镜头标识符。"
           },
           "scene_number": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Scene Number",
-            "description": "\u955c\u5934\u5e8f\u53f7\u3002"
+            "description": "镜头序号。"
           },
           "scene_spec_id": {
             "type": "string",
             "title": "Scene Spec Id",
-            "description": "\u5f15\u7528\u7684 SceneSpec ID\u3002"
+            "description": "引用的 SceneSpec ID。"
           },
           "timing_seconds": {
             "type": "number",
             "minimum": 0.0,
             "title": "Timing Seconds",
-            "description": "\u955c\u5934\u6301\u7eed\u65f6\u95f4\uff0c\u5355\u4f4d\u79d2\u3002"
+            "description": "镜头持续时间，单位秒。"
           },
           "transition_type": {
             "anyOf": [
@@ -22470,7 +23736,7 @@
               }
             ],
             "title": "Transition Type",
-            "description": "\u955c\u5934\u95f4\u8fc7\u6e21\u7c7b\u578b\uff1acut\uff08\u76f4\u63a5\u5207\u6362\uff09\u3001dissolve\uff08\u6eb6\u89e3\uff09\u3001push\uff08\u63a8\u5165\uff09\u3002"
+            "description": "镜头间过渡类型：cut（直接切换）、dissolve（溶解）、push（推入）。"
           },
           "narration": {
             "anyOf": [
@@ -22481,7 +23747,7 @@
                 "type": "null"
               }
             ],
-            "description": "\u955c\u5934\u65c1\u767d\u3002"
+            "description": "镜头旁白。"
           },
           "scene_claim_bindings": {
             "items": {
@@ -22489,7 +23755,7 @@
             },
             "type": "array",
             "title": "Scene Claim Bindings",
-            "description": "\u573a\u666f\u7ea7 Claim \u7ed1\u5b9a\u3002"
+            "description": "场景级 Claim 绑定。"
           },
           "scene_accessibility": {
             "anyOf": [
@@ -22501,7 +23767,7 @@
               }
             ],
             "title": "Scene Accessibility",
-            "description": "\u573a\u666f\u7ea7\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+            "description": "场景级无障碍描述。"
           }
         },
         "type": "object",
@@ -22512,7 +23778,7 @@
           "timing_seconds"
         ],
         "title": "StoryboardScene",
-        "description": "\u5206\u955c\u4e2d\u7684\u4e00\u4e2a\u955c\u5934\uff0c\u5f15\u7528 SceneSpec\u3002\n\n\u955c\u5934\u662f\u65f6\u95f4\u5e8f\u5217\u4e2d\u7684\u4e00\u6bb5\uff0c\u5305\u542b\u5bf9 SceneSpec \u7684\u5f15\u7528\u3001\u6301\u7eed\u65f6\u95f4\u3001\n\u8fc7\u6e21\u7c7b\u578b\u3001\u65c1\u767d\u3001Claim \u7ed1\u5b9a\u548c\u65e0\u969c\u788d\u63cf\u8ff0\u3002"
+        "description": "分镜中的一个镜头，引用 SceneSpec。\n\n镜头是时间序列中的一段，包含对 SceneSpec 的引用、持续时间、\n过渡类型、旁白、Claim 绑定和无障碍描述。"
       },
       "StoryboardStatus": {
         "type": "string",
@@ -22529,7 +23795,7 @@
           "failed"
         ],
         "title": "StoryboardStatus",
-        "description": "\u7ed3\u6784\u5316\u5206\u955c\u751f\u547d\u5468\u671f\u72b6\u6001\uff0c\u72ec\u7acb\u4e8e T032 \u7684 GenerationStatus\u3002"
+        "description": "结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。"
       },
       "StyleDiagnosticFinding": {
         "properties": {
@@ -23180,6 +24446,156 @@
         "title": "TemporaryTaskCapsule",
         "description": "Encrypted minimal context for a single task run.\n\nA temporary task capsule binds subject, purpose, objects, run, authorization\nversion, key epoch, and TTL. It is the only long-information carrier that may\nbe sent to cloud workers or model gateways."
       },
+      "Transcript": {
+        "properties": {
+          "transcript_id": {
+            "type": "string",
+            "title": "Transcript Id",
+            "description": "稳定文字稿标识符。"
+          },
+          "language": {
+            "type": "string",
+            "title": "Language",
+            "default": "zh-CN"
+          },
+          "segments": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptSegment"
+            },
+            "type": "array",
+            "title": "Segments"
+          },
+          "full_text": {
+            "type": "string",
+            "title": "Full Text",
+            "description": "全文文本。",
+            "default": ""
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "source_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "transcript_id"
+        ],
+        "title": "Transcript",
+        "description": "媒体对象的完整文字稿，与朗读、字幕共享 Claim 与版本。"
+      },
+      "TranscriptSegment": {
+        "properties": {
+          "segment_id": {
+            "type": "string",
+            "title": "Segment Id",
+            "description": "Stable segment identifier."
+          },
+          "start_time": {
+            "type": "number",
+            "title": "Start Time",
+            "description": "Start time in seconds."
+          },
+          "end_time": {
+            "type": "number",
+            "title": "End Time",
+            "description": "End time in seconds."
+          },
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Transcribed text."
+          },
+          "language": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Language",
+            "description": "Detected or declared language."
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          },
+          "low_confidence": {
+            "type": "boolean",
+            "title": "Low Confidence",
+            "description": "Whether the segment needs review.",
+            "default": false
+          },
+          "words": {
+            "items": {
+              "$ref": "#/components/schemas/TranscriptWord"
+            },
+            "type": "array",
+            "title": "Words"
+          }
+        },
+        "type": "object",
+        "required": [
+          "segment_id",
+          "start_time",
+          "end_time",
+          "text"
+        ],
+        "title": "TranscriptSegment",
+        "description": "A timed transcript segment with optional word-level alignment."
+      },
+      "TranscriptWord": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "Recognized word."
+          },
+          "start_time": {
+            "type": "number",
+            "title": "Start Time",
+            "description": "Start time in seconds."
+          },
+          "end_time": {
+            "type": "number",
+            "title": "End Time",
+            "description": "End time in seconds."
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "default": 1.0
+          }
+        },
+        "type": "object",
+        "required": [
+          "text",
+          "start_time",
+          "end_time"
+        ],
+        "title": "TranscriptWord",
+        "description": "A single word inside a transcript segment."
+      },
       "UnusedSliceItem": {
         "properties": {
           "assertion_id": {
@@ -23686,22 +25102,22 @@
           "object_id": {
             "type": "string",
             "title": "Object Id",
-            "description": "\u7a33\u5b9a\u5bf9\u8c61\u6807\u8bc6\u7b26\u3002"
+            "description": "稳定对象标识符。"
           },
           "label": {
             "type": "string",
             "title": "Label",
-            "description": "\u5bf9\u8c61\u663e\u793a\u6807\u7b7e\u3002"
+            "description": "对象显示标签。"
           },
           "role": {
             "type": "string",
             "title": "Role",
-            "description": "\u8bed\u4e49\u89d2\u8272\uff0c\u5982 axis_label, curve, annotation, particle\u3002"
+            "description": "语义角色，如 axis_label, curve, annotation, particle。"
           },
           "initial_state": {
             "type": "string",
             "title": "Initial State",
-            "description": "\u521d\u59cb\u72b6\u6001\u63cf\u8ff0\u3002"
+            "description": "初始状态描述。"
           },
           "final_state": {
             "anyOf": [
@@ -23713,7 +25129,7 @@
               }
             ],
             "title": "Final State",
-            "description": "\u7ec8\u6001\u63cf\u8ff0\u3002"
+            "description": "终态描述。"
           },
           "lifecycle_stages": {
             "items": {
@@ -23721,7 +25137,7 @@
             },
             "type": "array",
             "title": "Lifecycle Stages",
-            "description": "\u52a8\u753b\u5bf9\u8c61\u7684\u8fdb\u5165/\u4fdd\u6301/\u53d8\u6362/\u9000\u51fa\u9636\u6bb5\u3002"
+            "description": "动画对象的进入/保持/变换/退出阶段。"
           },
           "motion_trajectory": {
             "anyOf": [
@@ -23733,7 +25149,7 @@
               }
             ],
             "title": "Motion Trajectory",
-            "description": "\u8fd0\u52a8\u8f68\u8ff9\u63cf\u8ff0\uff0c\u52a8\u753b\u5173\u952e\u4fe1\u606f\u3002"
+            "description": "运动轨迹描述，动画关键信息。"
           },
           "claim_id": {
             "anyOf": [
@@ -23745,7 +25161,7 @@
               }
             ],
             "title": "Claim Id",
-            "description": "\u7ed1\u5b9a\u7684 Claim ID\u3002"
+            "description": "绑定的 Claim ID。"
           }
         },
         "type": "object",
@@ -23756,7 +25172,7 @@
           "initial_state"
         ],
         "title": "VisualObject",
-        "description": "\u5206\u955c\u573a\u666f\u4e2d\u7684\u4e00\u4e2a\u89c6\u89c9\u5bf9\u8c61\u3002"
+        "description": "分镜场景中的一个视觉对象。"
       },
       "WordingStrength": {
         "type": "string",
@@ -23853,7 +25269,7 @@
           "confirmed": {
             "type": "boolean",
             "title": "Confirmed",
-            "description": "Must be true to leave the draft state \u2014 omitting this field is rejected so that accidental confirmation cannot happen."
+            "description": "Must be true to leave the draft state — omitting this field is rejected so that accidental confirmation cannot happen."
           }
         },
         "type": "object",
@@ -24095,17 +25511,17 @@
           "report_id": {
             "type": "string",
             "title": "Report Id",
-            "description": "\u7a33\u5b9a\u62a5\u544a\u6807\u8bc6\u7b26\u3002"
+            "description": "稳定报告标识符。"
           },
           "run_id": {
             "type": "string",
             "title": "Run Id",
-            "description": "\u5173\u8054\u7684\u6c99\u7bb1\u8fd0\u884c ID\u3002"
+            "description": "关联的沙箱运行 ID。"
           },
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "\u5173\u8054\u7684\u5206\u955c ID\u3002"
+            "description": "关联的分镜 ID。"
           },
           "static_check": {
             "anyOf": [
@@ -24116,7 +25532,7 @@
                 "type": "null"
               }
             ],
-            "description": "\u9759\u6001\u68c0\u67e5\u7ed3\u679c\u3002"
+            "description": "静态检查结果。"
           },
           "sandbox_result": {
             "anyOf": [
@@ -24127,24 +25543,24 @@
                 "type": "null"
               }
             ],
-            "description": "\u6c99\u7bb1\u8fd0\u884c\u7ed3\u679c\u3002"
+            "description": "沙箱运行结果。"
           },
           "science_valid": {
             "type": "boolean",
             "title": "Science Valid",
-            "description": "\u79d1\u5b66\u4e00\u81f4\u6027\u9a8c\u8bc1\u662f\u5426\u901a\u8fc7\u3002",
+            "description": "科学一致性验证是否通过。",
             "default": false
           },
           "fact_locks_preserved": {
             "type": "boolean",
             "title": "Fact Locks Preserved",
-            "description": "\u4e8b\u5b9e\u9501\u662f\u5426\u5b8c\u6574\u4fdd\u6301\u3002",
+            "description": "事实锁是否完整保持。",
             "default": false
           },
           "accessibility_checked": {
             "type": "boolean",
             "title": "Accessibility Checked",
-            "description": "\u662f\u5426\u8fdb\u884c\u4e86\u65e0\u969c\u788d\u68c0\u67e5\u3002",
+            "description": "是否进行了无障碍检查。",
             "default": false
           },
           "errors": {
@@ -24165,7 +25581,7 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "\u62a5\u544a\u521b\u5efa\u65f6\u95f4\u6233\u3002"
+            "description": "报告创建时间戳。"
           }
         },
         "type": "object",
@@ -24176,7 +25592,7 @@
           "created_at"
         ],
         "title": "ValidationReport",
-        "description": "\u5206\u955c\u6c99\u7bb1\u8fd0\u884c\u7684\u5b8c\u6574\u9a8c\u8bc1\u62a5\u544a\u3002"
+        "description": "分镜沙箱运行的完整验证报告。"
       },
       "science_companion__contracts__profiles__HumanDecision": {
         "properties": {

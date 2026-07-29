@@ -68,7 +68,7 @@ class CassetteStore:
 
 
 class QwenApiClient:
-    """HTTP client for the Qwen OpenAI-compatible Chat Completions endpoint.
+    """HTTP client for Qwen OpenAI-compatible and DashScope-native endpoints.
 
     When ``api_key`` is None, the client operates in playback-only mode and never
     makes a real network call. When ``record_mode`` is True and a cassette store
@@ -105,6 +105,18 @@ class QwenApiClient:
                 "/compatible-mode/v1"
             )
         return "https://dashscope.aliyuncs.com/compatible-mode/v1"
+
+    @property
+    def tts_base_url(self) -> str:
+        """Build the DashScope-native TTS endpoint URL.
+
+        The Qwen TTS API uses the DashScope multimodal-generation endpoint,
+        not the OpenAI-compatible chat completions endpoint.
+        """
+        return (
+            "https://dashscope.aliyuncs.com/api/v1"
+            "/services/aigc/multimodal-generation/generation"
+        )
 
     def chat_completions(self, request_body: dict[str, Any]) -> dict[str, Any]:
         """POST /chat/completions and return the parsed response body.
@@ -163,6 +175,91 @@ class QwenApiClient:
 
         if not isinstance(response_body, dict):
             raise TransientError("Qwen returned a non-object JSON response.")
+
+        if self._record_mode and self._cassette_store is not None:
+            self._cassette_store.save(request_body, response_body)
+
+        return response_body
+
+    def text_to_speech(self, request_body: dict[str, Any]) -> dict[str, Any]:
+        """POST to the DashScope TTS endpoint and return the parsed response body.
+
+        The TTS API is a DashScope-native endpoint (not OpenAI-compatible).
+        The response contains a temporary audio URL valid for 24 hours; callers
+        must transfer the audio to controlled storage before expiry.
+
+        Raises AdapterError subclasses so the gateway can classify the failure.
+        """
+        if self._cassette_store is not None and not self._record_mode:
+            recorded = self._cassette_store.load(request_body)
+            if recorded is not None:
+                return recorded
+            if self._api_key is None:
+                raise AdapterError(
+                    code="cassette_missing",
+                    message="No cassette for this TTS request and no API key configured.",
+                    retryable=False,
+                )
+
+        if self._record_mode and self._cassette_store is not None:
+            recorded = self._cassette_store.load(request_body)
+            if recorded is not None:
+                return recorded
+
+        url = self.tts_base_url
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._api_key is not None:
+            headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
+
+        try:
+            response = self._client.post(url, json=request_body, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise TransientError(f"Qwen TTS request timeout: {exc}") from exc
+        except httpx.ConnectError as exc:
+            raise RegionError(f"Qwen TTS endpoint unreachable: {exc}") from exc
+        except httpx.NetworkError as exc:
+            raise TransientError(f"Qwen TTS network error: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise TransientError(f"Qwen TTS HTTP error: {exc}") from exc
+
+        if response.status_code == 429:
+            raise RateLimitError("Qwen TTS rate limit (429).")
+        if response.status_code in (401, 403):
+            raise AuthError("Qwen TTS authentication/authorization failed.")
+        if response.status_code >= 500:
+            raise TransientError(f"Qwen TTS server error ({response.status_code}).")
+        if response.status_code >= 400:
+            raise AdapterError(
+                code=f"client_error_{response.status_code}",
+                message=f"Qwen TTS client error ({response.status_code}).",
+                retryable=False,
+            )
+
+        try:
+            response_body = response.json()
+        except Exception as exc:
+            raise TransientError(f"Qwen TTS returned invalid JSON: {exc}") from exc
+
+        if not isinstance(response_body, dict):
+            raise TransientError("Qwen TTS returned a non-object JSON response.")
+
+        # The DashScope native API may return HTTP 200 with an error status_code
+        # in the response body. Classify these using the body status code.
+        body_status = response_body.get("status_code")
+        if isinstance(body_status, int) and body_status != 200:
+            code_str = str(response_body.get("code") or "")
+            message_str = str(response_body.get("message") or "")
+            if body_status == 429:
+                raise RateLimitError(f"Qwen TTS rate limit: {message_str}")
+            if body_status in (401, 403):
+                raise AuthError(f"Qwen TTS auth error: {message_str}")
+            if body_status >= 500:
+                raise TransientError(f"Qwen TTS server error ({body_status}): {message_str}")
+            raise AdapterError(
+                code=f"tts_error_{body_status}",
+                message=f"Qwen TTS error ({body_status}): {message_str or code_str}",
+                retryable=False,
+            )
 
         if self._record_mode and self._cassette_store is not None:
             self._cassette_store.save(request_body, response_body)
