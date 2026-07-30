@@ -49,10 +49,6 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _hash_content(content: bytes) -> str:
-    return hashlib.sha256(content).hexdigest()
-
-
 class VaultService:
     """Application service for personal vault boundaries and task capsules."""
 
@@ -220,7 +216,7 @@ class VaultService:
                 device_id=device_id,
                 purpose=purpose,
                 key_epoch=epoch.epoch_id,
-                content_hash=_hash_content(content),
+                content_hash=hashlib.sha256(content).hexdigest(),
                 content_length=len(content),
             )
             obj = self._repository.create_object(request)
