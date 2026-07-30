@@ -105,7 +105,7 @@ class InMemoryVaultRepository(VaultRepository):
         now = _now()
         object_id = _new_id()
         ref = VaultObjectRef(
-            domain=VaultObjectDomain.PERSONAL_VAULT,
+            domain=request.domain,
             owner_id=request.owner_account_id,
             object_id=object_id,
             version=1,

@@ -279,6 +279,7 @@ class VaultService:
             purpose=request.grant_purpose,
             key_epoch=source.projection.key_epoch,
             authorization_version=source.projection.authorization_version,
+            domain=VaultObjectDomain.SHARED_PROJECT,
         )
         copy = self._repository.create_object(copy_request)
         return ObjectRef(

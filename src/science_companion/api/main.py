@@ -27,6 +27,7 @@ from science_companion.api import (
     projects,
     science,
     scope,
+    sharing,
     vault,
     workflows,
 )
@@ -70,6 +71,7 @@ from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
 from science_companion.profiles.api import router as profiles_router
 from science_companion.projects import ProjectService
+from science_companion.sharing import SharingService
 from science_companion.science import (
     ClaimEvidenceService,
     ScienceSearchService,
@@ -419,6 +421,14 @@ def create_app() -> FastAPI:
         invalidation_service=invalidation_service,
     )
 
+    # T036: attach the explicit sharing service. It coordinates share previews,
+    # minimized project copies, object grants and short-lived invite tokens.
+    app.state.sharing_service = SharingService(
+        vault_service=app.state.vault_service,
+        scope_enforcer=app.state.scope_enforcer,
+        identity_service=app.state.identity_service,
+    )
+
     # T010: attach the observability service early so downstream services can
     # emit privacy-preserving audit events.
     app.state.observability_service = ObservabilityService()
@@ -667,6 +677,7 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
+    app.include_router(sharing.router)
     app.include_router(profiles_router)
     app.include_router(workflows.router)
     app.include_router(scope.router)

@@ -205,6 +205,10 @@ class VaultObjectCreateRequest(BaseModel):
         default="authz-1.0",
         description="Authorization policy version.",
     )
+    domain: VaultObjectDomain = Field(
+        default=VaultObjectDomain.PERSONAL_VAULT,
+        description="Authority domain for the new vault object.",
+    )
 
 
 class VaultShareRequest(BaseModel):

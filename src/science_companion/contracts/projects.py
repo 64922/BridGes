@@ -32,6 +32,7 @@ class ProjectRole(str, Enum):
     OWNER = "owner"
     EDITOR = "editor"
     REVIEWER = "reviewer"
+    COMMENTER = "commenter"
     VIEWER = "viewer"
 
 

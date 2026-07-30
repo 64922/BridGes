@@ -1351,6 +1351,953 @@
         }
       }
     },
+    "/sharing/projects": {
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Create Shared Project",
+        "description": "Create a new explicit shared project owned by the current account.",
+        "operationId": "create_shared_project_sharing_projects_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProjectCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "List Shared Projects",
+        "description": "List shared projects where the current account is a member.",
+        "operationId": "list_shared_projects_sharing_projects_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  },
+                  "title": "Response List Shared Projects Sharing Projects Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sharing/projects/{project_id}": {
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Get Shared Project",
+        "description": "Get a shared project projection by deep-link identifier.",
+        "operationId": "get_shared_project_sharing_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Project"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sharing/preview": {
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Preview Share",
+        "description": "Preview what will be copied before confirming a share.",
+        "operationId": "preview_share_sharing_preview_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharePreviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharePreview"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/sharing/execute": {
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Execute Share",
+        "description": "Execute a share and create the minimized project copy and object grant.",
+        "operationId": "execute_share_sharing_execute_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareExecuteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ShareExecuteResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/sharing/projects/{project_id}/invites": {
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Create Invite",
+        "description": "Create a short-lived, single-use invite token for a shared project.",
+        "operationId": "create_invite_sharing_projects__project_id__invites_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteToken"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/sharing/invites/accept": {
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Accept Invite",
+        "description": "Accept an invite token and join the shared project.",
+        "operationId": "accept_invite_sharing_invites_accept_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteAcceptRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharedProjectMember"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/sharing/projects/{project_id}/objects/{object_id}": {
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Get Shared Object",
+        "description": "Get a shared project object projection if the current account is authorized.",
+        "operationId": "get_shared_object_sharing_projects__project_id__objects__object_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sharing/projects/{project_id}/objects/{object_id}/content": {
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Get Shared Object Content",
+        "description": "Get the plaintext of a shared project object if the account has a grant.",
+        "operationId": "get_shared_object_content_sharing_projects__project_id__objects__object_id__content_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "application/octet-stream": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sharing/projects/{project_id}/members": {
+      "get": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "List Project Members",
+        "description": "List members of a shared project.",
+        "operationId": "list_project_members_sharing_projects__project_id__members_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SharedProjectMember"
+                  },
+                  "title": "Response List Project Members Sharing Projects  Project Id  Members Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sharing/grants/{grant_id}/revoke": {
+      "post": {
+        "tags": [
+          "sharing"
+        ],
+        "summary": "Revoke Grant",
+        "description": "Revoke an object grant.",
+        "operationId": "revoke_grant_sharing_grants__grant_id__revoke_post",
+        "parameters": [
+          {
+            "name": "grant_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Grant Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectGrant"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SharingError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profiles/observations": {
       "post": {
         "tags": [
@@ -7107,6 +8054,372 @@
         }
       }
     },
+    "/media/charts": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Create Chart",
+        "description": "Generate a data chart from structured data with claim bindings.",
+        "operationId": "create_chart_media_charts_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChartGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/figures": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Create Figure",
+        "description": "Generate a scientific figure from element definitions.",
+        "operationId": "create_figure_media_figures_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FigureGenerationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerationResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/objects/{object_id}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Media Object",
+        "description": "Get a generated media object by ID.",
+        "operationId": "get_media_object_media_objects__object_id__get",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScientificMediaObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/objects/{object_id}/spec": {
+      "put": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Update Media Object Spec",
+        "description": "Update the editable source of a chart or figure and re-validate.",
+        "operationId": "update_media_object_spec_media_objects__object_id__spec_put",
+        "parameters": [
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "spec_json",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Spec Json"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScientificMediaObject"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/validate-spec": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Validate Spec",
+        "description": "Validate a chart or figure spec JSON without generating output.",
+        "operationId": "validate_spec_media_validate_spec_post",
+        "parameters": [
+          {
+            "name": "spec_json",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Spec Json"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SpecValidationResult"
+                }
+              }
+            }
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/media/storyboards": {
       "post": {
         "tags": [
@@ -8147,6 +9460,382 @@
               }
             },
             "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/media/cross-media/consistency": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Check Cross Media Consistency",
+        "description": "Check cross-media Claim consistency before publishing.",
+        "operationId": "check_cross_media_consistency_media_cross_media_consistency_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/CrossMediaClaimEntry"
+                },
+                "title": "Entries"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrossMediaConsistencyResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/publish/check": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Evaluate Publish Gate",
+        "description": "Evaluate multi-modal publish gates without publishing.",
+        "operationId": "evaluate_publish_gate_media_publish_check_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaPublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MultimodalPublishGateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/publish": {
+      "post": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Publish Media",
+        "description": "Execute multi-modal publish. All gates must pass.",
+        "operationId": "publish_media_media_publish_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MediaPublishRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Publish Media Media Publish Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "List Publish Records",
+        "description": "List publish records for the current account, optionally filtered by project.",
+        "operationId": "list_publish_records_media_publish_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "title": "Response List Publish Records Media Publish Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/media/publish/{record_id}": {
+      "get": {
+        "tags": [
+          "media"
+        ],
+        "summary": "Get Publish Record",
+        "description": "Get a publish record by ID.",
+        "operationId": "get_publish_record_media_publish__record_id__get",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Get Publish Record Media Publish  Record Id  Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MediaError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -10753,6 +12442,45 @@
   },
   "components": {
     "schemas": {
+      "AccessibilityAlternative": {
+        "properties": {
+          "alt_text": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Alt Text",
+            "description": "Concise alternative text describing the visual."
+          },
+          "long_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Long Description",
+            "description": "Detailed description for complex visuals."
+          },
+          "data_table": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChartDataTable"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Equivalent data table for charts; None for figures."
+          }
+        },
+        "type": "object",
+        "required": [
+          "alt_text"
+        ],
+        "title": "AccessibilityAlternative",
+        "description": "Accessibility alternative for a visual media object."
+      },
       "AccessibilityBundle": {
         "properties": {
           "bundle_id": {
@@ -11795,6 +13523,264 @@
         "title": "CaptionTrack",
         "description": "Timed caption track for an audio or video asset."
       },
+      "ChartDataColumn": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Column name."
+          },
+          "data_type": {
+            "type": "string",
+            "title": "Data Type",
+            "description": "Inferred data type.",
+            "default": "number"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "ChartDataColumn",
+        "description": "Schema of one column in chart source data."
+      },
+      "ChartDataPoint": {
+        "properties": {
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": "object",
+            "title": "Values",
+            "description": "Field -> value mapping."
+          },
+          "is_missing": {
+            "type": "boolean",
+            "title": "Is Missing",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "values"
+        ],
+        "title": "ChartDataPoint",
+        "description": "A single data point in a chart dataset."
+      },
+      "ChartDataTable": {
+        "properties": {
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/ChartDataColumn"
+            },
+            "type": "array",
+            "title": "Columns"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ChartDataPoint"
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "source_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Note",
+            "description": "Attribution or trace note."
+          }
+        },
+        "type": "object",
+        "title": "ChartDataTable",
+        "description": "Structured source data for a chart."
+      },
+      "ChartGenerationRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title",
+            "description": "Chart title."
+          },
+          "mark": {
+            "$ref": "#/components/schemas/ChartMark",
+            "description": "Visual mark type."
+          },
+          "data": {
+            "$ref": "#/components/schemas/ChartDataTable",
+            "description": "Source data for the chart."
+          },
+          "x_field": {
+            "type": "string",
+            "minLength": 1,
+            "title": "X Field",
+            "description": "Field name for the x-axis."
+          },
+          "y_field": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Y Field",
+            "description": "Field name for the y-axis."
+          },
+          "color_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color Field",
+            "description": "Field name for color encoding."
+          },
+          "error_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Field",
+            "description": "Field name for error/uncertainty values."
+          },
+          "x_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Label",
+            "description": "X-axis label (auto if omitted)."
+          },
+          "y_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y Label",
+            "description": "Y-axis label (auto if omitted)."
+          },
+          "x_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "X Unit"
+          },
+          "y_unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Y Unit"
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids"
+          },
+          "aggregation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregation"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "mark",
+          "data",
+          "x_field",
+          "y_field"
+        ],
+        "title": "ChartGenerationRequest",
+        "description": "Request to generate a data chart from source data.\n\nThe caller provides structured data and describes what to plot."
+      },
+      "ChartMark": {
+        "type": "string",
+        "enum": [
+          "bar",
+          "line",
+          "point",
+          "area",
+          "scatter",
+          "error_bar",
+          "histogram"
+        ],
+        "title": "ChartMark",
+        "description": "Visual mark type for a data chart."
+      },
       "ChunkCorrection": {
         "properties": {
           "chunk_id": {
@@ -12762,6 +14748,60 @@
         "title": "ClaimType",
         "description": "Kind of scientific claim."
       },
+      "ClaimVisualBinding": {
+        "properties": {
+          "binding_id": {
+            "type": "string",
+            "title": "Binding Id",
+            "description": "Stable binding identifier."
+          },
+          "element_ref": {
+            "type": "string",
+            "title": "Element Ref",
+            "description": "Reference to the visual element: axis label, figure element id, etc."
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "fact_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "binding_id",
+          "element_ref"
+        ],
+        "title": "ClaimVisualBinding",
+        "description": "Binding from a visual element to a claim, evidence, or fact lock."
+      },
       "CloudControlProjection": {
         "properties": {
           "projection_id": {
@@ -13012,6 +15052,143 @@
         ],
         "title": "CoverageGap",
         "description": "A coverage or recall gap reported to the caller."
+      },
+      "CrossMediaClaimEntry": {
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id",
+            "description": "Claim ID。"
+          },
+          "media_ref": {
+            "type": "string",
+            "title": "Media Ref",
+            "description": "媒体对象中的引用位置：对象 ID、元素引用或轴字段。"
+          },
+          "media_kind": {
+            "type": "string",
+            "title": "Media Kind",
+            "description": "媒体类型：text, chart, figure, storyboard, audio, video, interactive。"
+          },
+          "canonical_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Canonical Value",
+            "description": "该 Claim 在此媒体中表达的标准值。"
+          },
+          "qualifiers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Qualifiers",
+            "description": "限定条件列表。"
+          },
+          "citation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Citation Ids"
+          }
+        },
+        "type": "object",
+        "required": [
+          "claim_id",
+          "media_ref",
+          "media_kind"
+        ],
+        "title": "CrossMediaClaimEntry",
+        "description": "一个媒体对象中引用的 Claim 及其上下文。"
+      },
+      "CrossMediaConsistencyResult": {
+        "properties": {
+          "consistent": {
+            "type": "boolean",
+            "title": "Consistent",
+            "description": "是否全部一致。"
+          },
+          "entries_checked": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Entries Checked",
+            "description": "检查的条目数。",
+            "default": 0
+          },
+          "inconsistencies": {
+            "items": {
+              "$ref": "#/components/schemas/CrossMediaInconsistency"
+            },
+            "type": "array",
+            "title": "Inconsistencies"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          }
+        },
+        "type": "object",
+        "required": [
+          "consistent"
+        ],
+        "title": "CrossMediaConsistencyResult",
+        "description": "跨媒体 Claim 一致性检查结果。"
+      },
+      "CrossMediaInconsistency": {
+        "properties": {
+          "inconsistency_id": {
+            "type": "string",
+            "title": "Inconsistency Id",
+            "description": "稳定不一致标识符。"
+          },
+          "claim_id": {
+            "type": "string",
+            "title": "Claim Id",
+            "description": "涉及的 Claim ID。"
+          },
+          "kind": {
+            "type": "string",
+            "title": "Kind",
+            "description": "不一致类型：value_mismatch, qualifier_missing, citation_missing, terminology_conflict。"
+          },
+          "media_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Media Refs",
+            "description": "涉及的媒体引用位置。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "不一致描述。"
+          },
+          "severity": {
+            "type": "string",
+            "title": "Severity",
+            "description": "严重程度：error 或 warning。",
+            "default": "error"
+          }
+        },
+        "type": "object",
+        "required": [
+          "inconsistency_id",
+          "claim_id",
+          "kind",
+          "description"
+        ],
+        "title": "CrossMediaInconsistency",
+        "description": "跨媒体一致性检查发现的单条不一致。"
       },
       "DataBinding": {
         "properties": {
@@ -13988,6 +16165,46 @@
         ],
         "title": "DraftSpan",
         "description": "A single text span in the expression draft.\n\nEach span binds to claims, evidence, citations and fact locks so that every\nimportant judgment can be traced back to its scientific justification."
+      },
+      "EditableSource": {
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "Stable source identifier."
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type",
+            "description": "Type: chart_spec, figure_spec, svg, storyboard_spec, sandbox_code, static_validation_report."
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "JSON-encoded spec or raw SVG content."
+          },
+          "format": {
+            "type": "string",
+            "title": "Format",
+            "description": "MIME type of the content field.",
+            "default": "application/json"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Monotonic version.",
+            "default": 1
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_id",
+          "source_type",
+          "content"
+        ],
+        "title": "EditableSource",
+        "description": "An editable source that defines a scientific media object.\n\nThe source is the authority — rendered SVGs and PNGs are derived from it.\nUsers can edit the source and re-validate to ensure consistency."
       },
       "EvaluationCreateRequest": {
         "properties": {
@@ -15843,6 +18060,117 @@
         "title": "FactLockViolation",
         "description": "沙箱修复过程中触犯事实锁的记录。"
       },
+      "FigureElement": {
+        "properties": {
+          "element_id": {
+            "type": "string",
+            "title": "Element Id",
+            "description": "Stable element identifier."
+          },
+          "role": {
+            "type": "string",
+            "title": "Role",
+            "description": "Semantic role: axis_label, curve, annotation, legend, scale_bar, etc."
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Display label text."
+          },
+          "claim_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Claim Id",
+            "description": "Bound claim if any."
+          },
+          "svg_fragment": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Svg Fragment",
+            "description": "Inline SVG markup for this element."
+          }
+        },
+        "type": "object",
+        "required": [
+          "element_id",
+          "role",
+          "label"
+        ],
+        "title": "FigureElement",
+        "description": "A labeled element in a scientific figure."
+      },
+      "FigureGenerationRequest": {
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Title",
+            "description": "Figure title."
+          },
+          "elements": {
+            "items": {
+              "$ref": "#/components/schemas/FigureElement"
+            },
+            "type": "array",
+            "title": "Elements",
+            "description": "Figure elements. When empty, the service generates defaults."
+          },
+          "claim_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Claim Ids"
+          },
+          "fact_lock_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Fact Lock Ids"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title"
+        ],
+        "title": "FigureGenerationRequest",
+        "description": "Request to generate a scientific figure.\n\nThe caller provides element definitions and optional claim bindings."
+      },
       "FormulaBinding": {
         "properties": {
           "binding_id": {
@@ -15905,6 +18233,43 @@
         "title": "GenerateLessonRequest",
         "description": "Request to generate a short lesson from a teaching plan."
       },
+      "GenerationResult": {
+        "properties": {
+          "media_object": {
+            "$ref": "#/components/schemas/ScientificMediaObject",
+            "description": "Generated media object."
+          },
+          "model_run_lock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ModelRunLock"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Model run lock when a model was used."
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_object"
+        ],
+        "title": "GenerationResult",
+        "description": "Result of a media generation task."
+      },
+      "GenerationStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "generating",
+          "completed",
+          "failed",
+          "validation_failed"
+        ],
+        "title": "GenerationStatus",
+        "description": "Lifecycle status of a media generation task."
+      },
       "Genre": {
         "type": "string",
         "enum": [
@@ -15940,6 +18305,17 @@
         ],
         "title": "GenreElementRole",
         "description": "Role of a genre-specific structural element within a draft.\n\nPopular science and lecture script genres expose their required sections as\nfirst-class, auditable elements so users can verify that analogies, analogy\nboundaries, learning objectives and comprehension checks are present and\ndistinct. Research report and paper-assist genres add observation,\nanalysis, interpretation, limitation, next-step and author-assistance\nelements (T027)."
+      },
+      "GrantPermission": {
+        "type": "string",
+        "enum": [
+          "view",
+          "edit",
+          "review",
+          "publish"
+        ],
+        "title": "GrantPermission",
+        "description": "Fine-grained permission on a shared project object.\n\nPermissions are additive: a subject may hold multiple permissions on the\nsame object through role baseline + explicit object grant."
       },
       "HTTPValidationError": {
         "properties": {
@@ -16225,6 +18601,148 @@
         ],
         "title": "InputQualityGate",
         "description": "Named gates that imported content must pass before entering evidence."
+      },
+      "InviteAcceptRequest": {
+        "properties": {
+          "token_secret": {
+            "type": "string",
+            "title": "Token Secret",
+            "description": "Opaque token secret to redeem."
+          }
+        },
+        "type": "object",
+        "required": [
+          "token_secret"
+        ],
+        "title": "InviteAcceptRequest",
+        "description": "Request to accept an invite token."
+      },
+      "InviteCreateRequest": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project to invite into."
+          },
+          "recipient_account_id": {
+            "type": "string",
+            "title": "Recipient Account Id",
+            "description": "Expected recipient account."
+          },
+          "role": {
+            "$ref": "#/components/schemas/SharedProjectRole",
+            "description": "Role the recipient will hold.",
+            "default": "viewer"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Seconds",
+            "description": "Token time-to-live in seconds (min 60, max 86400).",
+            "default": 3600
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "recipient_account_id"
+        ],
+        "title": "InviteCreateRequest",
+        "description": "Request to create an invite token for a shared project."
+      },
+      "InviteToken": {
+        "properties": {
+          "token_id": {
+            "type": "string",
+            "title": "Token Id",
+            "description": "Stable token identifier."
+          },
+          "token_secret": {
+            "type": "string",
+            "title": "Token Secret",
+            "description": "Opaque secret for token redemption."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project the invite grants access to."
+          },
+          "invited_by": {
+            "type": "string",
+            "title": "Invited By",
+            "description": "Account that created the invitation."
+          },
+          "expected_recipient_id": {
+            "type": "string",
+            "title": "Expected Recipient Id",
+            "description": "Account expected to redeem the invitation."
+          },
+          "role": {
+            "$ref": "#/components/schemas/SharedProjectRole",
+            "description": "Role the recipient will hold upon acceptance."
+          },
+          "status": {
+            "$ref": "#/components/schemas/InviteTokenStatus",
+            "description": "Current token status.",
+            "default": "pending"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Token creation timestamp."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "Token expiration timestamp."
+          },
+          "accepted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At",
+            "description": "If set, the token has been accepted."
+          },
+          "single_use": {
+            "type": "boolean",
+            "title": "Single Use",
+            "description": "Token can only be redeemed once.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "token_id",
+          "token_secret",
+          "project_id",
+          "invited_by",
+          "expected_recipient_id",
+          "role",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "InviteToken",
+        "description": "Short-lived, single-use invitation token bound to project and identity.\n\nThe token is valid only for the specified project and expected recipient.\nIt expires after a short TTL and can only be consumed once."
+      },
+      "InviteTokenStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "revoked",
+          "expired"
+        ],
+        "title": "InviteTokenStatus",
+        "description": "Lifecycle status of an invite token."
       },
       "KeyboardAccessPath": {
         "properties": {
@@ -17666,6 +20184,17 @@
         "title": "MediaManifest",
         "description": "Unified manifest for one scientific media object.\n\nThe manifest links the original SourceAsset to its DerivedAssets and to any\nscientific bindings. It is versioned; corrections update the manifest without\noverwriting the previous version."
       },
+      "MediaObjectType": {
+        "type": "string",
+        "enum": [
+          "chart",
+          "scientific_figure",
+          "interactive_html",
+          "animation"
+        ],
+        "title": "MediaObjectType",
+        "description": "Type of a generated scientific media object."
+      },
       "MediaProjection": {
         "properties": {
           "source_asset": {
@@ -17715,6 +20244,56 @@
         ],
         "title": "MediaProjection",
         "description": "Public projection of a media asset with its manifest and derived assets."
+      },
+      "MediaPublishRequest": {
+        "properties": {
+          "media_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Media Object Ids",
+            "description": "要发布的媒体对象 ID 列表。"
+          },
+          "source_asset_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Asset Ids",
+            "description": "关联的原始资产 ID 列表。"
+          },
+          "storyboard_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Storyboard Ids",
+            "description": "关联的分镜 ID 列表。"
+          },
+          "accessibility_bundle_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Accessibility Bundle Ids",
+            "description": "关联的无障碍包 ID 列表。"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          }
+        },
+        "type": "object",
+        "title": "MediaPublishRequest",
+        "description": "多模态发布请求。"
       },
       "MediaQualityGate": {
         "type": "string",
@@ -18066,6 +20645,78 @@
         "title": "ModelRunLock",
         "description": "Immutable snapshot of one model invocation.\n\nThe lock records the exact capability, model, region, parameters, prompt\nversion and contract that were used, so the call can be replayed and audited."
       },
+      "MultimodalGateResult": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "fail"
+        ],
+        "title": "MultimodalGateResult",
+        "description": "多模态发布门单项结果。"
+      },
+      "MultimodalPublishGate": {
+        "type": "string",
+        "enum": [
+          "claim_consistency",
+          "license",
+          "authenticity",
+          "sandbox",
+          "accessibility",
+          "fact_lock",
+          "invalidation"
+        ],
+        "title": "MultimodalPublishGate",
+        "description": "多模态发布门名称。"
+      },
+      "MultimodalPublishGateResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "是否全部通过。"
+          },
+          "gate_results": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/MultimodalGateResult"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/MultimodalPublishGate"
+            },
+            "type": "object",
+            "title": "Gate Results"
+          },
+          "failed_gates": {
+            "items": {
+              "$ref": "#/components/schemas/MultimodalPublishGate"
+            },
+            "type": "array",
+            "title": "Failed Gates"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons"
+          },
+          "consistency_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CrossMediaConsistencyResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed"
+        ],
+        "title": "MultimodalPublishGateResult",
+        "description": "多模态发布门综合结果。"
+      },
       "NarrationAudio": {
         "properties": {
           "narration_id": {
@@ -18306,6 +20957,108 @@
         ],
         "title": "ObjectDomain",
         "description": "Authority domain that owns the object.\n\n- PERSONAL_VAULT: owned by an individual account; not visible to collaborators\n  or admins by default.\n- SHARED_PROJECT: owned by a project, created from an explicit share decision.\n- INSTITUTION_OWNED: owned by an institution management domain."
+      },
+      "ObjectGrant": {
+        "properties": {
+          "grant_id": {
+            "type": "string",
+            "title": "Grant Id",
+            "description": "Stable grant identifier."
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project that owns the object."
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "Object to which the grant applies."
+          },
+          "grantee_account_id": {
+            "type": "string",
+            "title": "Grantee Account Id",
+            "description": "Account that holds the grant."
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/GrantPermission"
+            },
+            "type": "array",
+            "title": "Permissions",
+            "description": "Permissions granted on the object."
+          },
+          "granted_by": {
+            "type": "string",
+            "title": "Granted By",
+            "description": "Account that created the grant."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Declared purpose of the grant."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ObjectGrantStatus",
+            "description": "Current grant status.",
+            "default": "active"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Grant creation timestamp."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "If set, the grant expires at this time."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "If set, the grant has been revoked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "grant_id",
+          "project_id",
+          "object_id",
+          "grantee_account_id",
+          "permissions",
+          "granted_by",
+          "purpose",
+          "created_at"
+        ],
+        "title": "ObjectGrant",
+        "description": "Per-object authorization in a shared project.\n\nAn object grant binds a subject to specific permissions on a specific\nproject object. Role baseline and object grants together determine the\neffective permission set."
+      },
+      "ObjectGrantStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "revoked",
+          "expired"
+        ],
+        "title": "ObjectGrantStatus",
+        "description": "Lifecycle status of an object grant."
       },
       "ObjectRef": {
         "properties": {
@@ -20092,6 +22845,7 @@
           "owner",
           "editor",
           "reviewer",
+          "commenter",
           "viewer"
         ],
         "title": "ProjectRole",
@@ -22199,6 +24953,115 @@
         "title": "SceneSpec",
         "description": "单场景视觉定义，可独立编辑和验证。\n\nSceneSpec 定义单个场景的静态视觉设计，包含视觉对象列表、布局、状态、\n数据绑定和无障碍描述。被 MediaStoryboard 中的镜头引用。"
       },
+      "ScientificMediaObject": {
+        "properties": {
+          "media_object_id": {
+            "type": "string",
+            "title": "Media Object Id",
+            "description": "Stable media object identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account."
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "media_type": {
+            "$ref": "#/components/schemas/MediaObjectType",
+            "description": "Chart or scientific figure."
+          },
+          "editable_source": {
+            "$ref": "#/components/schemas/EditableSource",
+            "description": "Editable source spec."
+          },
+          "svg_content": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Svg Content",
+            "description": "Rendered SVG output."
+          },
+          "claim_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/ClaimVisualBinding"
+            },
+            "type": "array",
+            "title": "Claim Bindings"
+          },
+          "data_bindings": {
+            "items": {
+              "$ref": "#/components/schemas/DataBinding"
+            },
+            "type": "array",
+            "title": "Data Bindings"
+          },
+          "fact_lock_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Lock Set Id"
+          },
+          "accessibility": {
+            "$ref": "#/components/schemas/AccessibilityAlternative",
+            "description": "Alt text and equivalent data table."
+          },
+          "validation_errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validation Errors"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GenerationStatus",
+            "default": "completed"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "media_object_id",
+          "account_id",
+          "media_type",
+          "editable_source",
+          "accessibility",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ScientificMediaObject",
+        "description": "A generated scientific media object with editable source and bindings.\n\nThis is the output of the generation pipeline — a stand-alone media work\nwith its editable source, rendered SVG, claim bindings and accessibility\nalternative. It is versioned and can enter the task stage artifact system."
+      },
       "ScientificQualityGateCheck": {
         "type": "string",
         "enum": [
@@ -22674,6 +25537,380 @@
         ],
         "title": "SessionResponse",
         "description": "Response for an existing session lookup."
+      },
+      "ShareExecuteRequest": {
+        "properties": {
+          "source_object_id": {
+            "type": "string",
+            "title": "Source Object Id",
+            "description": "Personal vault object to share."
+          },
+          "target_project_id": {
+            "type": "string",
+            "title": "Target Project Id",
+            "description": "Project that will receive the copy."
+          },
+          "grant_purpose": {
+            "type": "string",
+            "title": "Grant Purpose",
+            "description": "Declared purpose of the share."
+          },
+          "recipient_account_id": {
+            "type": "string",
+            "title": "Recipient Account Id",
+            "description": "Account that will receive access to the project copy."
+          },
+          "recipient_role": {
+            "$ref": "#/components/schemas/SharedProjectRole",
+            "description": "Role the recipient will hold.",
+            "default": "viewer"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/GrantPermission"
+            },
+            "type": "array",
+            "title": "Permissions",
+            "description": "Explicit object-level permissions for the recipient."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "If set, the object grant expires at this time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_object_id",
+          "target_project_id",
+          "grant_purpose",
+          "recipient_account_id"
+        ],
+        "title": "ShareExecuteRequest",
+        "description": "Request to execute a share after preview confirmation."
+      },
+      "ShareExecuteResult": {
+        "properties": {
+          "project_object_id": {
+            "type": "string",
+            "title": "Project Object Id",
+            "description": "New project copy object identifier."
+          },
+          "project_object_domain": {
+            "type": "string",
+            "title": "Project Object Domain",
+            "description": "Domain of the new object.",
+            "default": "shared_project"
+          },
+          "target_project_id": {
+            "type": "string",
+            "title": "Target Project Id",
+            "description": "Project that received the copy."
+          },
+          "source_object_id": {
+            "type": "string",
+            "title": "Source Object Id",
+            "description": "Original personal vault object."
+          },
+          "grant_id": {
+            "type": "string",
+            "title": "Grant Id",
+            "description": "Object grant identifier for the recipient."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "If set, the object grant expires at this time."
+          },
+          "independence_note": {
+            "type": "string",
+            "title": "Independence Note",
+            "description": "Post-share independence guarantee.",
+            "default": "副本与原件独立；后续修改不自动同步。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_object_id",
+          "target_project_id",
+          "source_object_id",
+          "grant_id"
+        ],
+        "title": "ShareExecuteResult",
+        "description": "Result of a successful share execution."
+      },
+      "SharePreview": {
+        "properties": {
+          "source_object_id": {
+            "type": "string",
+            "title": "Source Object Id",
+            "description": "Personal vault object to share."
+          },
+          "source_owner_id": {
+            "type": "string",
+            "title": "Source Owner Id",
+            "description": "Current owner of the source object."
+          },
+          "target_project_id": {
+            "type": "string",
+            "title": "Target Project Id",
+            "description": "Project that will receive the copy."
+          },
+          "recipient_account_id": {
+            "type": "string",
+            "title": "Recipient Account Id",
+            "description": "Account that will receive access to the project copy."
+          },
+          "grant_purpose": {
+            "type": "string",
+            "title": "Grant Purpose",
+            "description": "Declared purpose of the share."
+          },
+          "included_fields": {
+            "items": {
+              "$ref": "#/components/schemas/SharePreviewField"
+            },
+            "type": "array",
+            "title": "Included Fields",
+            "description": "Fields that will be copied to the project object."
+          },
+          "excluded_fields": {
+            "items": {
+              "$ref": "#/components/schemas/SharePreviewField"
+            },
+            "type": "array",
+            "title": "Excluded Fields",
+            "description": "Fields that will NOT be copied (private metadata, profiles, etc.)."
+          },
+          "independence_note": {
+            "type": "string",
+            "title": "Independence Note",
+            "description": "Explains that the copy is independent from the original.",
+            "default": "副本与原件独立；后续修改不自动同步。"
+          },
+          "recipient_role": {
+            "$ref": "#/components/schemas/SharedProjectRole",
+            "description": "Role the recipient will hold in the shared project.",
+            "default": "viewer"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/GrantPermission"
+            },
+            "type": "array",
+            "title": "Permissions",
+            "description": "Explicit object-level permissions being granted."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "If set, the share grant expires at this time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_object_id",
+          "source_owner_id",
+          "target_project_id",
+          "recipient_account_id",
+          "grant_purpose"
+        ],
+        "title": "SharePreview",
+        "description": "Preview of what will be shared before the user confirms.\n\nThe preview explicitly shows included and excluded fields, the current\nowner, the target project, the purpose, the expiry, and the post-share\nindependence guarantee."
+      },
+      "SharePreviewField": {
+        "properties": {
+          "field_name": {
+            "type": "string",
+            "title": "Field Name",
+            "description": "Name of the field."
+          },
+          "included": {
+            "type": "boolean",
+            "title": "Included",
+            "description": "Whether this field will be copied."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Why the field is included or excluded.",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "field_name",
+          "included"
+        ],
+        "title": "SharePreviewField",
+        "description": "A single field in the share preview, indicating inclusion or exclusion."
+      },
+      "SharePreviewRequest": {
+        "properties": {
+          "source_object_id": {
+            "type": "string",
+            "title": "Source Object Id",
+            "description": "Personal vault object to share."
+          },
+          "target_project_id": {
+            "type": "string",
+            "title": "Target Project Id",
+            "description": "Project that will receive the copy."
+          },
+          "grant_purpose": {
+            "type": "string",
+            "title": "Grant Purpose",
+            "description": "Declared purpose of the share."
+          },
+          "recipient_account_id": {
+            "type": "string",
+            "title": "Recipient Account Id",
+            "description": "Account that will receive access to the project copy."
+          },
+          "recipient_role": {
+            "$ref": "#/components/schemas/SharedProjectRole",
+            "description": "Role the recipient will hold.",
+            "default": "viewer"
+          },
+          "permissions": {
+            "items": {
+              "$ref": "#/components/schemas/GrantPermission"
+            },
+            "type": "array",
+            "title": "Permissions",
+            "description": "Explicit object-level permissions being requested."
+          },
+          "expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expires At",
+            "description": "If set, the object grant expires at this time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_object_id",
+          "target_project_id",
+          "grant_purpose",
+          "recipient_account_id"
+        ],
+        "title": "SharePreviewRequest",
+        "description": "Request to preview a share before it is executed."
+      },
+      "SharedProjectMember": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "Project identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Member account identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/SharedProjectRole",
+            "description": "Member's role in the project."
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At",
+            "description": "When the member joined."
+          },
+          "invited_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited By",
+            "description": "Account that invited this member, if applicable."
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "account_id",
+          "role",
+          "joined_at"
+        ],
+        "title": "SharedProjectMember",
+        "description": "A member of a shared project with their role."
+      },
+      "SharedProjectRole": {
+        "type": "string",
+        "enum": [
+          "owner",
+          "editor",
+          "reviewer",
+          "commenter",
+          "viewer"
+        ],
+        "title": "SharedProjectRole",
+        "description": "Role of a member inside a shared project.\n\nRoles provide a baseline permission range; object-level grants can further\ntighten or extend specific object access within the role's maximum."
+      },
+      "SharingError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "SharingError",
+        "description": "Uniform sharing error response."
       },
       "ShortLesson": {
         "properties": {
@@ -23474,6 +26711,47 @@
         "type": "object",
         "title": "SpatialTemporalLocator",
         "description": "Locator of a derived asset within its source asset."
+      },
+      "SpecValidationResult": {
+        "properties": {
+          "valid": {
+            "type": "boolean",
+            "title": "Valid",
+            "description": "Whether the spec passes all checks."
+          },
+          "errors": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Errors"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings"
+          },
+          "data_consistent": {
+            "type": "boolean",
+            "title": "Data Consistent",
+            "description": "Whether values match the source data.",
+            "default": true
+          },
+          "claims_consistent": {
+            "type": "boolean",
+            "title": "Claims Consistent",
+            "description": "Whether claim bindings are valid.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "valid"
+        ],
+        "title": "SpecValidationResult",
+        "description": "Result of validating a chart/figure spec against source data and facts."
       },
       "StaticCheckResult": {
         "properties": {
@@ -24881,6 +28159,11 @@
             "title": "Authorization Version",
             "description": "Authorization policy version.",
             "default": "authz-1.0"
+          },
+          "domain": {
+            "$ref": "#/components/schemas/VaultObjectDomain",
+            "description": "Authority domain for the new vault object.",
+            "default": "personal_vault"
           }
         },
         "type": "object",
