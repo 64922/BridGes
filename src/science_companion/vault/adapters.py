@@ -36,6 +36,7 @@ from science_companion.contracts.vault import (
     VaultObjectSummary,
     VaultRuntime,
 )
+from science_companion.persistence import StateStore
 from science_companion.vault.ports import (
     CloudControlProjectionStore,
     DeviceKeychainPort,
@@ -73,8 +74,32 @@ class InMemoryCloudControlProjectionStore(CloudControlProjectionStore):
     repository or device port.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, state_store: StateStore | None = None) -> None:
         self._projections: dict[str, CloudControlProjection] = {}
+        self._state_store = state_store
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if self._state_store is None:
+            return
+        state = self._state_store.load("vault_projections") or {}
+        self._projections = {
+            key: CloudControlProjection.model_validate(value)
+            for key, value in state.get("projections", {}).items()
+        }
+
+    def _persist(self) -> None:
+        if self._state_store is None:
+            return
+        self._state_store.save(
+            "vault_projections",
+            {
+                "projections": {
+                    key: projection.model_dump(mode="json")
+                    for key, projection in self._projections.items()
+                }
+            },
+        )
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -86,6 +111,7 @@ class InMemoryCloudControlProjectionStore(CloudControlProjectionStore):
             projection.object_ref.owner_id, projection.object_ref.object_id
         )
         self._projections[key] = projection
+        self._persist()
         return projection
 
     def get_projection(
@@ -105,12 +131,63 @@ class InMemoryVaultRepository(VaultRepository):
     def __init__(
         self,
         projection_store: CloudControlProjectionStore | None = None,
+        state_store: StateStore | None = None,
     ) -> None:
         self._objects: dict[str, VaultObject] = {}
         self._capsules: dict[str, TemporaryTaskCapsule] = {}
         self._contents: dict[str, bytes] = {}
         self._device_local_wrapped_keys: dict[str, bytes] = {}
-        self._projection_store = projection_store or InMemoryCloudControlProjectionStore()
+        self._state_store = state_store
+        self._projection_store = projection_store or InMemoryCloudControlProjectionStore(
+            state_store=state_store
+        )
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if self._state_store is None:
+            return
+        state = self._state_store.load("vault") or {}
+        self._objects = {
+            key: VaultObject.model_validate(value)
+            for key, value in state.get("objects", {}).items()
+        }
+        self._capsules = {
+            key: TemporaryTaskCapsule.model_validate(value)
+            for key, value in state.get("capsules", {}).items()
+        }
+        self._contents = {
+            key: base64.b64decode(value)
+            for key, value in state.get("contents", {}).items()
+        }
+        self._device_local_wrapped_keys = {
+            key: base64.b64decode(value)
+            for key, value in state.get("wrapped_keys", {}).items()
+        }
+
+    def _persist(self) -> None:
+        if self._state_store is None:
+            return
+        self._state_store.save(
+            "vault",
+            {
+                "objects": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._objects.items()
+                },
+                "capsules": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._capsules.items()
+                },
+                "contents": {
+                    key: base64.b64encode(value).decode("ascii")
+                    for key, value in self._contents.items()
+                },
+                "wrapped_keys": {
+                    key: base64.b64encode(value).decode("ascii")
+                    for key, value in self._device_local_wrapped_keys.items()
+                },
+            },
+        )
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -159,6 +236,7 @@ class InMemoryVaultRepository(VaultRepository):
         self._objects[self._key(ref.owner_id, ref.object_id)] = obj
         self._contents[self._key(ref.owner_id, ref.object_id)] = content_bytes
         self._projection_store.save_projection(projection)
+        self._persist()
         return obj
 
     def get_object(
@@ -210,6 +288,7 @@ class InMemoryVaultRepository(VaultRepository):
             status=CapsuleStatus.ISSUED,
         )
         self._capsules[capsule.capsule_id] = capsule
+        self._persist()
         return capsule
 
     def get_capsule(self, owner_id: str, capsule_id: str) -> TemporaryTaskCapsule:
@@ -228,6 +307,7 @@ class InMemoryVaultRepository(VaultRepository):
         if any(ref.owner_id != owner_id for ref in capsule.object_refs):
             raise VaultError("胶囊不存在或没有访问权限。")
         capsule.status = CapsuleStatus.REVOKED
+        self._persist()
         return capsule
 
     def get_cloud_projection(
@@ -240,6 +320,7 @@ class InMemoryVaultRepository(VaultRepository):
     ) -> None:
         """Store the wrapped data key for a device-local encrypted object."""
         self._device_local_wrapped_keys[self._key(owner_id, object_id)] = wrapped_key
+        self._persist()
 
     def get_device_local_wrapped_key(
         self, owner_id: str, object_id: str
@@ -374,9 +455,41 @@ class FernetVaultEncryptionAdapter(VaultEncryptionPort):
 class InMemoryDevicePairingRepository(DevicePairingRepository):
     """In-memory store for device certificates and key epochs."""
 
-    def __init__(self) -> None:
+    def __init__(self, state_store: StateStore | None = None) -> None:
         self._certificates: dict[str, DeviceCertificate] = {}
         self._epochs: dict[str, KeyEpoch] = {}
+        self._state_store = state_store
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if self._state_store is None:
+            return
+        state = self._state_store.load("device_pairing") or {}
+        self._certificates = {
+            key: DeviceCertificate.model_validate(value)
+            for key, value in state.get("certificates", {}).items()
+        }
+        self._epochs = {
+            key: KeyEpoch.model_validate(value)
+            for key, value in state.get("epochs", {}).items()
+        }
+
+    def _persist(self) -> None:
+        if self._state_store is None:
+            return
+        self._state_store.save(
+            "device_pairing",
+            {
+                "certificates": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._certificates.items()
+                },
+                "epochs": {
+                    key: value.model_dump(mode="json")
+                    for key, value in self._epochs.items()
+                },
+            },
+        )
 
     def _key(self, account_id: str, device_id: str) -> str:
         return f"{account_id}:{device_id}"
@@ -385,6 +498,7 @@ class InMemoryDevicePairingRepository(DevicePairingRepository):
         self, certificate: DeviceCertificate
     ) -> DeviceCertificate:
         self._certificates[self._key(certificate.account_id, certificate.device_id)] = certificate
+        self._persist()
         return certificate
 
     def get_certificate(
@@ -401,6 +515,7 @@ class InMemoryDevicePairingRepository(DevicePairingRepository):
 
     def save_key_epoch(self, epoch: KeyEpoch) -> KeyEpoch:
         self._epochs[self._key(epoch.account_id, epoch.device_id)] = epoch
+        self._persist()
         return epoch
 
     def get_active_epoch(

@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import secrets
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from science_companion import __version__ as package_version
@@ -30,8 +30,8 @@ from science_companion.contracts.evaluation import (
 )
 from science_companion.contracts.workflows import (
     RunProjection,
-    WorkOrder,
     WorkflowRunStatus,
+    WorkOrder,
 )
 from science_companion.observability.scrubber import scrub_payload
 from science_companion.workflows import WorkflowError, WorkflowService
@@ -46,7 +46,7 @@ class EvaluationError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _build_digest() -> str:
@@ -94,7 +94,7 @@ def _extract_schema_versions(locks: list[ModelRunLock]) -> dict[str, str]:
 def _model_locks_match(a: list[ModelRunLock], b: list[ModelRunLock]) -> bool:
     if len(a) != len(b):
         return False
-    for lock_a, lock_b in zip(a, b):
+    for lock_a, lock_b in zip(a, b, strict=True):
         if lock_a.capability_name != lock_b.capability_name:
             return False
         if lock_a.capability_version != lock_b.capability_version:
@@ -182,9 +182,10 @@ class EvaluationService:
             config_digest=_config_digest(),
             random_seed=request.random_seed,
             dataset_versions={},
-            domain_pack_versions={
-                ref: "1" for ref in source_run.context_envelope.domain_pack_refs
-            },
+            domain_pack_versions=dict.fromkeys(
+                source_run.context_envelope.domain_pack_refs,
+                "1",
+            ),
             model_run_locks=list(source_run.model_run_locks),
             prompt_versions=_extract_prompt_versions(source_run.model_run_locks),
             schema_versions=_extract_schema_versions(source_run.model_run_locks),
@@ -198,7 +199,13 @@ class EvaluationService:
 
     def _replay_workflow(
         self, account_id: str, lock: EvaluationRunLock
-    ) -> tuple[RunProjection | None, list[ModelRunLock], list[str], EvaluationFailureCategory, str | None]:
+    ) -> tuple[
+        RunProjection | None,
+        list[ModelRunLock],
+        list[str],
+        EvaluationFailureCategory,
+        str | None,
+    ]:
         """Replay the frozen WorkOrder through the production workflow seam.
 
         Returns the final projection, observed model locks, state trajectory,
@@ -213,7 +220,13 @@ class EvaluationService:
                 account_id=account_id, order=lock.work_order
             )
         except WorkflowError as exc:
-            return None, observed_locks, trajectory, EvaluationFailureCategory.ORCHESTRATION, str(exc)
+            return (
+                None,
+                observed_locks,
+                trajectory,
+                EvaluationFailureCategory.ORCHESTRATION,
+                str(exc),
+            )
 
         trajectory.append(draft.run_status.value)
 
@@ -224,7 +237,13 @@ class EvaluationService:
                 confirmed=True,
             )
         except WorkflowError as exc:
-            return draft, observed_locks, trajectory, EvaluationFailureCategory.ORCHESTRATION, str(exc)
+            return (
+                draft,
+                observed_locks,
+                trajectory,
+                EvaluationFailureCategory.ORCHESTRATION,
+                str(exc),
+            )
 
         trajectory.append(confirmed.run_status.value)
         projection = confirmed
@@ -284,7 +303,13 @@ class EvaluationService:
         self,
         account_id: str,
         lock: EvaluationRunLock,
-    ) -> tuple[RunProjection | None, list[ModelRunLock], list[str], EvaluationFailureCategory, str | None]:
+    ) -> tuple[
+        RunProjection | None,
+        list[ModelRunLock],
+        list[str],
+        EvaluationFailureCategory,
+        str | None,
+    ]:
         """Execute the frozen WorkOrder once and return replay results."""
         return self._replay_workflow(account_id, lock)
 
@@ -322,6 +347,7 @@ class EvaluationService:
                 outputs["publish_eligible"] = projection.publish_eligible
 
             metrics: list[EvaluationMetric] = []
+            observed_latency: float | None = None
             if projection is not None:
                 metrics.append(
                     EvaluationMetric(
@@ -331,16 +357,9 @@ class EvaluationService:
                     )
                 )
                 if projection.run_started_at and projection.run_ended_at:
-                    latency = (
+                    observed_latency = (
                         projection.run_ended_at - projection.run_started_at
                     ).total_seconds()
-                    metrics.append(
-                        EvaluationMetric(
-                            name="run_latency_seconds",
-                            value=latency,
-                            unit="seconds",
-                        )
-                    )
 
             logs, _ = scrub_payload(
                 {
@@ -373,6 +392,9 @@ class EvaluationService:
                 cost_latency={
                     "execution_count": request.execution_count,
                     "execution_index": exec_index,
+                    # Runtime latency is an observation, not a deterministic
+                    # replay result, so it must not participate in result diffs.
+                    "observed_run_latency_seconds": observed_latency,
                 },
                 logs_and_traces=logs,
                 reproduction_command=self._build_reproduction_command(lock),
@@ -387,6 +409,7 @@ class EvaluationService:
             record.bundle_ids.append(bundle.bundle_id)
             last_bundle = bundle
 
+        assert last_bundle is not None
         return last_bundle
 
     def _build_reproduction_command(self, lock: EvaluationRunLock) -> str:
@@ -520,9 +543,9 @@ class EvaluationService:
         self, a: WorkOrder, b: WorkOrder
     ) -> list[EvaluationDiffEntry]:
         diffs: list[EvaluationDiffEntry] = []
-        for field in ("objective", "success_criteria", "risk_statement"):
-            va = getattr(a, field)
-            vb = getattr(b, field)
+        for field_name in ("objective", "success_criteria", "risk_statement"):
+            va = getattr(a, field_name)
+            vb = getattr(b, field_name)
             if va != vb:
                 diffs.append(
                     EvaluationDiffEntry(

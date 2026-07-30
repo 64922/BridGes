@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import (
@@ -25,6 +25,7 @@ from science_companion.contracts.projects import (
     ProjectUpdateRequest,
 )
 from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
+from science_companion.persistence import StateStore
 from science_companion.scope import ScopeEnforcer
 
 
@@ -48,12 +49,40 @@ class ProjectService:
     that later tickets can swap the implementation without changing callers.
     """
 
-    def __init__(self, scope_enforcer: ScopeEnforcer | None = None) -> None:
+    def __init__(
+        self,
+        scope_enforcer: ScopeEnforcer | None = None,
+        state_store: StateStore | None = None,
+    ) -> None:
         self._projects: dict[str, _StoredProject] = {}
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
+        self._state_store = state_store
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if self._state_store is None:
+            return
+        state = self._state_store.load("projects") or {}
+        self._projects = {
+            project_id: _StoredProject(Project.model_validate(value))
+            for project_id, value in state.get("projects", {}).items()
+        }
+
+    def _persist(self) -> None:
+        if self._state_store is None:
+            return
+        self._state_store.save(
+            "projects",
+            {
+                "projects": {
+                    project_id: stored.project.model_dump(mode="json")
+                    for project_id, stored in self._projects.items()
+                }
+            },
+        )
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -90,6 +119,7 @@ class ProjectService:
             archived_at=None,
         )
         self._projects[project.id] = _StoredProject(project=project)
+        self._persist()
         return project
 
     def list_projects(self, account_id: str) -> ProjectListProjection:
@@ -162,6 +192,7 @@ class ProjectService:
             project.description = request.description
         project.version += 1
         project.updated_at = self._now()
+        self._persist()
         return project
 
     def archive_project(self, account_id: str, project_id: str) -> Project:
@@ -182,4 +213,5 @@ class ProjectService:
         project.archived_at = self._now()
         project.version += 1
         project.updated_at = project.archived_at
+        self._persist()
         return project

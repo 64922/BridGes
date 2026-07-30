@@ -84,3 +84,35 @@ def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
     finally:
         os.environ.pop(env_key, None)
         get_settings.cache_clear()
+
+
+def test_health_ready_reports_missing_production_persistence() -> None:
+    env_key = "SCIENCE_COMPANION_ENVIRONMENT"
+    database_key = "SCIENCE_COMPANION_DATABASE_URL"
+    previous_environment = os.environ.get(env_key)
+    previous_database = os.environ.get(database_key)
+    os.environ[env_key] = "production"
+    os.environ.pop(database_key, None)
+    get_settings.cache_clear()
+    try:
+        response = TestClient(create_app()).get("/health/ready")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ready"] == "fail"
+        persistence_dep = [
+            dependency
+            for dependency in body["dependencies"]
+            if dependency["name"] == "persistence"
+        ]
+        assert len(persistence_dep) == 1
+        assert persistence_dep[0]["status"] == "fail"
+    finally:
+        if previous_environment is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = previous_environment
+        if previous_database is None:
+            os.environ.pop(database_key, None)
+        else:
+            os.environ[database_key] = previous_database
+        get_settings.cache_clear()

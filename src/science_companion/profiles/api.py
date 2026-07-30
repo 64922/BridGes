@@ -262,7 +262,7 @@ async def compile_memory_slice(
     run_id: Annotated[str, Query(description="Run identifier.")],
     project_id: Annotated[str | None, Query(description="Project scope.")] = None,
     sensitivity_class: Annotated[
-        list[ProfileSensitivityClass],
+        list[ProfileSensitivityClass] | None,
         Query(description="Allowed sensitivity classes."),
     ] = None,
     ttl_seconds: Annotated[int, Query(description="Slice time-to-live in seconds.")] = 3600,
@@ -562,5 +562,4 @@ async def export_profile(
 ) -> ProfileExport:
     """Export the current account's profile assertions and governance history."""
     return service.export_profile_data(subject.account_id)
-
 

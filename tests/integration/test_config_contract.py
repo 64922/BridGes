@@ -42,6 +42,16 @@ def test_direct_environment_variables_are_loaded() -> None:
             os.environ.pop(key, None)
 
 
+def test_qwen_api_key_from_environment_is_loaded_without_exposing_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(f"{ENV_PREFIX}QWEN_API_KEY", "test-qwen-key")
+    settings = Settings()
+
+    assert settings.qwen_api_key is not None
+    assert "test-qwen-key" not in repr(settings.qwen_api_key)
+
+
 def test_secret_key_file_reference_is_resolved(tmp_path: Path) -> None:
     secret_file = tmp_path / "secret.key"
     secret_file.write_text("file-secret-value", encoding="utf-8")

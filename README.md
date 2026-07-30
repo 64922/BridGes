@@ -53,9 +53,13 @@ export SCIENCE_COMPANION_ENVIRONMENT=production
 export SCIENCE_COMPANION_API_HOST=127.0.0.1
 export SCIENCE_COMPANION_API_PORT=8000
 export SCIENCE_COMPANION_SECRET_KEY_FILE=/run/secrets/secret_key
+# 本地单进程开发持久化；生产环境必须配置等价的持久化数据库地址。
+export SCIENCE_COMPANION_DATABASE_URL=sqlite:///./science_companion.db
 ```
 
 密钥字段支持直接环境变量或 `<NAME>_FILE` 文件引用。详见 `infra/manual/README.md`。
+未配置数据库地址时仅进入明确的开发内存模式；生产环境会在就绪检查中失败，避免数据静默丢失。
+当前仓库内置的是带 WAL 和 Fernet 状态加密的 SQLite 单实例适配器，适合本地开发和 Compose 单实例；配置数据库时必须同时提供 `SCIENCE_COMPANION_SECRET_KEY` 或文件引用。未接入的 PostgreSQL 地址会明确报错，不会回退到内存。
 
 ## 测试
 

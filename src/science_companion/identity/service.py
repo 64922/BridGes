@@ -14,7 +14,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -31,6 +31,7 @@ from science_companion.contracts.identity import (
     SessionResponse,
     SubjectContext,
 )
+from science_companion.persistence import StateStore
 
 _PASSWORD_HASHER = PasswordHasher(
     time_cost=3,
@@ -80,14 +81,81 @@ class IdentityService:
     that later tickets can swap the implementation without changing callers.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, state_store: StateStore | None = None) -> None:
         self._accounts: dict[str, _StoredAccount] = {}
         self._sessions: dict[str, _StoredSession] = {}
         self._email_to_account: dict[str, str] = {}
         self._recovery_states: dict[str, _RecoveryState] = {}
+        self._state_store = state_store
+        self._load_state()
+
+    def _load_state(self) -> None:
+        if self._state_store is None:
+            return
+        state = self._state_store.load("identity") or {}
+        self._accounts = {
+            account_id: _StoredAccount(
+                account=Account.model_validate(value["account"]),
+                password_hash=str(value["password_hash"]),
+            )
+            for account_id, value in state.get("accounts", {}).items()
+        }
+        self._sessions = {
+            session_id: _StoredSession(
+                session=Session.model_validate(value["session"]),
+                token_hash=str(value["token_hash"]),
+                auth_method=AuthMethod(value["auth_method"]),
+            )
+            for session_id, value in state.get("sessions", {}).items()
+        }
+        self._email_to_account = {
+            str(email): str(account_id)
+            for email, account_id in state.get("email_to_account", {}).items()
+        }
+        self._recovery_states = {
+            account_id: _RecoveryState(
+                account_id=str(value["account_id"]),
+                token_hash=str(value["token_hash"]),
+                expires_at=datetime.fromisoformat(value["expires_at"]),
+            )
+            for account_id, value in state.get("recovery_states", {}).items()
+        }
+
+    def _persist(self) -> None:
+        if self._state_store is None:
+            return
+        self._state_store.save(
+            "identity",
+            {
+                "accounts": {
+                    account_id: {
+                        "account": stored.account.model_dump(mode="json"),
+                        "password_hash": stored.password_hash,
+                    }
+                    for account_id, stored in self._accounts.items()
+                },
+                "sessions": {
+                    session_id: {
+                        "session": stored.session.model_dump(mode="json"),
+                        "token_hash": stored.token_hash,
+                        "auth_method": stored.auth_method.value,
+                    }
+                    for session_id, stored in self._sessions.items()
+                },
+                "email_to_account": self._email_to_account,
+                "recovery_states": {
+                    account_id: {
+                        "account_id": state.account_id,
+                        "token_hash": state.token_hash,
+                        "expires_at": state.expires_at.isoformat(),
+                    }
+                    for account_id, state in self._recovery_states.items()
+                },
+            },
+        )
 
     def _now(self) -> datetime:
-        return datetime.now(timezone.utc)
+        return datetime.now(UTC)
 
     def _hash_token(self, token: str) -> str:
         # Tokens are opaque high-entropy secrets; a simple hash is sufficient to
@@ -121,7 +189,9 @@ class IdentityService:
         self._accounts[account.id] = stored
         self._email_to_account[email] = account.id
 
-        return self._create_session(account, AuthMethod.PASSWORD)
+        response = self._create_session(account, AuthMethod.PASSWORD)
+        self._persist()
+        return response
 
     def authenticate(self, credentials: LoginCredential) -> AuthResponse:
         """Validate credentials and create a new session."""
@@ -145,7 +215,9 @@ class IdentityService:
             )
 
         stored.account.updated_at = self._now()
-        return self._create_session(stored.account, AuthMethod.PASSWORD)
+        response = self._create_session(stored.account, AuthMethod.PASSWORD)
+        self._persist()
+        return response
 
     def _create_session(self, account: Account, method: AuthMethod) -> AuthResponse:
         now = self._now()
@@ -204,6 +276,7 @@ class IdentityService:
         if stored is None:
             raise IdentityError("会话不存在。")
         stored.session.revoked_at = self._now()
+        self._persist()
         return stored.session
 
     def revoke_all_sessions(
@@ -221,6 +294,7 @@ class IdentityService:
                 continue
             stored.session.revoked_at = now
             revoked.append(stored.session)
+        self._persist()
         return revoked
 
     def request_recovery(self, request: RecoveryRequest) -> None:
@@ -244,6 +318,7 @@ class IdentityService:
         self._recovery_states[account_id] = state
         stored = self._accounts[account_id]
         stored.account.updated_at = self._now()
+        self._persist()
 
     def reset_password_with_recovery(self, reset: RecoveryReset) -> AuthResponse:
         """Reset password using a recovery token and revoke existing sessions."""
@@ -273,7 +348,9 @@ class IdentityService:
             # Recovery invalidates all prior sessions.
             self.revoke_all_sessions(stored.account.id)
 
-            return self._create_session(stored.account, AuthMethod.RECOVERY)
+            response = self._create_session(stored.account, AuthMethod.RECOVERY)
+            self._persist()
+            return response
 
         raise IdentityError("恢复链接已过期或无效。")
 

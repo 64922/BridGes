@@ -22,13 +22,15 @@ import uvicorn
 from pydantic import ValidationError
 
 from science_companion import __version__
-from science_companion.api.main import create_app
 from science_companion.config import get_settings
 
 app = typer.Typer(
     name="science-companion",
     help="Science Companion unified CLI",
     no_args_is_help=True,
+    # Windows 子进程经常按系统代码页解码 stdout；使用 Click 的纯文本帮助，
+    # 避免 Rich 绘制的 Unicode 边框造成 GBK 解码失败。
+    rich_markup_mode=None,
 )
 
 
@@ -116,7 +118,10 @@ def api(
 
 @app.command()
 def web(
-    dev: Annotated[bool | None, typer.Option("--dev/--no-dev", help="Run Next.js dev server")] = None,
+    dev: Annotated[
+        bool | None,
+        typer.Option("--dev/--no-dev", help="Run Next.js dev server"),
+    ] = None,
 ) -> None:
     """Run the Web process."""
     settings = get_settings()
@@ -131,10 +136,11 @@ def web(
         command = ["npm", "run", "dev"]
     else:
         standalone = web_dir / ".next" / "standalone" / "server.js"
-        if standalone.exists():
-            command = ["node", str(standalone)]
-        else:
-            command = ["npm", "run", "start"]
+        command = (
+            ["node", str(standalone)]
+            if standalone.exists()
+            else ["npm", "run", "start"]
+        )
     subprocess.run(command, cwd=web_dir, check=True, env=env)
 
 

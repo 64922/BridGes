@@ -10,6 +10,9 @@ services:
       - SCIENCE_COMPANION_API_HOST=0.0.0.0
       - SCIENCE_COMPANION_API_PORT=8000
       - SCIENCE_COMPANION_WEB_DEV=false
+      - SCIENCE_COMPANION_DATABASE_URL=sqlite:////var/lib/science-companion/science_companion.db
+    volumes:
+      - api-data:/var/lib/science-companion
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
       interval: 10s
@@ -35,3 +38,6 @@ services:
 
 # Podman-compatible: podman-compose -f infra/compose/docker-compose.yml up
 # Production images use standard Python and Node.js runtimes.
+
+volumes:
+  api-data:

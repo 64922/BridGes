@@ -1,6 +1,19 @@
 """Shared cross-cutting contracts."""
 
 from .health import DependencyHealth, HealthProjection, HealthStatus
+from .identity import (
+    Account,
+    AccountRegistration,
+    AuthError,
+    AuthMethod,
+    AuthResponse,
+    LoginCredential,
+    RecoveryRequest,
+    RecoveryReset,
+    Session,
+    SessionResponse,
+    SubjectContext,
+)
 from .institution import (
     ControlledContentAccessCreateRequest,
     ControlledContentAccessRequest,
@@ -20,19 +33,6 @@ from .institution import (
     Membership,
     MembershipContext,
     SeatPolicy,
-)
-from .identity import (
-    Account,
-    AccountRegistration,
-    AuthError,
-    AuthMethod,
-    AuthResponse,
-    LoginCredential,
-    RecoveryRequest,
-    RecoveryReset,
-    Session,
-    SessionResponse,
-    SubjectContext,
 )
 from .learning import (
     AnswerEvaluatedState,
@@ -123,6 +123,22 @@ from .scope import (
     ScopeIsolationError,
     ScopeViolationReport,
 )
+from .sync import (
+    ConflictBranch,
+    ConflictBranchStatus,
+    ConflictResolutionRequest,
+    DeviceAck,
+    DeviceSyncStatus,
+    SyncControlSnapshot,
+    SyncExchangeRequest,
+    SyncExchangeResponse,
+    SyncOperation,
+    SyncOperationStatus,
+    SyncOperationType,
+    SyncOutboxEntry,
+    SyncOutboxStatus,
+    Tombstone,
+)
 
 __all__ = [
     "Account",
@@ -164,6 +180,20 @@ __all__ = [
     "Session",
     "SessionResponse",
     "SubjectContext",
+    "ConflictBranch",
+    "ConflictBranchStatus",
+    "ConflictResolutionRequest",
+    "DeviceAck",
+    "DeviceSyncStatus",
+    "SyncControlSnapshot",
+    "SyncExchangeRequest",
+    "SyncExchangeResponse",
+    "SyncOperation",
+    "SyncOperationStatus",
+    "SyncOperationType",
+    "SyncOutboxEntry",
+    "SyncOutboxStatus",
+    "Tombstone",
     # Learning mission contracts
     "AnswerEvaluatedState",
     "DiagnosticAnswer",

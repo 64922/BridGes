@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 
 from science_companion import __version__
@@ -29,6 +30,7 @@ from science_companion.api import (
     science,
     scope,
     sharing,
+    sync,
     vault,
     workflows,
 )
@@ -41,7 +43,8 @@ from science_companion.contracts.ai import (
     FallbackPolicy,
     RetryPolicy,
 )
-from science_companion.contracts.health import HealthProjection, HealthStatus
+from science_companion.contracts.health import DependencyHealth, HealthProjection, HealthStatus
+from science_companion.contracts.projects import ObjectRef
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
 from science_companion.evaluation import EvaluationService
 from science_companion.expression import ExpressionService
@@ -70,6 +73,7 @@ from science_companion.media import (
     build_media_publish_impact_resolver,
 )
 from science_companion.observability.service import ObservabilityService
+from science_companion.persistence import PersistenceError, StateStore, build_state_store
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
 from science_companion.profiles.api import router as profiles_router
 from science_companion.projects import ProjectService
@@ -85,6 +89,7 @@ from science_companion.science.claims import (
 from science_companion.science.service import build_source_impact_resolver
 from science_companion.scope import ScopeEnforcer
 from science_companion.sharing import SharingService
+from science_companion.sync import SyncService
 from science_companion.vault import (
     FernetVaultEncryptionAdapter,
     InMemoryDeviceKeychain,
@@ -378,7 +383,7 @@ def _register_builtin_invalidation_resolvers(service: InvalidationService) -> No
     service.register_impact_resolver("vault_capsule", _vault_capsule_resolver)
 
 
-def create_app() -> FastAPI:
+def create_app(state_store: StateStore | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
         title="Science Companion API",
@@ -395,6 +400,59 @@ def create_app() -> FastAPI:
     except (PydanticValidationError, ValueError):
         app.state.settings = None
 
+    app.state.persistence_error = None
+    if state_store is None and app.state.settings is not None:
+        try:
+            state_store = build_state_store(
+                app.state.settings.database_url,
+                encryption_key=app.state.settings.secret_key,
+            )
+        except PersistenceError as exc:
+            app.state.persistence_error = str(exc)
+    if (
+        app.state.settings is not None
+        and app.state.settings.environment.lower() == "production"
+        and state_store is None
+        and app.state.persistence_error is None
+    ):
+        app.state.persistence_error = (
+            "生产环境必须配置 SCIENCE_COMPANION_DATABASE_URL，不能使用进程内存储。"
+        )
+    app.state.state_store = state_store
+    app.state.persistence_mode = (
+        "error"
+        if app.state.persistence_error
+        else "sqlite"
+        if state_store is not None
+        else "memory"
+    )
+
+    @app.middleware("http")
+    async def reject_unpersisted_requests(request: Request, call_next: Any) -> Any:
+        """持久化不可用时只保留健康检查，阻止私人数据进入内存。"""
+        if app.state.persistence_error and not request.url.path.startswith("/health"):
+            return JSONResponse(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "持久化不可用，当前实例拒绝数据读写。"},
+            )
+        return await call_next(request)
+
+    def app_health_projection() -> HealthProjection:
+        """将持久化配置纳入统一就绪检查，避免静默降级到内存。"""
+        projection = build_health_projection(service="api")
+        persistence_error = getattr(app.state, "persistence_error", None)
+        if persistence_error:
+            projection.dependencies.append(
+                DependencyHealth(
+                    name="persistence",
+                    status=HealthStatus.FAIL,
+                    required=True,
+                    message=persistence_error,
+                )
+            )
+            projection.ready = HealthStatus.FAIL
+        return projection
+
     # T007: attach the shared scope enforcer. All services, routes and background
     # task validators use the same interpreter so isolation rules do not drift.
     app.state.scope_enforcer = ScopeEnforcer()
@@ -407,23 +465,23 @@ def create_app() -> FastAPI:
     _register_builtin_invalidation_resolvers(invalidation_service)
     app.state.invalidation_service = invalidation_service
 
-    # T003: attach the in-memory identity service. Later tickets will switch to a
-    # persistent adapter while keeping the same interface.
-    app.state.identity_service = IdentityService()
+    # T003: use the durable state port when configured; tests can omit it and
+    # retain isolated in-memory services.
+    app.state.identity_service = IdentityService(state_store=state_store)
 
-    # T004: attach the in-memory project service. Later tickets will switch to a
-    # persistent adapter while keeping the same interface.
+    # T004: project ownership is durable whenever the configured state store is.
     app.state.project_service = ProjectService(
         scope_enforcer=app.state.scope_enforcer,
+        state_store=state_store,
     )
 
     # T005/T038: attach the in-memory vault service, device port, and encrypted
     # local storage seam. Device-local objects are encrypted with a data key
     # wrapped by the device key stored in the system keychain.
-    vault_repository = InMemoryVaultRepository()
+    vault_repository = InMemoryVaultRepository(state_store=state_store)
     device_keychain = InMemoryDeviceKeychain()
     vault_encryption = FernetVaultEncryptionAdapter()
-    device_pairing_repository = InMemoryDevicePairingRepository()
+    device_pairing_repository = InMemoryDevicePairingRepository(state_store=state_store)
     app.state.vault_service = VaultService(
         repository=vault_repository,
         device_port=MemoryDeviceVaultPort(vault_repository),
@@ -432,6 +490,30 @@ def create_app() -> FastAPI:
         device_keychain=device_keychain,
         vault_encryption=vault_encryption,
         device_pairing_repository=device_pairing_repository,
+    )
+    app.state.device_keychain = device_keychain
+
+    def authorize_sync_object(account_id: str, object_ref: ObjectRef) -> bool:
+        """复用共享项目成员检查，默认拒绝未知对象域。"""
+        if object_ref.domain.value == "personal_vault":
+            return object_ref.owner_id == account_id
+        if object_ref.domain.value == "shared_project":
+            sharing_service = getattr(app.state, "sharing_service", None)
+            if sharing_service is None:
+                return False
+            try:
+                sharing_service.get_shared_project(account_id, object_ref.owner_id)
+            except Exception:
+                return False
+            return True
+        return False
+
+    # T039: synchronization reads the same device certificates and key epochs
+    # as the vault boundary, so revoked devices cannot submit old outbox edits.
+    app.state.sync_service = SyncService(
+        device_pairing_repository=device_pairing_repository,
+        state_store=state_store,
+        object_authorizer=authorize_sync_object,
     )
 
     # T036: attach the explicit sharing service. It coordinates share previews,
@@ -705,6 +787,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(vault.router)
     app.include_router(sharing.router)
+    app.include_router(sync.router)
     app.include_router(institution.router)
     app.include_router(profiles_router)
     app.include_router(workflows.router)
@@ -727,17 +810,17 @@ def create_app() -> FastAPI:
     @app.get("/health/ready", response_model=HealthProjection)
     async def health_ready() -> HealthProjection:
         """Readiness probe: required dependencies are healthy."""
-        return build_health_projection(service="api")
+        return app_health_projection()
 
     @app.get("/health/degraded", response_model=HealthProjection)
     async def health_degraded() -> HealthProjection:
         """Degraded probe: optional dependencies and degradation capability."""
-        return build_health_projection(service="api")
+        return app_health_projection()
 
     @app.get("/health", response_model=HealthProjection)
     async def health_summary() -> HealthProjection:
         """Combined health summary."""
-        return build_health_projection(service="api")
+        return app_health_projection()
 
     @app.get("/me", response_model=dict[str, Any])
     async def me(subject: auth.SubjectDep) -> dict[str, Any]:

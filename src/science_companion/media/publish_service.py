@@ -17,20 +17,16 @@ from science_companion.contracts.invalidation import (
     InvalidationEvent,
 )
 from science_companion.contracts.media import (
-    AccessibilityBundle,
     CrossMediaClaimEntry,
     CrossMediaConsistencyResult,
     CrossMediaInconsistency,
     MediaPublishRecord,
     MediaPublishRequest,
-    MediaStoryboard,
     MultimodalGateResult,
     MultimodalPublishGate,
     MultimodalPublishGateResult,
-    ScientificMediaObject,
     StoryboardStatus,
 )
-from science_companion.contracts.projects import ObjectRef
 from science_companion.contracts.science import FactLock, FactLockSet, LicenseState
 from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.media.accessibility_service import AccessibilityError, AccessibilityService
@@ -151,15 +147,15 @@ class MediaPublishService:
                 lock_by_claim[lock.claim_id] = lock
 
             for claim_id, entries in by_claim.items():
-                lock = lock_by_claim.get(claim_id)
-                if lock is None:
+                fact_lock = lock_by_claim.get(claim_id)
+                if fact_lock is None:
                     continue
                 for entry in entries:
                     if (
                         entry.canonical_value is not None
-                        and lock.canonical_value
-                        and entry.canonical_value != lock.canonical_value
-                        and entry.canonical_value not in lock.allowed_variants
+                        and fact_lock.canonical_value
+                        and entry.canonical_value != fact_lock.canonical_value
+                        and entry.canonical_value not in fact_lock.allowed_variants
                     ):
                         inconsistencies.append(
                             CrossMediaInconsistency(
@@ -629,11 +625,9 @@ class MediaPublishService:
             if not bundle.science_validated:
                 return False
         # If there are media objects or storyboards but no bundles, fail.
-        if (
+        return not (
             request.media_object_ids or request.storyboard_ids
-        ) and not request.accessibility_bundle_ids:
-            return False
-        return True
+        ) or bool(request.accessibility_bundle_ids)
 
     def _check_fact_locks(
         self,
