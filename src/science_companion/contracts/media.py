@@ -1379,3 +1379,145 @@ class PlaybackState(BaseModel):
     )
     updated_at: datetime = Field(description="最后更新时间戳。")
 
+
+# ── T035: 跨媒体一致性与多模态发布门 ─────────────────────────────────
+
+
+class CrossMediaClaimEntry(BaseModel):
+    """一个媒体对象中引用的 Claim 及其上下文。"""
+
+    claim_id: str = Field(description="Claim ID。")
+    media_ref: str = Field(
+        description="媒体对象中的引用位置：对象 ID、元素引用或轴字段。"
+    )
+    media_kind: str = Field(
+        description="媒体类型：text, chart, figure, storyboard, audio, video, interactive。"
+    )
+    canonical_value: str | None = Field(
+        default=None, description="该 Claim 在此媒体中表达的标准值。"
+    )
+    qualifiers: list[str] = Field(
+        default_factory=list, description="限定条件列表。"
+    )
+    citation_ids: list[str] = Field(default_factory=list)
+
+
+class CrossMediaInconsistency(BaseModel):
+    """跨媒体一致性检查发现的单条不一致。"""
+
+    inconsistency_id: str = Field(description="稳定不一致标识符。")
+    claim_id: str = Field(description="涉及的 Claim ID。")
+    kind: str = Field(
+        description="不一致类型：value_mismatch, qualifier_missing, "
+        "citation_missing, terminology_conflict。"
+    )
+    media_refs: list[str] = Field(
+        default_factory=list, description="涉及的媒体引用位置。"
+    )
+    description: str = Field(description="不一致描述。")
+    severity: str = Field(
+        default="error", description="严重程度：error 或 warning。"
+    )
+
+
+class CrossMediaConsistencyResult(BaseModel):
+    """跨媒体 Claim 一致性检查结果。"""
+
+    consistent: bool = Field(description="是否全部一致。")
+    entries_checked: int = Field(default=0, ge=0, description="检查的条目数。")
+    inconsistencies: list[CrossMediaInconsistency] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class MultimodalPublishGate(StrEnum):
+    """多模态发布门名称。"""
+
+    CLAIM_CONSISTENCY = "claim_consistency"
+    LICENSE = "license"
+    AUTHENTICITY = "authenticity"
+    SANDBOX = "sandbox"
+    ACCESSIBILITY = "accessibility"
+    FACT_LOCK = "fact_lock"
+    INVALIDATION = "invalidation"
+
+
+class MultimodalGateResult(StrEnum):
+    """多模态发布门单项结果。"""
+
+    PASS = "pass"
+    FAIL = "fail"
+
+
+class MultimodalPublishGateResult(BaseModel):
+    """多模态发布门综合结果。"""
+
+    passed: bool = Field(description="是否全部通过。")
+    gate_results: dict[MultimodalPublishGate, MultimodalGateResult] = Field(
+        default_factory=dict
+    )
+    failed_gates: list[MultimodalPublishGate] = Field(default_factory=list)
+    reasons: list[str] = Field(default_factory=list)
+    consistency_result: CrossMediaConsistencyResult | None = Field(default=None)
+
+
+class MediaPublishRecord(BaseModel):
+    """多模态发布版本记录。
+
+    保留原始资产、分镜、可编辑源、渲染物和验证记录的完整引用。
+    """
+
+    record_id: str = Field(description="稳定发布记录标识符。")
+    account_id: str = Field(description="发布账户 ID。")
+    project_id: str | None = Field(default=None)
+    media_object_ids: list[str] = Field(
+        default_factory=list, description="发布的媒体对象 ID 列表。"
+    )
+    source_asset_ids: list[str] = Field(
+        default_factory=list, description="关联的原始资产 ID 列表。"
+    )
+    storyboard_ids: list[str] = Field(
+        default_factory=list, description="关联的分镜 ID 列表。"
+    )
+    editable_source_ids: list[str] = Field(
+        default_factory=list, description="关联的可编辑源 ID 列表。"
+    )
+    rendered_artifact_refs: list[str] = Field(
+        default_factory=list, description="渲染产物存储引用列表。"
+    )
+    validation_report_ids: list[str] = Field(
+        default_factory=list, description="验证报告 ID 列表。"
+    )
+    accessibility_bundle_ids: list[str] = Field(
+        default_factory=list, description="无障碍包 ID 列表。"
+    )
+    claim_ids: list[str] = Field(
+        default_factory=list, description="发布版本绑定的 Claim ID 列表。"
+    )
+    fact_lock_set_id: str | None = Field(default=None)
+    gate_result: MultimodalPublishGateResult = Field(
+        description="发布门检查结果。"
+    )
+    published_at: datetime = Field(description="发布时间戳。")
+    invalidated: bool = Field(
+        default=False, description="发布后是否被失效传播。"
+    )
+    invalidation_reason: str | None = Field(default=None)
+
+
+class MediaPublishRequest(BaseModel):
+    """多模态发布请求。"""
+
+    media_object_ids: list[str] = Field(
+        default_factory=list, description="要发布的媒体对象 ID 列表。"
+    )
+    source_asset_ids: list[str] = Field(
+        default_factory=list, description="关联的原始资产 ID 列表。"
+    )
+    storyboard_ids: list[str] = Field(
+        default_factory=list, description="关联的分镜 ID 列表。"
+    )
+    accessibility_bundle_ids: list[str] = Field(
+        default_factory=list, description="关联的无障碍包 ID 列表。"
+    )
+    project_id: str | None = Field(default=None)
+
