@@ -9,19 +9,22 @@ objects.
 from __future__ import annotations
 
 import base64
-import secrets
-from datetime import datetime, timezone
+import hashlib
+from datetime import UTC, datetime
 
 from science_companion.contracts.identity import SubjectContext
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
 from science_companion.contracts.scope import ScopeAction, ScopeIsolationError
-from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.contracts.vault import (
     CapsuleIssueRequest,
     CloudControlProjection,
-    CloudProjectionStatus,
     ContentAuthority,
+    DeviceCertificate,
+    DevicePairingRequest,
+    DevicePairingResponse,
+    DeviceRevocationRequest,
     DeviceUnavailableState,
+    KeyEpoch,
     TemporaryTaskCapsule,
     VaultObject,
     VaultObjectCreateRequest,
@@ -30,29 +33,60 @@ from science_companion.contracts.vault import (
     VaultObjectSummary,
     VaultShareRequest,
 )
+from science_companion.invalidation import InvalidationError, InvalidationService
 from science_companion.scope import ScopeEnforcer
-from science_companion.vault.adapters import VaultError
-from science_companion.vault.ports import DeviceVaultPort, VaultRepository
+from science_companion.vault.adapters import DevicePairingService, VaultError
+from science_companion.vault.ports import (
+    DeviceKeychainPort,
+    DevicePairingRepository,
+    DeviceVaultPort,
+    VaultEncryptionPort,
+    VaultRepository,
+)
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
+
+
+def _hash_content(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
 
 
 class VaultService:
     """Application service for personal vault boundaries and task capsules."""
 
+    _device_pairing_service: DevicePairingService | None
+
     def __init__(
         self,
         repository: VaultRepository,
-        device_port: DeviceVaultPort,
+        device_port: DeviceVaultPort | None = None,
         scope_enforcer: ScopeEnforcer | None = None,
         invalidation_service: InvalidationService | None = None,
+        device_keychain: DeviceKeychainPort | None = None,
+        vault_encryption: VaultEncryptionPort | None = None,
+        device_pairing_repository: DevicePairingRepository | None = None,
     ) -> None:
         self._repository = repository
         self._device_port = device_port
         self._scope_enforcer = scope_enforcer or ScopeEnforcer()
         self._invalidation = invalidation_service
+        self._device_keychain = device_keychain
+        self._vault_encryption = vault_encryption
+        self._device_pairing_repository = device_pairing_repository
+        if device_pairing_repository is not None:
+            if device_keychain is None or vault_encryption is None:
+                raise VaultError(
+                    "设备配对需要 device_keychain 和 vault_encryption 端口。"
+                )
+            self._device_pairing_service = DevicePairingService(
+                pairing_repository=device_pairing_repository,
+                device_keychain=device_keychain,
+                vault_encryption=vault_encryption,
+            )
+        else:
+            self._device_pairing_service = None
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -85,6 +119,75 @@ class VaultService:
         except InvalidationError as exc:
             raise VaultError(str(exc)) from exc
 
+    def _device_encryption_available(self) -> bool:
+        return (
+            self._vault_encryption is not None
+            and self._device_keychain is not None
+            and self._device_pairing_repository is not None
+        )
+
+    def _get_active_device_epoch(
+        self, account_id: str, device_id: str
+    ) -> KeyEpoch | None:
+        if self._device_pairing_repository is None:
+            return None
+        return self._device_pairing_repository.get_active_epoch(account_id, device_id)
+
+    def _encrypt_device_local(
+        self, content: bytes, account_id: str, device_id: str
+    ) -> tuple[bytes, bytes, KeyEpoch]:
+        """Encrypt content for a device-local object.
+
+        Returns (ciphertext, wrapped_data_key, key_epoch).
+        """
+        assert self._vault_encryption is not None
+        assert self._device_keychain is not None
+        epoch = self._get_active_device_epoch(account_id, device_id)
+        if epoch is None:
+            raise VaultError("设备未配对或已撤销。")
+        wrapping_key = self._device_keychain.get_wrapping_key(account_id, device_id)
+        if wrapping_key is None:
+            raise VaultError("设备密钥不可用。")
+        data_key = self._vault_encryption.generate_data_key()
+        ciphertext = self._vault_encryption.encrypt(content, data_key)
+        wrapped_key = self._vault_encryption.wrap_key(data_key, wrapping_key)
+        return ciphertext, wrapped_key, epoch
+
+    def _decrypt_device_local(
+        self, owner_id: str, object_id: str
+    ) -> bytes | DeviceUnavailableState:
+        """Decrypt a device-local object using the device keychain."""
+        assert self._vault_encryption is not None
+        assert self._device_keychain is not None
+        obj = self._repository.get_object(owner_id, object_id)
+        if isinstance(obj, DeviceUnavailableState):
+            return obj
+        if obj.device_id is None:
+            return DeviceUnavailableState(
+                object_ref=obj.ref,
+                reason="missing_device_id",
+            )
+        wrapping_key = self._device_keychain.get_wrapping_key(
+            owner_id, obj.device_id
+        )
+        if wrapping_key is None:
+            return DeviceUnavailableState(
+                object_ref=obj.ref,
+                reason="device_key_unavailable",
+            )
+        try:
+            ciphertext = self._repository.get_content(owner_id, object_id)
+            wrapped_key = self._repository.get_device_local_wrapped_key(
+                owner_id, object_id
+            )
+        except VaultError as exc:
+            return DeviceUnavailableState(
+                object_ref=obj.ref,
+                reason=str(exc),
+            )
+        data_key = self._vault_encryption.unwrap_key(wrapped_key, wrapping_key)
+        return self._vault_encryption.decrypt(ciphertext, data_key)
+
     def create_private_object(
         self,
         owner_account_id: str,
@@ -97,8 +200,35 @@ class VaultService:
         """Create a private vault object.
 
         The full plaintext is stored according to content_authority. The cloud
-        only receives a control projection (hash and metadata).
+        only receives a control projection (hash and metadata). When device
+        encryption is available and the authority is device-local, the content
+        is encrypted before storage and the data key is wrapped by the device
+        key held in the system keychain.
         """
+        if (
+            content_authority == ContentAuthority.DEVICE_LOCAL
+            and self._device_encryption_available()
+            and device_id is not None
+        ):
+            ciphertext, wrapped_key, epoch = self._encrypt_device_local(
+                content, owner_account_id, device_id
+            )
+            request = VaultObjectCreateRequest(
+                owner_account_id=owner_account_id,
+                content_authority=content_authority,
+                content=base64.b64encode(ciphertext).decode("ascii"),
+                device_id=device_id,
+                purpose=purpose,
+                key_epoch=epoch.epoch_id,
+                content_hash=_hash_content(content),
+                content_length=len(content),
+            )
+            obj = self._repository.create_object(request)
+            self._repository.store_device_local_wrapped_key(
+                owner_account_id, obj.ref.object_id, wrapped_key
+            )
+            return obj
+
         request = VaultObjectCreateRequest(
             owner_account_id=owner_account_id,
             content_authority=content_authority,
@@ -152,6 +282,13 @@ class VaultService:
                     object_ref=obj.ref,
                     reason="missing_device_id",
                 )
+            if self._device_encryption_available():
+                return self._decrypt_device_local(owner_id, object_id)
+            if self._device_port is None:
+                return DeviceUnavailableState(
+                    object_ref=obj.ref,
+                    reason="device_runtime_not_configured",
+                )
             content = self._device_port.get_content(owner_id, object_id)
             if isinstance(content, DeviceUnavailableState):
                 return content
@@ -176,6 +313,30 @@ class VaultService:
             except ScopeIsolationError:
                 continue
         return authorized
+
+    def pair_device(
+        self, account_id: str, request: DevicePairingRequest
+    ) -> DevicePairingResponse:
+        """Pair a new vault runtime with the account."""
+        if self._device_pairing_service is None:
+            raise VaultError("设备配对服务未配置。")
+        return self._device_pairing_service.pair_device(account_id, request)
+
+    def revoke_device(
+        self, account_id: str, request: DeviceRevocationRequest
+    ) -> DeviceCertificate:
+        """Revoke a paired device and rotate its key epoch."""
+        if self._device_pairing_service is None:
+            raise VaultError("设备配对服务未配置。")
+        return self._device_pairing_service.revoke_device(account_id, request)
+
+    def list_device_certificates(
+        self, account_id: str
+    ) -> list[DeviceCertificate]:
+        """List device certificates for the account."""
+        if self._device_pairing_service is None:
+            raise VaultError("设备配对服务未配置。")
+        return self._device_pairing_service.list_device_certificates(account_id)
 
     def issue_task_capsule(
         self,
@@ -212,8 +373,9 @@ class VaultService:
         self, owner_id: str, capsule_id: str
     ) -> TemporaryTaskCapsule:
         """Revoke a previously issued capsule."""
-        capsule = self._repository.revoke_capsule(owner_id, capsule_id)
+        # Authorize before mutating repository state (T038: fix ordering).
         subject = self._subject(owner_id)
+        capsule = self._repository.get_capsule(owner_id, capsule_id)
         for ref in capsule.object_refs:
             try:
                 self._scope_enforcer.authorize_vault(
@@ -221,7 +383,7 @@ class VaultService:
                 )
             except ScopeIsolationError as exc:
                 raise VaultError(str(exc)) from exc
-        return capsule
+        return self._repository.revoke_capsule(owner_id, capsule_id)
 
     def get_cloud_projection(
         self, owner_id: str, object_id: str

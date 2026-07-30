@@ -17,6 +17,10 @@ from science_companion.api.auth import SubjectDep
 from science_companion.contracts.vault import (
     CapsuleIssueRequest,
     CloudControlProjection,
+    DeviceCertificate,
+    DevicePairingRequest,
+    DevicePairingResponse,
+    DeviceRevocationRequest,
     DeviceUnavailableState,
     TemporaryTaskCapsule,
     VaultError,
@@ -71,13 +75,20 @@ async def create_object(
             "只能为自己的账户创建保险库对象。",
         )
     content_bytes = base64.b64decode(request.content)
-    return service.create_private_object(
-        owner_account_id=request.owner_account_id,
-        content=content_bytes,
-        content_authority=request.content_authority,
-        device_id=request.device_id,
-        purpose=request.purpose,
-    )
+    try:
+        return service.create_private_object(
+            owner_account_id=request.owner_account_id,
+            content=content_bytes,
+            content_authority=request.content_authority,
+            device_id=request.device_id,
+            purpose=request.purpose,
+        )
+    except VaultAdapterError as exc:
+        raise _vault_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "object_creation_failed",
+            str(exc),
+        ) from exc
 
 
 @router.get(
@@ -294,3 +305,81 @@ async def get_cloud_projection(
             "投影不存在或没有访问权限。",
         )
     return projection
+
+
+@router.post(
+    "/devices/pair",
+    response_model=DevicePairingResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": VaultError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": VaultError},
+    },
+)
+async def pair_device(
+    service: VaultServiceDep,
+    subject: SubjectDep,
+    request: DevicePairingRequest,
+) -> DevicePairingResponse:
+    """Pair a new vault runtime with the current account."""
+    try:
+        return service.pair_device(subject.account_id, request)
+    except VaultAdapterError as exc:
+        raise _vault_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "pairing_failed",
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/devices",
+    response_model=list[DeviceCertificate],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": VaultError},
+    },
+)
+async def list_devices(
+    service: VaultServiceDep,
+    subject: SubjectDep,
+) -> list[DeviceCertificate]:
+    """List paired devices for the current account."""
+    try:
+        return service.list_device_certificates(subject.account_id)
+    except VaultAdapterError as exc:
+        raise _vault_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "list_devices_failed",
+            str(exc),
+        ) from exc
+
+
+@router.post(
+    "/devices/{device_id}/revoke",
+    response_model=DeviceCertificate,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": VaultError},
+        status.HTTP_404_NOT_FOUND: {"model": VaultError},
+    },
+)
+async def revoke_device(
+    service: VaultServiceDep,
+    subject: SubjectDep,
+    device_id: str,
+    request: DeviceRevocationRequest,
+) -> DeviceCertificate:
+    """Revoke a paired device and rotate its key epoch."""
+    if request.device_id != device_id:
+        raise _vault_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "device_id_mismatch",
+            "路径与请求体中的设备标识不一致。",
+        )
+    try:
+        return service.revoke_device(subject.account_id, request)
+    except VaultAdapterError as exc:
+        raise _vault_error(
+            status.HTTP_404_NOT_FOUND,
+            "device_not_found",
+            str(exc),
+        ) from exc

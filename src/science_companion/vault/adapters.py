@@ -10,27 +10,38 @@ from __future__ import annotations
 import base64
 import hashlib
 import secrets
-from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
+from cryptography.fernet import Fernet
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+
 from science_companion.contracts.vault import (
     CapsuleIssueRequest,
     CapsuleStatus,
     CloudControlProjection,
     CloudProjectionStatus,
-    ContentAuthority,
+    DeviceCertificate,
+    DevicePairingRequest,
+    DevicePairingResponse,
+    DevicePairingStatus,
+    DeviceRevocationRequest,
     DeviceUnavailableState,
+    KeyEpoch,
     TemporaryTaskCapsule,
     VaultObject,
     VaultObjectCreateRequest,
-    VaultObjectDomain,
     VaultObjectRef,
     VaultObjectSummary,
+    VaultRuntime,
 )
 from science_companion.vault.ports import (
     CloudControlProjectionStore,
+    DeviceKeychainPort,
+    DevicePairingRepository,
     DeviceVaultPort,
+    VaultEncryptionPort,
     VaultRepository,
 )
 
@@ -44,7 +55,7 @@ class VaultError(Exception):
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _hash_content(content: bytes) -> str:
@@ -71,7 +82,10 @@ class InMemoryCloudControlProjectionStore(CloudControlProjectionStore):
     def save_projection(
         self, projection: CloudControlProjection
     ) -> CloudControlProjection:
-        self._projections[self._key(projection.object_ref.owner_id, projection.object_ref.object_id)] = projection
+        key = self._key(
+            projection.object_ref.owner_id, projection.object_ref.object_id
+        )
+        self._projections[key] = projection
         return projection
 
     def get_projection(
@@ -95,6 +109,7 @@ class InMemoryVaultRepository(VaultRepository):
         self._objects: dict[str, VaultObject] = {}
         self._capsules: dict[str, TemporaryTaskCapsule] = {}
         self._contents: dict[str, bytes] = {}
+        self._device_local_wrapped_keys: dict[str, bytes] = {}
         self._projection_store = projection_store or InMemoryCloudControlProjectionStore()
 
     def _key(self, owner_id: str, object_id: str) -> str:
@@ -102,6 +117,15 @@ class InMemoryVaultRepository(VaultRepository):
 
     def create_object(self, request: VaultObjectCreateRequest) -> VaultObject:
         content_bytes = base64.b64decode(request.content)
+        # When content is encrypted locally, the caller supplies the hash and
+        # length of the authoritative plaintext so the cloud projection stays
+        # minimal and accurate.
+        content_hash = request.content_hash or _hash_content(content_bytes)
+        content_length = (
+            request.content_length
+            if request.content_length is not None
+            else len(content_bytes)
+        )
         now = _now()
         object_id = _new_id()
         ref = VaultObjectRef(
@@ -113,8 +137,8 @@ class InMemoryVaultRepository(VaultRepository):
         projection = CloudControlProjection(
             projection_id=_new_id(),
             object_ref=ref,
-            content_hash=_hash_content(content_bytes),
-            content_length=len(content_bytes),
+            content_hash=content_hash,
+            content_length=content_length,
             key_epoch=request.key_epoch,
             authorization_version=request.authorization_version,
             status=CloudProjectionStatus.ACTIVE,
@@ -188,6 +212,15 @@ class InMemoryVaultRepository(VaultRepository):
         self._capsules[capsule.capsule_id] = capsule
         return capsule
 
+    def get_capsule(self, owner_id: str, capsule_id: str) -> TemporaryTaskCapsule:
+        """Return a capsule without mutating state."""
+        capsule = self._capsules.get(capsule_id)
+        if capsule is None:
+            raise VaultError("胶囊不存在或没有访问权限。")
+        if any(ref.owner_id != owner_id for ref in capsule.object_refs):
+            raise VaultError("胶囊不存在或没有访问权限。")
+        return capsule
+
     def revoke_capsule(self, owner_id: str, capsule_id: str) -> TemporaryTaskCapsule:
         capsule = self._capsules.get(capsule_id)
         if capsule is None:
@@ -201,6 +234,21 @@ class InMemoryVaultRepository(VaultRepository):
         self, owner_id: str, object_id: str
     ) -> CloudControlProjection | None:
         return self._projection_store.get_projection(owner_id, object_id)
+
+    def store_device_local_wrapped_key(
+        self, owner_id: str, object_id: str, wrapped_key: bytes
+    ) -> None:
+        """Store the wrapped data key for a device-local encrypted object."""
+        self._device_local_wrapped_keys[self._key(owner_id, object_id)] = wrapped_key
+
+    def get_device_local_wrapped_key(
+        self, owner_id: str, object_id: str
+    ) -> bytes:
+        """Return the wrapped data key for a device-local encrypted object."""
+        wrapped = self._device_local_wrapped_keys.get(self._key(owner_id, object_id))
+        if wrapped is None:
+            raise VaultError("对象不存在或没有访问权限。")
+        return wrapped
 
     # ------------------------------------------------------------------
     # Internal helpers used by the vault service or tests
@@ -256,3 +304,233 @@ class UnavailableDeviceVaultPort(DeviceVaultPort):
             reason=self._reason,
             can_retry_at=None,
         )
+
+
+class InMemoryDeviceKeychain(DeviceKeychainPort):
+    """Test adapter that simulates a system keychain.
+
+    Production implementations must use OS-specific secure storage (Windows
+    DPAPI, macOS Keychain, Linux Secret Service, or a secure enclave) and must
+    never write the private key to ordinary configuration or logs.
+    """
+
+    def __init__(self) -> None:
+        self._private_keys: dict[str, str] = {}
+        self._wrapping_keys: dict[str, bytes] = {}
+
+    def _key(self, account_id: str, device_id: str) -> str:
+        return f"{account_id}:{device_id}"
+
+    def store_private_key(
+        self, account_id: str, device_id: str, private_key_pem: str
+    ) -> None:
+        self._private_keys[self._key(account_id, device_id)] = private_key_pem
+
+    def get_private_key(self, account_id: str, device_id: str) -> str | None:
+        return self._private_keys.get(self._key(account_id, device_id))
+
+    def delete_private_key(self, account_id: str, device_id: str) -> None:
+        self._private_keys.pop(self._key(account_id, device_id), None)
+
+    def store_wrapping_key(
+        self, account_id: str, device_id: str, wrapping_key: bytes
+    ) -> None:
+        self._wrapping_keys[self._key(account_id, device_id)] = wrapping_key
+
+    def get_wrapping_key(self, account_id: str, device_id: str) -> bytes | None:
+        return self._wrapping_keys.get(self._key(account_id, device_id))
+
+    def delete_wrapping_key(self, account_id: str, device_id: str) -> None:
+        self._wrapping_keys.pop(self._key(account_id, device_id), None)
+
+
+class FernetVaultEncryptionAdapter(VaultEncryptionPort):
+    """Symmetric encryption adapter using Fernet.
+
+    This adapter satisfies the VaultEncryptionPort contract for tests and
+    logical prototypes. Production may replace it with an AEAD scheme that
+    matches the target threat model and compliance requirements.
+    """
+
+    def generate_data_key(self) -> bytes:
+        return Fernet.generate_key()
+
+    def generate_wrapping_key(self) -> bytes:
+        return Fernet.generate_key()
+
+    def encrypt(self, plaintext: bytes, key: bytes) -> bytes:
+        return Fernet(key).encrypt(plaintext)
+
+    def decrypt(self, ciphertext: bytes, key: bytes) -> bytes:
+        return Fernet(key).decrypt(ciphertext)
+
+    def wrap_key(self, data_key: bytes, wrapping_key: bytes) -> bytes:
+        return Fernet(wrapping_key).encrypt(data_key)
+
+    def unwrap_key(self, wrapped_key: bytes, wrapping_key: bytes) -> bytes:
+        return Fernet(wrapping_key).decrypt(wrapped_key)
+
+
+class InMemoryDevicePairingRepository(DevicePairingRepository):
+    """In-memory store for device certificates and key epochs."""
+
+    def __init__(self) -> None:
+        self._certificates: dict[str, DeviceCertificate] = {}
+        self._epochs: dict[str, KeyEpoch] = {}
+
+    def _key(self, account_id: str, device_id: str) -> str:
+        return f"{account_id}:{device_id}"
+
+    def save_certificate(
+        self, certificate: DeviceCertificate
+    ) -> DeviceCertificate:
+        self._certificates[self._key(certificate.account_id, certificate.device_id)] = certificate
+        return certificate
+
+    def get_certificate(
+        self, account_id: str, device_id: str
+    ) -> DeviceCertificate | None:
+        return self._certificates.get(self._key(account_id, device_id))
+
+    def list_certificates(self, account_id: str) -> list[DeviceCertificate]:
+        return [
+            cert
+            for cert in self._certificates.values()
+            if cert.account_id == account_id
+        ]
+
+    def save_key_epoch(self, epoch: KeyEpoch) -> KeyEpoch:
+        self._epochs[self._key(epoch.account_id, epoch.device_id)] = epoch
+        return epoch
+
+    def get_active_epoch(
+        self, account_id: str, device_id: str
+    ) -> KeyEpoch | None:
+        epoch = self._epochs.get(self._key(account_id, device_id))
+        if epoch is None or epoch.status != DevicePairingStatus.PAIRED:
+            return None
+        return epoch
+
+
+def _generate_key_pair() -> tuple[str, str]:
+    """Generate an RSA key pair and return (private_key_pem, public_key_pem)."""
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=2048,
+        backend=default_backend(),
+    )
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    ).decode("ascii")
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    ).decode("ascii")
+    return private_pem, public_pem
+
+
+def _fingerprint_public_key(public_key_pem: str) -> str:
+    """Return a deterministic fingerprint of a PEM public key."""
+    return hashlib.sha256(public_key_pem.encode("utf-8")).hexdigest()
+
+
+class DevicePairingService:
+    """Application service for pairing devices and managing key epochs.
+
+    This service is intentionally separate from VaultService so that the
+    identity/security boundary (certificates and epochs) can be tested and
+    replaced independently from object encryption.
+    """
+
+    def __init__(
+        self,
+        pairing_repository: DevicePairingRepository,
+        device_keychain: DeviceKeychainPort,
+        vault_encryption: VaultEncryptionPort,
+    ) -> None:
+        self._pairing_repository = pairing_repository
+        self._device_keychain = device_keychain
+        self._vault_encryption = vault_encryption
+
+    def pair_device(
+        self, account_id: str, request: DevicePairingRequest
+    ) -> DevicePairingResponse:
+        device_id = _new_id()
+        private_pem, public_pem = _generate_key_pair()
+        wrapping_key = self._vault_encryption.generate_wrapping_key()
+        fingerprint = _fingerprint_public_key(public_pem)
+        now = _now()
+        epoch = KeyEpoch(
+            epoch_id=_new_id(),
+            account_id=account_id,
+            device_id=device_id,
+            status=DevicePairingStatus.PAIRED,
+            created_at=now,
+        )
+        certificate = DeviceCertificate(
+            certificate_id=_new_id(),
+            account_id=account_id,
+            device_id=device_id,
+            device_name=request.device_name,
+            device_type=request.device_type,
+            public_key_pem=public_pem,
+            fingerprint=fingerprint,
+            status=DevicePairingStatus.PAIRED,
+            key_epoch=epoch.epoch_id,
+            paired_at=now,
+        )
+        runtime = VaultRuntime(
+            runtime_id=_new_id(),
+            account_id=account_id,
+            device_id=device_id,
+            certificate_id=certificate.certificate_id,
+            version="0.1.0",
+            capabilities=["encrypted_storage"],
+            paired_at=now,
+        )
+        self._device_keychain.store_private_key(account_id, device_id, private_pem)
+        self._device_keychain.store_wrapping_key(account_id, device_id, wrapping_key)
+        self._pairing_repository.save_key_epoch(epoch)
+        self._pairing_repository.save_certificate(certificate)
+        return DevicePairingResponse(
+            certificate=certificate,
+            key_epoch=epoch,
+            runtime=runtime,
+        )
+
+    def revoke_device(
+        self, account_id: str, request: DeviceRevocationRequest
+    ) -> DeviceCertificate:
+        certificate = self._pairing_repository.get_certificate(
+            account_id, request.device_id
+        )
+        if certificate is None:
+            raise VaultError("设备不存在或没有访问权限。")
+        now = _now()
+        certificate.status = DevicePairingStatus.REVOKED
+        certificate.revoked_at = now
+        self._device_keychain.delete_private_key(account_id, request.device_id)
+        self._device_keychain.delete_wrapping_key(account_id, request.device_id)
+        active_epoch = self._pairing_repository.get_active_epoch(
+            account_id, request.device_id
+        )
+        if active_epoch is not None:
+            active_epoch.status = DevicePairingStatus.REVOKED
+            active_epoch.revoked_at = now
+            self._pairing_repository.save_key_epoch(active_epoch)
+        return self._pairing_repository.save_certificate(certificate)
+
+    def list_device_certificates(
+        self, account_id: str
+    ) -> list[DeviceCertificate]:
+        return self._pairing_repository.list_certificates(account_id)
+
+    def get_active_certificate(
+        self, account_id: str, device_id: str
+    ) -> DeviceCertificate | None:
+        certificate = self._pairing_repository.get_certificate(account_id, device_id)
+        if certificate is None or certificate.status != DevicePairingStatus.PAIRED:
+            return None
+        return certificate

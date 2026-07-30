@@ -8,13 +8,13 @@ the authoritative shape of the vault boundary contracts.
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class VaultObjectDomain(str, Enum):
+class VaultObjectDomain(StrEnum):
     """Authority domain that owns the vault object.
 
     - PERSONAL_VAULT: owned by an individual account; not visible to collaborators
@@ -28,7 +28,7 @@ class VaultObjectDomain(str, Enum):
     INSTITUTION_OWNED = "institution_owned"
 
 
-class ContentAuthority(str, Enum):
+class ContentAuthority(StrEnum):
     """Where the authoritative plaintext of a vault object resides.
 
     - DEVICE_LOCAL: the full content is authoritative on the user's device. The
@@ -44,7 +44,7 @@ class ContentAuthority(str, Enum):
     PROJECT_COPY = "project_copy"
 
 
-class CloudProjectionStatus(str, Enum):
+class CloudProjectionStatus(StrEnum):
     """Lifecycle status of a cloud control projection."""
 
     ACTIVE = "active"
@@ -53,7 +53,7 @@ class CloudProjectionStatus(str, Enum):
     EXPIRED = "expired"
 
 
-class CapsuleStatus(str, Enum):
+class CapsuleStatus(StrEnum):
     """Lifecycle status of a temporary task capsule."""
 
     ISSUED = "issued"
@@ -61,6 +61,20 @@ class CapsuleStatus(str, Enum):
     EXPIRED = "expired"
     CONSUMED = "consumed"
 
+
+class DevicePairingStatus(StrEnum):
+    """Lifecycle status of a device pairing and its key epoch."""
+
+    PAIRED = "paired"
+    REVOKED = "revoked"
+
+
+class DeviceType(StrEnum):
+    """Category of device running the vault runtime."""
+
+    BROWSER = "browser"
+    DESKTOP = "desktop"
+    MOBILE = "mobile"
 
 class VaultObjectRef(BaseModel):
     """Stable reference to a vault-owned object.
@@ -209,6 +223,14 @@ class VaultObjectCreateRequest(BaseModel):
         default=VaultObjectDomain.PERSONAL_VAULT,
         description="Authority domain for the new vault object.",
     )
+    content_hash: str | None = Field(
+        default=None,
+        description="Optional pre-computed hash of the authoritative plaintext.",
+    )
+    content_length: int | None = Field(
+        default=None,
+        description="Optional pre-computed length of the authoritative plaintext.",
+    )
 
 
 class VaultShareRequest(BaseModel):
@@ -230,6 +252,118 @@ class CapsuleIssueRequest(BaseModel):
         default=3600,
         ge=1,
         description="Time-to-live in seconds.",
+    )
+
+
+class DeviceCertificate(BaseModel):
+    """Binding between a user account and a trusted device.
+
+    The certificate carries only the public key and metadata; the corresponding
+    private key is held in the device system keychain and never written to
+    ordinary configuration or logs.
+    """
+
+    certificate_id: str = Field(description="Stable certificate identifier.")
+    account_id: str = Field(description="Owning account identifier.")
+    device_id: str = Field(description="Stable device identifier.")
+    device_name: str = Field(description="Human-readable device label.")
+    device_type: DeviceType = Field(description="Category of device.")
+    public_key_pem: str = Field(description="PEM-encoded device public key.")
+    fingerprint: str = Field(description="Deterministic fingerprint of the public key.")
+    status: DevicePairingStatus = Field(description="Current pairing status.")
+    key_epoch: str = Field(description="Active key epoch for this device.")
+    paired_at: datetime = Field(description="Pairing creation timestamp.")
+    revoked_at: datetime | None = Field(
+        default=None,
+        description="If set, the device has been revoked.",
+    )
+
+
+class KeyEpoch(BaseModel):
+    """A key epoch under which device-local objects are encrypted.
+
+    Revoking a device creates a new key epoch so that old device keys can no
+    longer unwrap newly created capsules or decrypt fresh content.
+    """
+
+    epoch_id: str = Field(description="Stable epoch identifier.")
+    account_id: str = Field(description="Owning account identifier.")
+    device_id: str = Field(description="Device to which the epoch belongs.")
+    status: DevicePairingStatus = Field(description="Current epoch status.")
+    created_at: datetime = Field(description="Epoch creation timestamp.")
+    revoked_at: datetime | None = Field(
+        default=None,
+        description="If set, the epoch has been rotated out.",
+    )
+
+
+class VaultRuntime(BaseModel):
+    """Projection of a device-side vault runtime.
+
+    The runtime is the authoritative location for encrypted personal content,
+    private indexes and offline operations. It binds to exactly one account and
+    device certificate.
+    """
+
+    runtime_id: str = Field(description="Stable runtime identifier.")
+    account_id: str = Field(description="Owning account identifier.")
+    device_id: str = Field(description="Bound device identifier.")
+    certificate_id: str = Field(description="Bound device certificate.")
+    version: str = Field(description="Runtime version.")
+    capabilities: list[str] = Field(
+        default_factory=list,
+        description="Supported capabilities, e.g. encrypted_storage, offline_index.",
+    )
+    paired_at: datetime = Field(description="When the runtime was paired.")
+
+
+class DevicePairingRequest(BaseModel):
+    """Request to pair a new vault runtime with an account."""
+
+    device_name: str = Field(description="Human-readable device label.")
+    device_type: DeviceType = Field(
+        default=DeviceType.BROWSER,
+        description="Category of device.",
+    )
+    public_key_pem: str | None = Field(
+        default=None,
+        description=(
+            "Optional client-supplied public key; "
+            "otherwise generated server-side for tests."
+        ),
+    )
+
+
+class DevicePairingResponse(BaseModel):
+    """Result of a successful device pairing."""
+
+    certificate: DeviceCertificate = Field(description="Device certificate.")
+    key_epoch: KeyEpoch = Field(description="Initial active key epoch.")
+    runtime: VaultRuntime = Field(description="Bound vault runtime.")
+
+
+class DeviceRevocationRequest(BaseModel):
+    """Request to revoke a paired device."""
+
+    device_id: str = Field(description="Device to revoke.")
+    reason: str = Field(default="user_request", description="Reason for revocation.")
+
+
+class VaultLocalEncryptedObject(BaseModel):
+    """Metadata for an object whose ciphertext is authoritative on a device.
+
+    The cloud projection stores only the content hash and this record's
+    reference; the wrapped data key and ciphertext stay on the device.
+    """
+
+    object_ref: VaultObjectRef = Field(description="Reference to the vault object.")
+    device_id: str = Field(description="Authoritative device identifier.")
+    key_epoch: str = Field(description="Key epoch used to wrap the object key.")
+    wrapped_key: str = Field(
+        description="Base64-encoded data encryption key wrapped by the device key."
+    )
+    ciphertext: str = Field(
+        description="Base64-encoded encrypted content bytes."
     )
 
 

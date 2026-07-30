@@ -73,7 +73,6 @@ from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
 from science_companion.profiles.api import router as profiles_router
 from science_companion.projects import ProjectService
-from science_companion.sharing import SharingService
 from science_companion.science import (
     ClaimEvidenceService,
     ScienceSearchService,
@@ -85,7 +84,11 @@ from science_companion.science.claims import (
 )
 from science_companion.science.service import build_source_impact_resolver
 from science_companion.scope import ScopeEnforcer
+from science_companion.sharing import SharingService
 from science_companion.vault import (
+    FernetVaultEncryptionAdapter,
+    InMemoryDeviceKeychain,
+    InMemoryDevicePairingRepository,
     InMemoryVaultRepository,
     MemoryDeviceVaultPort,
     VaultService,
@@ -414,13 +417,21 @@ def create_app() -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
     )
 
-    # T005: attach the in-memory vault service and device port.
+    # T005/T038: attach the in-memory vault service, device port, and encrypted
+    # local storage seam. Device-local objects are encrypted with a data key
+    # wrapped by the device key stored in the system keychain.
     vault_repository = InMemoryVaultRepository()
+    device_keychain = InMemoryDeviceKeychain()
+    vault_encryption = FernetVaultEncryptionAdapter()
+    device_pairing_repository = InMemoryDevicePairingRepository()
     app.state.vault_service = VaultService(
         repository=vault_repository,
         device_port=MemoryDeviceVaultPort(vault_repository),
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
+        device_keychain=device_keychain,
+        vault_encryption=vault_encryption,
+        device_pairing_repository=device_pairing_repository,
     )
 
     # T036: attach the explicit sharing service. It coordinates share previews,

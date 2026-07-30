@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Science Companion API",
-    "description": "é•¿æœŸç§‘å­¦å­¦ä¹ ä¸è¡¨è¾¾ä¼™ä¼´ API",
+    "description": "³¤ÆÚ¿ÆÑ§Ñ§Ï°Óë±í´ï»ï°é API",
     "version": "0.1.0"
   },
   "paths": {
@@ -1314,6 +1314,229 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CloudControlProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/devices/pair": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Pair Device",
+        "description": "Pair a new vault runtime with the current account.",
+        "operationId": "pair_device_vault_devices_pair_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DevicePairingRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DevicePairingResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/vault/devices": {
+      "get": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "List Devices",
+        "description": "List paired devices for the current account.",
+        "operationId": "list_devices_vault_devices_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DeviceCertificate"
+                  },
+                  "title": "Response List Devices Vault Devices Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VaultError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/vault/devices/{device_id}/revoke": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "Revoke Device",
+        "description": "Revoke a paired device and rotate its key epoch.",
+        "operationId": "revoke_device_vault_devices__device_id__revoke_post",
+        "parameters": [
+          {
+            "name": "device_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Device Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceRevocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceCertificate"
                 }
               }
             }
@@ -13984,12 +14207,12 @@
           "bundle_id": {
             "type": "string",
             "title": "Bundle Id",
-            "description": "ç¨³å®šæ— éšœç¢åŒ…æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨ÎŞÕÏ°­°ü±êÊ¶·û¡£"
           },
           "account_id": {
             "type": "string",
             "title": "Account Id",
-            "description": "æ‹¥æœ‰è´¦æˆ· IDã€‚"
+            "description": "ÓµÓĞÕË»§ ID¡£"
           },
           "project_id": {
             "anyOf": [
@@ -14004,17 +14227,17 @@
           },
           "target_kind": {
             "$ref": "#/components/schemas/AccessibilityTargetKind",
-            "description": "ç›®æ ‡å¯¹è±¡ç±»å‹ã€‚"
+            "description": "Ä¿±ê¶ÔÏóÀàĞÍ¡£"
           },
           "target_id": {
             "type": "string",
             "title": "Target Id",
-            "description": "ç›®æ ‡å¯¹è±¡ IDã€‚"
+            "description": "Ä¿±ê¶ÔÏó ID¡£"
           },
           "source_version": {
             "type": "string",
             "title": "Source Version",
-            "description": "ç›®æ ‡å†…å®¹ç‰ˆæœ¬æ ‡è¯†ï¼ˆå†…å®¹å“ˆå¸Œæˆ–ç‰ˆæœ¬å·ï¼‰ã€‚"
+            "description": "Ä¿±êÄÚÈİ°æ±¾±êÊ¶£¨ÄÚÈİ¹şÏ£»ò°æ±¾ºÅ£©¡£"
           },
           "language": {
             "type": "string",
@@ -14032,7 +14255,7 @@
             "type": "string",
             "minLength": 1,
             "title": "Alt Text",
-            "description": "ç®€çŸ­æ›¿ä»£æ–‡æœ¬ã€‚"
+            "description": "¼ò¶ÌÌæ´úÎÄ±¾¡£"
           },
           "long_description": {
             "anyOf": [
@@ -14047,15 +14270,15 @@
           },
           "transcript": {
             "$ref": "#/components/schemas/Transcript",
-            "description": "å®Œæ•´æ–‡å­—ç¨¿ã€‚"
+            "description": "ÍêÕûÎÄ×Ö¸å¡£"
           },
           "caption_track": {
             "$ref": "#/components/schemas/CaptionTrack",
-            "description": "å­—å¹•è½¨ã€‚"
+            "description": "×ÖÄ»¹ì¡£"
           },
           "narration": {
             "$ref": "#/components/schemas/NarrationAudio",
-            "description": "æœ—è¯»æ›¿ä»£ã€‚"
+            "description": "ÀÊ¶ÁÌæ´ú¡£"
           },
           "keyboard_paths": {
             "items": {
@@ -14069,16 +14292,16 @@
           },
           "reduced_motion": {
             "$ref": "#/components/schemas/ReducedMotionVariant",
-            "description": "å‡å°‘åŠ¨ç”»å˜ä½“ã€‚"
+            "description": "¼õÉÙ¶¯»­±äÌå¡£"
           },
           "sequential_view": {
             "$ref": "#/components/schemas/SequentialReadingView",
-            "description": "é¡ºåºé˜…è¯»è§†å›¾ã€‚"
+            "description": "Ë³ĞòÔÄ¶ÁÊÓÍ¼¡£"
           },
           "science_validated": {
             "type": "boolean",
             "title": "Science Validated",
-            "description": "æ— éšœç¢æ›¿ä»£æ˜¯å¦é€šè¿‡äº†ä¸ä¸»å†…å®¹ç›¸åŒçš„ç§‘å­¦æ ¡éªŒã€‚",
+            "description": "ÎŞÕÏ°­Ìæ´úÊÇ·ñÍ¨¹ıÁËÓëÖ÷ÄÚÈİÏàÍ¬µÄ¿ÆÑ§Ğ£Ñé¡£",
             "default": false
           },
           "validation_errors": {
@@ -14092,13 +14315,13 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "åˆ›å»ºæ—¶é—´æˆ³ã€‚"
+            "description": "´´½¨Ê±¼ä´Á¡£"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Updated At",
-            "description": "æœ€åæ›´æ–°æ—¶é—´æˆ³ã€‚"
+            "description": "×îºó¸üĞÂÊ±¼ä´Á¡£"
           }
         },
         "type": "object",
@@ -14118,19 +14341,19 @@
           "updated_at"
         ],
         "title": "AccessibilityBundle",
-        "description": "ä¸€ä¸ªç§‘å­¦åª’ä½“å¯¹è±¡çš„å®Œæ•´æ— éšœç¢æ›¿ä»£åŒ…ã€‚\n\næ±‡é›†æœ—è¯»ã€æ–‡å­—ç¨¿ã€å­—å¹•ã€æ›¿ä»£æ–‡æœ¬ã€é”®ç›˜è·¯å¾„ã€å‡å°‘åŠ¨ç”»å’Œé¡ºåºé˜…è¯»ç‰ˆæœ¬ã€‚\næ‰€æœ‰æ›¿ä»£å…±äº«åŒä¸€ Claim é›†åˆå’Œæºç‰ˆæœ¬ï¼Œå¹¶ç»è¿‡ç›¸åŒçš„ç§‘å­¦æ ¡éªŒã€‚"
+        "description": "Ò»¸ö¿ÆÑ§Ã½Ìå¶ÔÏóµÄÍêÕûÎŞÕÏ°­Ìæ´ú°ü¡£\n\n»ã¼¯ÀÊ¶Á¡¢ÎÄ×Ö¸å¡¢×ÖÄ»¡¢Ìæ´úÎÄ±¾¡¢¼üÅÌÂ·¾¶¡¢¼õÉÙ¶¯»­ºÍË³ĞòÔÄ¶Á°æ±¾¡£\nËùÓĞÌæ´ú¹²ÏíÍ¬Ò» Claim ¼¯ºÏºÍÔ´°æ±¾£¬²¢¾­¹ıÏàÍ¬µÄ¿ÆÑ§Ğ£Ñé¡£"
       },
       "AccessibilityBundleRequest": {
         "properties": {
           "target_kind": {
             "$ref": "#/components/schemas/AccessibilityTargetKind",
-            "description": "ç›®æ ‡å¯¹è±¡ç±»å‹ã€‚"
+            "description": "Ä¿±ê¶ÔÏóÀàĞÍ¡£"
           },
           "target_id": {
             "type": "string",
             "minLength": 1,
             "title": "Target Id",
-            "description": "ç›®æ ‡å¯¹è±¡ IDã€‚"
+            "description": "Ä¿±ê¶ÔÏó ID¡£"
           },
           "language": {
             "type": "string",
@@ -14155,7 +14378,7 @@
           "target_id"
         ],
         "title": "AccessibilityBundleRequest",
-        "description": "ç”Ÿæˆæ— éšœç¢åŒ…çš„è¯·æ±‚ã€‚"
+        "description": "Éú³ÉÎŞÕÏ°­°üµÄÇëÇó¡£"
       },
       "AccessibilityTargetKind": {
         "type": "string",
@@ -14165,43 +14388,43 @@
           "media_asset"
         ],
         "title": "AccessibilityTargetKind",
-        "description": "æ— éšœç¢åŒ…çš„ç›®æ ‡å¯¹è±¡ç±»å‹ã€‚"
+        "description": "ÎŞÕÏ°­°üµÄÄ¿±ê¶ÔÏóÀàĞÍ¡£"
       },
       "AccessibilityValidationResult": {
         "properties": {
           "valid": {
             "type": "boolean",
             "title": "Valid",
-            "description": "æ˜¯å¦é€šè¿‡å…¨éƒ¨æ£€æŸ¥ã€‚"
+            "description": "ÊÇ·ñÍ¨¹ıÈ«²¿¼ì²é¡£"
           },
           "claims_consistent": {
             "type": "boolean",
             "title": "Claims Consistent",
-            "description": "éŸ³é¢‘ã€å­—å¹•å’Œæ–‡å­—ç¨¿æ˜¯å¦å…±äº«åŒä¸€ Claim é›†åˆã€‚",
+            "description": "ÒôÆµ¡¢×ÖÄ»ºÍÎÄ×Ö¸åÊÇ·ñ¹²ÏíÍ¬Ò» Claim ¼¯ºÏ¡£",
             "default": true
           },
           "version_consistent": {
             "type": "boolean",
             "title": "Version Consistent",
-            "description": "æ‰€æœ‰æ›¿ä»£æ˜¯å¦ç»‘å®šåŒä¸€æºç‰ˆæœ¬ã€‚",
+            "description": "ËùÓĞÌæ´úÊÇ·ñ°ó¶¨Í¬Ò»Ô´°æ±¾¡£",
             "default": true
           },
           "keyboard_operable": {
             "type": "boolean",
             "title": "Keyboard Operable",
-            "description": "æ ¸å¿ƒåª’ä½“ä»»åŠ¡æ˜¯å¦å¯ç”±é”®ç›˜ä¸å±å¹•é˜…è¯»å™¨å®Œæˆã€‚",
+            "description": "ºËĞÄÃ½ÌåÈÎÎñÊÇ·ñ¿ÉÓÉ¼üÅÌÓëÆÁÄ»ÔÄ¶ÁÆ÷Íê³É¡£",
             "default": true
           },
           "playback_controllable": {
             "type": "boolean",
             "title": "Playback Controllable",
-            "description": "æ˜¯å¦æ”¯æŒæš‚åœã€æ—¶é—´æ§åˆ¶å’Œå‡å°‘åŠ¨ç”»ã€‚",
+            "description": "ÊÇ·ñÖ§³ÖÔİÍ£¡¢Ê±¼ä¿ØÖÆºÍ¼õÉÙ¶¯»­¡£",
             "default": true
           },
           "science_validated": {
             "type": "boolean",
             "title": "Science Validated",
-            "description": "æ›¿ä»£å†…å®¹æ˜¯å¦é€šè¿‡ç›¸åŒçš„ç§‘å­¦æ ¡éªŒã€‚",
+            "description": "Ìæ´úÄÚÈİÊÇ·ñÍ¨¹ıÏàÍ¬µÄ¿ÆÑ§Ğ£Ñé¡£",
             "default": true
           },
           "errors": {
@@ -14224,7 +14447,7 @@
           "valid"
         ],
         "title": "AccessibilityValidationResult",
-        "description": "æ— éšœç¢åŒ…çš„éªŒè¯ç»“æœã€‚"
+        "description": "ÎŞÕÏ°­°üµÄÑéÖ¤½á¹û¡£"
       },
       "Account": {
         "properties": {
@@ -14999,7 +15222,7 @@
             },
             "type": "array",
             "title": "Claim Ids",
-            "description": "T034: å­—å¹•è¦†ç›–çš„ç§‘å­¦ Claim ID åˆ—è¡¨ï¼Œä¸æœ—è¯»å’Œæ–‡å­—ç¨¿å…±äº«ã€‚"
+            "description": "T034: ×ÖÄ»¸²¸ÇµÄ¿ÆÑ§ Claim ID ÁĞ±í£¬ÓëÀÊ¶ÁºÍÎÄ×Ö¸å¹²Ïí¡£"
           },
           "source_version": {
             "anyOf": [
@@ -15011,7 +15234,7 @@
               }
             ],
             "title": "Source Version",
-            "description": "T034: å­—å¹•ç»‘å®šçš„æºå†…å®¹ç‰ˆæœ¬æ ‡è¯†ã€‚"
+            "description": "T034: ×ÖÄ»°ó¶¨µÄÔ´ÄÚÈİ°æ±¾±êÊ¶¡£"
           }
         },
         "type": "object",
@@ -16755,17 +16978,17 @@
           "claim_id": {
             "type": "string",
             "title": "Claim Id",
-            "description": "Claim IDã€‚"
+            "description": "Claim ID¡£"
           },
           "media_ref": {
             "type": "string",
             "title": "Media Ref",
-            "description": "åª’ä½“å¯¹è±¡ä¸­çš„å¼•ç”¨ä½ç½®ï¼šå¯¹è±¡ IDã€å…ƒç´ å¼•ç”¨æˆ–è½´å­—æ®µã€‚"
+            "description": "Ã½Ìå¶ÔÏóÖĞµÄÒıÓÃÎ»ÖÃ£º¶ÔÏó ID¡¢ÔªËØÒıÓÃ»òÖá×Ö¶Î¡£"
           },
           "media_kind": {
             "type": "string",
             "title": "Media Kind",
-            "description": "åª’ä½“ç±»å‹ï¼štext, chart, figure, storyboard, audio, video, interactiveã€‚"
+            "description": "Ã½ÌåÀàĞÍ£ºtext, chart, figure, storyboard, audio, video, interactive¡£"
           },
           "canonical_value": {
             "anyOf": [
@@ -16777,7 +17000,7 @@
               }
             ],
             "title": "Canonical Value",
-            "description": "è¯¥ Claim åœ¨æ­¤åª’ä½“ä¸­è¡¨è¾¾çš„æ ‡å‡†å€¼ã€‚"
+            "description": "¸Ã Claim ÔÚ´ËÃ½ÌåÖĞ±í´ïµÄ±ê×¼Öµ¡£"
           },
           "qualifiers": {
             "items": {
@@ -16785,7 +17008,7 @@
             },
             "type": "array",
             "title": "Qualifiers",
-            "description": "é™å®šæ¡ä»¶åˆ—è¡¨ã€‚"
+            "description": "ÏŞ¶¨Ìõ¼şÁĞ±í¡£"
           },
           "citation_ids": {
             "items": {
@@ -16802,20 +17025,20 @@
           "media_kind"
         ],
         "title": "CrossMediaClaimEntry",
-        "description": "ä¸€ä¸ªåª’ä½“å¯¹è±¡ä¸­å¼•ç”¨çš„ Claim åŠå…¶ä¸Šä¸‹æ–‡ã€‚"
+        "description": "Ò»¸öÃ½Ìå¶ÔÏóÖĞÒıÓÃµÄ Claim ¼°ÆäÉÏÏÂÎÄ¡£"
       },
       "CrossMediaConsistencyResult": {
         "properties": {
           "consistent": {
             "type": "boolean",
             "title": "Consistent",
-            "description": "æ˜¯å¦å…¨éƒ¨ä¸€è‡´ã€‚"
+            "description": "ÊÇ·ñÈ«²¿Ò»ÖÂ¡£"
           },
           "entries_checked": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Entries Checked",
-            "description": "æ£€æŸ¥çš„æ¡ç›®æ•°ã€‚",
+            "description": "¼ì²éµÄÌõÄ¿Êı¡£",
             "default": 0
           },
           "inconsistencies": {
@@ -16838,24 +17061,24 @@
           "consistent"
         ],
         "title": "CrossMediaConsistencyResult",
-        "description": "è·¨åª’ä½“ Claim ä¸€è‡´æ€§æ£€æŸ¥ç»“æœã€‚"
+        "description": "¿çÃ½Ìå Claim Ò»ÖÂĞÔ¼ì²é½á¹û¡£"
       },
       "CrossMediaInconsistency": {
         "properties": {
           "inconsistency_id": {
             "type": "string",
             "title": "Inconsistency Id",
-            "description": "ç¨³å®šä¸ä¸€è‡´æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨²»Ò»ÖÂ±êÊ¶·û¡£"
           },
           "claim_id": {
             "type": "string",
             "title": "Claim Id",
-            "description": "æ¶‰åŠçš„ Claim IDã€‚"
+            "description": "Éæ¼°µÄ Claim ID¡£"
           },
           "kind": {
             "type": "string",
             "title": "Kind",
-            "description": "ä¸ä¸€è‡´ç±»å‹ï¼švalue_mismatch, qualifier_missing, citation_missing, terminology_conflictã€‚"
+            "description": "²»Ò»ÖÂÀàĞÍ£ºvalue_mismatch, qualifier_missing, citation_missing, terminology_conflict¡£"
           },
           "media_refs": {
             "items": {
@@ -16863,17 +17086,17 @@
             },
             "type": "array",
             "title": "Media Refs",
-            "description": "æ¶‰åŠçš„åª’ä½“å¼•ç”¨ä½ç½®ã€‚"
+            "description": "Éæ¼°µÄÃ½ÌåÒıÓÃÎ»ÖÃ¡£"
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "ä¸ä¸€è‡´æè¿°ã€‚"
+            "description": "²»Ò»ÖÂÃèÊö¡£"
           },
           "severity": {
             "type": "string",
             "title": "Severity",
-            "description": "ä¸¥é‡ç¨‹åº¦ï¼šerror æˆ– warningã€‚",
+            "description": "ÑÏÖØ³Ì¶È£ºerror »ò warning¡£",
             "default": "error"
           }
         },
@@ -16885,7 +17108,7 @@
           "description"
         ],
         "title": "CrossMediaInconsistency",
-        "description": "è·¨åª’ä½“ä¸€è‡´æ€§æ£€æŸ¥å‘ç°çš„å•æ¡ä¸ä¸€è‡´ã€‚"
+        "description": "¿çÃ½ÌåÒ»ÖÂĞÔ¼ì²é·¢ÏÖµÄµ¥Ìõ²»Ò»ÖÂ¡£"
       },
       "DataBinding": {
         "properties": {
@@ -17162,6 +17385,183 @@
         ],
         "title": "DerivedAsset",
         "description": "Any extraction, OCR, structure parse or human correction result.\n\nDerivedAssets are immutable. A human correction creates a new DerivedAsset\nthat points to the previous one via `derived_from_asset_id`, preserving the\nfull correction chain."
+      },
+      "DeviceCertificate": {
+        "properties": {
+          "certificate_id": {
+            "type": "string",
+            "title": "Certificate Id",
+            "description": "Stable certificate identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "description": "Stable device identifier."
+          },
+          "device_name": {
+            "type": "string",
+            "title": "Device Name",
+            "description": "Human-readable device label."
+          },
+          "device_type": {
+            "$ref": "#/components/schemas/DeviceType",
+            "description": "Category of device."
+          },
+          "public_key_pem": {
+            "type": "string",
+            "title": "Public Key Pem",
+            "description": "PEM-encoded device public key."
+          },
+          "fingerprint": {
+            "type": "string",
+            "title": "Fingerprint",
+            "description": "Deterministic fingerprint of the public key."
+          },
+          "status": {
+            "$ref": "#/components/schemas/DevicePairingStatus",
+            "description": "Current pairing status."
+          },
+          "key_epoch": {
+            "type": "string",
+            "title": "Key Epoch",
+            "description": "Active key epoch for this device."
+          },
+          "paired_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paired At",
+            "description": "Pairing creation timestamp."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "If set, the device has been revoked."
+          }
+        },
+        "type": "object",
+        "required": [
+          "certificate_id",
+          "account_id",
+          "device_id",
+          "device_name",
+          "device_type",
+          "public_key_pem",
+          "fingerprint",
+          "status",
+          "key_epoch",
+          "paired_at"
+        ],
+        "title": "DeviceCertificate",
+        "description": "Binding between a user account and a trusted device.\n\nThe certificate carries only the public key and metadata; the corresponding\nprivate key is held in the device system keychain and never written to\nordinary configuration or logs."
+      },
+      "DevicePairingRequest": {
+        "properties": {
+          "device_name": {
+            "type": "string",
+            "title": "Device Name",
+            "description": "Human-readable device label."
+          },
+          "device_type": {
+            "$ref": "#/components/schemas/DeviceType",
+            "description": "Category of device.",
+            "default": "browser"
+          },
+          "public_key_pem": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Public Key Pem",
+            "description": "Optional client-supplied public key; otherwise generated server-side for tests."
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_name"
+        ],
+        "title": "DevicePairingRequest",
+        "description": "Request to pair a new vault runtime with an account."
+      },
+      "DevicePairingResponse": {
+        "properties": {
+          "certificate": {
+            "$ref": "#/components/schemas/DeviceCertificate",
+            "description": "Device certificate."
+          },
+          "key_epoch": {
+            "$ref": "#/components/schemas/KeyEpoch",
+            "description": "Initial active key epoch."
+          },
+          "runtime": {
+            "$ref": "#/components/schemas/VaultRuntime",
+            "description": "Bound vault runtime."
+          }
+        },
+        "type": "object",
+        "required": [
+          "certificate",
+          "key_epoch",
+          "runtime"
+        ],
+        "title": "DevicePairingResponse",
+        "description": "Result of a successful device pairing."
+      },
+      "DevicePairingStatus": {
+        "type": "string",
+        "enum": [
+          "paired",
+          "revoked"
+        ],
+        "title": "DevicePairingStatus",
+        "description": "Lifecycle status of a device pairing and its key epoch."
+      },
+      "DeviceRevocationRequest": {
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "description": "Device to revoke."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Reason for revocation.",
+            "default": "user_request"
+          }
+        },
+        "type": "object",
+        "required": [
+          "device_id"
+        ],
+        "title": "DeviceRevocationRequest",
+        "description": "Request to revoke a paired device."
+      },
+      "DeviceType": {
+        "type": "string",
+        "enum": [
+          "browser",
+          "desktop",
+          "mobile"
+        ],
+        "title": "DeviceType",
+        "description": "Category of device running the vault runtime."
       },
       "DeviceUnavailableState": {
         "properties": {
@@ -17901,7 +18301,7 @@
           "content"
         ],
         "title": "EditableSource",
-        "description": "An editable source that defines a scientific media object.\n\nThe source is the authority â€” rendered SVGs and PNGs are derived from it.\nUsers can edit the source and re-validate to ensure consistency."
+        "description": "An editable source that defines a scientific media object.\n\nThe source is the authority ¡ª rendered SVGs and PNGs are derived from it.\nUsers can edit the source and re-validate to ensure consistency."
       },
       "EvaluationCreateRequest": {
         "properties": {
@@ -19723,7 +20123,7 @@
           "lock_id": {
             "type": "string",
             "title": "Lock Id",
-            "description": "è§¦çŠ¯çš„ FactLock IDã€‚"
+            "description": "´¥·¸µÄ FactLock ID¡£"
           },
           "claim_id": {
             "anyOf": [
@@ -19735,17 +20135,17 @@
               }
             ],
             "title": "Claim Id",
-            "description": "å…³è”çš„ Claim IDã€‚"
+            "description": "¹ØÁªµÄ Claim ID¡£"
           },
           "attempted_change": {
             "type": "string",
             "title": "Attempted Change",
-            "description": "è¯•å›¾ä¿®æ”¹çš„å€¼ã€‚"
+            "description": "ÊÔÍ¼ĞŞ¸ÄµÄÖµ¡£"
           },
           "reason": {
             "type": "string",
             "title": "Reason",
-            "description": "è¢«æ‹’ç»çš„åŸå› ã€‚"
+            "description": "±»¾Ü¾øµÄÔ­Òò¡£"
           }
         },
         "type": "object",
@@ -19755,7 +20155,7 @@
           "reason"
         ],
         "title": "FactLockViolation",
-        "description": "æ²™ç®±ä¿®å¤è¿‡ç¨‹ä¸­è§¦çŠ¯äº‹å®é”çš„è®°å½•ã€‚"
+        "description": "É³ÏäĞŞ¸´¹ı³ÌÖĞ´¥·¸ÊÂÊµËøµÄ¼ÇÂ¼¡£"
       },
       "FigureElement": {
         "properties": {
@@ -20462,19 +20862,19 @@
             "type": "string",
             "title": "Ownership Statement",
             "description": "Ownership statement.",
-            "default": "è¯¥é¡¹ç›®ä¸ºæœºæ„æ‰€æœ‰ï¼Œæˆå‘˜ç¦»å¼€æœºæ„åä¿ç•™çš„é¡¹ç›®è®¿é—®ç”±æœºæ„ç­–ç•¥å†³å®šã€‚"
+            "default": "¸ÃÏîÄ¿Îª»ú¹¹ËùÓĞ£¬³ÉÔ±Àë¿ª»ú¹¹ºó±£ÁôµÄÏîÄ¿·ÃÎÊÓÉ»ú¹¹²ßÂÔ¾ö¶¨¡£"
           },
           "retention_statement": {
             "type": "string",
             "title": "Retention Statement",
             "description": "Retention statement.",
-            "default": "æœºæ„å¯¹è±¡å—æœºæ„æ•°æ®ä¿ç•™ç­–ç•¥çº¦æŸï¼›ä¸ªäººè´¦æˆ·ä¸ä¿ç•™æ¢å¤æƒå¨ã€‚"
+            "default": "»ú¹¹¶ÔÏóÊÜ»ú¹¹Êı¾İ±£Áô²ßÂÔÔ¼Êø£»¸öÈËÕË»§²»±£Áô»Ö¸´È¨Íş¡£"
           },
           "recovery_statement": {
             "type": "string",
             "title": "Recovery Statement",
             "description": "Recovery statement.",
-            "default": "æœºæ„æœªå¯ç”¨æ¢å¤å¯†é’¥ï¼›é¡¹ç›®è´Ÿè´£äººå¯å†³å®šå†»ç»“æˆ–è¿ç§»ã€‚"
+            "default": "»ú¹¹Î´ÆôÓÃ»Ö¸´ÃÜÔ¿£»ÏîÄ¿¸ºÔğÈË¿É¾ö¶¨¶³½á»òÇ¨ÒÆ¡£"
           },
           "recovery_key_enabled": {
             "type": "boolean",
@@ -20763,17 +21163,69 @@
         "title": "InviteTokenStatus",
         "description": "Lifecycle status of an invite token."
       },
+      "KeyEpoch": {
+        "properties": {
+          "epoch_id": {
+            "type": "string",
+            "title": "Epoch Id",
+            "description": "Stable epoch identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "description": "Device to which the epoch belongs."
+          },
+          "status": {
+            "$ref": "#/components/schemas/DevicePairingStatus",
+            "description": "Current epoch status."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Epoch creation timestamp."
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At",
+            "description": "If set, the epoch has been rotated out."
+          }
+        },
+        "type": "object",
+        "required": [
+          "epoch_id",
+          "account_id",
+          "device_id",
+          "status",
+          "created_at"
+        ],
+        "title": "KeyEpoch",
+        "description": "A key epoch under which device-local objects are encrypted.\n\nRevoking a device creates a new key epoch so that old device keys can no\nlonger unwrap newly created capsules or decrypt fresh content."
+      },
       "KeyboardAccessPath": {
         "properties": {
           "path_id": {
             "type": "string",
             "title": "Path Id",
-            "description": "ç¨³å®šè·¯å¾„æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨Â·¾¶±êÊ¶·û¡£"
           },
           "task": {
             "type": "string",
             "title": "Task",
-            "description": "ä»»åŠ¡æ ‡è¯†ï¼šplay_pause, seek, toggle_captions, toggle_reduced_motion, open_transcriptã€‚"
+            "description": "ÈÎÎñ±êÊ¶£ºplay_pause, seek, toggle_captions, toggle_reduced_motion, open_transcript¡£"
           },
           "steps": {
             "items": {
@@ -20789,7 +21241,7 @@
           "task"
         ],
         "title": "KeyboardAccessPath",
-        "description": "ä¸€ä¸ªæ ¸å¿ƒåª’ä½“ä»»åŠ¡çš„å®Œæ•´é”®ç›˜æ“ä½œè·¯å¾„ã€‚"
+        "description": "Ò»¸öºËĞÄÃ½ÌåÈÎÎñµÄÍêÕû¼üÅÌ²Ù×÷Â·¾¶¡£"
       },
       "KeyboardPathStep": {
         "properties": {
@@ -20797,23 +21249,23 @@
             "type": "integer",
             "minimum": 1.0,
             "title": "Step Number",
-            "description": "æ­¥éª¤åºå·ã€‚"
+            "description": "²½ÖèĞòºÅ¡£"
           },
           "action": {
             "type": "string",
             "title": "Action",
-            "description": "æ“ä½œæè¿°ã€‚"
+            "description": "²Ù×÷ÃèÊö¡£"
           },
           "keys": {
             "type": "string",
             "title": "Keys",
-            "description": "æŒ‰é”®ç»„åˆï¼Œå¦‚ Spaceã€Tabã€ArrowRightã€‚"
+            "description": "°´¼ü×éºÏ£¬Èç Space¡¢Tab¡¢ArrowRight¡£"
           },
           "screen_reader_announcement": {
             "type": "string",
             "minLength": 1,
             "title": "Screen Reader Announcement",
-            "description": "å±å¹•é˜…è¯»å™¨åœ¨è¯¥æ­¥éª¤çš„æ’­æŠ¥æ–‡æœ¬ã€‚"
+            "description": "ÆÁÄ»ÔÄ¶ÁÆ÷ÔÚ¸Ã²½ÖèµÄ²¥±¨ÎÄ±¾¡£"
           }
         },
         "type": "object",
@@ -20824,7 +21276,7 @@
           "screen_reader_announcement"
         ],
         "title": "KeyboardPathStep",
-        "description": "é”®ç›˜è·¯å¾„ä¸­çš„ä¸€ä¸ªæ“ä½œæ­¥éª¤ã€‚"
+        "description": "¼üÅÌÂ·¾¶ÖĞµÄÒ»¸ö²Ù×÷²½Öè¡£"
       },
       "KnowledgeConfidence": {
         "type": "string",
@@ -21842,18 +22294,18 @@
               "exit"
             ],
             "title": "Stage",
-            "description": "é˜¶æ®µç±»å‹ï¼šè¿›å…¥ã€ä¿æŒã€å˜æ¢ã€é€€å‡ºã€‚"
+            "description": "½×¶ÎÀàĞÍ£º½øÈë¡¢±£³Ö¡¢±ä»»¡¢ÍË³ö¡£"
           },
           "timing_seconds": {
             "type": "number",
             "minimum": 0.0,
             "title": "Timing Seconds",
-            "description": "é˜¶æ®µæŒç»­æ—¶é—´ï¼Œå•ä½ç§’ã€‚"
+            "description": "½×¶Î³ÖĞøÊ±¼ä£¬µ¥Î»Ãë¡£"
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "é˜¶æ®µæè¿°ã€‚"
+            "description": "½×¶ÎÃèÊö¡£"
           }
         },
         "type": "object",
@@ -21863,7 +22315,7 @@
           "description"
         ],
         "title": "LifecycleStage",
-        "description": "åŠ¨ç”»å¯¹è±¡çš„ä¸€ä¸ªç”Ÿå‘½å‘¨æœŸé˜¶æ®µã€‚"
+        "description": "¶¯»­¶ÔÏóµÄÒ»¸öÉúÃüÖÜÆÚ½×¶Î¡£"
       },
       "LifecycleStatus": {
         "type": "string",
@@ -22272,7 +22724,7 @@
             },
             "type": "array",
             "title": "Media Object Ids",
-            "description": "è¦å‘å¸ƒçš„åª’ä½“å¯¹è±¡ ID åˆ—è¡¨ã€‚"
+            "description": "Òª·¢²¼µÄÃ½Ìå¶ÔÏó ID ÁĞ±í¡£"
           },
           "source_asset_ids": {
             "items": {
@@ -22280,7 +22732,7 @@
             },
             "type": "array",
             "title": "Source Asset Ids",
-            "description": "å…³è”çš„åŸå§‹èµ„äº§ ID åˆ—è¡¨ã€‚"
+            "description": "¹ØÁªµÄÔ­Ê¼×Ê²ú ID ÁĞ±í¡£"
           },
           "storyboard_ids": {
             "items": {
@@ -22288,7 +22740,7 @@
             },
             "type": "array",
             "title": "Storyboard Ids",
-            "description": "å…³è”çš„åˆ†é•œ ID åˆ—è¡¨ã€‚"
+            "description": "¹ØÁªµÄ·Ö¾µ ID ÁĞ±í¡£"
           },
           "accessibility_bundle_ids": {
             "items": {
@@ -22296,7 +22748,7 @@
             },
             "type": "array",
             "title": "Accessibility Bundle Ids",
-            "description": "å…³è”çš„æ— éšœç¢åŒ… ID åˆ—è¡¨ã€‚"
+            "description": "¹ØÁªµÄÎŞÕÏ°­°ü ID ÁĞ±í¡£"
           },
           "project_id": {
             "anyOf": [
@@ -22312,7 +22764,7 @@
         },
         "type": "object",
         "title": "MediaPublishRequest",
-        "description": "å¤šæ¨¡æ€å‘å¸ƒè¯·æ±‚ã€‚"
+        "description": "¶àÄ£Ì¬·¢²¼ÇëÇó¡£"
       },
       "MediaQualityGate": {
         "type": "string",
@@ -22333,12 +22785,12 @@
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "ç¨³å®šåˆ†é•œæ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨·Ö¾µ±êÊ¶·û¡£"
           },
           "account_id": {
             "type": "string",
             "title": "Account Id",
-            "description": "æ‹¥æœ‰è´¦æˆ· IDã€‚"
+            "description": "ÓµÓĞÕË»§ ID¡£"
           },
           "project_id": {
             "anyOf": [
@@ -22350,12 +22802,12 @@
               }
             ],
             "title": "Project Id",
-            "description": "æ‰€å±é¡¹ç›® IDã€‚"
+            "description": "ËùÊôÏîÄ¿ ID¡£"
           },
           "title": {
             "type": "string",
             "title": "Title",
-            "description": "åˆ†é•œæ ‡é¢˜ã€‚"
+            "description": "·Ö¾µ±êÌâ¡£"
           },
           "teaching_objectives": {
             "items": {
@@ -22363,7 +22815,7 @@
             },
             "type": "array",
             "title": "Teaching Objectives",
-            "description": "æ•™å­¦ç›®æ ‡åˆ—è¡¨ã€‚"
+            "description": "½ÌÑ§Ä¿±êÁĞ±í¡£"
           },
           "scenes": {
             "items": {
@@ -22371,7 +22823,7 @@
             },
             "type": "array",
             "title": "Scenes",
-            "description": "é•œå¤´åˆ—è¡¨ã€‚"
+            "description": "¾µÍ·ÁĞ±í¡£"
           },
           "media_type": {
             "type": "string",
@@ -22380,24 +22832,24 @@
               "interactive_html"
             ],
             "title": "Media Type",
-            "description": "åª’ä½“ç±»å‹ï¼šanimationï¼ˆåŠ¨ç”»ï¼‰æˆ– interactive_htmlï¼ˆäº¤äº’ HTMLï¼‰ã€‚"
+            "description": "Ã½ÌåÀàĞÍ£ºanimation£¨¶¯»­£©»ò interactive_html£¨½»»¥ HTML£©¡£"
           },
           "status": {
             "$ref": "#/components/schemas/StoryboardStatus",
-            "description": "åˆ†é•œçŠ¶æ€ã€‚",
+            "description": "·Ö¾µ×´Ì¬¡£",
             "default": "draft"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "åˆ›å»ºæ—¶é—´æˆ³ã€‚"
+            "description": "´´½¨Ê±¼ä´Á¡£"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Updated At",
-            "description": "æœ€åæ›´æ–°æ—¶é—´æˆ³ã€‚"
+            "description": "×îºó¸üĞÂÊ±¼ä´Á¡£"
           }
         },
         "type": "object",
@@ -22410,7 +22862,7 @@
           "updated_at"
         ],
         "title": "MediaStoryboard",
-        "description": "ç»“æ„åŒ–åˆ†é•œâ€”â€”é•œå¤´æ—¶é—´åºåˆ—ã€‚\n\nå®šä¹‰æ•™å­¦ç›®æ ‡ã€é•œå¤´åºåˆ—ï¼ˆå¼•ç”¨ SceneSpecï¼‰ã€åª’ä½“ç±»å‹å’Œ Claim ç»‘å®šã€‚\næ¯ä¸ªé•œå¤´åŒ…å«æ—¶é—´ã€è¿‡æ¸¡ã€æ—ç™½å’Œæ— éšœç¢æè¿°ã€‚"
+        "description": "½á¹¹»¯·Ö¾µ¡ª¡ª¾µÍ·Ê±¼äĞòÁĞ¡£\n\n¶¨Òå½ÌÑ§Ä¿±ê¡¢¾µÍ·ĞòÁĞ£¨ÒıÓÃ SceneSpec£©¡¢Ã½ÌåÀàĞÍºÍ Claim °ó¶¨¡£\nÃ¿¸ö¾µÍ·°üº¬Ê±¼ä¡¢¹ı¶É¡¢ÅÔ°×ºÍÎŞÕÏ°­ÃèÊö¡£"
       },
       "MediaType": {
         "type": "string",
@@ -22736,7 +23188,7 @@
           "fail"
         ],
         "title": "MultimodalGateResult",
-        "description": "å¤šæ¨¡æ€å‘å¸ƒé—¨å•é¡¹ç»“æœã€‚"
+        "description": "¶àÄ£Ì¬·¢²¼ÃÅµ¥Ïî½á¹û¡£"
       },
       "MultimodalPublishGate": {
         "type": "string",
@@ -22750,14 +23202,14 @@
           "invalidation"
         ],
         "title": "MultimodalPublishGate",
-        "description": "å¤šæ¨¡æ€å‘å¸ƒé—¨åç§°ã€‚"
+        "description": "¶àÄ£Ì¬·¢²¼ÃÅÃû³Æ¡£"
       },
       "MultimodalPublishGateResult": {
         "properties": {
           "passed": {
             "type": "boolean",
             "title": "Passed",
-            "description": "æ˜¯å¦å…¨éƒ¨é€šè¿‡ã€‚"
+            "description": "ÊÇ·ñÈ«²¿Í¨¹ı¡£"
           },
           "gate_results": {
             "additionalProperties": {
@@ -22799,35 +23251,35 @@
           "passed"
         ],
         "title": "MultimodalPublishGateResult",
-        "description": "å¤šæ¨¡æ€å‘å¸ƒé—¨ç»¼åˆç»“æœã€‚"
+        "description": "¶àÄ£Ì¬·¢²¼ÃÅ×ÛºÏ½á¹û¡£"
       },
       "NarrationAudio": {
         "properties": {
           "narration_id": {
             "type": "string",
             "title": "Narration Id",
-            "description": "ç¨³å®šæœ—è¯»æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨ÀÊ¶Á±êÊ¶·û¡£"
           },
           "language": {
             "type": "string",
             "title": "Language",
-            "description": "æœ—è¯»è¯­è¨€ã€‚",
+            "description": "ÀÊ¶ÁÓïÑÔ¡£",
             "default": "zh-CN"
           },
           "text": {
             "type": "string",
             "title": "Text",
-            "description": "æœ—è¯»æ­£æ–‡ï¼Œä¸æ–‡å­—ç¨¿åŒæºã€‚"
+            "description": "ÀÊ¶ÁÕıÎÄ£¬ÓëÎÄ×Ö¸åÍ¬Ô´¡£"
           },
           "voice": {
             "type": "string",
             "title": "Voice",
-            "description": "å£°éŸ³æ ‡è¯†ã€‚",
+            "description": "ÉùÒô±êÊ¶¡£",
             "default": "default"
           },
           "status": {
             "$ref": "#/components/schemas/NarrationSynthesisStatus",
-            "description": "åˆæˆçŠ¶æ€ã€‚",
+            "description": "ºÏ³É×´Ì¬¡£",
             "default": "pending_synthesis"
           },
           "audio_ref": {
@@ -22840,7 +23292,7 @@
               }
             ],
             "title": "Audio Ref",
-            "description": "åˆæˆéŸ³é¢‘çš„å—æ§å­˜å‚¨å¼•ç”¨ï¼›æœªåˆæˆæ—¶ä¸º Noneã€‚"
+            "description": "ºÏ³ÉÒôÆµµÄÊÜ¿Ø´æ´¢ÒıÓÃ£»Î´ºÏ³ÉÊ±Îª None¡£"
           },
           "duration_seconds": {
             "type": "number",
@@ -22854,7 +23306,7 @@
             },
             "type": "array",
             "title": "Timing",
-            "description": "å¥æ®µåˆ°éŸ³é¢‘æ—¶é—´çš„æ˜ å°„ã€‚"
+            "description": "¾ä¶Îµ½ÒôÆµÊ±¼äµÄÓ³Éä¡£"
           },
           "pronunciation_notes": {
             "items": {
@@ -22888,7 +23340,7 @@
           "text"
         ],
         "title": "NarrationAudio",
-        "description": "ç§‘å­¦åª’ä½“å¯¹è±¡çš„æœ—è¯»æ›¿ä»£ã€‚\n\næœ—è¯»æ–‡æœ¬å¿…é¡»æ¥è‡ªä¸å­—å¹•/æ–‡å­—ç¨¿ç›¸åŒçš„ã€å·²ç»è¿‡ç§‘å­¦æ ¡éªŒçš„å†…å®¹ï¼Œ\nä¸å®ƒä»¬å…±äº«åŒä¸€ Claim é›†åˆå’Œæºç‰ˆæœ¬ã€‚"
+        "description": "¿ÆÑ§Ã½Ìå¶ÔÏóµÄÀÊ¶ÁÌæ´ú¡£\n\nÀÊ¶ÁÎÄ±¾±ØĞëÀ´×ÔÓë×ÖÄ»/ÎÄ×Ö¸åÏàÍ¬µÄ¡¢ÒÑ¾­¹ı¿ÆÑ§Ğ£ÑéµÄÄÚÈİ£¬\nÓëËüÃÇ¹²ÏíÍ¬Ò» Claim ¼¯ºÏºÍÔ´°æ±¾¡£"
       },
       "NarrationSynthesisStatus": {
         "type": "string",
@@ -22898,31 +23350,31 @@
           "failed"
         ],
         "title": "NarrationSynthesisStatus",
-        "description": "æœ—è¯»éŸ³é¢‘çš„åˆæˆçŠ¶æ€ã€‚\n\nT034 ä½¿ç”¨ç¡®å®šæ€§åˆæˆå™¨ï¼›çœŸå® Qwen TTS é€‚é…å™¨åœ¨ T062 æ¥å…¥ã€‚\næœªé€šè¿‡ç§‘å­¦æ ¡éªŒçš„æ–‡æœ¬ä¿æŒ PENDING_SYNTHESISï¼Œä¸ç›´æ¥åˆæˆè¯­éŸ³ã€‚"
+        "description": "ÀÊ¶ÁÒôÆµµÄºÏ³É×´Ì¬¡£\n\nT034 Ê¹ÓÃÈ·¶¨ĞÔºÏ³ÉÆ÷£»ÕæÊµ Qwen TTS ÊÊÅäÆ÷ÔÚ T062 ½ÓÈë¡£\nÎ´Í¨¹ı¿ÆÑ§Ğ£ÑéµÄÎÄ±¾±£³Ö PENDING_SYNTHESIS£¬²»Ö±½ÓºÏ³ÉÓïÒô¡£"
       },
       "NarrationTimingEntry": {
         "properties": {
           "segment_id": {
             "type": "string",
             "title": "Segment Id",
-            "description": "å¯¹åº”çš„æ–‡å­—ç¨¿å¥æ®µ IDã€‚"
+            "description": "¶ÔÓ¦µÄÎÄ×Ö¸å¾ä¶Î ID¡£"
           },
           "text": {
             "type": "string",
             "title": "Text",
-            "description": "å¥æ®µæ–‡æœ¬ã€‚"
+            "description": "¾ä¶ÎÎÄ±¾¡£"
           },
           "start_time": {
             "type": "number",
             "minimum": 0.0,
             "title": "Start Time",
-            "description": "å¼€å§‹æ—¶é—´ï¼Œå•ä½ç§’ã€‚"
+            "description": "¿ªÊ¼Ê±¼ä£¬µ¥Î»Ãë¡£"
           },
           "end_time": {
             "type": "number",
             "minimum": 0.0,
             "title": "End Time",
-            "description": "ç»“æŸæ—¶é—´ï¼Œå•ä½ç§’ã€‚"
+            "description": "½áÊøÊ±¼ä£¬µ¥Î»Ãë¡£"
           }
         },
         "type": "object",
@@ -22933,7 +23385,7 @@
           "end_time"
         ],
         "title": "NarrationTimingEntry",
-        "description": "å¥æ®µåˆ°æœ—è¯»éŸ³é¢‘æ—¶é—´è½´çš„æ˜ å°„ã€‚"
+        "description": "¾ä¶Îµ½ÀÊ¶ÁÒôÆµÊ±¼äÖáµÄÓ³Éä¡£"
       },
       "NodeProgress": {
         "properties": {
@@ -23285,7 +23737,7 @@
               "set_reduced_motion"
             ],
             "title": "Action",
-            "description": "æ§åˆ¶åŠ¨ä½œã€‚"
+            "description": "¿ØÖÆ¶¯×÷¡£"
           },
           "position_seconds": {
             "anyOf": [
@@ -23298,7 +23750,7 @@
               }
             ],
             "title": "Position Seconds",
-            "description": "seek ç›®æ ‡ä½ç½®ï¼Œå•ä½ç§’ã€‚"
+            "description": "seek Ä¿±êÎ»ÖÃ£¬µ¥Î»Ãë¡£"
           },
           "enabled": {
             "anyOf": [
@@ -23310,7 +23762,7 @@
               }
             ],
             "title": "Enabled",
-            "description": "set_reduced_motion çš„å¼€å…³å€¼ã€‚"
+            "description": "set_reduced_motion µÄ¿ª¹ØÖµ¡£"
           }
         },
         "type": "object",
@@ -23318,7 +23770,7 @@
           "action"
         ],
         "title": "PlaybackControlRequest",
-        "description": "æ’­æ”¾æ§åˆ¶è¯·æ±‚ã€‚"
+        "description": "²¥·Å¿ØÖÆÇëÇó¡£"
       },
       "PlaybackControls": {
         "properties": {
@@ -23355,19 +23807,19 @@
         },
         "type": "object",
         "title": "PlaybackControls",
-        "description": "æ—¶é—´å†…å®¹çš„æ’­æ”¾æ§åˆ¶èƒ½åŠ›å£°æ˜ã€‚"
+        "description": "Ê±¼äÄÚÈİµÄ²¥·Å¿ØÖÆÄÜÁ¦ÉùÃ÷¡£"
       },
       "PlaybackState": {
         "properties": {
           "state_id": {
             "type": "string",
             "title": "State Id",
-            "description": "ç¨³å®šçŠ¶æ€æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨×´Ì¬±êÊ¶·û¡£"
           },
           "bundle_id": {
             "type": "string",
             "title": "Bundle Id",
-            "description": "å…³è”çš„æ— éšœç¢åŒ… IDã€‚"
+            "description": "¹ØÁªµÄÎŞÕÏ°­°ü ID¡£"
           },
           "paused": {
             "type": "boolean",
@@ -23412,7 +23864,7 @@
               }
             ],
             "title": "Active Caption Text",
-            "description": "å½“å‰æ—¶é—´ç‚¹çš„å­—å¹•æ–‡æœ¬ã€‚"
+            "description": "µ±Ç°Ê±¼äµãµÄ×ÖÄ»ÎÄ±¾¡£"
           },
           "active_frame_description": {
             "anyOf": [
@@ -23424,13 +23876,13 @@
               }
             ],
             "title": "Active Frame Description",
-            "description": "å‡å°‘åŠ¨ç”»æ¨¡å¼ä¸‹å½“å‰æ—¶é—´ç‚¹çš„é™æ€å¸§æè¿°ã€‚"
+            "description": "¼õÉÙ¶¯»­Ä£Ê½ÏÂµ±Ç°Ê±¼äµãµÄ¾²Ì¬Ö¡ÃèÊö¡£"
           },
           "updated_at": {
             "type": "string",
             "format": "date-time",
             "title": "Updated At",
-            "description": "æœ€åæ›´æ–°æ—¶é—´æˆ³ã€‚"
+            "description": "×îºó¸üĞÂÊ±¼ä´Á¡£"
           }
         },
         "type": "object",
@@ -23440,7 +23892,7 @@
           "updated_at"
         ],
         "title": "PlaybackState",
-        "description": "ä¸€ä¸ªæ— éšœç¢åŒ…çš„æ’­æ”¾çŠ¶æ€ï¼Œæ”¯æŒæš‚åœã€æ—¶é—´æ§åˆ¶å’Œå‡å°‘åŠ¨ç”»ã€‚"
+        "description": "Ò»¸öÎŞÕÏ°­°üµÄ²¥·Å×´Ì¬£¬Ö§³ÖÔİÍ£¡¢Ê±¼ä¿ØÖÆºÍ¼õÉÙ¶¯»­¡£"
       },
       "PopularScienceElement": {
         "properties": {
@@ -25026,11 +25478,11 @@
           "token": {
             "type": "string",
             "title": "Token",
-            "description": "åŸå§‹æ–‡æœ¬ç‰‡æ®µã€‚"
+            "description": "Ô­Ê¼ÎÄ±¾Æ¬¶Î¡£"
           },
           "kind": {
             "$ref": "#/components/schemas/PronunciationNoteKind",
-            "description": "ç‰‡æ®µç±»å‹ã€‚"
+            "description": "Æ¬¶ÎÀàĞÍ¡£"
           },
           "spoken_form": {
             "anyOf": [
@@ -25042,12 +25494,12 @@
               }
             ],
             "title": "Spoken Form",
-            "description": "ç¡®å®šçš„å£è¯­åŒ–è¯»æ³•ï¼›æ— æ³•å¯é æœ—è¯»æ—¶ä¸º Noneã€‚"
+            "description": "È·¶¨µÄ¿ÚÓï»¯¶Á·¨£»ÎŞ·¨¿É¿¿ÀÊ¶ÁÊ±Îª None¡£"
           },
           "degraded": {
             "type": "boolean",
             "title": "Degraded",
-            "description": "æ— æ³•å¯é æœ—è¯»æ—¶çš„æ˜¾å¼é™çº§æ ‡è®°ï¼Œæç¤ºæŸ¥çœ‹å¯è®¿é—®å…¬å¼æˆ–æ–‡æœ¬ã€‚",
+            "description": "ÎŞ·¨¿É¿¿ÀÊ¶ÁÊ±µÄÏÔÊ½½µ¼¶±ê¼Ç£¬ÌáÊ¾²é¿´¿É·ÃÎÊ¹«Ê½»òÎÄ±¾¡£",
             "default": false
           }
         },
@@ -25057,7 +25509,7 @@
           "kind"
         ],
         "title": "PronunciationNote",
-        "description": "æœ—è¯»ä¸­æ•°å­—ã€å•ä½ã€å…¬å¼å’Œç¼©å†™çš„å‘éŸ³å¤„ç†è®°å½•ã€‚"
+        "description": "ÀÊ¶ÁÖĞÊı×Ö¡¢µ¥Î»¡¢¹«Ê½ºÍËõĞ´µÄ·¢Òô´¦Àí¼ÇÂ¼¡£"
       },
       "PronunciationNoteKind": {
         "type": "string",
@@ -25068,7 +25520,7 @@
           "abbreviation"
         ],
         "title": "PronunciationNoteKind",
-        "description": "éœ€è¦å‘éŸ³å¤„ç†çš„æœ—è¯»å†…å®¹ç±»å‹ã€‚"
+        "description": "ĞèÒª·¢Òô´¦ÀíµÄÀÊ¶ÁÄÚÈİÀàĞÍ¡£"
       },
       "ProposeKnowledgeStateUpdateRequest": {
         "properties": {
@@ -25314,23 +25766,23 @@
           "frame_id": {
             "type": "string",
             "title": "Frame Id",
-            "description": "ç¨³å®šå¸§æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨Ö¡±êÊ¶·û¡£"
           },
           "order": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Order",
-            "description": "å¸§åºå·ã€‚"
+            "description": "Ö¡ĞòºÅ¡£"
           },
           "source_ref": {
             "type": "string",
             "title": "Source Ref",
-            "description": "å¯¹åº”çš„é•œå¤´/åœºæ™¯/å…ƒç´ å¼•ç”¨ã€‚"
+            "description": "¶ÔÓ¦µÄ¾µÍ·/³¡¾°/ÔªËØÒıÓÃ¡£"
           },
           "description": {
             "type": "string",
             "title": "Description",
-            "description": "å¸§çš„ç§‘å­¦å†…å®¹æè¿°ï¼Œä¸æ—ç™½ä¸€è‡´ã€‚"
+            "description": "Ö¡µÄ¿ÆÑ§ÄÚÈİÃèÊö£¬ÓëÅÔ°×Ò»ÖÂ¡£"
           },
           "start_time": {
             "type": "number",
@@ -25360,14 +25812,14 @@
           "description"
         ],
         "title": "ReducedMotionFrame",
-        "description": "å‡å°‘åŠ¨ç”»æ¨¡å¼ä¸‹çš„ä¸€ä¸ªé™æ€å¸§ã€‚"
+        "description": "¼õÉÙ¶¯»­Ä£Ê½ÏÂµÄÒ»¸ö¾²Ì¬Ö¡¡£"
       },
       "ReducedMotionVariant": {
         "properties": {
           "variant_id": {
             "type": "string",
             "title": "Variant Id",
-            "description": "ç¨³å®šå˜ä½“æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨±äÌå±êÊ¶·û¡£"
           },
           "frames": {
             "items": {
@@ -25386,7 +25838,7 @@
               }
             ],
             "title": "Note",
-            "description": "æ—¶é—´å†…å®¹è¢«é€å¸§å±•ç¤ºçš„è¯´æ˜ã€‚"
+            "description": "Ê±¼äÄÚÈİ±»ÖğÖ¡Õ¹Ê¾µÄËµÃ÷¡£"
           },
           "claim_ids": {
             "items": {
@@ -25412,7 +25864,7 @@
           "variant_id"
         ],
         "title": "ReducedMotionVariant",
-        "description": "å‡å°‘åŠ¨ç”»åˆåŒï¼šç”¨é™æ€å¸§åºåˆ—æ›¿ä»£è¿ç»­åŠ¨ç”»ã€‚"
+        "description": "¼õÉÙ¶¯»­ºÏÍ¬£ºÓÃ¾²Ì¬Ö¡ĞòÁĞÌæ´úÁ¬Ğø¶¯»­¡£"
       },
       "RejectedSliceItem": {
         "properties": {
@@ -26686,7 +27138,7 @@
           "name": {
             "type": "string",
             "title": "Name",
-            "description": "ä¾èµ–åç§°ã€‚"
+            "description": "ÒÀÀµÃû³Æ¡£"
           },
           "version": {
             "anyOf": [
@@ -26698,12 +27150,12 @@
               }
             ],
             "title": "Version",
-            "description": "ç‰ˆæœ¬ã€‚"
+            "description": "°æ±¾¡£"
           },
           "allowed": {
             "type": "boolean",
             "title": "Allowed",
-            "description": "æ˜¯å¦åœ¨ç™½åå•ä¸­ã€‚",
+            "description": "ÊÇ·ñÔÚ°×Ãûµ¥ÖĞ¡£",
             "default": true
           }
         },
@@ -26712,7 +27164,7 @@
           "name"
         ],
         "title": "SandboxDependency",
-        "description": "æ²™ç®±è¿è¡Œçš„ä¾èµ–é¡¹è®°å½•ã€‚"
+        "description": "É³ÏäÔËĞĞµÄÒÀÀµÏî¼ÇÂ¼¡£"
       },
       "SandboxResourceLimits": {
         "properties": {
@@ -26720,46 +27172,46 @@
             "type": "number",
             "minimum": 1.0,
             "title": "Max Cpu Seconds",
-            "description": "æœ€å¤§ CPU æ—¶é—´ï¼Œå•ä½ç§’ã€‚",
+            "description": "×î´ó CPU Ê±¼ä£¬µ¥Î»Ãë¡£",
             "default": 30.0
           },
           "max_memory_mb": {
             "type": "integer",
             "minimum": 32.0,
             "title": "Max Memory Mb",
-            "description": "æœ€å¤§å†…å­˜ï¼Œå•ä½ MBã€‚",
+            "description": "×î´óÄÚ´æ£¬µ¥Î» MB¡£",
             "default": 512
           },
           "max_disk_mb": {
             "type": "integer",
             "minimum": 10.0,
             "title": "Max Disk Mb",
-            "description": "æœ€å¤§ç£ç›˜ï¼Œå•ä½ MBã€‚",
+            "description": "×î´ó´ÅÅÌ£¬µ¥Î» MB¡£",
             "default": 100
           },
           "max_processes": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Max Processes",
-            "description": "æœ€å¤§è¿›ç¨‹æ•°ã€‚",
+            "description": "×î´ó½ø³ÌÊı¡£",
             "default": 10
           },
           "network_allowed": {
             "type": "boolean",
             "title": "Network Allowed",
-            "description": "æ˜¯å¦å…è®¸ç½‘ç»œè®¿é—®ï¼Œé»˜è®¤ç¦æ­¢ã€‚",
+            "description": "ÊÇ·ñÔÊĞíÍøÂç·ÃÎÊ£¬Ä¬ÈÏ½ûÖ¹¡£",
             "default": false
           },
           "keys_allowed": {
             "type": "boolean",
             "title": "Keys Allowed",
-            "description": "æ˜¯å¦å…è®¸è®¿é—®å¯†é’¥ï¼Œé»˜è®¤ç¦æ­¢ã€‚",
+            "description": "ÊÇ·ñÔÊĞí·ÃÎÊÃÜÔ¿£¬Ä¬ÈÏ½ûÖ¹¡£",
             "default": false
           }
         },
         "type": "object",
         "title": "SandboxResourceLimits",
-        "description": "æ²™ç®±èµ„æºé™åˆ¶ã€‚"
+        "description": "É³Ïä×ÊÔ´ÏŞÖÆ¡£"
       },
       "SandboxResourceUsage": {
         "properties": {
@@ -26767,62 +27219,62 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Cpu Time Ms",
-            "description": "CPU æ—¶é—´ï¼Œå•ä½æ¯«ç§’ã€‚",
+            "description": "CPU Ê±¼ä£¬µ¥Î»ºÁÃë¡£",
             "default": 0
           },
           "memory_bytes": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Memory Bytes",
-            "description": "å†…å­˜ä½¿ç”¨ï¼Œå•ä½å­—èŠ‚ã€‚",
+            "description": "ÄÚ´æÊ¹ÓÃ£¬µ¥Î»×Ö½Ú¡£",
             "default": 0
           },
           "disk_bytes": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Disk Bytes",
-            "description": "ç£ç›˜ä½¿ç”¨ï¼Œå•ä½å­—èŠ‚ã€‚",
+            "description": "´ÅÅÌÊ¹ÓÃ£¬µ¥Î»×Ö½Ú¡£",
             "default": 0
           },
           "network_blocked": {
             "type": "boolean",
             "title": "Network Blocked",
-            "description": "ç½‘ç»œæ˜¯å¦è¢«é˜»æ­¢ã€‚",
+            "description": "ÍøÂçÊÇ·ñ±»×èÖ¹¡£",
             "default": true
           },
           "keys_blocked": {
             "type": "boolean",
             "title": "Keys Blocked",
-            "description": "å¯†é’¥è®¿é—®æ˜¯å¦è¢«é˜»æ­¢ã€‚",
+            "description": "ÃÜÔ¿·ÃÎÊÊÇ·ñ±»×èÖ¹¡£",
             "default": true
           }
         },
         "type": "object",
         "title": "SandboxResourceUsage",
-        "description": "æ²™ç®±è¿è¡Œå®é™…èµ„æºä½¿ç”¨è®°å½•ã€‚"
+        "description": "É³ÏäÔËĞĞÊµ¼Ê×ÊÔ´Ê¹ÓÃ¼ÇÂ¼¡£"
       },
       "SandboxRunRequest": {
         "properties": {
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "å…³è”çš„åˆ†é•œ IDã€‚"
+            "description": "¹ØÁªµÄ·Ö¾µ ID¡£"
           },
           "source_code": {
             "type": "string",
             "title": "Source Code",
-            "description": "å¯æ‰§è¡Œä»£ç ï¼ˆPython/HTML/JSï¼‰ã€‚"
+            "description": "¿ÉÖ´ĞĞ´úÂë£¨Python/HTML/JS£©¡£"
           },
           "code_language": {
             "type": "string",
             "title": "Code Language",
-            "description": "ä»£ç è¯­è¨€ï¼špython, html, javascriptã€‚"
+            "description": "´úÂëÓïÑÔ£ºpython, html, javascript¡£"
           },
           "repair_budget": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Repair Budget",
-            "description": "æœ‰é™ä¿®å¤æ¬¡æ•°ä¸Šé™ã€‚",
+            "description": "ÓĞÏŞĞŞ¸´´ÎÊıÉÏÏŞ¡£",
             "default": 3
           },
           "fact_lock_ids": {
@@ -26831,11 +27283,11 @@
             },
             "type": "array",
             "title": "Fact Lock Ids",
-            "description": "ç¦æ­¢è§¦çŠ¯çš„äº‹å®é” ID åˆ—è¡¨ã€‚"
+            "description": "½ûÖ¹´¥·¸µÄÊÂÊµËø ID ÁĞ±í¡£"
           },
           "resource_limits": {
             "$ref": "#/components/schemas/SandboxResourceLimits",
-            "description": "èµ„æºé™åˆ¶ã€‚"
+            "description": "×ÊÔ´ÏŞÖÆ¡£"
           }
         },
         "type": "object",
@@ -26845,23 +27297,23 @@
           "code_language"
         ],
         "title": "SandboxRunRequest",
-        "description": "æäº¤æ²™ç®±è¿è¡Œçš„è¯·æ±‚ã€‚"
+        "description": "Ìá½»É³ÏäÔËĞĞµÄÇëÇó¡£"
       },
       "SandboxRunResult": {
         "properties": {
           "run_id": {
             "type": "string",
             "title": "Run Id",
-            "description": "æ²™ç®±è¿è¡Œæ ‡è¯†ç¬¦ã€‚"
+            "description": "É³ÏäÔËĞĞ±êÊ¶·û¡£"
           },
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "å…³è”çš„åˆ†é•œ IDã€‚"
+            "description": "¹ØÁªµÄ·Ö¾µ ID¡£"
           },
           "status": {
             "$ref": "#/components/schemas/SandboxRunStatus",
-            "description": "è¿è¡ŒçŠ¶æ€ã€‚"
+            "description": "ÔËĞĞ×´Ì¬¡£"
           },
           "output": {
             "anyOf": [
@@ -26873,7 +27325,7 @@
               }
             ],
             "title": "Output",
-            "description": "æ ‡å‡†è¾“å‡ºæˆ–æ¸²æŸ“äº§ç‰©ã€‚"
+            "description": "±ê×¼Êä³ö»òäÖÈ¾²úÎï¡£"
           },
           "error_log": {
             "items": {
@@ -26881,11 +27333,11 @@
             },
             "type": "array",
             "title": "Error Log",
-            "description": "è¿è¡Œé”™è¯¯æ—¥å¿—ã€‚"
+            "description": "ÔËĞĞ´íÎóÈÕÖ¾¡£"
           },
           "resource_usage": {
             "$ref": "#/components/schemas/SandboxResourceUsage",
-            "description": "èµ„æºä½¿ç”¨è®°å½•ã€‚"
+            "description": "×ÊÔ´Ê¹ÓÃ¼ÇÂ¼¡£"
           },
           "dependencies": {
             "items": {
@@ -26893,12 +27345,12 @@
             },
             "type": "array",
             "title": "Dependencies",
-            "description": "ä¾èµ–é¡¹è®°å½•ã€‚"
+            "description": "ÒÀÀµÏî¼ÇÂ¼¡£"
           },
           "content_hash": {
             "type": "string",
             "title": "Content Hash",
-            "description": "è¾“å‡ºå†…å®¹ SHA-256 å“ˆå¸Œã€‚"
+            "description": "Êä³öÄÚÈİ SHA-256 ¹şÏ£¡£"
           },
           "fact_lock_violations": {
             "items": {
@@ -26906,20 +27358,20 @@
             },
             "type": "array",
             "title": "Fact Lock Violations",
-            "description": "è§¦çŠ¯çš„äº‹å®é”è®°å½•ã€‚"
+            "description": "´¥·¸µÄÊÂÊµËø¼ÇÂ¼¡£"
           },
           "repair_attempts": {
             "type": "integer",
             "minimum": 0.0,
             "title": "Repair Attempts",
-            "description": "å·²å°è¯•çš„ä¿®å¤æ¬¡æ•°ã€‚",
+            "description": "ÒÑ³¢ÊÔµÄĞŞ¸´´ÎÊı¡£",
             "default": 0
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "åˆ›å»ºæ—¶é—´æˆ³ã€‚"
+            "description": "´´½¨Ê±¼ä´Á¡£"
           },
           "completed_at": {
             "anyOf": [
@@ -26932,7 +27384,7 @@
               }
             ],
             "title": "Completed At",
-            "description": "å®Œæˆæ—¶é—´æˆ³ã€‚"
+            "description": "Íê³ÉÊ±¼ä´Á¡£"
           }
         },
         "type": "object",
@@ -26944,7 +27396,7 @@
           "created_at"
         ],
         "title": "SandboxRunResult",
-        "description": "æ²™ç®±è¿è¡Œç»“æœã€‚"
+        "description": "É³ÏäÔËĞĞ½á¹û¡£"
       },
       "SandboxRunStatus": {
         "type": "string",
@@ -26955,14 +27407,14 @@
           "failed"
         ],
         "title": "SandboxRunStatus",
-        "description": "æ²™ç®±è¿è¡ŒçŠ¶æ€ï¼Œåªæè¿°è¿è¡Œæœ¬èº«ã€‚"
+        "description": "É³ÏäÔËĞĞ×´Ì¬£¬Ö»ÃèÊöÔËĞĞ±¾Éí¡£"
       },
       "SceneAccessibility": {
         "properties": {
           "alt_text": {
             "type": "string",
             "title": "Alt Text",
-            "description": "åœºæ™¯æ›¿ä»£æ–‡æœ¬ã€‚"
+            "description": "³¡¾°Ìæ´úÎÄ±¾¡£"
           },
           "long_description": {
             "anyOf": [
@@ -26974,7 +27426,7 @@
               }
             ],
             "title": "Long Description",
-            "description": "åœºæ™¯é•¿æè¿°ï¼Œç”¨äºå¤æ‚è§†è§‰åœºæ™¯ã€‚"
+            "description": "³¡¾°³¤ÃèÊö£¬ÓÃÓÚ¸´ÔÓÊÓ¾õ³¡¾°¡£"
           }
         },
         "type": "object",
@@ -26982,19 +27434,19 @@
           "alt_text"
         ],
         "title": "SceneAccessibility",
-        "description": "æ— éšœç¢æè¿°ä¿¡æ¯ï¼Œé™„åŠ ç»™ä¸€ä¸ªåœºæ™¯ã€‚"
+        "description": "ÎŞÕÏ°­ÃèÊöĞÅÏ¢£¬¸½¼Ó¸øÒ»¸ö³¡¾°¡£"
       },
       "SceneSpec": {
         "properties": {
           "scene_spec_id": {
             "type": "string",
             "title": "Scene Spec Id",
-            "description": "ç¨³å®šåœºæ™¯è§„æ ¼æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨³¡¾°¹æ¸ñ±êÊ¶·û¡£"
           },
           "title": {
             "type": "string",
             "title": "Title",
-            "description": "åœºæ™¯æ ‡é¢˜ã€‚"
+            "description": "³¡¾°±êÌâ¡£"
           },
           "visual_objects": {
             "items": {
@@ -27002,12 +27454,12 @@
             },
             "type": "array",
             "title": "Visual Objects",
-            "description": "åœºæ™¯ä¸­çš„è§†è§‰å¯¹è±¡åˆ—è¡¨ã€‚"
+            "description": "³¡¾°ÖĞµÄÊÓ¾õ¶ÔÏóÁĞ±í¡£"
           },
           "layout_description": {
             "type": "string",
             "title": "Layout Description",
-            "description": "å¸ƒå±€æè¿°ã€‚",
+            "description": "²¼¾ÖÃèÊö¡£",
             "default": ""
           },
           "state_description": {
@@ -27020,7 +27472,7 @@
               }
             ],
             "title": "State Description",
-            "description": "åœºæ™¯çŠ¶æ€æè¿°ã€‚"
+            "description": "³¡¾°×´Ì¬ÃèÊö¡£"
           },
           "accessibility": {
             "anyOf": [
@@ -27031,13 +27483,13 @@
                 "type": "null"
               }
             ],
-            "description": "åœºæ™¯çº§æ— éšœç¢æè¿°ã€‚"
+            "description": "³¡¾°¼¶ÎŞÕÏ°­ÃèÊö¡£"
           },
           "created_at": {
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "åˆ›å»ºæ—¶é—´æˆ³ã€‚"
+            "description": "´´½¨Ê±¼ä´Á¡£"
           }
         },
         "type": "object",
@@ -27047,7 +27499,7 @@
           "created_at"
         ],
         "title": "SceneSpec",
-        "description": "å•åœºæ™¯è§†è§‰å®šä¹‰ï¼Œå¯ç‹¬ç«‹ç¼–è¾‘å’ŒéªŒè¯ã€‚\n\nSceneSpec å®šä¹‰å•ä¸ªåœºæ™¯çš„é™æ€è§†è§‰è®¾è®¡ï¼ŒåŒ…å«è§†è§‰å¯¹è±¡åˆ—è¡¨ã€å¸ƒå±€ã€çŠ¶æ€ã€\næ•°æ®ç»‘å®šå’Œæ— éšœç¢æè¿°ã€‚è¢« MediaStoryboard ä¸­çš„é•œå¤´å¼•ç”¨ã€‚"
+        "description": "µ¥³¡¾°ÊÓ¾õ¶¨Òå£¬¿É¶ÀÁ¢±à¼­ºÍÑéÖ¤¡£\n\nSceneSpec ¶¨Òåµ¥¸ö³¡¾°µÄ¾²Ì¬ÊÓ¾õÉè¼Æ£¬°üº¬ÊÓ¾õ¶ÔÏóÁĞ±í¡¢²¼¾Ö¡¢×´Ì¬¡¢\nÊı¾İ°ó¶¨ºÍÎŞÕÏ°­ÃèÊö¡£±» MediaStoryboard ÖĞµÄ¾µÍ·ÒıÓÃ¡£"
       },
       "ScientificMediaObject": {
         "properties": {
@@ -27156,7 +27608,7 @@
           "updated_at"
         ],
         "title": "ScientificMediaObject",
-        "description": "A generated scientific media object with editable source and bindings.\n\nThis is the output of the generation pipeline â€” a stand-alone media work\nwith its editable source, rendered SVG, claim bindings and accessibility\nalternative. It is versioned and can enter the task stage artifact system."
+        "description": "A generated scientific media object with editable source and bindings.\n\nThis is the output of the generation pipeline ¡ª a stand-alone media work\nwith its editable source, rendered SVG, claim bindings and accessibility\nalternative. It is versioned and can enter the task stage artifact system."
       },
       "ScientificQualityGateCheck": {
         "type": "string",
@@ -27525,17 +27977,17 @@
             "type": "integer",
             "minimum": 1.0,
             "title": "Order",
-            "description": "é˜…è¯»é¡ºåºã€‚"
+            "description": "ÔÄ¶ÁË³Ğò¡£"
           },
           "role": {
             "type": "string",
             "title": "Role",
-            "description": "å—è§’è‰²ï¼štitle, objective, scene_narration, description, data_rowã€‚"
+            "description": "¿é½ÇÉ«£ºtitle, objective, scene_narration, description, data_row¡£"
           },
           "text": {
             "type": "string",
             "title": "Text",
-            "description": "å—æ–‡æœ¬ã€‚"
+            "description": "¿éÎÄ±¾¡£"
           },
           "claim_ids": {
             "items": {
@@ -27552,14 +28004,14 @@
           "text"
         ],
         "title": "SequentialReadingBlock",
-        "description": "é¡ºåºé˜…è¯»è§†å›¾ä¸­çš„ä¸€ä¸ªæ–‡æœ¬å—ã€‚"
+        "description": "Ë³ĞòÔÄ¶ÁÊÓÍ¼ÖĞµÄÒ»¸öÎÄ±¾¿é¡£"
       },
       "SequentialReadingView": {
         "properties": {
           "view_id": {
             "type": "string",
             "title": "View Id",
-            "description": "ç¨³å®šè§†å›¾æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨ÊÓÍ¼±êÊ¶·û¡£"
           },
           "blocks": {
             "items": {
@@ -27592,7 +28044,7 @@
           "view_id"
         ],
         "title": "SequentialReadingView",
-        "description": "é¡ºåºé˜…è¯»åˆåŒï¼šå±å¹•é˜…è¯»å™¨å¯çº¿æ€§éå†çš„å†…å®¹ç‰ˆæœ¬ã€‚"
+        "description": "Ë³ĞòÔÄ¶ÁºÏÍ¬£ºÆÁÄ»ÔÄ¶ÁÆ÷¿ÉÏßĞÔ±éÀúµÄÄÚÈİ°æ±¾¡£"
       },
       "Session": {
         "properties": {
@@ -27770,7 +28222,7 @@
             "type": "string",
             "title": "Independence Note",
             "description": "Post-share independence guarantee.",
-            "default": "å‰¯æœ¬ä¸åŸä»¶ç‹¬ç«‹ï¼›åç»­ä¿®æ”¹ä¸è‡ªåŠ¨åŒæ­¥ã€‚"
+            "default": "¸±±¾ÓëÔ­¼ş¶ÀÁ¢£»ºóĞøĞŞ¸Ä²»×Ô¶¯Í¬²½¡£"
           }
         },
         "type": "object",
@@ -27830,7 +28282,7 @@
             "type": "string",
             "title": "Independence Note",
             "description": "Explains that the copy is independent from the original.",
-            "default": "å‰¯æœ¬ä¸åŸä»¶ç‹¬ç«‹ï¼›åç»­ä¿®æ”¹ä¸è‡ªåŠ¨åŒæ­¥ã€‚"
+            "default": "¸±±¾ÓëÔ­¼ş¶ÀÁ¢£»ºóĞøĞŞ¸Ä²»×Ô¶¯Í¬²½¡£"
           },
           "recipient_role": {
             "$ref": "#/components/schemas/SharedProjectRole",
@@ -28886,24 +29338,24 @@
           "passed": {
             "type": "boolean",
             "title": "Passed",
-            "description": "æ˜¯å¦é€šè¿‡é™æ€æ£€æŸ¥ã€‚"
+            "description": "ÊÇ·ñÍ¨¹ı¾²Ì¬¼ì²é¡£"
           },
           "ast_valid": {
             "type": "boolean",
             "title": "Ast Valid",
-            "description": "AST è§£ææ˜¯å¦æœ‰æ•ˆã€‚",
+            "description": "AST ½âÎöÊÇ·ñÓĞĞ§¡£",
             "default": true
           },
           "deps_whitelisted": {
             "type": "boolean",
             "title": "Deps Whitelisted",
-            "description": "ä¾èµ–æ˜¯å¦åœ¨ç™½åå•ä¸­ã€‚",
+            "description": "ÒÀÀµÊÇ·ñÔÚ°×Ãûµ¥ÖĞ¡£",
             "default": true
           },
           "lint_ok": {
             "type": "boolean",
             "title": "Lint Ok",
-            "description": "ä»£ç è§„èŒƒæ£€æŸ¥æ˜¯å¦é€šè¿‡ã€‚",
+            "description": "´úÂë¹æ·¶¼ì²éÊÇ·ñÍ¨¹ı¡£",
             "default": true
           },
           "errors": {
@@ -28912,7 +29364,7 @@
             },
             "type": "array",
             "title": "Errors",
-            "description": "æ£€æŸ¥é”™è¯¯åˆ—è¡¨ã€‚"
+            "description": "¼ì²é´íÎóÁĞ±í¡£"
           }
         },
         "type": "object",
@@ -28920,24 +29372,24 @@
           "passed"
         ],
         "title": "StaticCheckResult",
-        "description": "ä»£ç ç”Ÿæˆåçš„é™æ€æ£€æŸ¥ç»“æœã€‚"
+        "description": "´úÂëÉú³ÉºóµÄ¾²Ì¬¼ì²é½á¹û¡£"
       },
       "StoryboardClaimBinding": {
         "properties": {
           "binding_id": {
             "type": "string",
             "title": "Binding Id",
-            "description": "ç¨³å®šç»‘å®šæ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨°ó¶¨±êÊ¶·û¡£"
           },
           "scene_id": {
             "type": "string",
             "title": "Scene Id",
-            "description": "å…³è”çš„é•œå¤´ IDã€‚"
+            "description": "¹ØÁªµÄ¾µÍ· ID¡£"
           },
           "element_ref": {
             "type": "string",
             "title": "Element Ref",
-            "description": "å¼•ç”¨çš„è§†è§‰å…ƒç´ å¼•ç”¨ã€‚"
+            "description": "ÒıÓÃµÄÊÓ¾õÔªËØÒıÓÃ¡£"
           },
           "claim_id": {
             "anyOf": [
@@ -28949,7 +29401,7 @@
               }
             ],
             "title": "Claim Id",
-            "description": "ç»‘å®šçš„ Claim IDã€‚"
+            "description": "°ó¶¨µÄ Claim ID¡£"
           },
           "fact_lock_id": {
             "anyOf": [
@@ -28961,7 +29413,7 @@
               }
             ],
             "title": "Fact Lock Id",
-            "description": "ç»‘å®šçš„ FactLock IDã€‚"
+            "description": "°ó¶¨µÄ FactLock ID¡£"
           }
         },
         "type": "object",
@@ -28971,7 +29423,7 @@
           "element_ref"
         ],
         "title": "StoryboardClaimBinding",
-        "description": "åˆ†é•œåœºæ™¯ä¸­è§†è§‰å…ƒç´ åˆ° Claim/FactLock çš„ç»‘å®šã€‚"
+        "description": "·Ö¾µ³¡¾°ÖĞÊÓ¾õÔªËØµ½ Claim/FactLock µÄ°ó¶¨¡£"
       },
       "StoryboardGenerationRequest": {
         "properties": {
@@ -28979,7 +29431,7 @@
             "type": "string",
             "minLength": 1,
             "title": "Title",
-            "description": "åˆ†é•œæ ‡é¢˜ã€‚"
+            "description": "·Ö¾µ±êÌâ¡£"
           },
           "teaching_objectives": {
             "items": {
@@ -28987,7 +29439,7 @@
             },
             "type": "array",
             "title": "Teaching Objectives",
-            "description": "æ•™å­¦ç›®æ ‡åˆ—è¡¨ã€‚"
+            "description": "½ÌÑ§Ä¿±êÁĞ±í¡£"
           },
           "media_type": {
             "type": "string",
@@ -28996,7 +29448,7 @@
               "interactive_html"
             ],
             "title": "Media Type",
-            "description": "åª’ä½“ç±»å‹ã€‚"
+            "description": "Ã½ÌåÀàĞÍ¡£"
           },
           "scenes": {
             "items": {
@@ -29004,7 +29456,7 @@
             },
             "type": "array",
             "title": "Scenes",
-            "description": "é¢„å®šä¹‰çš„é•œå¤´åˆ—è¡¨ã€‚ä¸ºç©ºæ—¶ç”±ç”Ÿæˆå™¨åˆ›å»ºé»˜è®¤åˆ†é•œã€‚"
+            "description": "Ô¤¶¨ÒåµÄ¾µÍ·ÁĞ±í¡£Îª¿ÕÊ±ÓÉÉú³ÉÆ÷´´½¨Ä¬ÈÏ·Ö¾µ¡£"
           },
           "claim_ids": {
             "items": {
@@ -29038,19 +29490,19 @@
           "media_type"
         ],
         "title": "StoryboardGenerationRequest",
-        "description": "åˆ›å»ºç»“æ„åŒ–åˆ†é•œçš„è¯·æ±‚ã€‚"
+        "description": "´´½¨½á¹¹»¯·Ö¾µµÄÇëÇó¡£"
       },
       "StoryboardNarration": {
         "properties": {
           "text": {
             "type": "string",
             "title": "Text",
-            "description": "æ—ç™½æ­£æ–‡ã€‚"
+            "description": "ÅÔ°×ÕıÎÄ¡£"
           },
           "language": {
             "type": "string",
             "title": "Language",
-            "description": "æ—ç™½è¯­è¨€ã€‚",
+            "description": "ÅÔ°×ÓïÑÔ¡£",
             "default": "zh-CN"
           },
           "voice_over_text": {
@@ -29063,7 +29515,7 @@
               }
             ],
             "title": "Voice Over Text",
-            "description": "å½•éŸ³æ–‡æœ¬ï¼Œä¸æ—ç™½ä¸åŒæ—¶ä½¿ç”¨ã€‚"
+            "description": "Â¼ÒôÎÄ±¾£¬ÓëÅÔ°×²»Í¬Ê±Ê¹ÓÃ¡£"
           },
           "claim_ids": {
             "items": {
@@ -29071,7 +29523,7 @@
             },
             "type": "array",
             "title": "Claim Ids",
-            "description": "æœ¬æ—ç™½è¦†ç›–çš„ Claim ID åˆ—è¡¨ã€‚"
+            "description": "±¾ÅÔ°×¸²¸ÇµÄ Claim ID ÁĞ±í¡£"
           }
         },
         "type": "object",
@@ -29079,13 +29531,13 @@
           "text"
         ],
         "title": "StoryboardNarration",
-        "description": "åˆ†é•œä¸­ä¸€ä¸ªé•œå¤´çš„æ—ç™½æè¿°ã€‚"
+        "description": "·Ö¾µÖĞÒ»¸ö¾µÍ·µÄÅÔ°×ÃèÊö¡£"
       },
       "StoryboardResult": {
         "properties": {
           "storyboard": {
             "$ref": "#/components/schemas/MediaStoryboard",
-            "description": "ç”Ÿæˆçš„åˆ†é•œã€‚"
+            "description": "Éú³ÉµÄ·Ö¾µ¡£"
           },
           "scene_specs": {
             "additionalProperties": {
@@ -29093,7 +29545,7 @@
             },
             "type": "object",
             "title": "Scene Specs",
-            "description": "åˆ†é•œå¼•ç”¨çš„ SceneSpec å­—å…¸ã€‚"
+            "description": "·Ö¾µÒıÓÃµÄ SceneSpec ×Öµä¡£"
           }
         },
         "type": "object",
@@ -29101,31 +29553,31 @@
           "storyboard"
         ],
         "title": "StoryboardResult",
-        "description": "åˆ†é•œç”Ÿæˆç»“æœã€‚"
+        "description": "·Ö¾µÉú³É½á¹û¡£"
       },
       "StoryboardScene": {
         "properties": {
           "scene_id": {
             "type": "string",
             "title": "Scene Id",
-            "description": "ç¨³å®šé•œå¤´æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨¾µÍ·±êÊ¶·û¡£"
           },
           "scene_number": {
             "type": "integer",
             "minimum": 1.0,
             "title": "Scene Number",
-            "description": "é•œå¤´åºå·ã€‚"
+            "description": "¾µÍ·ĞòºÅ¡£"
           },
           "scene_spec_id": {
             "type": "string",
             "title": "Scene Spec Id",
-            "description": "å¼•ç”¨çš„ SceneSpec IDã€‚"
+            "description": "ÒıÓÃµÄ SceneSpec ID¡£"
           },
           "timing_seconds": {
             "type": "number",
             "minimum": 0.0,
             "title": "Timing Seconds",
-            "description": "é•œå¤´æŒç»­æ—¶é—´ï¼Œå•ä½ç§’ã€‚"
+            "description": "¾µÍ·³ÖĞøÊ±¼ä£¬µ¥Î»Ãë¡£"
           },
           "transition_type": {
             "anyOf": [
@@ -29142,7 +29594,7 @@
               }
             ],
             "title": "Transition Type",
-            "description": "é•œå¤´é—´è¿‡æ¸¡ç±»å‹ï¼šcutï¼ˆç›´æ¥åˆ‡æ¢ï¼‰ã€dissolveï¼ˆæº¶è§£ï¼‰ã€pushï¼ˆæ¨å…¥ï¼‰ã€‚"
+            "description": "¾µÍ·¼ä¹ı¶ÉÀàĞÍ£ºcut£¨Ö±½ÓÇĞ»»£©¡¢dissolve£¨ÈÜ½â£©¡¢push£¨ÍÆÈë£©¡£"
           },
           "narration": {
             "anyOf": [
@@ -29153,7 +29605,7 @@
                 "type": "null"
               }
             ],
-            "description": "é•œå¤´æ—ç™½ã€‚"
+            "description": "¾µÍ·ÅÔ°×¡£"
           },
           "scene_claim_bindings": {
             "items": {
@@ -29161,7 +29613,7 @@
             },
             "type": "array",
             "title": "Scene Claim Bindings",
-            "description": "åœºæ™¯çº§ Claim ç»‘å®šã€‚"
+            "description": "³¡¾°¼¶ Claim °ó¶¨¡£"
           },
           "scene_accessibility": {
             "anyOf": [
@@ -29173,7 +29625,7 @@
               }
             ],
             "title": "Scene Accessibility",
-            "description": "åœºæ™¯çº§æ— éšœç¢æè¿°ã€‚"
+            "description": "³¡¾°¼¶ÎŞÕÏ°­ÃèÊö¡£"
           }
         },
         "type": "object",
@@ -29184,7 +29636,7 @@
           "timing_seconds"
         ],
         "title": "StoryboardScene",
-        "description": "åˆ†é•œä¸­çš„ä¸€ä¸ªé•œå¤´ï¼Œå¼•ç”¨ SceneSpecã€‚\n\né•œå¤´æ˜¯æ—¶é—´åºåˆ—ä¸­çš„ä¸€æ®µï¼ŒåŒ…å«å¯¹ SceneSpec çš„å¼•ç”¨ã€æŒç»­æ—¶é—´ã€\nè¿‡æ¸¡ç±»å‹ã€æ—ç™½ã€Claim ç»‘å®šå’Œæ— éšœç¢æè¿°ã€‚"
+        "description": "·Ö¾µÖĞµÄÒ»¸ö¾µÍ·£¬ÒıÓÃ SceneSpec¡£\n\n¾µÍ·ÊÇÊ±¼äĞòÁĞÖĞµÄÒ»¶Î£¬°üº¬¶Ô SceneSpec µÄÒıÓÃ¡¢³ÖĞøÊ±¼ä¡¢\n¹ı¶ÉÀàĞÍ¡¢ÅÔ°×¡¢Claim °ó¶¨ºÍÎŞÕÏ°­ÃèÊö¡£"
       },
       "StoryboardStatus": {
         "type": "string",
@@ -29201,7 +29653,7 @@
           "failed"
         ],
         "title": "StoryboardStatus",
-        "description": "ç»“æ„åŒ–åˆ†é•œç”Ÿå‘½å‘¨æœŸçŠ¶æ€ï¼Œç‹¬ç«‹äº T032 çš„ GenerationStatusã€‚"
+        "description": "½á¹¹»¯·Ö¾µÉúÃüÖÜÆÚ×´Ì¬£¬¶ÀÁ¢ÓÚ T032 µÄ GenerationStatus¡£"
       },
       "StyleDiagnosticFinding": {
         "properties": {
@@ -29865,7 +30317,7 @@
           "transcript_id": {
             "type": "string",
             "title": "Transcript Id",
-            "description": "ç¨³å®šæ–‡å­—ç¨¿æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨ÎÄ×Ö¸å±êÊ¶·û¡£"
           },
           "language": {
             "type": "string",
@@ -29882,7 +30334,7 @@
           "full_text": {
             "type": "string",
             "title": "Full Text",
-            "description": "å…¨æ–‡æ–‡æœ¬ã€‚",
+            "description": "È«ÎÄÎÄ±¾¡£",
             "default": ""
           },
           "claim_ids": {
@@ -29909,7 +30361,7 @@
           "transcript_id"
         ],
         "title": "Transcript",
-        "description": "åª’ä½“å¯¹è±¡çš„å®Œæ•´æ–‡å­—ç¨¿ï¼Œä¸æœ—è¯»ã€å­—å¹•å…±äº« Claim ä¸ç‰ˆæœ¬ã€‚"
+        "description": "Ã½Ìå¶ÔÏóµÄÍêÕûÎÄ×Ö¸å£¬ÓëÀÊ¶Á¡¢×ÖÄ»¹²Ïí Claim Óë°æ±¾¡£"
       },
       "TranscriptSegment": {
         "properties": {
@@ -30300,6 +30752,30 @@
             "$ref": "#/components/schemas/VaultObjectDomain",
             "description": "Authority domain for the new vault object.",
             "default": "personal_vault"
+          },
+          "content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Hash",
+            "description": "Optional pre-computed hash of the authoritative plaintext."
+          },
+          "content_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Length",
+            "description": "Optional pre-computed length of the authoritative plaintext."
           }
         },
         "type": "object",
@@ -30383,6 +30859,60 @@
         ],
         "title": "VaultObjectSummary",
         "description": "List item for the vault object selector."
+      },
+      "VaultRuntime": {
+        "properties": {
+          "runtime_id": {
+            "type": "string",
+            "title": "Runtime Id",
+            "description": "Stable runtime identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "device_id": {
+            "type": "string",
+            "title": "Device Id",
+            "description": "Bound device identifier."
+          },
+          "certificate_id": {
+            "type": "string",
+            "title": "Certificate Id",
+            "description": "Bound device certificate."
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Runtime version."
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "Supported capabilities, e.g. encrypted_storage, offline_index."
+          },
+          "paired_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Paired At",
+            "description": "When the runtime was paired."
+          }
+        },
+        "type": "object",
+        "required": [
+          "runtime_id",
+          "account_id",
+          "device_id",
+          "certificate_id",
+          "version",
+          "paired_at"
+        ],
+        "title": "VaultRuntime",
+        "description": "Projection of a device-side vault runtime.\n\nThe runtime is the authoritative location for encrypted personal content,\nprivate indexes and offline operations. It binds to exactly one account and\ndevice certificate."
       },
       "VaultShareRequest": {
         "properties": {
@@ -30521,22 +31051,22 @@
           "object_id": {
             "type": "string",
             "title": "Object Id",
-            "description": "ç¨³å®šå¯¹è±¡æ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨¶ÔÏó±êÊ¶·û¡£"
           },
           "label": {
             "type": "string",
             "title": "Label",
-            "description": "å¯¹è±¡æ˜¾ç¤ºæ ‡ç­¾ã€‚"
+            "description": "¶ÔÏóÏÔÊ¾±êÇ©¡£"
           },
           "role": {
             "type": "string",
             "title": "Role",
-            "description": "è¯­ä¹‰è§’è‰²ï¼Œå¦‚ axis_label, curve, annotation, particleã€‚"
+            "description": "ÓïÒå½ÇÉ«£¬Èç axis_label, curve, annotation, particle¡£"
           },
           "initial_state": {
             "type": "string",
             "title": "Initial State",
-            "description": "åˆå§‹çŠ¶æ€æè¿°ã€‚"
+            "description": "³õÊ¼×´Ì¬ÃèÊö¡£"
           },
           "final_state": {
             "anyOf": [
@@ -30548,7 +31078,7 @@
               }
             ],
             "title": "Final State",
-            "description": "ç»ˆæ€æè¿°ã€‚"
+            "description": "ÖÕÌ¬ÃèÊö¡£"
           },
           "lifecycle_stages": {
             "items": {
@@ -30556,7 +31086,7 @@
             },
             "type": "array",
             "title": "Lifecycle Stages",
-            "description": "åŠ¨ç”»å¯¹è±¡çš„è¿›å…¥/ä¿æŒ/å˜æ¢/é€€å‡ºé˜¶æ®µã€‚"
+            "description": "¶¯»­¶ÔÏóµÄ½øÈë/±£³Ö/±ä»»/ÍË³ö½×¶Î¡£"
           },
           "motion_trajectory": {
             "anyOf": [
@@ -30568,7 +31098,7 @@
               }
             ],
             "title": "Motion Trajectory",
-            "description": "è¿åŠ¨è½¨è¿¹æè¿°ï¼ŒåŠ¨ç”»å…³é”®ä¿¡æ¯ã€‚"
+            "description": "ÔË¶¯¹ì¼£ÃèÊö£¬¶¯»­¹Ø¼üĞÅÏ¢¡£"
           },
           "claim_id": {
             "anyOf": [
@@ -30580,7 +31110,7 @@
               }
             ],
             "title": "Claim Id",
-            "description": "ç»‘å®šçš„ Claim IDã€‚"
+            "description": "°ó¶¨µÄ Claim ID¡£"
           }
         },
         "type": "object",
@@ -30591,7 +31121,7 @@
           "initial_state"
         ],
         "title": "VisualObject",
-        "description": "åˆ†é•œåœºæ™¯ä¸­çš„ä¸€ä¸ªè§†è§‰å¯¹è±¡ã€‚"
+        "description": "·Ö¾µ³¡¾°ÖĞµÄÒ»¸öÊÓ¾õ¶ÔÏó¡£"
       },
       "WordingStrength": {
         "type": "string",
@@ -30688,7 +31218,7 @@
           "confirmed": {
             "type": "boolean",
             "title": "Confirmed",
-            "description": "Must be true to leave the draft state â€” omitting this field is rejected so that accidental confirmation cannot happen."
+            "description": "Must be true to leave the draft state ¡ª omitting this field is rejected so that accidental confirmation cannot happen."
           }
         },
         "type": "object",
@@ -30930,17 +31460,17 @@
           "report_id": {
             "type": "string",
             "title": "Report Id",
-            "description": "ç¨³å®šæŠ¥å‘Šæ ‡è¯†ç¬¦ã€‚"
+            "description": "ÎÈ¶¨±¨¸æ±êÊ¶·û¡£"
           },
           "run_id": {
             "type": "string",
             "title": "Run Id",
-            "description": "å…³è”çš„æ²™ç®±è¿è¡Œ IDã€‚"
+            "description": "¹ØÁªµÄÉ³ÏäÔËĞĞ ID¡£"
           },
           "storyboard_id": {
             "type": "string",
             "title": "Storyboard Id",
-            "description": "å…³è”çš„åˆ†é•œ IDã€‚"
+            "description": "¹ØÁªµÄ·Ö¾µ ID¡£"
           },
           "static_check": {
             "anyOf": [
@@ -30951,7 +31481,7 @@
                 "type": "null"
               }
             ],
-            "description": "é™æ€æ£€æŸ¥ç»“æœã€‚"
+            "description": "¾²Ì¬¼ì²é½á¹û¡£"
           },
           "sandbox_result": {
             "anyOf": [
@@ -30962,24 +31492,24 @@
                 "type": "null"
               }
             ],
-            "description": "æ²™ç®±è¿è¡Œç»“æœã€‚"
+            "description": "É³ÏäÔËĞĞ½á¹û¡£"
           },
           "science_valid": {
             "type": "boolean",
             "title": "Science Valid",
-            "description": "ç§‘å­¦ä¸€è‡´æ€§éªŒè¯æ˜¯å¦é€šè¿‡ã€‚",
+            "description": "¿ÆÑ§Ò»ÖÂĞÔÑéÖ¤ÊÇ·ñÍ¨¹ı¡£",
             "default": false
           },
           "fact_locks_preserved": {
             "type": "boolean",
             "title": "Fact Locks Preserved",
-            "description": "äº‹å®é”æ˜¯å¦å®Œæ•´ä¿æŒã€‚",
+            "description": "ÊÂÊµËøÊÇ·ñÍêÕû±£³Ö¡£",
             "default": false
           },
           "accessibility_checked": {
             "type": "boolean",
             "title": "Accessibility Checked",
-            "description": "æ˜¯å¦è¿›è¡Œäº†æ— éšœç¢æ£€æŸ¥ã€‚",
+            "description": "ÊÇ·ñ½øĞĞÁËÎŞÕÏ°­¼ì²é¡£",
             "default": false
           },
           "errors": {
@@ -31000,7 +31530,7 @@
             "type": "string",
             "format": "date-time",
             "title": "Created At",
-            "description": "æŠ¥å‘Šåˆ›å»ºæ—¶é—´æˆ³ã€‚"
+            "description": "±¨¸æ´´½¨Ê±¼ä´Á¡£"
           }
         },
         "type": "object",
@@ -31011,7 +31541,7 @@
           "created_at"
         ],
         "title": "ValidationReport",
-        "description": "åˆ†é•œæ²™ç®±è¿è¡Œçš„å®Œæ•´éªŒè¯æŠ¥å‘Šã€‚"
+        "description": "·Ö¾µÉ³ÏäÔËĞĞµÄÍêÕûÑéÖ¤±¨¸æ¡£"
       },
       "science_companion__contracts__profiles__HumanDecision": {
         "properties": {

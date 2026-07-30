@@ -59,6 +59,15 @@ def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
     return cast(dict[str, Any], response.json())
 
 
+def _pair_device(client: TestClient) -> str:
+    response = client.post(
+        "/vault/devices/pair",
+        json={"device_name": "Test device"},
+    )
+    assert response.status_code == 201, response.text
+    return cast(str, response.json()["certificate"]["device_id"])
+
+
 class TestVaultObjectCreationAndProjection:
     def test_create_vault_object_requires_authentication(
         self, client: TestClient
@@ -78,18 +87,19 @@ class TestVaultObjectCreationAndProjection:
     ) -> None:
         registered = _register(client, "vault-create@example.com", "correct-horse-12")
         account_id = registered["account"]["id"]
+        device_id = _pair_device(client)
 
         body = _create_vault_object(
             client,
             account_id,
             b"Private notes",
             "device_local",
-            device_id="device-1",
+            device_id=device_id,
         )
 
         assert body["owner_account_id"] == account_id
         assert body["content_authority"] == "device_local"
-        assert body["device_id"] == "device-1"
+        assert body["device_id"] == device_id
         assert body["ref"]["domain"] == "personal_vault"
         assert body["ref"]["owner_id"] == account_id
         assert body["status"] == "active"
