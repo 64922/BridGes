@@ -13,10 +13,10 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
-import httpx
 import pytest
+import urllib.request
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -43,15 +43,16 @@ def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Comple
     )
 
 
-def _wait_for_health(base_url: str, timeout: float = 10.0) -> None:
+def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
     deadline = time.time() + timeout
     last_error: Exception | None = None
+    url = f"{base_url}/health/live"
     while time.time() < deadline:
         try:
-            response = httpx.get(f"{base_url}/health/live", timeout=1.0)
-            if response.status_code == 200:
-                return
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            with urllib.request.urlopen(url, timeout=1.0) as resp:
+                if resp.status == 200:
+                    return
+        except Exception as exc:  # noqa: BLE001
             last_error = exc
         time.sleep(0.2)
     raise TimeoutError(f"API did not become healthy: {last_error}")
@@ -104,26 +105,31 @@ def test_migrate_smoke() -> None:
     assert "migrate:" in result.stdout
 
 
-def test_health_endpoints_return_unified_projection(running_api: str) -> None:
-    client = httpx.Client(base_url=running_api)
+def _get_json(url: str) -> dict[str, Any]:
+    with urllib.request.urlopen(url, timeout=5.0) as resp:
+        import json
 
-    live = client.get("/health/live").json()
+        return cast(dict[str, Any], json.loads(resp.read().decode("utf-8")))
+
+
+def test_health_endpoints_return_unified_projection(running_api: str) -> None:
+    live = _get_json(f"{running_api}/health/live")
     assert live["live"] == "pass"
     assert live["ready"] == "unknown"
     assert live["degraded"] == "unknown"
     assert live["dependencies"] == []
 
-    ready = client.get("/health/ready").json()
+    ready = _get_json(f"{running_api}/health/ready")
     assert ready["live"] == "pass"
     assert ready["ready"] == "pass"
     required = [d for d in ready["dependencies"] if d["required"]]
     assert any(d["name"] == "configuration" and d["status"] == "pass" for d in required)
 
-    degraded = client.get("/health/degraded").json()
+    degraded = _get_json(f"{running_api}/health/degraded")
     assert degraded["live"] == "pass"
     assert degraded["degraded"] == "pass"
 
-    summary = client.get("/health").json()
+    summary = _get_json(f"{running_api}/health")
     assert summary["live"] == "pass"
     assert summary["ready"] == "pass"
     assert summary["degraded"] == "pass"

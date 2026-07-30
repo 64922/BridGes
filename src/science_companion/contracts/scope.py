@@ -27,6 +27,7 @@ class ScopeAction(str, Enum):
     DELETE = "delete"
     SHARE = "share"
     EXECUTE = "execute"
+    ADMINISTER = "administer"
 
 
 class ScopeIsolationError(Exception):

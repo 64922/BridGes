@@ -60,11 +60,16 @@ class Project(BaseModel):
     """Public project projection.
 
     Every project is owned by an account, lives in an object domain, and carries
-    a monotonic version for optimistic concurrency.
+    a monotonic version for optimistic concurrency. Institution-owned projects
+    also carry a tenant_id linking them to the institution management domain.
     """
 
     id: str = Field(description="Stable project identifier.")
     account_id: str = Field(description="Owning account identifier.")
+    tenant_id: str | None = Field(
+        default=None,
+        description="Institution tenant identifier when the project is institution-owned.",
+    )
     name: str = Field(description="Human-readable project name.", min_length=1, max_length=200)
     description: str | None = Field(default=None, description="Optional project purpose or goal.")
     object_domain: ObjectDomain = Field(description="Authority domain for the project and its objects.")

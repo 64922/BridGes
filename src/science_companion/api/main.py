@@ -24,6 +24,7 @@ from science_companion.api import (
     auth,
     evaluation,
     expression,
+    institution,
     projects,
     science,
     scope,
@@ -46,6 +47,7 @@ from science_companion.evaluation import EvaluationService
 from science_companion.expression import ExpressionService
 from science_companion.health.probe import build_health_projection
 from science_companion.identity import IdentityService
+from science_companion.institution import InstitutionService
 from science_companion.invalidation import AffectedDownstream, InvalidationService
 from science_companion.learning import (
     InMemoryLearningRepository,
@@ -429,6 +431,20 @@ def create_app() -> FastAPI:
         identity_service=app.state.identity_service,
     )
 
+    # T037: attach the institution management service. It manages institutions,
+    # memberships, policies, institution-owned projects and controlled content
+    # access while preserving the personal vault boundary.
+    app.state.institution_service = InstitutionService()
+    app.state.institution_service.bind_sharing_service(app.state.sharing_service)
+
+    # T037: bind institution providers into the scope enforcer now that both the
+    # institution service and sharing service exist. This breaks the construction
+    # cycle without changing the enforcer's public interface.
+    app.state.scope_enforcer.set_institution_providers(
+        institution_membership_provider=app.state.institution_service.get_membership,
+        project_tenant_provider=app.state.sharing_service.get_project_institution_id,
+    )
+
     # T010: attach the observability service early so downstream services can
     # emit privacy-preserving audit events.
     app.state.observability_service = ObservabilityService()
@@ -678,6 +694,7 @@ def create_app() -> FastAPI:
     app.include_router(projects.router)
     app.include_router(vault.router)
     app.include_router(sharing.router)
+    app.include_router(institution.router)
     app.include_router(profiles_router)
     app.include_router(workflows.router)
     app.include_router(scope.router)

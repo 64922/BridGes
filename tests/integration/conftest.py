@@ -48,6 +48,29 @@ class _SubmitWorkOrder(Protocol):
         ...
 
 
+class _CreateInstitution(Protocol):
+    def __call__(self, client: TestClient, name: str) -> dict[str, Any]:
+        ...
+
+
+class _InviteInstitutionMember(Protocol):
+    def __call__(
+        self,
+        client: TestClient,
+        institution_id: str,
+        recipient_account_id: str,
+        role: str = ...,
+    ) -> str:
+        ...
+
+
+class _CreateInstitutionProject(Protocol):
+    def __call__(
+        self, client: TestClient, institution_id: str, name: str
+    ) -> dict[str, Any]:
+        ...
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _force_qwen_stub() -> None:
     """Force Qwen adapters to stub mode for the whole integration test run.
@@ -141,6 +164,62 @@ def create_vault_object_for_user() -> _CreateVaultObject:
                 "content_authority": content_authority,
                 "purpose": "test",
             },
+        )
+        assert response.status_code == 201, response.text
+        return cast(dict[str, Any], response.json())
+
+    return _make
+
+
+@pytest.fixture
+def create_institution() -> _CreateInstitution:
+    """Factory fixture that creates an institution for the current authenticated user."""
+
+    def _make(client: TestClient, name: str) -> dict[str, Any]:
+        response = client.post("/institutions", json={"name": name})
+        assert response.status_code == 201, response.text
+        return cast(dict[str, Any], response.json())
+
+    return _make
+
+
+@pytest.fixture
+def invite_institution_member() -> _InviteInstitutionMember:
+    """Factory fixture that invites an account to an institution and returns the token secret."""
+
+    def _make(
+        client: TestClient,
+        institution_id: str,
+        recipient_account_id: str,
+        role: str = "member",
+    ) -> str:
+        response = client.post(
+            f"/institutions/{institution_id}/invites",
+            json={
+                "recipient_account_id": recipient_account_id,
+                "role": role,
+            },
+        )
+        assert response.status_code == 201, response.text
+        return cast(str, response.json()["token_secret"])
+
+    return _make
+
+
+@pytest.fixture
+def create_institution_project() -> _CreateInstitutionProject:
+    """Factory fixture that creates an institution-owned project after disclosure."""
+
+    def _make(
+        client: TestClient, institution_id: str, name: str
+    ) -> dict[str, Any]:
+        # Fetch the required disclosure first.
+        response = client.get(f"/institutions/{institution_id}/project-disclosure")
+        assert response.status_code == 200, response.text
+
+        response = client.post(
+            f"/institutions/{institution_id}/projects",
+            json={"name": name, "disclosure_acknowledged": True},
         )
         assert response.status_code == 201, response.text
         return cast(dict[str, Any], response.json())

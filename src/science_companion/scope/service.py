@@ -8,7 +8,7 @@ can be exercised without FastAPI, SQLAlchemy, Temporal, or Redis.
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 from science_companion.contracts.identity import AuthMethod, SubjectContext
 from science_companion.contracts.projects import ObjectDomain, ObjectRef
@@ -23,6 +23,13 @@ from science_companion.contracts.scope import (
 )
 from science_companion.contracts.vault import VaultObjectDomain, VaultObjectRef
 
+if TYPE_CHECKING:
+    from science_companion.contracts.institution import InstitutionRole
+
+
+InstitutionMembershipProvider = Callable[[str, str], "InstitutionRole | None"]
+ProjectTenantProvider = Callable[[str], str | None]
+
 
 class ScopeEnforcer:
     """Single interpreter for scope authorization, cache keys and task envelopes.
@@ -32,8 +39,28 @@ class ScopeEnforcer:
     decisions and reports; callers must not extend scope after authorization.
     """
 
-    def __init__(self, *, deployment_cell: str = "local") -> None:
+    def __init__(
+        self,
+        *,
+        deployment_cell: str = "local",
+        institution_membership_provider: InstitutionMembershipProvider | None = None,
+        project_tenant_provider: ProjectTenantProvider | None = None,
+    ) -> None:
         self._deployment_cell = deployment_cell
+        self._institution_membership_provider = institution_membership_provider
+        self._project_tenant_provider = project_tenant_provider
+
+    def set_institution_providers(
+        self,
+        *,
+        institution_membership_provider: InstitutionMembershipProvider | None = None,
+        project_tenant_provider: ProjectTenantProvider | None = None,
+    ) -> None:
+        """Bind institution providers after construction to break dependency cycles."""
+        if institution_membership_provider is not None:
+            self._institution_membership_provider = institution_membership_provider
+        if project_tenant_provider is not None:
+            self._project_tenant_provider = project_tenant_provider
 
     def compile_scope(
         self,
@@ -86,14 +113,19 @@ class ScopeEnforcer:
         Raises ScopeIsolationError when the subject is not allowed to perform the
         action on the object in its current domain/tenant/project.
         """
-        if subject.account_id != object_ref.owner_id and object_ref.domain in {
-            ObjectDomain.PERSONAL_VAULT,
-            ObjectDomain.INSTITUTION_OWNED,
-        }:
-            # Cross-account access to personal or institution-owned objects is
-            # denied at the base layer. Shared-project access is checked by
-            # project membership and object grants in later tickets.
-            raise ScopeIsolationError("对象不存在或没有访问权限。")
+        if object_ref.domain == ObjectDomain.PERSONAL_VAULT:
+            if subject.account_id != object_ref.owner_id:
+                raise ScopeIsolationError("对象不存在或没有访问权限。")
+
+        elif object_ref.domain == ObjectDomain.INSTITUTION_OWNED:
+            if not self._is_institution_member(subject.account_id, object_ref.owner_id):
+                raise ScopeIsolationError("对象不存在或没有访问权限。")
+
+        elif object_ref.domain == ObjectDomain.SHARED_PROJECT:
+            # Shared-project access is checked by project membership and object
+            # grants in the sharing service; the scope enforcer only validates
+            # the domain and compiles the scope envelope here.
+            pass
 
         if rls_context is not None:
             if rls_context.subject.account_id != subject.account_id:
@@ -101,15 +133,56 @@ class ScopeEnforcer:
             if rls_context.scope_envelope.object_domain != object_ref.domain:
                 raise ScopeIsolationError("RLS 对象域与目标对象不一致。")
 
+        tenant_id: str | None = None
+        project_id: str | None = None
+        if object_ref.domain == ObjectDomain.SHARED_PROJECT:
+            project_id = object_ref.owner_id
+            tenant_id = self._tenant_for_project(object_ref.owner_id)
+        elif object_ref.domain == ObjectDomain.INSTITUTION_OWNED:
+            tenant_id = self._tenant_for_object_owner(object_ref.owner_id)
+
         return self.compile_scope(
             subject,
-            project_id=object_ref.owner_id
-            if object_ref.domain == ObjectDomain.SHARED_PROJECT
-            else None,
+            tenant_id=tenant_id,
+            project_id=project_id,
             object_domain=object_ref.domain,
             purpose=action.value,
             requested_object_refs=[object_ref],
         )
+
+    def _is_institution_member(
+        self, account_id: str, owner_id: str
+    ) -> bool:
+        """Check whether account_id is a member of the institution owning owner_id."""
+        if self._institution_membership_provider is None:
+            return False
+        # owner_id may be the institution itself or a project owned by it.
+        role = self._institution_membership_provider(account_id, owner_id)
+        if role is not None:
+            return True
+        if self._project_tenant_provider is None:
+            return False
+        tenant_id = self._project_tenant_provider(owner_id)
+        if tenant_id is None:
+            return False
+        role = self._institution_membership_provider(account_id, tenant_id)
+        return role is not None
+
+    def _tenant_for_project(self, project_id: str) -> str | None:
+        """Return the institution tenant for a shared/institution project."""
+        if self._project_tenant_provider is None:
+            return None
+        return self._project_tenant_provider(project_id)
+
+    def _tenant_for_object_owner(self, owner_id: str) -> str | None:
+        """Return the institution tenant for an object owner identifier."""
+        if self._institution_membership_provider is None:
+            return None
+        # If the owner_id itself is a known institution, prefer it.
+        # Otherwise resolve through the project tenant provider.
+        if self._project_tenant_provider is not None:
+            return self._project_tenant_provider(owner_id)
+        return None
 
     def authorize_vault(
         self,
@@ -120,11 +193,12 @@ class ScopeEnforcer:
         rls_context: RLSContext | None = None,
     ) -> ScopeEnvelope:
         """Authorize an action against a vault object reference."""
-        if subject.account_id != vault_ref.owner_id and vault_ref.domain in {
-            VaultObjectDomain.PERSONAL_VAULT,
-            VaultObjectDomain.INSTITUTION_OWNED,
-        }:
-            raise ScopeIsolationError("对象不存在或没有访问权限。")
+        if vault_ref.domain == VaultObjectDomain.PERSONAL_VAULT:
+            if subject.account_id != vault_ref.owner_id:
+                raise ScopeIsolationError("对象不存在或没有访问权限。")
+        elif vault_ref.domain == VaultObjectDomain.INSTITUTION_OWNED:
+            if not self._is_institution_member(subject.account_id, vault_ref.owner_id):
+                raise ScopeIsolationError("对象不存在或没有访问权限。")
 
         if rls_context is not None:
             if rls_context.subject.account_id != subject.account_id:
@@ -134,11 +208,18 @@ class ScopeEnforcer:
             if vault_domain_value != rls_domain_value:
                 raise ScopeIsolationError("RLS 对象域与目标保险库对象不一致。")
 
+        tenant_id: str | None = None
+        project_id: str | None = None
+        if vault_ref.domain == VaultObjectDomain.SHARED_PROJECT:
+            project_id = vault_ref.owner_id
+            tenant_id = self._tenant_for_project(vault_ref.owner_id)
+        elif vault_ref.domain == VaultObjectDomain.INSTITUTION_OWNED:
+            tenant_id = self._tenant_for_object_owner(vault_ref.owner_id)
+
         return self.compile_scope(
             subject,
-            project_id=vault_ref.owner_id
-            if vault_ref.domain == VaultObjectDomain.SHARED_PROJECT
-            else None,
+            tenant_id=tenant_id,
+            project_id=project_id,
             object_domain=ObjectDomain(vault_ref.domain.value),
             purpose=action.value,
             requested_vault_refs=[vault_ref],

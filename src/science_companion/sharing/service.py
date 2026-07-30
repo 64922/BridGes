@@ -86,6 +86,7 @@ _CAN_ADMINISTER: set[SharedProjectRole] = {
 class _SharedProject:
     project: Project
     owner_account_id: str
+    institution_id: str | None = None
 
 
 class SharingService:
@@ -139,16 +140,27 @@ class SharingService:
         account_id: str,
         name: str,
         description: str | None = None,
+        institution_id: str | None = None,
     ) -> Project:
-        """Create a new explicit shared project owned by the account."""
+        """Create a new explicit shared project owned by the account.
+
+        When institution_id is provided, the project is institution-owned and
+        lives in the INSTITUTION_OWNED object domain.
+        """
         now = self._now()
         project_id = secrets.token_urlsafe(16)
+        object_domain = (
+            ObjectDomain.INSTITUTION_OWNED
+            if institution_id is not None
+            else ObjectDomain.SHARED_PROJECT
+        )
         project = Project(
             id=project_id,
             account_id=account_id,
+            tenant_id=institution_id,
             name=name,
             description=description,
-            object_domain=ObjectDomain.SHARED_PROJECT,
+            object_domain=object_domain,
             role=ProjectRole.OWNER,
             status=ProjectStatus.ACTIVE,
             version=1,
@@ -157,7 +169,9 @@ class SharingService:
             archived_at=None,
         )
         self._projects[project_id] = _SharedProject(
-            project=project, owner_account_id=account_id
+            project=project,
+            owner_account_id=account_id,
+            institution_id=institution_id,
         )
         self._members[(project_id, account_id)] = SharedProjectMember(
             project_id=project_id,
@@ -521,6 +535,21 @@ class SharingService:
             if permission in grant.permissions:
                 return True
         return False
+
+    def get_project_institution_id(self, project_id: str) -> str | None:
+        """Return the institution tenant identifier for a project, if any."""
+        stored = self._projects.get(project_id)
+        if stored is None:
+            return None
+        return stored.institution_id
+
+    def list_projects_by_institution(self, institution_id: str) -> list[Project]:
+        """Return all institution-owned projects for the given institution."""
+        return [
+            stored.project
+            for stored in self._projects.values()
+            if stored.institution_id == institution_id
+        ]
 
     def list_project_members(
         self, project_id: str, account_id: str

@@ -2298,6 +2298,1504 @@
         }
       }
     },
+    "/institutions": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Create Institution",
+        "description": "Create a new institution. The creator becomes the first admin.",
+        "operationId": "create_institution_institutions_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstitutionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Institution"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "List Institutions",
+        "description": "List institutions the current account is a member of.",
+        "operationId": "list_institutions_institutions_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Institution"
+                  },
+                  "title": "Response List Institutions Institutions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}": {
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Get Institution",
+        "description": "Get an institution projection.",
+        "operationId": "get_institution_institutions__institution_id__get",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Institution"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/invites": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Create Invite",
+        "description": "Create an institution membership invite.",
+        "operationId": "create_invite_institutions__institution_id__invites_post",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstitutionInviteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Create Invite Institutions  Institution Id  Invites Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/institutions/invites/accept": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Accept Invite",
+        "description": "Accept an institution invite and join the institution.",
+        "operationId": "accept_invite_institutions_invites_accept_post",
+        "parameters": [
+          {
+            "name": "token_secret",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Token Secret"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/members": {
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "List Members",
+        "description": "List members of an institution.",
+        "operationId": "list_members_institutions__institution_id__members_get",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Membership"
+                  },
+                  "title": "Response List Members Institutions  Institution Id  Members Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/members/{account_id}": {
+      "patch": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Update Member Role",
+        "description": "Update an institution member's role.",
+        "operationId": "update_member_role_institutions__institution_id__members__account_id__patch",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstitutionMemberUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Remove Member",
+        "description": "Remove a member from the institution.",
+        "operationId": "remove_member_institutions__institution_id__members__account_id__delete",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Account Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Membership"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/policy": {
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Get Policy",
+        "description": "Get the institution policy.",
+        "operationId": "get_policy_institutions__institution_id__policy_get",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Update Policy",
+        "description": "Update the institution policy.",
+        "operationId": "update_policy_institutions__institution_id__policy_put",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstitutionPolicy"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionPolicy"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/project-disclosure": {
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Get Project Disclosure",
+        "description": "Get the disclosure that must be acknowledged before creating an institution-owned project.",
+        "operationId": "get_project_disclosure_institutions__institution_id__project_disclosure_get",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionOwnedProjectDisclosure"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/projects": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Create Institution Project",
+        "description": "Create an institution-owned project after disclosure acknowledgement.",
+        "operationId": "create_institution_project_institutions__institution_id__projects_post",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InstitutionProjectCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionProjectCreateResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "List Institution Projects",
+        "description": "List institution-owned projects visible to the current member.",
+        "operationId": "list_institution_projects_institutions__institution_id__projects_get",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Project"
+                  },
+                  "title": "Response List Institution Projects Institutions  Institution Id  Projects Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/content-access": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Request Content Access",
+        "description": "Request controlled access to member content for a security incident.",
+        "operationId": "request_content_access_institutions__institution_id__content_access_post",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ControlledContentAccessCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledContentAccessRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "List Content Access Requests",
+        "description": "List controlled content access requests visible to the caller.",
+        "operationId": "list_content_access_requests_institutions__institution_id__content_access_get",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ControlledContentAccessRequest"
+                  },
+                  "title": "Response List Content Access Requests Institutions  Institution Id  Content Access Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/content-access/{request_id}/approve": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Approve Content Access",
+        "description": "Approve a controlled content access request (second approval required).",
+        "operationId": "approve_content_access_institutions__institution_id__content_access__request_id__approve_post",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "reason",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Reason"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledContentAccessRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/institutions/{institution_id}/content-access/{request_id}/revoke": {
+      "post": {
+        "tags": [
+          "institutions"
+        ],
+        "summary": "Revoke Content Access",
+        "description": "Revoke an approved or pending controlled content access request.",
+        "operationId": "revoke_content_access_institutions__institution_id__content_access__request_id__revoke_post",
+        "parameters": [
+          {
+            "name": "institution_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Institution Id"
+            }
+          },
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Request Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ControlledContentAccessRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InstitutionError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/profiles/observations": {
       "post": {
         "tags": [
@@ -15021,6 +16519,205 @@
         "title": "ContentAuthority",
         "description": "Where the authoritative plaintext of a vault object resides.\n\n- DEVICE_LOCAL: the full content is authoritative on the user's device. The\n  cloud only holds a control projection (hash and metadata).\n- SERVER_REPLICA: the server holds an encrypted replica for synchronization;\n  the device is not required for every read.\n- PROJECT_COPY: a minimized copy owned by a shared project, detached from the\n  personal vault original."
       },
+      "ControlledContentAccessApproval": {
+        "properties": {
+          "approver_account_id": {
+            "type": "string",
+            "title": "Approver Account Id",
+            "description": "Account that approved."
+          },
+          "approved_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Approved At",
+            "description": "When the approval was given."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Reason for approval."
+          }
+        },
+        "type": "object",
+        "required": [
+          "approver_account_id",
+          "approved_at",
+          "reason"
+        ],
+        "title": "ControlledContentAccessApproval",
+        "description": "Single approval for a controlled content access request."
+      },
+      "ControlledContentAccessCreateRequest": {
+        "properties": {
+          "target_account_id": {
+            "type": "string",
+            "title": "Target Account Id",
+            "description": "Account whose content may be accessed."
+          },
+          "object_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Object Refs",
+            "description": "Specific object identifiers requested for access."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Documented purpose of the access."
+          },
+          "duration_minutes": {
+            "type": "integer",
+            "maximum": 1440.0,
+            "minimum": 1.0,
+            "title": "Duration Minutes",
+            "description": "How long the access lasts after approval.",
+            "default": 60
+          }
+        },
+        "type": "object",
+        "required": [
+          "target_account_id",
+          "purpose"
+        ],
+        "title": "ControlledContentAccessCreateRequest",
+        "description": "Request body to create a controlled content access request."
+      },
+      "ControlledContentAccessEvent": {
+        "properties": {
+          "actor_account_id": {
+            "type": "string",
+            "title": "Actor Account Id",
+            "description": "Account that performed the access."
+          },
+          "object_ref": {
+            "type": "string",
+            "title": "Object Ref",
+            "description": "Object identifier accessed."
+          },
+          "accessed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accessed At",
+            "description": "When the access occurred."
+          },
+          "action": {
+            "type": "string",
+            "title": "Action",
+            "description": "Action performed, e.g. read_content."
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "Reason recorded at access time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "actor_account_id",
+          "object_ref",
+          "accessed_at",
+          "action",
+          "reason"
+        ],
+        "title": "ControlledContentAccessEvent",
+        "description": "Audit record of an actual content access under controlled access."
+      },
+      "ControlledContentAccessRequest": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "title": "Request Id",
+            "description": "Stable request identifier."
+          },
+          "institution_id": {
+            "type": "string",
+            "title": "Institution Id",
+            "description": "Institution identifier."
+          },
+          "requester_account_id": {
+            "type": "string",
+            "title": "Requester Account Id",
+            "description": "Account requesting access."
+          },
+          "target_account_id": {
+            "type": "string",
+            "title": "Target Account Id",
+            "description": "Account whose content may be accessed."
+          },
+          "object_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Object Refs",
+            "description": "Specific object identifiers requested for access."
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "Documented purpose of the access."
+          },
+          "status": {
+            "$ref": "#/components/schemas/ControlledContentAccessStatus",
+            "description": "Current request status.",
+            "default": "pending"
+          },
+          "requested_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Requested At",
+            "description": "When the request was created."
+          },
+          "expires_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Expires At",
+            "description": "When the approved access expires."
+          },
+          "approvals": {
+            "items": {
+              "$ref": "#/components/schemas/ControlledContentAccessApproval"
+            },
+            "type": "array",
+            "title": "Approvals",
+            "description": "Approval records."
+          },
+          "access_log": {
+            "items": {
+              "$ref": "#/components/schemas/ControlledContentAccessEvent"
+            },
+            "type": "array",
+            "title": "Access Log",
+            "description": "Audit log of actual access events."
+          }
+        },
+        "type": "object",
+        "required": [
+          "request_id",
+          "institution_id",
+          "requester_account_id",
+          "target_account_id",
+          "purpose",
+          "requested_at",
+          "expires_at"
+        ],
+        "title": "ControlledContentAccessRequest",
+        "description": "Request to access member content for a security incident.\n\nAccess is purpose-limited, time-limited, requires two approvals and is fully\naudited. It never grants blanket access to a member's personal vault."
+      },
+      "ControlledContentAccessStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "approved",
+          "expired",
+          "revoked",
+          "completed"
+        ],
+        "title": "ControlledContentAccessStatus",
+        "description": "Status of a controlled content access request."
+      },
       "CoverageGap": {
         "properties": {
           "gap_type": {
@@ -18602,6 +20299,328 @@
         "title": "InputQualityGate",
         "description": "Named gates that imported content must pass before entering evidence."
       },
+      "Institution": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stable institution identifier."
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Human-readable institution name."
+          },
+          "domain": {
+            "$ref": "#/components/schemas/InstitutionDomain",
+            "description": "Authority domain is always institution.",
+            "default": "institution"
+          },
+          "status": {
+            "$ref": "#/components/schemas/InstitutionStatus",
+            "description": "Lifecycle status."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Account that created the institution."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Institution creation timestamp."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last institution update timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "owner_account_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "Institution",
+        "description": "Public institution projection.\n\nAn institution is a management domain, not a data container for member\npersonal vaults."
+      },
+      "InstitutionCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Institution name."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "InstitutionCreateRequest",
+        "description": "Request to create a new institution."
+      },
+      "InstitutionDomain": {
+        "type": "string",
+        "enum": [
+          "institution"
+        ],
+        "title": "InstitutionDomain",
+        "description": "Authority domain for an institution."
+      },
+      "InstitutionError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "Stable error code."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable, non-leaking message."
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details",
+            "description": "Opaque detail safe for logging; must not expose internal state."
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "InstitutionError",
+        "description": "Uniform institution error response."
+      },
+      "InstitutionInviteRequest": {
+        "properties": {
+          "recipient_account_id": {
+            "type": "string",
+            "title": "Recipient Account Id",
+            "description": "Expected recipient account."
+          },
+          "role": {
+            "$ref": "#/components/schemas/InstitutionRole",
+            "description": "Role the recipient will hold.",
+            "default": "member"
+          },
+          "ttl_seconds": {
+            "type": "integer",
+            "maximum": 86400.0,
+            "minimum": 60.0,
+            "title": "Ttl Seconds",
+            "description": "Token time-to-live in seconds.",
+            "default": 3600
+          }
+        },
+        "type": "object",
+        "required": [
+          "recipient_account_id"
+        ],
+        "title": "InstitutionInviteRequest",
+        "description": "Request to invite an account to join an institution."
+      },
+      "InstitutionMemberUpdateRequest": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/InstitutionRole",
+            "description": "New role for the member."
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "InstitutionMemberUpdateRequest",
+        "description": "Request to update an institution member's role."
+      },
+      "InstitutionOwnedProjectDisclosure": {
+        "properties": {
+          "institution_id": {
+            "type": "string",
+            "title": "Institution Id",
+            "description": "Owning institution identifier."
+          },
+          "institution_name": {
+            "type": "string",
+            "title": "Institution Name",
+            "description": "Owning institution name."
+          },
+          "ownership_statement": {
+            "type": "string",
+            "title": "Ownership Statement",
+            "description": "Ownership statement.",
+            "default": "该项目为机构所有，成员离开机构后保留的项目访问由机构策略决定。"
+          },
+          "retention_statement": {
+            "type": "string",
+            "title": "Retention Statement",
+            "description": "Retention statement.",
+            "default": "机构对象受机构数据保留策略约束；个人账户不保留恢复权威。"
+          },
+          "recovery_statement": {
+            "type": "string",
+            "title": "Recovery Statement",
+            "description": "Recovery statement.",
+            "default": "机构未启用恢复密钥；项目负责人可决定冻结或迁移。"
+          },
+          "recovery_key_enabled": {
+            "type": "boolean",
+            "title": "Recovery Key Enabled",
+            "description": "Whether a recovery key is enabled for this institution."
+          },
+          "acknowledged": {
+            "type": "boolean",
+            "title": "Acknowledged",
+            "description": "Whether the creator has acknowledged the disclosure.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "institution_id",
+          "institution_name",
+          "recovery_key_enabled"
+        ],
+        "title": "InstitutionOwnedProjectDisclosure",
+        "description": "Disclosure shown before creating an institution-owned project.\n\nCreating an institution-owned project must make ownership, retention and\nrecovery boundaries explicit."
+      },
+      "InstitutionPolicy": {
+        "properties": {
+          "seat_policy": {
+            "$ref": "#/components/schemas/SeatPolicy",
+            "description": "Seat and authentication policy."
+          },
+          "data_retention_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Retention Days",
+            "description": "Retention period for institution-owned objects, if set."
+          },
+          "recovery_key_enabled": {
+            "type": "boolean",
+            "title": "Recovery Key Enabled",
+            "description": "Whether the institution holds a recovery key for its projects.",
+            "default": false
+          },
+          "policy_version": {
+            "type": "string",
+            "title": "Policy Version",
+            "description": "Version of the institution policy.",
+            "default": "inst-policy-1.0"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last policy update timestamp."
+          },
+          "updated_by": {
+            "type": "string",
+            "title": "Updated By",
+            "description": "Account that last updated the policy."
+          }
+        },
+        "type": "object",
+        "required": [
+          "updated_at",
+          "updated_by"
+        ],
+        "title": "InstitutionPolicy",
+        "description": "Governance policy for an institution."
+      },
+      "InstitutionProjectCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Name",
+            "description": "Project name."
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "Optional project goal."
+          },
+          "disclosure_acknowledged": {
+            "type": "boolean",
+            "title": "Disclosure Acknowledged",
+            "description": "Creator has acknowledged ownership, retention and recovery boundaries."
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "disclosure_acknowledged"
+        ],
+        "title": "InstitutionProjectCreateRequest",
+        "description": "Request to create an institution-owned project.\n\nThe request must include an explicit disclosure acknowledgement so the UI\ncannot silently create an institution-owned project."
+      },
+      "InstitutionProjectCreateResponse": {
+        "properties": {
+          "project": {
+            "$ref": "#/components/schemas/Project",
+            "description": "Created institution-owned project."
+          },
+          "disclosure": {
+            "$ref": "#/components/schemas/InstitutionOwnedProjectDisclosure",
+            "description": "Disclosure that was acknowledged."
+          }
+        },
+        "type": "object",
+        "required": [
+          "project",
+          "disclosure"
+        ],
+        "title": "InstitutionProjectCreateResponse",
+        "description": "Response when creating an institution-owned project."
+      },
+      "InstitutionRole": {
+        "type": "string",
+        "enum": [
+          "admin",
+          "member",
+          "security_admin",
+          "billing_admin"
+        ],
+        "title": "InstitutionRole",
+        "description": "Role of an account inside an institution.\n\n- ADMIN: can manage members, policy and institution-owned projects.\n- MEMBER: ordinary institution member.\n- SECURITY_ADMIN: can manage security policy and request controlled content\n  access, but still cannot read member personal vaults without the\n  two-approval controlled access flow.\n- BILLING_ADMIN: can manage seats and billing-related policy."
+      },
+      "InstitutionStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "suspended"
+        ],
+        "title": "InstitutionStatus",
+        "description": "Lifecycle status of an institution."
+      },
       "InviteAcceptRequest": {
         "properties": {
           "token_secret": {
@@ -20464,6 +22483,71 @@
         ],
         "title": "MediaUploadRequest",
         "description": "Request to upload a scientific media asset."
+      },
+      "Membership": {
+        "properties": {
+          "institution_id": {
+            "type": "string",
+            "title": "Institution Id",
+            "description": "Institution identifier."
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Member account identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/InstitutionRole",
+            "description": "Member's role in the institution."
+          },
+          "joined_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Joined At",
+            "description": "When the member joined."
+          },
+          "invited_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invited By",
+            "description": "Account that invited this member, if applicable."
+          }
+        },
+        "type": "object",
+        "required": [
+          "institution_id",
+          "account_id",
+          "role",
+          "joined_at"
+        ],
+        "title": "Membership",
+        "description": "Relationship between an account and an institution."
+      },
+      "MembershipContext": {
+        "properties": {
+          "institution_id": {
+            "type": "string",
+            "title": "Institution Id",
+            "description": "Institution identifier."
+          },
+          "role": {
+            "$ref": "#/components/schemas/InstitutionRole",
+            "description": "Member's role in the institution."
+          }
+        },
+        "type": "object",
+        "required": [
+          "institution_id",
+          "role"
+        ],
+        "title": "MembershipContext",
+        "description": "Lightweight membership context carried in the subject."
       },
       "ModelCallStatus": {
         "type": "string",
@@ -22671,6 +24755,18 @@
             "title": "Account Id",
             "description": "Owning account identifier."
           },
+          "tenant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tenant Id",
+            "description": "Institution tenant identifier when the project is institution-owned."
+          },
           "name": {
             "type": "string",
             "maxLength": 200,
@@ -22746,7 +24842,7 @@
           "updated_at"
         ],
         "title": "Project",
-        "description": "Public project projection.\n\nEvery project is owned by an account, lives in an object domain, and carries\na monotonic version for optimistic concurrency."
+        "description": "Public project projection.\n\nEvery project is owned by an account, lives in an object domain, and carries\na monotonic version for optimistic concurrency. Institution-owned projects\nalso carry a tenant_id linking them to the institution management domain."
       },
       "ProjectCreateRequest": {
         "properties": {
@@ -25141,7 +27237,8 @@
           "update",
           "delete",
           "share",
-          "execute"
+          "execute",
+          "administer"
         ],
         "title": "ScopeAction",
         "description": "Actions that scope isolation can authorize or deny."
@@ -25390,6 +27487,37 @@
         ],
         "title": "SearchResult",
         "description": "Result of a scoped hybrid search.\n\nCarries the compiled scope envelope so callers can audit the scope snapshot\nthat was enforced, and so downstream claim/evidence steps can bind the same\nscope. Coverage gaps are reported explicitly rather than silently dropping\nchannels."
+      },
+      "SeatPolicy": {
+        "properties": {
+          "max_seats": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Seats",
+            "description": "Maximum number of member seats, if enforced."
+          },
+          "enforce_mfa": {
+            "type": "boolean",
+            "title": "Enforce Mfa",
+            "description": "Whether members must use multi-factor authentication.",
+            "default": false
+          },
+          "allow_guest_invites": {
+            "type": "boolean",
+            "title": "Allow Guest Invites",
+            "description": "Whether project-level guest invites are allowed.",
+            "default": true
+          }
+        },
+        "type": "object",
+        "title": "SeatPolicy",
+        "description": "Seat and usage policy for an institution."
       },
       "SequentialReadingBlock": {
         "properties": {
@@ -27407,6 +29535,14 @@
             ],
             "title": "Device Id",
             "description": "Device identifier when known."
+          },
+          "memberships": {
+            "items": {
+              "$ref": "#/components/schemas/MembershipContext"
+            },
+            "type": "array",
+            "title": "Memberships",
+            "description": "Institution memberships for the current account."
           }
         },
         "type": "object",
@@ -27416,7 +29552,7 @@
           "auth_method"
         ],
         "title": "SubjectContext",
-        "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret."
+        "description": "Resolved subject for an authenticated request.\n\nThis is the canonical object carried by request state, audit logs, and RLS\ncontext. It never includes the session secret. Memberships are populated by\nthe API layer from the institution service so downstream services can\nevaluate institution-scoped access without re-querying identity."
       },
       "SubmitExpressionFeedbackRequest": {
         "properties": {

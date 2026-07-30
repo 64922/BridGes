@@ -7,7 +7,7 @@ local development can exercise the flow over plain HTTP.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 
@@ -21,8 +21,12 @@ from science_companion.contracts.identity import (
     SessionResponse,
     SubjectContext,
 )
+from science_companion.contracts.institution import MembershipContext
 from science_companion.identity import IdentityError, IdentityService
 from science_companion.scope import ScopeEnforcer
+
+if TYPE_CHECKING:
+    from science_companion.institution import InstitutionService
 
 SESSION_COOKIE_NAME = "science_companion_session"
 
@@ -118,17 +122,37 @@ async def require_subject(
             str(exc),
         ) from exc
 
-    request.state.subject = resolved.subject
+    subject = resolved.subject
+
+    # T037: populate institution memberships so downstream routes and services
+    # can evaluate institution-scoped access without re-querying identity.
+    institution_service: InstitutionService | None = getattr(
+        request.app.state, "institution_service", None
+    )
+    if institution_service is not None:
+        memberships = institution_service.list_memberships_for_account(subject.account_id)
+        subject = subject.model_copy(
+            update={
+                "memberships": [
+                    MembershipContext(
+                        institution_id=m.institution_id, role=m.role
+                    )
+                    for m in memberships
+                ]
+            }
+        )
+
+    request.state.subject = subject
 
     # Compile the base scope envelope and RLS context for every authenticated
     # request. Later routes can narrow the scope with project/object domain.
     enforcer: ScopeEnforcer | None = getattr(request.app.state, "scope_enforcer", None)
     if enforcer is not None:
-        scope = enforcer.compile_scope(resolved.subject)
+        scope = enforcer.compile_scope(subject)
         request.state.scope_envelope = scope
-        request.state.rls_context = enforcer.set_rls_context(resolved.subject, scope)
+        request.state.rls_context = enforcer.set_rls_context(subject, scope)
 
-    return resolved.subject
+    return subject
 
 
 SubjectDep = Annotated[SubjectContext, Depends(require_subject)]

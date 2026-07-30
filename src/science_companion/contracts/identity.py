@@ -11,6 +11,8 @@ from typing import Any
 
 from pydantic import BaseModel, EmailStr, Field, SecretStr
 
+from science_companion.contracts.institution import MembershipContext
+
 
 class AuthMethod(str, Enum):
     """How the current subject authenticated."""
@@ -91,7 +93,9 @@ class SubjectContext(BaseModel):
     """Resolved subject for an authenticated request.
 
     This is the canonical object carried by request state, audit logs, and RLS
-    context. It never includes the session secret.
+    context. It never includes the session secret. Memberships are populated by
+    the API layer from the institution service so downstream services can
+    evaluate institution-scoped access without re-querying identity.
     """
 
     account_id: str = Field(description="Authenticated account identifier.")
@@ -100,6 +104,10 @@ class SubjectContext(BaseModel):
     device_id: str | None = Field(
         default=None,
         description="Device identifier when known.",
+    )
+    memberships: list[MembershipContext] = Field(
+        default_factory=list,
+        description="Institution memberships for the current account.",
     )
 
 
