@@ -1,7 +1,10 @@
-"""Media asset API routes for T030, T033 and T034.
+"""Media asset API routes for T030, T032, T033, T034 and T035.
 
 T030 routes: uploading, retrieving, correcting and revoking scientific
 images, scans, formulas and tables within the scope of an account and project.
+
+T032 routes: generating data charts and scientific figures with editable
+sources, SVG rendering and claim bindings.
 
 T033 routes: creating, updating and validating structured storyboards,
 generating source code, running in sandbox, and retrieving validation reports.
@@ -9,6 +12,9 @@ generating source code, running in sandbox, and retrieving validation reports.
 T034 routes: generating, retrieving and validating complete accessibility
 bundles (narration, captions, transcript, keyboard paths, reduced motion,
 sequential reading) and controlling playback of timed content.
+
+T035 routes: cross-media claim consistency checking, multi-modal publish
+gate evaluation, publishing and listing publish records.
 """
 
 from __future__ import annotations
@@ -22,17 +28,27 @@ from science_companion.contracts.media import (
     AccessibilityBundle,
     AccessibilityBundleRequest,
     AccessibilityValidationResult,
+    ChartGenerationRequest,
+    ChartMark,
+    CrossMediaClaimEntry,
+    CrossMediaConsistencyResult,
     DerivedAsset,
+    FigureGenerationRequest,
+    GenerationResult,
     MediaCorrectionRequest,
     MediaIngestionRunRef,
+    MediaPublishRequest,
     MediaProjection,
     MediaStoryboard,
     MediaUploadRequest,
+    MultimodalPublishGateResult,
     PlaybackControlRequest,
     PlaybackState,
     SandboxRunRequest,
     SandboxRunResult,
     SandboxRunStatus,
+    ScientificMediaObject,
+    SpecValidationResult,
     StoryboardGenerationRequest,
     StoryboardResult,
     ValidationReport,
@@ -41,7 +57,14 @@ from science_companion.contracts.media import (
     MediaError as MediaErrorContract,
 )
 from science_companion.contracts.science import ClaimGraphResult, ClaimRequest
-from science_companion.media import MediaError, MediaIngestionService
+from science_companion.media import (
+    MediaError,
+    MediaGenerationError,
+    MediaGenerationService,
+    MediaIngestionService,
+    MediaPublishError,
+    MediaPublishService,
+)
 from science_companion.media.accessibility_service import (
     AccessibilityError,
     AccessibilityService,
@@ -78,6 +101,28 @@ def _get_claim_service(request: Request) -> ClaimEvidenceService:
 
 MediaServiceDep = Annotated[MediaIngestionService, Depends(_get_media_service)]
 ClaimServiceDep = Annotated[ClaimEvidenceService, Depends(_get_claim_service)]
+
+
+def _get_generation_service(request: Request) -> MediaGenerationService:
+    service: MediaGenerationService | None = getattr(
+        request.app.state, "media_generation_service", None
+    )
+    if service is None:
+        raise RuntimeError("MediaGenerationService not attached to application state.")
+    return service
+
+
+def _get_publish_service(request: Request) -> MediaPublishService:
+    service: MediaPublishService | None = getattr(
+        request.app.state, "media_publish_service", None
+    )
+    if service is None:
+        raise RuntimeError("MediaPublishService not attached to application state.")
+    return service
+
+
+GenerationServiceDep = Annotated[MediaGenerationService, Depends(_get_generation_service)]
+PublishServiceDep = Annotated[MediaPublishService, Depends(_get_publish_service)]
 
 
 def _media_error(status_code: int, error: str, message: str) -> HTTPException:
@@ -261,6 +306,125 @@ async def revoke_media_asset(
         "object_ref": asset_ref.model_dump(),
         "invalidation_event_id": event.event_id if event is not None else None,
     }
+
+
+# ── T032: Chart and figure generation routes ──────────────────────────
+
+
+@router.post(
+    "/charts",
+    response_model=GenerationResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def create_chart(
+    service: GenerationServiceDep,
+    subject: SubjectDep,
+    request: ChartGenerationRequest,
+) -> GenerationResult:
+    """Generate a data chart from structured data with claim bindings."""
+    try:
+        return service.generate_chart(request, account_id=subject.account_id)
+    except MediaGenerationError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "chart_generation_failed", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/figures",
+    response_model=GenerationResult,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def create_figure(
+    service: GenerationServiceDep,
+    subject: SubjectDep,
+    request: FigureGenerationRequest,
+) -> GenerationResult:
+    """Generate a scientific figure from element definitions."""
+    try:
+        return service.generate_figure(request, account_id=subject.account_id)
+    except MediaGenerationError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "figure_generation_failed", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/objects/{object_id}",
+    response_model=ScientificMediaObject,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def get_media_object(
+    service: GenerationServiceDep,
+    subject: SubjectDep,
+    object_id: str,
+) -> ScientificMediaObject:
+    """Get a generated media object by ID."""
+    try:
+        return service.get_media_object(object_id)
+    except MediaGenerationError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "media_object_not_found", str(exc)
+        ) from exc
+
+
+@router.put(
+    "/objects/{object_id}/spec",
+    response_model=ScientificMediaObject,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def update_media_object_spec(
+    service: GenerationServiceDep,
+    subject: SubjectDep,
+    object_id: str,
+    spec_json: str,
+) -> ScientificMediaObject:
+    """Update the editable source of a chart or figure and re-validate."""
+    try:
+        obj = service.get_media_object(object_id)
+        if obj.media_type.value == "chart":
+            return service.update_chart_spec(object_id, spec_json)
+        return service.update_figure_spec(object_id, spec_json)
+    except MediaGenerationError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "spec_update_failed", str(exc)
+        ) from exc
+
+
+@router.post(
+    "/validate-spec",
+    response_model=SpecValidationResult,
+    responses={
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def validate_spec(
+    service: GenerationServiceDep,
+    subject: SubjectDep,
+    spec_json: str,
+) -> SpecValidationResult:
+    """Validate a chart or figure spec JSON without generating output."""
+    try:
+        return service.validate_spec(spec_json)
+    except MediaGenerationError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "spec_validation_failed", str(exc)
+        ) from exc
 
 
 # ── T033: Storyboard and sandbox routes ─────────────────────────────
@@ -615,4 +779,121 @@ async def control_accessibility_playback(
     except AccessibilityError as exc:
         raise _media_error(
             status.HTTP_404_NOT_FOUND, "playback_control_failed", str(exc)
+        ) from exc
+
+
+# ── T035: Cross-media consistency and publish routes ──────────────────
+
+
+@router.post(
+    "/cross-media/consistency",
+    response_model=CrossMediaConsistencyResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+    },
+)
+async def check_cross_media_consistency(
+    service: PublishServiceDep,
+    subject: SubjectDep,
+    entries: list[CrossMediaClaimEntry],
+) -> CrossMediaConsistencyResult:
+    """Check cross-media Claim consistency before publishing."""
+    try:
+        return service.check_cross_media_consistency(subject.account_id, entries)
+    except Exception as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "consistency_check_failed", str(exc),
+        ) from exc
+
+
+@router.post(
+    "/publish/check",
+    response_model=MultimodalPublishGateResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+    },
+)
+async def evaluate_publish_gate(
+    service: PublishServiceDep,
+    subject: SubjectDep,
+    request: MediaPublishRequest,
+) -> MultimodalPublishGateResult:
+    """Evaluate multi-modal publish gates without publishing."""
+    try:
+        return service.evaluate_publish_gate(subject.account_id, request)
+    except Exception as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "publish_gate_evaluation_failed", str(exc),
+        ) from exc
+
+
+@router.post(
+    "/publish",
+    response_model=dict[str, Any],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": MediaErrorContract},
+    },
+)
+async def publish_media(
+    service: PublishServiceDep,
+    subject: SubjectDep,
+    request: MediaPublishRequest,
+) -> dict[str, Any]:
+    """Execute multi-modal publish. All gates must pass."""
+    try:
+        record = service.publish(subject.account_id, request)
+        return {"record_id": record.record_id, "published_at": record.published_at.isoformat()}
+    except MediaPublishError as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "publish_failed", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/publish/{record_id}",
+    response_model=dict[str, Any],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+        status.HTTP_404_NOT_FOUND: {"model": MediaErrorContract},
+    },
+)
+async def get_publish_record(
+    service: PublishServiceDep,
+    subject: SubjectDep,
+    record_id: str,
+) -> dict[str, Any]:
+    """Get a publish record by ID."""
+    try:
+        record = service.get_publish_record(subject.account_id, record_id)
+        return record.model_dump(mode="json")
+    except MediaPublishError as exc:
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "publish_record_not_found", str(exc)
+        ) from exc
+
+
+@router.get(
+    "/publish",
+    response_model=list[dict[str, Any]],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": MediaErrorContract},
+    },
+)
+async def list_publish_records(
+    service: PublishServiceDep,
+    subject: SubjectDep,
+    project_id: str | None = None,
+) -> list[dict[str, Any]]:
+    """List publish records for the current account, optionally filtered by project."""
+    try:
+        records = service.list_publish_records(subject.account_id, project_id)
+        return [record.model_dump(mode="json") for record in records]
+    except Exception as exc:
+        raise _media_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "list_publish_records_failed", str(exc),
         ) from exc

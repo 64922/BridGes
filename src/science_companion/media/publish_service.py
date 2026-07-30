@@ -343,7 +343,11 @@ class MediaPublishService:
             reasons.append("存在许可状态未知的媒体资产。")
 
         # 3. Authenticity gate (sandbox validation for interactive/animation).
-        authenticity_ok = self._check_authenticity(account_id, request)
+        authenticity_ok = self._check_storyboard_status(
+            account_id, request, require_media_type="animation"
+        ) and self._check_storyboard_status(
+            account_id, request, require_media_type="interactive_html"
+        )
         gate_results[MultimodalPublishGate.AUTHENTICITY] = (
             MultimodalGateResult.PASS if authenticity_ok else MultimodalGateResult.FAIL
         )
@@ -352,7 +356,7 @@ class MediaPublishService:
             reasons.append("存在未通过沙箱验证的交互或动画媒体。")
 
         # 4. Sandbox gate.
-        sandbox_ok = self._check_sandbox(account_id, request)
+        sandbox_ok = self._check_storyboard_status(account_id, request)
         gate_results[MultimodalPublishGate.SANDBOX] = (
             MultimodalGateResult.PASS if sandbox_ok else MultimodalGateResult.FAIL
         )
@@ -578,35 +582,13 @@ class MediaPublishService:
                 return False
         return True
 
-    def _check_authenticity(
-        self, account_id: str, request: MediaPublishRequest
+    def _check_storyboard_status(
+        self, account_id: str, request: MediaPublishRequest,
+        *, require_media_type: str | None = None,
     ) -> bool:
-        """检查交互/动画媒体的沙箱验证状态。"""
-        if self._storyboard is None:
-            return True
-        for sb_id in request.storyboard_ids:
-            try:
-                sb = self._storyboard.get_storyboard(sb_id)
-            except StoryboardError:
-                continue
-            if sb.account_id != account_id:
-                continue
-            # Storyboards with interactive/animation type must have passed sandbox.
-            if sb.media_type in ("animation", "interactive_html"):
-                if sb.status in (
-                    StoryboardStatus.FAILED,
-                    StoryboardStatus.QUARANTINED,
-                    StoryboardStatus.REPAIR_EXHAUSTED,
-                ):
-                    return False
-        return True
+        """检查分镜状态是否可发布。
 
-    def _check_sandbox(
-        self, account_id: str, request: MediaPublishRequest
-    ) -> bool:
-        """检查分镜沙箱运行状态。
-
-        与 _check_authenticity 保持一致，检查失败、隔离和修复耗尽状态。
+        require_media_type 不为 None 时只检查指定媒体类型的分镜。
         """
         if self._storyboard is None:
             return True
@@ -616,6 +598,8 @@ class MediaPublishService:
             except StoryboardError:
                 continue
             if sb.account_id != account_id:
+                continue
+            if require_media_type is not None and sb.media_type != require_media_type:
                 continue
             if sb.status in (
                 StoryboardStatus.FAILED,

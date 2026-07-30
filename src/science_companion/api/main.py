@@ -59,10 +59,12 @@ from science_companion.media import (
     InMemoryAudioStorage,
     MediaGenerationService,
     MediaIngestionService,
+    MediaPublishService,
     QwenTtsNarrationSynthesizer,
     SandboxService,
     StoryboardService,
     build_media_impact_resolver,
+    build_media_publish_impact_resolver,
 )
 from science_companion.observability.service import ObservabilityService
 from science_companion.profiles import InMemoryProfileRepository, ProfileService
@@ -611,6 +613,21 @@ def create_app() -> FastAPI:
         generation_service=app.state.media_generation_service,
         media_ingestion_service=media_ingestion_service,
         narration_synthesizer=narration_synthesizer,
+    )
+
+    # T035: attach the multi-modal publish service for cross-media consistency
+    # checking and multi-modal publish gate evaluation. Register the publish
+    # impact resolver so source or fact-lock invalidation propagates.
+    publish_service = MediaPublishService(
+        generation_service=app.state.media_generation_service,
+        storyboard_service=app.state.storyboard_service,
+        media_ingestion_service=media_ingestion_service,
+        accessibility_service=app.state.accessibility_service,
+        invalidation_service=invalidation_service,
+    )
+    app.state.media_publish_service = publish_service
+    invalidation_service.register_impact_resolver(
+        "media_publish", build_media_publish_impact_resolver(publish_service)
     )
 
     # T025/T029: attach the expression service. It consumes claim graphs and fact
