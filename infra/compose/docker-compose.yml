@@ -3,6 +3,8 @@ services:
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../../.env
     ports:
       - "8000:8000"
     environment:
@@ -14,7 +16,14 @@ services:
     volumes:
       - api-data:/var/lib/science-companion
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      test:
+        - CMD
+        - python
+        - -c
+        - >-
+          import json, urllib.request; payload = json.load(
+          urllib.request.urlopen('http://localhost:8000/health/ready')
+          ); raise SystemExit(0 if payload.get('ready') == 'pass' else 1)
       interval: 10s
       timeout: 5s
       retries: 3

@@ -21,6 +21,11 @@ test-results/
 .env
 .env.local
 
+# 本地 SQLite 持久化文件
+*.db
+*.db-wal
+*.db-shm
+
 # IDE
 .vscode/
 .idea/
