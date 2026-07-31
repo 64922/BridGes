@@ -12,6 +12,7 @@ requires a Conda environment at runtime.
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -132,14 +133,17 @@ def web(
 
     use_dev = dev if dev is not None else settings.web_dev
     env = {**os.environ, "PORT": str(settings.web_port)}
+    # Windows 上 npm 常以 .cmd shim 形式存在（如 fnm 的 npm.CMD），
+    # CreateProcess 无法解析裸名 "npm"，需用 shutil.which 解析真实路径。
+    npm = shutil.which("npm") or "npm"
     if use_dev:
-        command = ["npm", "run", "dev"]
+        command = [npm, "run", "dev"]
     else:
         standalone = web_dir / ".next" / "standalone" / "server.js"
         command = (
             ["node", str(standalone)]
             if standalone.exists()
-            else ["npm", "run", "start"]
+            else [npm, "run", "start"]
         )
     subprocess.run(command, cwd=web_dir, check=True, env=env)
 
