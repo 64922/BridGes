@@ -4,6 +4,10 @@ from science_companion.domain.astronomy import (
     AstronomyDomainPack,
     create_astronomy_pack,
 )
+from science_companion.domain.computer_science import (
+    ComputerScienceDomainPack,
+    create_computer_science_pack,
+)
 from science_companion.domain.earth_climate import (
     EarthClimateDomainPack,
     create_earth_climate_pack,
@@ -33,9 +37,14 @@ from science_companion.domain.protocol import (
 )
 from science_companion.domain.registry import DomainPackRegistry
 from science_companion.domain.runtime import DomainPackValidationRuntime
+from science_companion.domain.standards_datasets import (
+    StandardsDatasetsDomainPack,
+    create_standards_datasets_pack,
+)
 
 __all__ = [
     "AstronomyDomainPack",
+    "ComputerScienceDomainPack",
     "DomainPack",
     "DomainPackLoadError",
     "DomainPackLoader",
@@ -48,10 +57,13 @@ __all__ = [
     "MathFormalProofDomainPack",
     "MedicalHighRiskDomainPack",
     "PhysicsChemistryDomainPack",
+    "StandardsDatasetsDomainPack",
     "create_astronomy_pack",
+    "create_computer_science_pack",
     "create_earth_climate_pack",
     "create_life_science_pack",
     "create_math_formal_proof_pack",
     "create_medical_high_risk_pack",
     "create_physics_chemistry_pack",
+    "create_standards_datasets_pack",
 ]
