@@ -134,6 +134,10 @@ def _sqlite_path(database_url: str) -> str:
     path = f"//{parsed.netloc}{parsed.path}" if parsed.netloc and parsed.path else parsed.path
     if path.startswith("/") and len(path) >= 3 and path[2] == ":":
         path = path[1:]
+    elif not parsed.netloc and path.startswith("/"):
+        # sqlite:///x.db（三个斜杠）表示相对于工作目录的文件；urlparse 会
+        # 在其路径前加一个前导 "/"，去掉它以免被当作文件系统根目录。
+        path = path[1:]
     path = unquote(path)
     if not path:
         raise PersistenceError("sqlite 数据库地址缺少文件路径。")
