@@ -5,6 +5,10 @@ from science_companion.domain.math_formal_proof import (
     MathFormalProofDomainPack,
     create_math_formal_proof_pack,
 )
+from science_companion.domain.physics_chemistry import (
+    PhysicsChemistryDomainPack,
+    create_physics_chemistry_pack,
+)
 from science_companion.domain.protocol import (
     DomainPack,
     DomainPackLoadError,
@@ -23,5 +27,7 @@ __all__ = [
     "DomainPackValidationRuntime",
     "LoadedDomainPack",
     "MathFormalProofDomainPack",
+    "PhysicsChemistryDomainPack",
     "create_math_formal_proof_pack",
+    "create_physics_chemistry_pack",
 ]
