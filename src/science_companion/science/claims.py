@@ -19,6 +19,7 @@ output is a structured ClaimGraph that those nodes consume.
 from __future__ import annotations
 
 import secrets
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
@@ -824,6 +825,15 @@ class ClaimEvidenceService:
                     result.append(stored.graph)
                     break
         return result
+
+    def find_graphs_by_run_ids(self, run_ids: Sequence[str]) -> list[ClaimGraph]:
+        """T047: 返回绑定指定运行的全部 Claim 图（用于领域包失效影响定位）。"""
+        target = set(run_ids)
+        return [
+            stored.graph
+            for stored in self._graphs.values()
+            if stored.graph.run_id is not None and stored.graph.run_id in target
+        ]
 
     def _create_revalidated_graph_version(
         self, old_graph: ClaimGraph, source_id: str

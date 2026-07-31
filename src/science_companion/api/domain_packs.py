@@ -1,6 +1,7 @@
 """领域包专家工作台 API 路由。
 
-路由实现阶段控制台：登记、三签、语义 Diff、灰度与发行。
+路由实现阶段控制台：登记、三签、语义 Diff、灰度、发行、失效、
+紧急撤销、重验证与受信回滚。
 person_id 使用当前账户 ID（一个账户代表一个自然人），职责冲突
 按 person_id + 包版本摘要检查，不按按钮权限判断。
 """
@@ -18,11 +19,24 @@ from science_companion.contracts.domain import (
     ConflictDisclosure,
     ConflictOfInterestDeclaration,
     GrayReleaseCandidate,
+    PackImpactCategory,
+    PackImpactSet,
+    PackInvalidationEvent,
+    PackInvalidationStage,
+    PackInvalidationTrigger,
     PackRelease,
+    PackRollbackRecord,
     QualificationRecord,
+    RevalidationReport,
     ReviewAttestation,
+    ReviewRole,
+    RevocationEvent,
     SemanticDiff,
     WorkbenchPackRecord,
+)
+from science_companion.domain.pack_lifecycle import (
+    DomainPackLifecycleError,
+    DomainPackLifecycleService,
 )
 from science_companion.domain.workbench import (
     DomainPackWorkbenchError,
@@ -41,7 +55,17 @@ def _get_workbench(request: Request) -> DomainPackWorkbenchService:
     return service
 
 
+def _get_lifecycle(request: Request) -> DomainPackLifecycleService:
+    service: DomainPackLifecycleService | None = getattr(
+        request.app.state, "domain_pack_lifecycle", None
+    )
+    if service is None:
+        raise RuntimeError("DomainPackLifecycleService not attached to application state.")
+    return service
+
+
 WorkbenchDep = Annotated[DomainPackWorkbenchService, Depends(_get_workbench)]
+LifecycleDep = Annotated[DomainPackLifecycleService, Depends(_get_lifecycle)]
 
 
 def _workbench_error(status_code: int, error: str, message: str) -> HTTPException:
@@ -57,6 +81,15 @@ def _handle(exc: DomainPackWorkbenchError) -> HTTPException:
     if exc.code in {"role_required", "role_conflict"}:
         return _workbench_error(status.HTTP_403_FORBIDDEN, exc.code, str(exc))
     # 其余均为状态或签名门冲突，与路由 responses 声明的 409 一致。
+    return _workbench_error(status.HTTP_409_CONFLICT, exc.code, str(exc))
+
+
+def _handle_lifecycle(exc: DomainPackLifecycleError) -> HTTPException:
+    if exc.code == "not_found":
+        return _workbench_error(status.HTTP_404_NOT_FOUND, exc.code, str(exc))
+    if exc.code in {"role_required", "role_conflict", "second_factor_required"}:
+        return _workbench_error(status.HTTP_403_FORBIDDEN, exc.code, str(exc))
+    # 其余均为状态机、影响集、重验证或信任门冲突，与 409 一致。
     return _workbench_error(status.HTTP_409_CONFLICT, exc.code, str(exc))
 
 
@@ -378,6 +411,495 @@ async def release_pack(
         return service.release(subject.account_id, pack_id, version)
     except DomainPackWorkbenchError as exc:
         raise _handle(exc) from exc
+
+
+class InvalidationEventRequest(BaseModel):
+    """登记领域包失效事件。"""
+
+    pack_id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    trigger: PackInvalidationTrigger
+    reason: str = Field(min_length=1)
+    emergency: bool = False
+
+
+class AdvanceStageRequest(BaseModel):
+    """推进失效事件阶段。"""
+
+    to_stage: PackInvalidationStage
+    note: str = Field(default="")
+
+
+class RevalidateRequest(BaseModel):
+    """登记一个影响类别中已完成重验证的对象。"""
+
+    area: PackImpactCategory
+    ref_ids: list[str] = Field(default_factory=list)
+    failed: list[str] = Field(default_factory=list)
+
+
+class RevocationRequest(BaseModel):
+    """安全管理员紧急撤销请求；要求二次认证并确认影响范围。"""
+
+    pack_id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    trigger: PackInvalidationTrigger
+    reason: str = Field(min_length=1)
+    second_factor: str = Field(min_length=1)
+
+
+class RollbackRequest(BaseModel):
+    """提议回滚到仍受信、依赖兼容且通过平台下限的旧版。"""
+
+    pack_id: str = Field(min_length=1)
+    from_version: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class RollbackConfirmRequest(BaseModel):
+    """独立复核者或平台发行者确认回滚。"""
+
+    role: ReviewRole
+    conclusion: AttestationConclusion = AttestationConclusion.APPROVE
+    opinion: str = Field(default="")
+
+
+def _require_lifecycle_actor(
+    lifecycle: DomainPackLifecycleService,
+    workbench: DomainPackWorkbenchService,
+    account_id: str,
+    pack_id: str,
+    version: str,
+) -> None:
+    """普通用户不进入本工作台；失效与回滚操作只允许参与者或安全管理员。"""
+    record = workbench.get_record(pack_id, version)
+    participants = {
+        record.maintainer_id,
+        *(item for item in (record.reviewer_id, record.releaser_id) if item),
+    }
+    if account_id not in participants and not lifecycle.is_security_admin(account_id):
+        raise _workbench_error(
+            status.HTTP_403_FORBIDDEN,
+            "role_required",
+            "只有该包版本的维护者、独立复核者、平台发行者或安全管理员可以查看失效记录。",
+        )
+
+
+@router.post(
+    "/security-admins",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+    },
+)
+async def register_security_admin(
+    service: LifecycleDep,
+    subject: SubjectDep,
+) -> None:
+    """登记当前账户为安全管理员（平台引导身份；类比机构创建者为管理员）。"""
+    service.register_security_admin(subject.account_id)
+
+
+@router.get(
+    "/security-admins",
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "未认证"}},
+)
+async def security_admin_status(
+    service: LifecycleDep,
+    subject: SubjectDep,
+) -> dict[str, bool]:
+    """当前账户是否具备安全管理员身份。"""
+    return {"is_security_admin": service.is_security_admin(subject.account_id)}
+
+
+@router.post(
+    "/invalidations",
+    response_model=PackInvalidationEvent,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "工作台未登记"},
+    },
+)
+async def record_invalidation(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    request: InvalidationEventRequest,
+) -> PackInvalidationEvent:
+    """记录一次失效事件（DETECTED；紧急失效直接进入 CONTAINED）。"""
+    _require_lifecycle_actor(
+        lifecycle, workbench, subject.account_id, request.pack_id, request.version
+    )
+    try:
+        return lifecycle.record_invalidation_event(
+            subject.account_id,
+            request.pack_id,
+            request.version,
+            request.trigger,
+            request.reason,
+            emergency=request.emergency,
+        )
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.get(
+    "/invalidations",
+    response_model=list[PackInvalidationEvent],
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "未认证"}},
+)
+async def list_invalidations(
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+    pack_id: str | None = None,
+) -> list[PackInvalidationEvent]:
+    """列出当前自然人可以处置的失效事件；可按包过滤。"""
+    return lifecycle.list_invalidation_events(subject.account_id, pack_id=pack_id)
+
+
+@router.get(
+    "/invalidations/{event_id}",
+    response_model=PackInvalidationEvent,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "失效事件不存在"},
+    },
+)
+async def get_invalidation(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    event_id: str,
+) -> PackInvalidationEvent:
+    """读取一个失效事件（仅参与者或安全管理员）。"""
+    try:
+        event = lifecycle.get_invalidation_event(event_id)
+        _require_lifecycle_actor(
+            lifecycle, workbench, subject.account_id, event.pack_id, event.pack_version
+        )
+        return event
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.post(
+    "/invalidations/{event_id}/advance",
+    response_model=PackInvalidationEvent,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "失效事件不存在"},
+        status.HTTP_409_CONFLICT: {"description": "状态机或硬门冲突"},
+    },
+)
+async def advance_invalidation(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    event_id: str,
+    request: AdvanceStageRequest,
+) -> PackInvalidationEvent:
+    """按 DETECTED→TRIAGED→CONTAINED→…→CLOSED 推进失效事件。"""
+    try:
+        event = lifecycle.get_invalidation_event(event_id)
+        _require_lifecycle_actor(
+            lifecycle, workbench, subject.account_id, event.pack_id, event.pack_version
+        )
+        return lifecycle.advance_stage(
+            subject.account_id,
+            event_id,
+            request.to_stage,
+            note=request.note,
+        )
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.post(
+    "/invalidations/{event_id}/resolve-impact",
+    response_model=PackImpactSet,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "失效事件不存在"},
+    },
+)
+async def resolve_impact(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    event_id: str,
+) -> PackImpactSet:
+    """构建影响集：包、运行、Claim、Evidence、Wording、产物、项目和用户动作。"""
+    try:
+        event = lifecycle.get_invalidation_event(event_id)
+        _require_lifecycle_actor(
+            lifecycle, workbench, subject.account_id, event.pack_id, event.pack_version
+        )
+        return lifecycle.resolve_impact(subject.account_id, event_id)
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.get(
+    "/invalidations/{event_id}/impact",
+    response_model=PackImpactSet,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "失效事件或影响集不存在"},
+    },
+)
+async def get_impact(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    event_id: str,
+) -> PackImpactSet:
+    """读取失效事件的影响集（仅参与者或安全管理员）。"""
+    try:
+        event = lifecycle.get_invalidation_event(event_id)
+        _require_lifecycle_actor(
+            lifecycle, workbench, subject.account_id, event.pack_id, event.pack_version
+        )
+        return lifecycle.get_impact_set(event_id)
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.post(
+    "/invalidations/{event_id}/revalidate",
+    response_model=RevalidationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "失效事件不存在"},
+        status.HTTP_409_CONFLICT: {"description": "对象不在影响带或类别无效"},
+    },
+)
+async def report_revalidated(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    event_id: str,
+    request: RevalidateRequest,
+) -> RevalidationReport:
+    """登记一个影响类别中已完成重验证的对象。"""
+    try:
+        event = lifecycle.get_invalidation_event(event_id)
+        _require_lifecycle_actor(
+            lifecycle, workbench, subject.account_id, event.pack_id, event.pack_version
+        )
+        return lifecycle.report_revalidated(
+            subject.account_id,
+            event_id,
+            request.area,
+            request.ref_ids,
+            failed=request.failed,
+        )
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.get(
+    "/invalidations/{event_id}/revalidation",
+    response_model=RevalidationReport | None,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "失效事件不存在"},
+    },
+)
+async def get_revalidation(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    event_id: str,
+) -> RevalidationReport | None:
+    """读取失效事件的重验证报告（仅参与者或安全管理员）。"""
+    try:
+        event = lifecycle.get_invalidation_event(event_id)
+        _require_lifecycle_actor(
+            lifecycle, workbench, subject.account_id, event.pack_id, event.pack_version
+        )
+        return lifecycle.get_revalidation_report(event_id)
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.post(
+    "/revocations",
+    response_model=dict[str, PackInvalidationEvent | RevocationEvent],
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "不是安全管理员或缺少二次认证"},
+        status.HTTP_404_NOT_FOUND: {"description": "工作台未登记"},
+        status.HTTP_409_CONFLICT: {"description": "撤销门冲突"},
+    },
+)
+async def emergency_revoke(
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+    request: RevocationRequest,
+) -> dict[str, PackInvalidationEvent | RevocationEvent]:
+    """安全管理员紧急撤销：阻止新运行，但不能编辑规则或直接发布替代版本。"""
+    try:
+        event, revocation = lifecycle.emergency_revoke(
+            subject.account_id,
+            request.pack_id,
+            request.version,
+            request.trigger,
+            request.reason,
+            second_factor=request.second_factor,
+        )
+        return {"event": event, "revocation": revocation}
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.get(
+    "/revocations",
+    response_model=list[RevocationEvent],
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "未认证"}},
+)
+async def list_revocations(
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+) -> list[RevocationEvent]:
+    """列出当前自然人可以处置的紧急撤销事件。"""
+    return lifecycle.list_revocations(subject.account_id)
+
+
+@router.post(
+    "/rollbacks",
+    response_model=PackRollbackRecord,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "工作台未登记"},
+        status.HTTP_409_CONFLICT: {"description": "没有受信回滚目标或门冲突"},
+    },
+)
+async def propose_rollback(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    request: RollbackRequest,
+) -> PackRollbackRecord:
+    """提议回滚到仍受信、依赖兼容且通过平台下限的最高旧版。"""
+    _require_lifecycle_actor(
+        lifecycle, workbench, subject.account_id, request.pack_id, request.from_version
+    )
+    try:
+        return lifecycle.propose_rollback(
+            subject.account_id,
+            request.pack_id,
+            request.from_version,
+            request.reason,
+        )
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.get(
+    "/rollbacks",
+    response_model=list[PackRollbackRecord],
+    responses={status.HTTP_401_UNAUTHORIZED: {"description": "未认证"}},
+)
+async def list_rollbacks(
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+) -> list[PackRollbackRecord]:
+    """列出当前自然人可以处置的回滚记录。"""
+    return lifecycle.list_rollbacks(subject.account_id)
+
+
+@router.get(
+    "/rollbacks/{rollback_id}",
+    response_model=PackRollbackRecord,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_404_NOT_FOUND: {"description": "回滚记录不存在"},
+    },
+)
+async def get_rollback(
+    lifecycle: LifecycleDep,
+    workbench: WorkbenchDep,
+    subject: SubjectDep,
+    rollback_id: str,
+) -> PackRollbackRecord:
+    """读取一条回滚记录（仅参与者或安全管理员）。"""
+    try:
+        rollback = lifecycle.get_rollback(rollback_id)
+        _require_lifecycle_actor(
+            lifecycle,
+            workbench,
+            subject.account_id,
+            rollback.pack_id,
+            rollback.from_version,
+        )
+        return rollback
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.post(
+    "/rollbacks/{rollback_id}/confirm",
+    response_model=PackRollbackRecord,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "角色不符"},
+        status.HTTP_404_NOT_FOUND: {"description": "回滚记录不存在"},
+        status.HTTP_409_CONFLICT: {"description": "已确认或回滚已关闭"},
+    },
+)
+async def confirm_rollback(
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+    rollback_id: str,
+    request: RollbackConfirmRequest,
+) -> PackRollbackRecord:
+    """独立复核者或平台发行者确认回滚影响与目标版本。"""
+    try:
+        return lifecycle.confirm_rollback(
+            subject.account_id,
+            rollback_id,
+            role=request.role,
+            conclusion=request.conclusion,
+            opinion=request.opinion,
+        )
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
+
+
+@router.post(
+    "/rollbacks/{rollback_id}/execute",
+    response_model=PackRollbackRecord,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "不是平台发行者"},
+        status.HTTP_404_NOT_FOUND: {"description": "回滚记录不存在"},
+        status.HTTP_409_CONFLICT: {"description": "未经双方确认或夹具未通过"},
+    },
+)
+async def execute_rollback(
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+    rollback_id: str,
+) -> PackRollbackRecord:
+    """平台发行者执行回滚：把受信旧版重新设为项目可选版本。
+
+    被撤销版本不会被复活；回滚只切换包的可选默认版本。
+    """
+    try:
+        return lifecycle.execute_rollback(subject.account_id, rollback_id)
+    except DomainPackLifecycleError as exc:
+        raise _handle_lifecycle(exc) from exc
 
 
 @router.post(

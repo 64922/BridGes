@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import secrets
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
@@ -99,6 +100,7 @@ class WorkflowService:
         observability_service: ObservabilityService | None = None,
         invalidation_service: InvalidationService | None = None,
         profile_service: ProfileService | None = None,
+        pack_gate: Callable[[Sequence[str]], None] | None = None,
     ) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
@@ -107,6 +109,7 @@ class WorkflowService:
         self._observability = observability_service
         self._invalidation = invalidation_service
         self._profile_service = profile_service
+        self._pack_gate = pack_gate
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -140,6 +143,19 @@ class WorkflowService:
                 self._invalidation.require_active(ref)
             except InvalidationError as exc:
                 raise WorkflowError(str(exc)) from exc
+
+    def set_pack_gate(self, gate: Callable[[Sequence[str]], None] | None) -> None:
+        """T047: 设置领域包运行门；撤销或失效的包不能开始新运行。
+
+        门由应用装配线注入（默认无门，保持单元测试独立）。
+        """
+        self._pack_gate = gate
+
+    def _require_packs_usable(self, domain_pack_refs: Sequence[str]) -> None:
+        """任一引用的领域包已撤销或失效时失败闭锁。"""
+        if self._pack_gate is None:
+            return
+        self._pack_gate(list(domain_pack_refs))
 
     def register_workflow(
         self,
@@ -349,6 +365,7 @@ class WorkflowService:
             raise WorkflowError(str(exc)) from exc
 
         self._require_objects_active(list(order.object_refs), account_id)
+        self._require_packs_usable(order.domain_pack_refs)
 
         now = self._now()
         run_id = secrets.token_urlsafe(16)
@@ -394,6 +411,7 @@ class WorkflowService:
         record = self._require_record(account_id, run_id)
         self._assert_transition(record, {WorkflowRunStatus.DRAFT})
         self._require_objects_active(list(record.work_order.object_refs), account_id)
+        self._require_packs_usable(record.context.domain_pack_refs)
         if not confirmed:
             raise WorkflowError("必须明确确认任务目标、成功标准和风险后才能启动。")
 
@@ -467,6 +485,15 @@ class WorkflowService:
         """
         record = self._require_record(account_id, run_id)
         return self._build_projection(record)
+
+    def find_runs_using_pack(self, pack_id: str, version: str) -> list[RunProjection]:
+        """T047: 返回引用指定包版本的全部运行投影（用于失效影响定位）。"""
+        ref = f"{pack_id}@{version}"
+        return [
+            self._build_projection(record)
+            for record in self._runs.values()
+            if ref in record.context.domain_pack_refs
+        ]
 
     def _invoke_node_capability(
         self, record: _RunRecord, node_def: _NodeDefinition

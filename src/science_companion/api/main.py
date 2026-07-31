@@ -1,5 +1,6 @@
 """FastAPI application for the Science Companion API."""
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -45,6 +46,11 @@ from science_companion.contracts.ai import (
     FallbackPolicy,
     RetryPolicy,
 )
+from science_companion.contracts.domain import (
+    PackImpactAction,
+    PackImpactCategory,
+    PackImpactItem,
+)
 from science_companion.contracts.health import DependencyHealth, HealthProjection, HealthStatus
 from science_companion.contracts.projects import ObjectRef
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
@@ -60,6 +66,10 @@ from science_companion.domain import (
     create_medical_high_risk_pack,
     create_physics_chemistry_pack,
     create_standards_datasets_pack,
+)
+from science_companion.domain.pack_lifecycle import (
+    DomainPackLifecycleError,
+    DomainPackLifecycleService,
 )
 from science_companion.domain.workbench import DomainPackWorkbenchService
 from science_companion.evaluation import EvaluationService
@@ -720,11 +730,20 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     domain_pack_loader = DomainPackLoader(capability_registry=capability_registry)
     domain_pack_registry = DomainPackRegistry(domain_pack_loader)
     _register_builtin_domain_packs(domain_pack_registry)
-    app.state.domain_pack_workbench = DomainPackWorkbenchService(
+    domain_pack_workbench = DomainPackWorkbenchService(
         registry=domain_pack_registry,
         runtime=DomainPackValidationRuntime(domain_pack_loader),
         loader=domain_pack_loader,
     )
+    app.state.domain_pack_workbench = domain_pack_workbench
+
+    # T047: 挂接领域包生命周期服务。它负责失效事件、紧急撤销、影响解析、
+    # 重验证推进与受信回滚；影响源随各下游服务出现时注册。
+    domain_pack_lifecycle = DomainPackLifecycleService(
+        workbench=domain_pack_workbench,
+        loader=domain_pack_loader,
+    )
+    app.state.domain_pack_lifecycle = domain_pack_lifecycle
 
     # T006/T009: attach the in-memory workflow service and register workflows.
     workflow_service = WorkflowService(
@@ -736,6 +755,35 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service
+
+    # T047: 撤销或失效的领域包不能开始新运行；运行门由生命周期服务裁决。
+    def _pack_gate(pack_refs: Sequence[str]) -> None:
+        try:
+            domain_pack_lifecycle.require_packs_usable(pack_refs)
+        except DomainPackLifecycleError as exc:
+            raise WorkflowError(str(exc)) from exc
+
+    workflow_service.set_pack_gate(_pack_gate)
+
+    # T047: 运行影响源——引用该包版本的全部运行。
+    def _pack_run_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        return [
+            PackImpactItem(
+                item_id=f"run:{projection.run_id}",
+                category=PackImpactCategory.RUN,
+                ref_id=projection.run_id,
+                label=f"运行 {projection.run_id}（{projection.workflow_name}）",
+                action=PackImpactAction.PRESERVE_AND_MARK,
+                account_id=projection.context_envelope.account_id,
+                project_id=projection.project_id,
+                details={"run_status": projection.run_status.value},
+            )
+            for projection in workflow_service.find_runs_using_pack(pack_id, version)
+        ]
+
+    domain_pack_lifecycle.register_pack_impact_source(
+        PackImpactCategory.RUN, _pack_run_source
+    )
 
     # T012: attach the in-memory evaluation service and routes.
     evaluation_service = EvaluationService(workflow_service=workflow_service)
@@ -779,6 +827,105 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     invalidation_service.register_revalidation_handler(
         "claim_graph", ClaimGraphRevalidationHandler(claim_evidence_service)
     )
+
+    # T047: Claim、Evidence 与 Wording 影响源——运行链路上派生图内的
+    # Claim、Evidence 与措辞约束需要重验证。
+    def _pack_runs_for(pack_id: str, version: str) -> list[RunProjection]:
+        return workflow_service.find_runs_using_pack(pack_id, version)
+
+    def _pack_graphs_for(pack_id: str, version: str) -> list[Any]:
+        runs = _pack_runs_for(pack_id, version)
+        return claim_evidence_service.find_graphs_by_run_ids(
+            [projection.run_id for projection in runs]
+        )
+
+    def _pack_claim_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        return [
+            PackImpactItem(
+                item_id=f"claim:{graph.graph_id}",
+                category=PackImpactCategory.CLAIM,
+                ref_id=graph.graph_id,
+                label=f"Claim 图 {graph.graph_id}（{len(graph.claims)} 条 Claim）",
+                action=PackImpactAction.REVALIDATE,
+                account_id=graph.account_id,
+                project_id=graph.project_id,
+                details={"graph_status": graph.status.value},
+            )
+            for graph in _pack_graphs_for(pack_id, version)
+        ]
+
+    def _pack_evidence_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        return [
+            PackImpactItem(
+                item_id=f"evidence:{evidence.evidence_id}",
+                category=PackImpactCategory.EVIDENCE,
+                ref_id=evidence.evidence_id,
+                label=f"Evidence {evidence.evidence_id}（{evidence.relation.value}）",
+                action=PackImpactAction.REVALIDATE,
+                account_id=graph.account_id,
+                project_id=graph.project_id,
+            )
+            for graph in _pack_graphs_for(pack_id, version)
+            for evidence in graph.evidence
+        ]
+
+    def _pack_wording_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        return [
+            PackImpactItem(
+                item_id=f"wording:{graph.graph_id}",
+                category=PackImpactCategory.WORDING,
+                ref_id=graph.graph_id,
+                label=f"措辞约束 {graph.graph_id}（校验报告需重验证）",
+                action=PackImpactAction.REVALIDATE,
+                account_id=graph.account_id,
+                project_id=graph.project_id,
+            )
+            for graph in _pack_graphs_for(pack_id, version)
+        ]
+
+    def _pack_project_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        projects_seen: dict[str, str] = {}
+        for projection in _pack_runs_for(pack_id, version):
+            projects_seen[projection.project_id] = projection.context_envelope.account_id
+        return [
+            PackImpactItem(
+                item_id=f"project:{project_id}",
+                category=PackImpactCategory.PROJECT,
+                ref_id=project_id,
+                label=f"项目 {project_id}",
+                action=PackImpactAction.PRESERVE_AND_MARK,
+                account_id=account_id,
+                project_id=project_id,
+            )
+            for project_id, account_id in projects_seen.items()
+        ]
+
+    def _pack_user_action_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        return [
+            PackImpactItem(
+                item_id=f"user_action:{projection.context_envelope.account_id}:{projection.run_id}",
+                category=PackImpactCategory.USER_ACTION,
+                ref_id=projection.run_id,
+                label=(
+                    f"用户动作：{projection.context_envelope.account_id} 提交了运行 "
+                    f"{projection.run_id}（{projection.project_id}）"
+                ),
+                action=PackImpactAction.PRESERVE_AND_MARK,
+                account_id=projection.context_envelope.account_id,
+                project_id=projection.project_id,
+                details={"run_status": projection.run_status.value},
+            )
+            for projection in _pack_runs_for(pack_id, version)
+        ]
+
+    for category, source in (
+        (PackImpactCategory.CLAIM, _pack_claim_source),
+        (PackImpactCategory.EVIDENCE, _pack_evidence_source),
+        (PackImpactCategory.WORDING, _pack_wording_source),
+        (PackImpactCategory.PROJECT, _pack_project_source),
+        (PackImpactCategory.USER_ACTION, _pack_user_action_source),
+    ):
+        domain_pack_lifecycle.register_pack_impact_source(category, source)
 
     # T030: attach the media ingestion service and register its impact resolver so
     # media asset invalidation propagates to index, cache and runs.
@@ -849,6 +996,29 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         workflow_service=workflow_service,
     )
     app.state.expression_service = expression_service
+
+    # T047: 产物影响源——运行链路派生的表达产物需要重验证。
+    def _pack_artifact_source(pack_id: str, version: str) -> list[PackImpactItem]:
+        runs = _pack_runs_for(pack_id, version)
+        return [
+            PackImpactItem(
+                item_id=f"artifact:{draft.draft_id}",
+                category=PackImpactCategory.ARTIFACT,
+                ref_id=draft.draft_id,
+                label=f"表达产物 {draft.draft_id}（{draft.genre.value}）",
+                action=PackImpactAction.REVALIDATE,
+                account_id=draft.account_id,
+                project_id=draft.project_id,
+                details={"artifact_trust_status": draft.artifact_trust_status.value},
+            )
+            for draft in expression_service.find_drafts_by_run_ids(
+                [projection.run_id for projection in runs]
+            )
+        ]
+
+    domain_pack_lifecycle.register_pack_impact_source(
+        PackImpactCategory.ARTIFACT, _pack_artifact_source
+    )
 
     # T021: attach the in-memory learning service for missions and diagnosis.
     learning_repository = InMemoryLearningRepository()

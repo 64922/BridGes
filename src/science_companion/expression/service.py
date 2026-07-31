@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 import secrets
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -1251,6 +1252,15 @@ class ExpressionService:
         if stored is None or stored.account_id != account_id:
             raise ExpressionServiceError("草稿不存在或没有访问权限。")
         return stored
+
+    def find_drafts_by_run_ids(self, run_ids: Sequence[str]) -> list[ExpressionDraft]:
+        """T047: 返回绑定指定运行的全部表达产物（用于领域包失效影响定位）。"""
+        target = set(run_ids)
+        return [
+            draft
+            for draft in self._drafts.values()
+            if draft.run_id is not None and draft.run_id in target
+        ]
 
     def create_draft_and_store(
         self,

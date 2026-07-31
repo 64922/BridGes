@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { StatusBadge } from "@/components/design-system/StatusBadge";
+import { WorkbenchLifecycle } from "./workbench-lifecycle";
 import {
   addConflictDisclosure,
   assignReleaser,
@@ -732,6 +733,9 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
           </section>
         </div>
       </div>
+
+      {/* T047：失效、撤销、回滚与重验证 */}
+      <WorkbenchLifecycle packId={packId} version={version} />
 
       <style>{`
         @media (max-width: 1100px) {

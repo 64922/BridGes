@@ -100,7 +100,15 @@ async def submit_work_order(
             "WorkOrder 中的项目标识与 URL 不一致。",
         )
 
-    return workflow_service.submit_work_order(account_id=subject.account_id, order=order)
+    try:
+        return workflow_service.submit_work_order(account_id=subject.account_id, order=order)
+    except WorkflowError as exc:
+        # T011/T047：对象或领域包已失效时新运行闭锁，返回可解释状态。
+        raise _workflow_error(
+            status.HTTP_400_BAD_REQUEST,
+            "workflow_transition_failed",
+            str(exc),
+        ) from exc
 
 
 @router.post(

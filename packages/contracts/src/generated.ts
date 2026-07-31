@@ -331,6 +331,284 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/domain-packs/security-admins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Security Admin Status
+         * @description 当前账户是否具备安全管理员身份。
+         */
+        get: operations["security_admin_status_domain_packs_security_admins_get"];
+        put?: never;
+        /**
+         * Register Security Admin
+         * @description 登记当前账户为安全管理员（平台引导身份；类比机构创建者为管理员）。
+         */
+        post: operations["register_security_admin_domain_packs_security_admins_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Invalidations
+         * @description 列出当前自然人可以处置的失效事件；可按包过滤。
+         */
+        get: operations["list_invalidations_domain_packs_invalidations_get"];
+        put?: never;
+        /**
+         * Record Invalidation
+         * @description 记录一次失效事件（DETECTED；紧急失效直接进入 CONTAINED）。
+         */
+        post: operations["record_invalidation_domain_packs_invalidations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations/{event_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Invalidation
+         * @description 读取一个失效事件（仅参与者或安全管理员）。
+         */
+        get: operations["get_invalidation_domain_packs_invalidations__event_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations/{event_id}/advance": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Advance Invalidation
+         * @description 按 DETECTED→TRIAGED→CONTAINED→…→CLOSED 推进失效事件。
+         */
+        post: operations["advance_invalidation_domain_packs_invalidations__event_id__advance_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations/{event_id}/resolve-impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Impact
+         * @description 构建影响集：包、运行、Claim、Evidence、Wording、产物、项目和用户动作。
+         */
+        post: operations["resolve_impact_domain_packs_invalidations__event_id__resolve_impact_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations/{event_id}/impact": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Impact
+         * @description 读取失效事件的影响集（仅参与者或安全管理员）。
+         */
+        get: operations["get_impact_domain_packs_invalidations__event_id__impact_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations/{event_id}/revalidate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Revalidated
+         * @description 登记一个影响类别中已完成重验证的对象。
+         */
+        post: operations["report_revalidated_domain_packs_invalidations__event_id__revalidate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/invalidations/{event_id}/revalidation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Revalidation
+         * @description 读取失效事件的重验证报告（仅参与者或安全管理员）。
+         */
+        get: operations["get_revalidation_domain_packs_invalidations__event_id__revalidation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/revocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Revocations
+         * @description 列出当前自然人可以处置的紧急撤销事件。
+         */
+        get: operations["list_revocations_domain_packs_revocations_get"];
+        put?: never;
+        /**
+         * Emergency Revoke
+         * @description 安全管理员紧急撤销：阻止新运行，但不能编辑规则或直接发布替代版本。
+         */
+        post: operations["emergency_revoke_domain_packs_revocations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/rollbacks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Rollbacks
+         * @description 列出当前自然人可以处置的回滚记录。
+         */
+        get: operations["list_rollbacks_domain_packs_rollbacks_get"];
+        put?: never;
+        /**
+         * Propose Rollback
+         * @description 提议回滚到仍受信、依赖兼容且通过平台下限的最高旧版。
+         */
+        post: operations["propose_rollback_domain_packs_rollbacks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/rollbacks/{rollback_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Rollback
+         * @description 读取一条回滚记录（仅参与者或安全管理员）。
+         */
+        get: operations["get_rollback_domain_packs_rollbacks__rollback_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/rollbacks/{rollback_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Rollback
+         * @description 独立复核者或平台发行者确认回滚影响与目标版本。
+         */
+        post: operations["confirm_rollback_domain_packs_rollbacks__rollback_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/rollbacks/{rollback_id}/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Rollback
+         * @description 平台发行者执行回滚：把受信旧版重新设为项目可选版本。
+         *
+         *     被撤销版本不会被复活；回滚只切换包的可选默认版本。
+         */
+        post: operations["execute_rollback_domain_packs_rollbacks__rollback_id__execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/domain-packs/qualifications": {
         parameters: {
             query?: never;
@@ -3801,6 +4079,18 @@ export interface components {
             agreed_to_terms: boolean;
         };
         /**
+         * AdvanceStageRequest
+         * @description 推进失效事件阶段。
+         */
+        AdvanceStageRequest: {
+            to_stage: components["schemas"]["PackInvalidationStage"];
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /**
          * AnswerEvaluatedState
          * @description Result of evaluating a single diagnostic answer.
          * @enum {string}
@@ -6231,6 +6521,40 @@ export interface components {
          */
         DomainPackStatus: "draft" | "in_review" | "signed" | "active" | "deprecated" | "suspended" | "revoked" | "expired";
         /**
+         * DomainPackValidationRun
+         * @description Complete, auditable result of candidate preflight and fixture replay.
+         */
+        DomainPackValidationRun: {
+            /** Run Id */
+            run_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Manifest Digest */
+            manifest_digest: string;
+            status: components["schemas"]["DomainRunStatus"];
+            /** Checks */
+            checks?: components["schemas"]["DomainValidationCheck"][];
+            /** Fixture Results */
+            fixture_results?: components["schemas"]["FixtureResult"][];
+            /** Blocked Reasons */
+            blocked_reasons?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+        };
+        /**
+         * DomainRunStatus
+         * @description Outcome of validating a candidate pack and its fixtures.
+         * @enum {string}
+         */
+        DomainRunStatus: "passed" | "failed" | "blocked" | "needs_human";
+        /**
          * DomainValidationCheck
          * @description One explainable preflight or runtime check.
          */
@@ -8173,6 +8497,24 @@ export interface components {
          */
         InstitutionStatus: "active" | "suspended";
         /**
+         * InvalidationEventRequest
+         * @description 登记领域包失效事件。
+         */
+        InvalidationEventRequest: {
+            /** Pack Id */
+            pack_id: string;
+            /** Version */
+            version: string;
+            trigger: components["schemas"]["PackInvalidationTrigger"];
+            /** Reason */
+            reason: string;
+            /**
+             * Emergency
+             * @default false
+             */
+            emergency: boolean;
+        };
+        /**
          * InviteAcceptRequest
          * @description Request to accept an invite token.
          */
@@ -9835,6 +10177,111 @@ export interface components {
          */
         ObservationStatus: "active" | "discarded";
         /**
+         * PackImpactAction
+         * @description 失效对单个下游对象要求的动作。
+         * @enum {string}
+         */
+        PackImpactAction: "block_new_use" | "revalidate" | "preserve_and_mark";
+        /**
+         * PackImpactCategory
+         * @description 影响集覆盖的八类下游对象。
+         * @enum {string}
+         */
+        PackImpactCategory: "pack" | "run" | "claim" | "evidence" | "wording" | "artifact" | "project" | "user_action";
+        /**
+         * PackImpactItem
+         * @description 影响带中的一个下游对象。
+         */
+        PackImpactItem: {
+            /** Item Id */
+            item_id: string;
+            category: components["schemas"]["PackImpactCategory"];
+            /** Ref Id */
+            ref_id: string;
+            /** Label */
+            label: string;
+            /** @default revalidate */
+            action: components["schemas"]["PackImpactAction"];
+            /** Account Id */
+            account_id?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * PackImpactSet
+         * @description 领域包失效的完整影响集：包、运行、Claim、Evidence、Wording、产物、项目和用户动作。
+         */
+        PackImpactSet: {
+            /** Impact Set Id */
+            impact_set_id: string;
+            /** Event Id */
+            event_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Items */
+            items?: components["schemas"]["PackImpactItem"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * PackInvalidationEvent
+         * @description 领域包失效事件：不可覆盖，记录影响集、推进历史和关闭条件。
+         */
+        PackInvalidationEvent: {
+            /** Event Id */
+            event_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Canonical Digest */
+            canonical_digest: string;
+            trigger: components["schemas"]["PackInvalidationTrigger"];
+            /** @default detected */
+            stage: components["schemas"]["PackInvalidationStage"];
+            /** Reason */
+            reason: string;
+            /** Initiated By */
+            initiated_by: string;
+            /**
+             * Initiated At
+             * Format: date-time
+             */
+            initiated_at: string;
+            /**
+             * Emergency
+             * @default false
+             */
+            emergency: boolean;
+            /** Impact Set Id */
+            impact_set_id?: string | null;
+            /** Stage Log */
+            stage_log?: components["schemas"]["PackStageTransition"][];
+            /** Closed At */
+            closed_at?: string | null;
+        };
+        /**
+         * PackInvalidationStage
+         * @description 失效事件状态机；紧急撤销允许先进入 CONTAINED，但不能跳过影响报告。
+         * @enum {string}
+         */
+        PackInvalidationStage: "detected" | "triaged" | "contained" | "impacted_objects_found" | "remediating" | "revalidating" | "closed";
+        /**
+         * PackInvalidationTrigger
+         * @description 触发领域包失效的检测来源。
+         * @enum {string}
+         */
+        PackInvalidationTrigger: "source_retracted" | "source_status_unknown" | "dependency_revoked" | "signature_invalid" | "security_event" | "evaluation_regression" | "rule_defect" | "review_expired";
+        /**
          * PackRelease
          * @description 发行摘要、平台签名和透明记录。
          */
@@ -9863,6 +10310,89 @@ export interface components {
             transparent_record?: {
                 [key: string]: unknown;
             };
+        };
+        /**
+         * PackRollbackConfirmation
+         * @description 独立复核者或平台发行者对一次回滚的确认。
+         */
+        PackRollbackConfirmation: {
+            role: components["schemas"]["ReviewRole"];
+            /** Person Id */
+            person_id: string;
+            conclusion: components["schemas"]["AttestationConclusion"];
+            /**
+             * Opinion
+             * @default
+             */
+            opinion: string;
+            /**
+             * Confirmed At
+             * Format: date-time
+             */
+            confirmed_at: string;
+        };
+        /**
+         * PackRollbackRecord
+         * @description 受信回滚记录：只允许回滚到仍受信、依赖兼容且通过平台下限的旧版。
+         */
+        PackRollbackRecord: {
+            /** Rollback Id */
+            rollback_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** From Version */
+            from_version: string;
+            /** To Version */
+            to_version: string;
+            /** To Digest */
+            to_digest: string;
+            /** Proposed By */
+            proposed_by: string;
+            /** Reason */
+            reason: string;
+            /** @default proposed */
+            status: components["schemas"]["PackRollbackStatus"];
+            fixture_report?: components["schemas"]["DomainPackValidationRun"] | null;
+            /**
+             * Fixture Passed
+             * @default false
+             */
+            fixture_passed: boolean;
+            /** Confirmations */
+            confirmations?: components["schemas"]["PackRollbackConfirmation"][];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Executed At */
+            executed_at?: string | null;
+        };
+        /**
+         * PackRollbackStatus
+         * @description 受信回滚记录的状态；执行前必须完成复核与夹具重放。
+         * @enum {string}
+         */
+        PackRollbackStatus: "proposed" | "review_required" | "approved" | "executed" | "rejected";
+        /**
+         * PackStageTransition
+         * @description 失效事件的一次阶段推进记录。
+         */
+        PackStageTransition: {
+            from_stage: components["schemas"]["PackInvalidationStage"];
+            to_stage: components["schemas"]["PackInvalidationStage"];
+            /**
+             * Transitioned At
+             * Format: date-time
+             */
+            transitioned_at: string;
+            /** By */
+            by: string;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
         };
         /**
          * PaperAssistElement
@@ -11609,6 +12139,61 @@ export interface components {
          */
         RetrievalExerciseType: "recall" | "explanation" | "computation" | "comparison" | "application";
         /**
+         * RevalidateRequest
+         * @description 登记一个影响类别中已完成重验证的对象。
+         */
+        RevalidateRequest: {
+            area: components["schemas"]["PackImpactCategory"];
+            /** Ref Ids */
+            ref_ids?: string[];
+            /** Failed */
+            failed?: string[];
+        };
+        /**
+         * RevalidationAreaProgress
+         * @description 一个影响类别（运行、Claim 等）的重验证推进。
+         */
+        RevalidationAreaProgress: {
+            area: components["schemas"]["PackImpactCategory"];
+            /** Total */
+            total: number;
+            /** Revalidated */
+            revalidated?: string[];
+            /** Failed */
+            failed?: string[];
+        };
+        /**
+         * RevalidationReport
+         * @description 一次失效事件的重验证报告：逐类别推进，全部完成前不能关闭。
+         */
+        RevalidationReport: {
+            /** Report Id */
+            report_id: string;
+            /** Event Id */
+            event_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Areas */
+            areas?: components["schemas"]["RevalidationAreaProgress"][];
+            /** @default in_progress */
+            status: components["schemas"]["RevalidationReportStatus"];
+            /**
+             * Started At
+             * Format: date-time
+             */
+            started_at: string;
+            /** Completed At */
+            completed_at?: string | null;
+        };
+        /**
+         * RevalidationReportStatus
+         * @description 重验证报告的整体状态。
+         * @enum {string}
+         */
+        RevalidationReportStatus: "in_progress" | "completed" | "failed";
+        /**
          * ReviewAttestation
          * @description 内容签名、独立验证签名或平台发行签名。
          *
@@ -12018,11 +12603,86 @@ export interface components {
             user_rewrite?: string | null;
         };
         /**
+         * RevocationEvent
+         * @description 紧急撤销事件：不可修改，阻断新运行并保留后续双人复核与影响报告义务。
+         */
+        RevocationEvent: {
+            /** Revocation Id */
+            revocation_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Canonical Digest */
+            canonical_digest: string;
+            /** Revoked By */
+            revoked_by: string;
+            /** Reason */
+            reason: string;
+            trigger: components["schemas"]["PackInvalidationTrigger"];
+            /**
+             * Occurred At
+             * Format: date-time
+             */
+            occurred_at: string;
+            /**
+             * Blocks New Runs
+             * @default true
+             */
+            blocks_new_runs: boolean;
+            /**
+             * Follow Up Required
+             * @default true
+             */
+            follow_up_required: boolean;
+        };
+        /**
+         * RevocationRequest
+         * @description 安全管理员紧急撤销请求；要求二次认证并确认影响范围。
+         */
+        RevocationRequest: {
+            /** Pack Id */
+            pack_id: string;
+            /** Version */
+            version: string;
+            trigger: components["schemas"]["PackInvalidationTrigger"];
+            /** Reason */
+            reason: string;
+            /** Second Factor */
+            second_factor: string;
+        };
+        /**
          * RiskTier
          * @description Risk tier of an expression task.
          * @enum {string}
          */
         RiskTier: "low" | "medium" | "high";
+        /**
+         * RollbackConfirmRequest
+         * @description 独立复核者或平台发行者确认回滚。
+         */
+        RollbackConfirmRequest: {
+            role: components["schemas"]["ReviewRole"];
+            /** @default approve */
+            conclusion: components["schemas"]["AttestationConclusion"];
+            /**
+             * Opinion
+             * @default
+             */
+            opinion: string;
+        };
+        /**
+         * RollbackRequest
+         * @description 提议回滚到仍受信、依赖兼容且通过平台下限的旧版。
+         */
+        RollbackRequest: {
+            /** Pack Id */
+            pack_id: string;
+            /** From Version */
+            from_version: string;
+            /** Reason */
+            reason: string;
+        };
         /**
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.
@@ -16374,6 +17034,901 @@ export interface operations {
                 content?: never;
             };
             /** @description 签名、灰度或摘要门不满足 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    security_admin_status_domain_packs_security_admins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: boolean;
+                    };
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_security_admin_domain_packs_security_admins_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_invalidations_domain_packs_invalidations_get: {
+        parameters: {
+            query?: {
+                pack_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackInvalidationEvent"][];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    record_invalidation_domain_packs_invalidations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvalidationEventRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackInvalidationEvent"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_invalidation_domain_packs_invalidations__event_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackInvalidationEvent"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 失效事件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    advance_invalidation_domain_packs_invalidations__event_id__advance_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdvanceStageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackInvalidationEvent"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 失效事件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 状态机或硬门冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_impact_domain_packs_invalidations__event_id__resolve_impact_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackImpactSet"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 失效事件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_impact_domain_packs_invalidations__event_id__impact_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackImpactSet"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 失效事件或影响集不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_revalidated_domain_packs_invalidations__event_id__revalidate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevalidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevalidationReport"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 失效事件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 对象不在影响带或类别无效 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_revalidation_domain_packs_invalidations__event_id__revalidation_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                event_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevalidationReport"] | null;
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 失效事件不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_revocations_domain_packs_revocations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RevocationEvent"][];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    emergency_revoke_domain_packs_revocations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RevocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: components["schemas"]["PackInvalidationEvent"] | components["schemas"]["RevocationEvent"];
+                    };
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不是安全管理员或缺少二次认证 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 撤销门冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_rollbacks_domain_packs_rollbacks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRollbackRecord"][];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_rollback_domain_packs_rollbacks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRollbackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 没有受信回滚目标或门冲突 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_rollback_domain_packs_rollbacks__rollback_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rollback_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRollbackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 回滚记录不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_rollback_domain_packs_rollbacks__rollback_id__confirm_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rollback_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RollbackConfirmRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRollbackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 回滚记录不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 已确认或回滚已关闭 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    execute_rollback_domain_packs_rollbacks__rollback_id__execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                rollback_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRollbackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不是平台发行者 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 回滚记录不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未经双方确认或夹具未通过 */
             409: {
                 headers: {
                     [name: string]: unknown;

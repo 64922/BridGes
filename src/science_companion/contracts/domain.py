@@ -741,3 +741,226 @@ class WorkbenchPackRecord(BaseModel):
     checks: list[DomainValidationCheck] = Field(default_factory=list)
     fixture_results: list[FixtureResult] = Field(default_factory=list)
     updated_at: datetime
+
+
+# ---------------------------------------------------------------------------
+# T047：领域包失效、撤销、重验证与受信回滚契约
+# ---------------------------------------------------------------------------
+
+
+class PackInvalidationStage(StrEnum):
+    """失效事件状态机；紧急撤销允许先进入 CONTAINED，但不能跳过影响报告。"""
+
+    DETECTED = "detected"
+    TRIAGED = "triaged"
+    CONTAINED = "contained"
+    IMPACTED_OBJECTS_FOUND = "impacted_objects_found"
+    REMEDIATING = "remediating"
+    REVALIDATING = "revalidating"
+    CLOSED = "closed"
+
+
+class PackInvalidationTrigger(StrEnum):
+    """触发领域包失效的检测来源。"""
+
+    SOURCE_RETRACTED = "source_retracted"
+    SOURCE_STATUS_UNKNOWN = "source_status_unknown"
+    DEPENDENCY_REVOKED = "dependency_revoked"
+    SIGNATURE_INVALID = "signature_invalid"
+    SECURITY_EVENT = "security_event"
+    EVALUATION_REGRESSION = "evaluation_regression"
+    RULE_DEFECT = "rule_defect"
+    REVIEW_EXPIRED = "review_expired"
+
+
+class PackImpactCategory(StrEnum):
+    """影响集覆盖的八类下游对象。"""
+
+    PACK = "pack"
+    RUN = "run"
+    CLAIM = "claim"
+    EVIDENCE = "evidence"
+    WORDING = "wording"
+    ARTIFACT = "artifact"
+    PROJECT = "project"
+    USER_ACTION = "user_action"
+
+
+class PackImpactAction(StrEnum):
+    """失效对单个下游对象要求的动作。"""
+
+    BLOCK_NEW_USE = "block_new_use"
+    REVALIDATE = "revalidate"
+    PRESERVE_AND_MARK = "preserve_and_mark"
+
+
+class PackImpactItem(BaseModel):
+    """影响带中的一个下游对象。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    item_id: str = Field(min_length=1)
+    category: PackImpactCategory
+    ref_id: str = Field(min_length=1)
+    label: str = Field(min_length=1)
+    action: PackImpactAction = PackImpactAction.REVALIDATE
+    account_id: str | None = None
+    project_id: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class PackImpactSet(BaseModel):
+    """领域包失效的完整影响集：包、运行、Claim、Evidence、Wording、产物、项目和用户动作。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    impact_set_id: str = Field(min_length=1)
+    event_id: str = Field(min_length=1)
+    pack_id: str = Field(min_length=1)
+    pack_version: str = Field(min_length=1)
+    items: list[PackImpactItem] = Field(default_factory=list)
+    created_at: datetime
+
+    def by_category(self) -> dict[str, list[PackImpactItem]]:
+        """按影响类别分组，保持影响带展示顺序。"""
+        grouped: dict[str, list[PackImpactItem]] = {}
+        for item in self.items:
+            grouped.setdefault(item.category.value, []).append(item)
+        return grouped
+
+
+class PackStageTransition(BaseModel):
+    """失效事件的一次阶段推进记录。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    from_stage: PackInvalidationStage
+    to_stage: PackInvalidationStage
+    transitioned_at: datetime
+    by: str = Field(min_length=1)
+    note: str = Field(default="")
+
+
+class PackInvalidationEvent(BaseModel):
+    """领域包失效事件：不可覆盖，记录影响集、推进历史和关闭条件。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    event_id: str = Field(min_length=1)
+    pack_id: str = Field(min_length=1)
+    pack_version: str = Field(min_length=1)
+    canonical_digest: str = Field(min_length=1)
+    trigger: PackInvalidationTrigger
+    stage: PackInvalidationStage = PackInvalidationStage.DETECTED
+    reason: str = Field(min_length=1)
+    initiated_by: str = Field(min_length=1)
+    initiated_at: datetime
+    emergency: bool = False
+    impact_set_id: str | None = None
+    stage_log: list[PackStageTransition] = Field(default_factory=list)
+    closed_at: datetime | None = None
+
+
+class RevocationEvent(BaseModel):
+    """紧急撤销事件：不可修改，阻断新运行并保留后续双人复核与影响报告义务。"""
+
+    model_config = ConfigDict(frozen=True)
+
+    revocation_id: str = Field(min_length=1)
+    pack_id: str = Field(min_length=1)
+    pack_version: str = Field(min_length=1)
+    canonical_digest: str = Field(min_length=1)
+    revoked_by: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    trigger: PackInvalidationTrigger
+    occurred_at: datetime
+    blocks_new_runs: bool = True
+    follow_up_required: bool = True
+
+
+class RevalidationReportStatus(StrEnum):
+    """重验证报告的整体状态。"""
+
+    IN_PROGRESS = "in_progress"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class RevalidationAreaProgress(BaseModel):
+    """一个影响类别（运行、Claim 等）的重验证推进。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    area: PackImpactCategory
+    total: int = Field(ge=0)
+    revalidated: list[str] = Field(default_factory=list)
+    failed: list[str] = Field(default_factory=list)
+
+    @property
+    def done(self) -> bool:
+        """该类别全部受影响对象都已推进（重验证或确认失败）。"""
+        return self.revalidated_count >= self.total if self.total else True
+
+    @property
+    def revalidated_count(self) -> int:
+        return len(self.revalidated) + len(self.failed)
+
+
+class RevalidationReport(BaseModel):
+    """一次失效事件的重验证报告：逐类别推进，全部完成前不能关闭。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    report_id: str = Field(min_length=1)
+    event_id: str = Field(min_length=1)
+    pack_id: str = Field(min_length=1)
+    pack_version: str = Field(min_length=1)
+    areas: list[RevalidationAreaProgress] = Field(default_factory=list)
+    status: RevalidationReportStatus = RevalidationReportStatus.IN_PROGRESS
+    started_at: datetime
+    completed_at: datetime | None = None
+
+    def area(self, category: PackImpactCategory) -> RevalidationAreaProgress | None:
+        return next((item for item in self.areas if item.area == category), None)
+
+
+class PackRollbackStatus(StrEnum):
+    """受信回滚记录的状态；执行前必须完成复核与夹具重放。"""
+
+    PROPOSED = "proposed"
+    REVIEW_REQUIRED = "review_required"
+    APPROVED = "approved"
+    EXECUTED = "executed"
+    REJECTED = "rejected"
+
+
+class PackRollbackConfirmation(BaseModel):
+    """独立复核者或平台发行者对一次回滚的确认。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    role: ReviewRole
+    person_id: str = Field(min_length=1)
+    conclusion: AttestationConclusion
+    opinion: str = Field(default="")
+    confirmed_at: datetime
+
+
+class PackRollbackRecord(BaseModel):
+    """受信回滚记录：只允许回滚到仍受信、依赖兼容且通过平台下限的旧版。"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    rollback_id: str = Field(min_length=1)
+    pack_id: str = Field(min_length=1)
+    from_version: str = Field(min_length=1)
+    to_version: str = Field(min_length=1)
+    to_digest: str = Field(min_length=1)
+    proposed_by: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    status: PackRollbackStatus = PackRollbackStatus.PROPOSED
+    fixture_report: DomainPackValidationRun | None = None
+    fixture_passed: bool = False
+    confirmations: list[PackRollbackConfirmation] = Field(default_factory=list)
+    created_at: datetime
+    executed_at: datetime | None = None

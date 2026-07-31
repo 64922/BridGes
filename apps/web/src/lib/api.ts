@@ -21,6 +21,16 @@ export type GrayReleaseCandidate = components["schemas"]["GrayReleaseCandidate"]
 export type PackRelease = components["schemas"]["PackRelease"];
 export type QualificationRecord = components["schemas"]["QualificationRecord"];
 export type ConflictOfInterestDeclaration = components["schemas"]["ConflictOfInterestDeclaration"];
+export type PackInvalidationEvent = components["schemas"]["PackInvalidationEvent"];
+export type PackInvalidationStage = components["schemas"]["PackInvalidationStage"];
+export type PackInvalidationTrigger = components["schemas"]["PackInvalidationTrigger"];
+export type PackImpactSet = components["schemas"]["PackImpactSet"];
+export type PackImpactItem = components["schemas"]["PackImpactItem"];
+export type PackImpactCategory = components["schemas"]["PackImpactCategory"];
+export type RevocationEvent = components["schemas"]["RevocationEvent"];
+export type RevalidationReport = components["schemas"]["RevalidationReport"];
+export type PackRollbackRecord = components["schemas"]["PackRollbackRecord"];
+export type PackRollbackStatus = components["schemas"]["PackRollbackStatus"];
 export type DomainPackError = { error?: string; message?: string };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
@@ -341,6 +351,219 @@ export type ConflictDisclosure = {
   decision?: string;
   created_at: string;
 };
+
+// ---------------------------------------------------------------------------
+// T047：失效、撤销、重验证与受信回滚
+// ---------------------------------------------------------------------------
+
+export async function registerSecurityAdmin(): Promise<void> {
+  const res = await fetch(`${API_BASE}/domain-packs/security-admins`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+}
+
+export async function fetchSecurityAdminStatus(): Promise<{ is_security_admin: boolean }> {
+  const res = await fetch(`${API_BASE}/domain-packs/security-admins`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function listInvalidations(packId?: string): Promise<PackInvalidationEvent[]> {
+  const query = packId ? `?pack_id=${encodeURIComponent(packId)}` : "";
+  const res = await fetch(`${API_BASE}/domain-packs/invalidations${query}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function getInvalidation(eventId: string): Promise<PackInvalidationEvent> {
+  const res = await fetch(`${API_BASE}/domain-packs/invalidations/${encodeURIComponent(eventId)}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function recordInvalidation(input: {
+  pack_id: string;
+  version: string;
+  trigger: PackInvalidationTrigger;
+  reason: string;
+  emergency?: boolean;
+}): Promise<PackInvalidationEvent> {
+  const res = await fetch(`${API_BASE}/domain-packs/invalidations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function advanceInvalidation(
+  eventId: string,
+  toStage: PackInvalidationStage,
+  note = ""
+): Promise<PackInvalidationEvent> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/invalidations/${encodeURIComponent(eventId)}/advance`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ to_stage: toStage, note }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function resolveImpact(eventId: string): Promise<PackImpactSet> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/invalidations/${encodeURIComponent(eventId)}/resolve-impact`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function getImpactSet(eventId: string): Promise<PackImpactSet> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/invalidations/${encodeURIComponent(eventId)}/impact`,
+    {
+      credentials: "same-origin",
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function reportRevalidated(
+  eventId: string,
+  area: PackImpactCategory,
+  refIds: string[],
+  failed: string[] = []
+): Promise<RevalidationReport> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/invalidations/${encodeURIComponent(eventId)}/revalidate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ area, ref_ids: refIds, failed }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function getRevalidationReport(
+  eventId: string
+): Promise<RevalidationReport | null> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/invalidations/${encodeURIComponent(eventId)}/revalidation`,
+    {
+      credentials: "same-origin",
+      cache: "no-store",
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function emergencyRevoke(input: {
+  pack_id: string;
+  version: string;
+  trigger: PackInvalidationTrigger;
+  reason: string;
+  second_factor: string;
+}): Promise<{ event: PackInvalidationEvent; revocation: RevocationEvent }> {
+  const res = await fetch(`${API_BASE}/domain-packs/revocations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function listRevocations(): Promise<RevocationEvent[]> {
+  const res = await fetch(`${API_BASE}/domain-packs/revocations`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function proposeRollback(input: {
+  pack_id: string;
+  from_version: string;
+  reason: string;
+}): Promise<PackRollbackRecord> {
+  const res = await fetch(`${API_BASE}/domain-packs/rollbacks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function listRollbacks(): Promise<PackRollbackRecord[]> {
+  const res = await fetch(`${API_BASE}/domain-packs/rollbacks`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function confirmRollback(
+  rollbackId: string,
+  role: "independent" | "platform",
+  conclusion: "approve" | "reject" | "needs_changes",
+  opinion = ""
+): Promise<PackRollbackRecord> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/rollbacks/${encodeURIComponent(rollbackId)}/confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ role, conclusion, opinion }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function executeRollback(rollbackId: string): Promise<PackRollbackRecord> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/rollbacks/${encodeURIComponent(rollbackId)}/execute`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
 
 export function statusText(status: HealthStatus): string {
   switch (status) {

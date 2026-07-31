@@ -1199,6 +1199,1171 @@
         }
       }
     },
+    "/domain-packs/security-admins": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Register Security Admin",
+        "description": "登记当前账户为安全管理员（平台引导身份；类比机构创建者为管理员）。",
+        "operationId": "register_security_admin_domain_packs_security_admins_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Security Admin Status",
+        "description": "当前账户是否具备安全管理员身份。",
+        "operationId": "security_admin_status_domain_packs_security_admins_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "boolean"
+                  },
+                  "title": "Response Security Admin Status Domain Packs Security Admins Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Record Invalidation",
+        "description": "记录一次失效事件（DETECTED；紧急失效直接进入 CONTAINED）。",
+        "operationId": "record_invalidation_domain_packs_invalidations_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvalidationEventRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackInvalidationEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "List Invalidations",
+        "description": "列出当前自然人可以处置的失效事件；可按包过滤。",
+        "operationId": "list_invalidations_domain_packs_invalidations_get",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PackInvalidationEvent"
+                  },
+                  "title": "Response List Invalidations Domain Packs Invalidations Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations/{event_id}": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Invalidation",
+        "description": "读取一个失效事件（仅参与者或安全管理员）。",
+        "operationId": "get_invalidation_domain_packs_invalidations__event_id__get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackInvalidationEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "失效事件不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations/{event_id}/advance": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Advance Invalidation",
+        "description": "按 DETECTED→TRIAGED→CONTAINED→…→CLOSED 推进失效事件。",
+        "operationId": "advance_invalidation_domain_packs_invalidations__event_id__advance_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvanceStageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackInvalidationEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "失效事件不存在"
+          },
+          "409": {
+            "description": "状态机或硬门冲突"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations/{event_id}/resolve-impact": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Resolve Impact",
+        "description": "构建影响集：包、运行、Claim、Evidence、Wording、产物、项目和用户动作。",
+        "operationId": "resolve_impact_domain_packs_invalidations__event_id__resolve_impact_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackImpactSet"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "失效事件不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations/{event_id}/impact": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Impact",
+        "description": "读取失效事件的影响集（仅参与者或安全管理员）。",
+        "operationId": "get_impact_domain_packs_invalidations__event_id__impact_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackImpactSet"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "失效事件或影响集不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations/{event_id}/revalidate": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Report Revalidated",
+        "description": "登记一个影响类别中已完成重验证的对象。",
+        "operationId": "report_revalidated_domain_packs_invalidations__event_id__revalidate_post",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevalidateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RevalidationReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "失效事件不存在"
+          },
+          "409": {
+            "description": "对象不在影响带或类别无效"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/invalidations/{event_id}/revalidation": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Revalidation",
+        "description": "读取失效事件的重验证报告（仅参与者或安全管理员）。",
+        "operationId": "get_revalidation_domain_packs_invalidations__event_id__revalidation_get",
+        "parameters": [
+          {
+            "name": "event_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Event Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/RevalidationReport"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Revalidation Domain Packs Invalidations  Event Id  Revalidation Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "失效事件不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/revocations": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Emergency Revoke",
+        "description": "安全管理员紧急撤销：阻止新运行，但不能编辑规则或直接发布替代版本。",
+        "operationId": "emergency_revoke_domain_packs_revocations_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RevocationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/components/schemas/PackInvalidationEvent"
+                      },
+                      {
+                        "$ref": "#/components/schemas/RevocationEvent"
+                      }
+                    ]
+                  },
+                  "title": "Response Emergency Revoke Domain Packs Revocations Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "不是安全管理员或缺少二次认证"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "撤销门冲突"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "List Revocations",
+        "description": "列出当前自然人可以处置的紧急撤销事件。",
+        "operationId": "list_revocations_domain_packs_revocations_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RevocationEvent"
+                  },
+                  "title": "Response List Revocations Domain Packs Revocations Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/rollbacks": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Propose Rollback",
+        "description": "提议回滚到仍受信、依赖兼容且通过平台下限的最高旧版。",
+        "operationId": "propose_rollback_domain_packs_rollbacks_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRollbackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "没有受信回滚目标或门冲突"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "List Rollbacks",
+        "description": "列出当前自然人可以处置的回滚记录。",
+        "operationId": "list_rollbacks_domain_packs_rollbacks_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PackRollbackRecord"
+                  },
+                  "title": "Response List Rollbacks Domain Packs Rollbacks Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/rollbacks/{rollback_id}": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Rollback",
+        "description": "读取一条回滚记录（仅参与者或安全管理员）。",
+        "operationId": "get_rollback_domain_packs_rollbacks__rollback_id__get",
+        "parameters": [
+          {
+            "name": "rollback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rollback Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRollbackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "404": {
+            "description": "回滚记录不存在"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/rollbacks/{rollback_id}/confirm": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Confirm Rollback",
+        "description": "独立复核者或平台发行者确认回滚影响与目标版本。",
+        "operationId": "confirm_rollback_domain_packs_rollbacks__rollback_id__confirm_post",
+        "parameters": [
+          {
+            "name": "rollback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rollback Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RollbackConfirmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRollbackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "回滚记录不存在"
+          },
+          "409": {
+            "description": "已确认或回滚已关闭"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/rollbacks/{rollback_id}/execute": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Execute Rollback",
+        "description": "平台发行者执行回滚：把受信旧版重新设为项目可选版本。\n\n被撤销版本不会被复活；回滚只切换包的可选默认版本。",
+        "operationId": "execute_rollback_domain_packs_rollbacks__rollback_id__execute_post",
+        "parameters": [
+          {
+            "name": "rollback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Rollback Id"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRollbackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "不是平台发行者"
+          },
+          "404": {
+            "description": "回滚记录不存在"
+          },
+          "409": {
+            "description": "未经双方确认或夹具未通过"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/domain-packs/qualifications": {
       "post": {
         "tags": [
@@ -15925,6 +17090,24 @@
         "title": "AccountRegistration",
         "description": "Request to create a new account."
       },
+      "AdvanceStageRequest": {
+        "properties": {
+          "to_stage": {
+            "$ref": "#/components/schemas/PackInvalidationStage"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "to_stage"
+        ],
+        "title": "AdvanceStageRequest",
+        "description": "推进失效事件阶段。"
+      },
       "AnswerEvaluatedState": {
         "type": "string",
         "enum": [
@@ -20024,6 +21207,93 @@
         "title": "DomainPackStatus",
         "description": "Governance state of a candidate domain pack."
       },
+      "DomainPackValidationRun": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Run Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "manifest_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Manifest Digest"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DomainRunStatus"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/DomainValidationCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "fixture_results": {
+            "items": {
+              "$ref": "#/components/schemas/FixtureResult"
+            },
+            "type": "array",
+            "title": "Fixture Results"
+          },
+          "blocked_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocked Reasons"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "pack_id",
+          "pack_version",
+          "manifest_digest",
+          "status",
+          "created_at"
+        ],
+        "title": "DomainPackValidationRun",
+        "description": "Complete, auditable result of candidate preflight and fixture replay."
+      },
+      "DomainRunStatus": {
+        "type": "string",
+        "enum": [
+          "passed",
+          "failed",
+          "blocked",
+          "needs_human"
+        ],
+        "title": "DomainRunStatus",
+        "description": "Outcome of validating a candidate pack and its fixtures."
+      },
       "DomainValidationCheck": {
         "properties": {
           "check_id": {
@@ -23048,6 +24318,42 @@
         "title": "InstitutionStatus",
         "description": "Lifecycle status of an institution."
       },
+      "InvalidationEventRequest": {
+        "properties": {
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Version"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PackInvalidationTrigger"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "emergency": {
+            "type": "boolean",
+            "title": "Emergency",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "pack_id",
+          "version",
+          "trigger",
+          "reason"
+        ],
+        "title": "InvalidationEventRequest",
+        "description": "登记领域包失效事件。"
+      },
       "InviteAcceptRequest": {
         "properties": {
           "token_secret": {
@@ -25664,6 +26970,262 @@
         "title": "ObservationStatus",
         "description": "Lifecycle status of a profile observation."
       },
+      "PackImpactAction": {
+        "type": "string",
+        "enum": [
+          "block_new_use",
+          "revalidate",
+          "preserve_and_mark"
+        ],
+        "title": "PackImpactAction",
+        "description": "失效对单个下游对象要求的动作。"
+      },
+      "PackImpactCategory": {
+        "type": "string",
+        "enum": [
+          "pack",
+          "run",
+          "claim",
+          "evidence",
+          "wording",
+          "artifact",
+          "project",
+          "user_action"
+        ],
+        "title": "PackImpactCategory",
+        "description": "影响集覆盖的八类下游对象。"
+      },
+      "PackImpactItem": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Id"
+          },
+          "category": {
+            "$ref": "#/components/schemas/PackImpactCategory"
+          },
+          "ref_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Ref Id"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "action": {
+            "$ref": "#/components/schemas/PackImpactAction",
+            "default": "revalidate"
+          },
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "category",
+          "ref_id",
+          "label"
+        ],
+        "title": "PackImpactItem",
+        "description": "影响带中的一个下游对象。"
+      },
+      "PackImpactSet": {
+        "properties": {
+          "impact_set_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Impact Set Id"
+          },
+          "event_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Event Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PackImpactItem"
+            },
+            "type": "array",
+            "title": "Items"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "impact_set_id",
+          "event_id",
+          "pack_id",
+          "pack_version",
+          "created_at"
+        ],
+        "title": "PackImpactSet",
+        "description": "领域包失效的完整影响集：包、运行、Claim、Evidence、Wording、产物、项目和用户动作。"
+      },
+      "PackInvalidationEvent": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Event Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "canonical_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canonical Digest"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PackInvalidationTrigger"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/PackInvalidationStage",
+            "default": "detected"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "initiated_by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Initiated By"
+          },
+          "initiated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Initiated At"
+          },
+          "emergency": {
+            "type": "boolean",
+            "title": "Emergency",
+            "default": false
+          },
+          "impact_set_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Impact Set Id"
+          },
+          "stage_log": {
+            "items": {
+              "$ref": "#/components/schemas/PackStageTransition"
+            },
+            "type": "array",
+            "title": "Stage Log"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "pack_id",
+          "pack_version",
+          "canonical_digest",
+          "trigger",
+          "reason",
+          "initiated_by",
+          "initiated_at"
+        ],
+        "title": "PackInvalidationEvent",
+        "description": "领域包失效事件：不可覆盖，记录影响集、推进历史和关闭条件。"
+      },
+      "PackInvalidationStage": {
+        "type": "string",
+        "enum": [
+          "detected",
+          "triaged",
+          "contained",
+          "impacted_objects_found",
+          "remediating",
+          "revalidating",
+          "closed"
+        ],
+        "title": "PackInvalidationStage",
+        "description": "失效事件状态机；紧急撤销允许先进入 CONTAINED，但不能跳过影响报告。"
+      },
+      "PackInvalidationTrigger": {
+        "type": "string",
+        "enum": [
+          "source_retracted",
+          "source_status_unknown",
+          "dependency_revoked",
+          "signature_invalid",
+          "security_event",
+          "evaluation_regression",
+          "rule_defect",
+          "review_expired"
+        ],
+        "title": "PackInvalidationTrigger",
+        "description": "触发领域包失效的检测来源。"
+      },
       "PackRelease": {
         "properties": {
           "release_id": {
@@ -25730,6 +27292,181 @@
         ],
         "title": "PackRelease",
         "description": "发行摘要、平台签名和透明记录。"
+      },
+      "PackRollbackConfirmation": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/ReviewRole"
+          },
+          "person_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Person Id"
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/AttestationConclusion"
+          },
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "default": ""
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Confirmed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "role",
+          "person_id",
+          "conclusion",
+          "confirmed_at"
+        ],
+        "title": "PackRollbackConfirmation",
+        "description": "独立复核者或平台发行者对一次回滚的确认。"
+      },
+      "PackRollbackRecord": {
+        "properties": {
+          "rollback_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Rollback Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "from_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "From Version"
+          },
+          "to_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "To Version"
+          },
+          "to_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "To Digest"
+          },
+          "proposed_by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Proposed By"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PackRollbackStatus",
+            "default": "proposed"
+          },
+          "fixture_report": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DomainPackValidationRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "fixture_passed": {
+            "type": "boolean",
+            "title": "Fixture Passed",
+            "default": false
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/PackRollbackConfirmation"
+            },
+            "type": "array",
+            "title": "Confirmations"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          },
+          "executed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "rollback_id",
+          "pack_id",
+          "from_version",
+          "to_version",
+          "to_digest",
+          "proposed_by",
+          "reason",
+          "created_at"
+        ],
+        "title": "PackRollbackRecord",
+        "description": "受信回滚记录：只允许回滚到仍受信、依赖兼容且通过平台下限的旧版。"
+      },
+      "PackRollbackStatus": {
+        "type": "string",
+        "enum": [
+          "proposed",
+          "review_required",
+          "approved",
+          "executed",
+          "rejected"
+        ],
+        "title": "PackRollbackStatus",
+        "description": "受信回滚记录的状态；执行前必须完成复核与夹具重放。"
+      },
+      "PackStageTransition": {
+        "properties": {
+          "from_stage": {
+            "$ref": "#/components/schemas/PackInvalidationStage"
+          },
+          "to_stage": {
+            "$ref": "#/components/schemas/PackInvalidationStage"
+          },
+          "transitioned_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Transitioned At"
+          },
+          "by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "By"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "from_stage",
+          "to_stage",
+          "transitioned_at",
+          "by"
+        ],
+        "title": "PackStageTransition",
+        "description": "失效事件的一次阶段推进记录。"
       },
       "PaperAssistElement": {
         "properties": {
@@ -28476,6 +30213,138 @@
         "title": "RetrievalExerciseType",
         "description": "Retrieval-practice exercise types that require active recall.\n\nBrowsing or completion-only activities are deliberately excluded."
       },
+      "RevalidateRequest": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/PackImpactCategory"
+          },
+          "ref_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ref Ids"
+          },
+          "failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "area"
+        ],
+        "title": "RevalidateRequest",
+        "description": "登记一个影响类别中已完成重验证的对象。"
+      },
+      "RevalidationAreaProgress": {
+        "properties": {
+          "area": {
+            "$ref": "#/components/schemas/PackImpactCategory"
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Total"
+          },
+          "revalidated": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Revalidated"
+          },
+          "failed": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "area",
+          "total"
+        ],
+        "title": "RevalidationAreaProgress",
+        "description": "一个影响类别（运行、Claim 等）的重验证推进。"
+      },
+      "RevalidationReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Report Id"
+          },
+          "event_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Event Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "areas": {
+            "items": {
+              "$ref": "#/components/schemas/RevalidationAreaProgress"
+            },
+            "type": "array",
+            "title": "Areas"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RevalidationReportStatus",
+            "default": "in_progress"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "event_id",
+          "pack_id",
+          "pack_version",
+          "started_at"
+        ],
+        "title": "RevalidationReport",
+        "description": "一次失效事件的重验证报告：逐类别推进，全部完成前不能关闭。"
+      },
+      "RevalidationReportStatus": {
+        "type": "string",
+        "enum": [
+          "in_progress",
+          "completed",
+          "failed"
+        ],
+        "title": "RevalidationReportStatus",
+        "description": "重验证报告的整体状态。"
+      },
       "ReviewAttestation": {
         "properties": {
           "attestation_id": {
@@ -29121,6 +30990,108 @@
         "title": "RevisionPatch",
         "description": "A local wording patch that must preserve fact locks and citations.\n\nEach patch records the original span text, the patched text, the diagnostic\nfinding that motivated it, and an explicit fact-lock invariance check."
       },
+      "RevocationEvent": {
+        "properties": {
+          "revocation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Revocation Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "canonical_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canonical Digest"
+          },
+          "revoked_by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Revoked By"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PackInvalidationTrigger"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Occurred At"
+          },
+          "blocks_new_runs": {
+            "type": "boolean",
+            "title": "Blocks New Runs",
+            "default": true
+          },
+          "follow_up_required": {
+            "type": "boolean",
+            "title": "Follow Up Required",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "revocation_id",
+          "pack_id",
+          "pack_version",
+          "canonical_digest",
+          "revoked_by",
+          "reason",
+          "trigger",
+          "occurred_at"
+        ],
+        "title": "RevocationEvent",
+        "description": "紧急撤销事件：不可修改，阻断新运行并保留后续双人复核与影响报告义务。"
+      },
+      "RevocationRequest": {
+        "properties": {
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Version"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PackInvalidationTrigger"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "second_factor": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Second Factor"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pack_id",
+          "version",
+          "trigger",
+          "reason",
+          "second_factor"
+        ],
+        "title": "RevocationRequest",
+        "description": "安全管理员紧急撤销请求；要求二次认证并确认影响范围。"
+      },
       "RiskTier": {
         "type": "string",
         "enum": [
@@ -29130,6 +31101,55 @@
         ],
         "title": "RiskTier",
         "description": "Risk tier of an expression task."
+      },
+      "RollbackConfirmRequest": {
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/ReviewRole"
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/AttestationConclusion",
+            "default": "approve"
+          },
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "role"
+        ],
+        "title": "RollbackConfirmRequest",
+        "description": "独立复核者或平台发行者确认回滚。"
+      },
+      "RollbackRequest": {
+        "properties": {
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "from_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "From Version"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pack_id",
+          "from_version",
+          "reason"
+        ],
+        "title": "RollbackRequest",
+        "description": "提议回滚到仍受信、依赖兼容且通过平台下限的旧版。"
       },
       "RunContextEnvelope": {
         "properties": {

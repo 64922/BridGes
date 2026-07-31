@@ -36,7 +36,7 @@ from science_companion.contracts.domain import (
     WorkbenchPackRecord,
     WorkbenchStage,
 )
-from science_companion.domain.loader import DomainPackLoader
+from science_companion.domain.loader import DomainPackLoader, _parse_version
 from science_companion.domain.protocol import (
     DomainPackRegistryError,
     LoadedDomainPack,
@@ -677,6 +677,7 @@ class DomainPackWorkbenchService:
         self._records: dict[tuple[str, str], WorkbenchPackRecord] = {}
         self._qualifications: dict[str, QualificationRecord] = {}
         self._activated: dict[tuple[str, str], DomainPackManifest] = {}
+        self._default_active: dict[str, str] = {}
 
     # ------------------------------------------------------------------
     # 登记与查询
@@ -834,6 +835,79 @@ class DomainPackWorkbenchService:
     ) -> DomainPackManifest | None:
         """读取已发行版本的激活副本；未发行时返回 None。"""
         return self._activated.get((pack_id, version))
+
+    # ------------------------------------------------------------------
+    # T047：治理状态与受信回滚挂钩
+    # ------------------------------------------------------------------
+
+    def list_loaded_packs(self) -> list[LoadedDomainPack]:
+        """列出工作台已登记的全部包版本（用于依赖扫描）。"""
+        loaded: list[LoadedDomainPack] = []
+        for pack_id, version in self._records:
+            try:
+                loaded.append(self.get_loaded(pack_id, version))
+            except DomainPackWorkbenchError:
+                continue
+        return loaded
+
+    def list_registered_versions(self, pack_id: str) -> list[str]:
+        """列出包的全部已登记版本（按语义版本升序）。"""
+        return self._registry.list_versions(pack_id)
+
+    def set_lifecycle_status(
+        self,
+        pack_id: str,
+        version: str,
+        status: DomainPackStatus,
+        by: str,
+    ) -> WorkbenchPackRecord:
+        """由平台状态机设置包治理状态（撤销、暂停等），不能由包文件自设。"""
+        key = (pack_id, version)
+        record = self._records.get(key)
+        if record is None:
+            raise DomainPackWorkbenchError(
+                f"工作台未登记：{pack_id}@{version}。",
+                code="not_found",
+            )
+        updated = record.model_copy(
+            update={
+                "lifecycle_status": status,
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        self._records[key] = updated
+        return updated
+
+    def set_default_active(
+        self,
+        pack_id: str,
+        version: str,
+        loaded: LoadedDomainPack,
+    ) -> None:
+        """受信回滚：把仍受信的旧版重新设为项目可选版本。
+
+        只切换默认版本，不修改任何版本的历史治理状态；已撤销版本
+        仍保持 REVOKED，不能通过回滚复活。
+        """
+        active_manifest = self.get_active_manifest(pack_id, version) or loaded.manifest
+        self._activated[(pack_id, version)] = active_manifest
+        self._default_active[pack_id] = version
+
+    def get_default_active_version(self, pack_id: str) -> str | None:
+        """当前项目可选默认版本；无回滚记录时取最高已发行版本。"""
+        if pack_id in self._default_active:
+            return self._default_active[pack_id]
+        released = [
+            (record.pack_version, record)
+            for (registered_id, _), record in self._records.items()
+            if registered_id == pack_id and record.stage == WorkbenchStage.RELEASED
+        ]
+        if not released:
+            return None
+        return max(
+            released,
+            key=lambda item: _parse_version(item[0]) or (0, 0, 0),
+        )[0]
 
     # ------------------------------------------------------------------
     # 三签
