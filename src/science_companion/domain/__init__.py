@@ -1,5 +1,13 @@
 """领域包协议、加载、版本目录和候选验证运行时。"""
 
+from science_companion.domain.astronomy import (
+    AstronomyDomainPack,
+    create_astronomy_pack,
+)
+from science_companion.domain.earth_climate import (
+    EarthClimateDomainPack,
+    create_earth_climate_pack,
+)
 from science_companion.domain.life_science import (
     LifeScienceDomainPack,
     create_life_science_pack,
@@ -27,17 +35,21 @@ from science_companion.domain.registry import DomainPackRegistry
 from science_companion.domain.runtime import DomainPackValidationRuntime
 
 __all__ = [
+    "AstronomyDomainPack",
     "DomainPack",
     "DomainPackLoadError",
     "DomainPackLoader",
     "DomainPackRegistry",
     "DomainPackRegistryError",
     "DomainPackValidationRuntime",
+    "EarthClimateDomainPack",
     "LifeScienceDomainPack",
     "LoadedDomainPack",
     "MathFormalProofDomainPack",
     "MedicalHighRiskDomainPack",
     "PhysicsChemistryDomainPack",
+    "create_astronomy_pack",
+    "create_earth_climate_pack",
     "create_life_science_pack",
     "create_math_formal_proof_pack",
     "create_medical_high_risk_pack",
