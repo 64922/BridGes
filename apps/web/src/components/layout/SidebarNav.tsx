@@ -34,6 +34,7 @@ export function SidebarNav({ mode, projectId, open, onClose }: SidebarNavProps) 
       links: [
         { href: "/account/profile", label: "画像与记忆中心", icon: "user" },
         { href: "/account/eval", label: "评测与运行中心", icon: "settings" },
+        { href: "/account/domain-packs", label: "领域包专家工作台", icon: "settings" },
         { href: "/account/settings", label: "设置、设备与同步", icon: "settings" },
       ],
     },

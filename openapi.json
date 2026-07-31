@@ -331,6 +331,1166 @@
         }
       }
     },
+    "/domain-packs/workbench": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "List Workbench",
+        "description": "列出当前用户参与（维护者、复核者或发行者）的包版本治理记录。",
+        "operationId": "list_workbench_domain_packs_workbench_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkbenchPackRecord"
+                  },
+                  "title": "Response List Workbench Domain Packs Workbench Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/register": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Register Pack",
+        "description": "当前用户以内容维护者身份登记一个包版本。",
+        "operationId": "register_pack_domain_packs_workbench_register_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterPackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchPackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "404": {
+            "description": "包版本未登记"
+          },
+          "409": {
+            "description": "工作台已登记该版本"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Workbench Record",
+        "description": "读取一个包版本的完整工作台治理记录（仅参与者）。",
+        "operationId": "get_workbench_record_domain_packs_workbench__pack_id___version__get",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchPackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/semantic-diff": {
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Semantic Diff",
+        "description": "查看与上一版本（或空基线）之间的判定差异（仅参与者）。",
+        "operationId": "get_semantic_diff_domain_packs_workbench__pack_id___version__semantic_diff_get",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SemanticDiff"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/content-signature": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Submit Content Signature",
+        "description": "内容维护者对规范化包摘要提交内容签名。",
+        "operationId": "submit_content_signature_domain_packs_workbench__pack_id___version__content_signature_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignatureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewAttestation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "不是内容维护者"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "签名门不满足"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/reviewer": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Assign Reviewer",
+        "description": "内容维护者分配独立复核者；同人双角色被拒绝。",
+        "operationId": "assign_reviewer_domain_packs_workbench__pack_id___version__reviewer_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRoleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchPackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "职责冲突或角色不符"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/releaser": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Assign Releaser",
+        "description": "内容维护者分配平台发行者；发行者不能兼任维护者或复核者。",
+        "operationId": "assign_releaser_domain_packs_workbench__pack_id___version__releaser_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignRoleRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkbenchPackRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "职责冲突或角色不符"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/independent-signature": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Submit Independent Signature",
+        "description": "独立复核者重跑夹具后提交独立验证签名。",
+        "operationId": "submit_independent_signature_domain_packs_workbench__pack_id___version__independent_signature_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignatureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewAttestation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "职责冲突、角色或资质不符"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "夹具覆盖或重放失败"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/gray-release": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Prepare Gray Release",
+        "description": "生成可发行候选；灰度结果不会自动激活领域包。",
+        "operationId": "prepare_gray_release_domain_packs_workbench__pack_id___version__gray_release_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GrayReleaseCandidate"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "角色不符"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "签名或摘要不满足"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Get Gray Release",
+        "description": "读取最近的灰度候选（仅参与者）。",
+        "operationId": "get_gray_release_domain_packs_workbench__pack_id___version__gray_release_get",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/GrayReleaseCandidate"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Gray Release Domain Packs Workbench  Pack Id   Version  Gray Release Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/release": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Release Pack",
+        "description": "平台发行者追加发行签名并激活；任何门变化都会回到相应阶段。",
+        "operationId": "release_pack_domain_packs_workbench__pack_id___version__release_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PackRelease"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "不是平台发行者"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "签名、灰度或摘要门不满足"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/qualifications": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Register Qualification",
+        "description": "登记当前账户自己的资质记录；不能为他人登记。",
+        "operationId": "register_qualification_domain_packs_qualifications_post",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QualificationRecord"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualificationRecord"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "409": {
+            "description": "资质已登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "List Qualifications",
+        "description": "列出当前账户（自然人）的资质记录。",
+        "operationId": "list_qualifications_domain_packs_qualifications_get",
+        "parameters": [
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/QualificationRecord"
+                  },
+                  "title": "Response List Qualifications Domain Packs Qualifications Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/conflict-of-interest": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Declare Conflict Of Interest",
+        "description": "对当前包版本声明利益冲突；签名前必须存在。",
+        "operationId": "declare_conflict_of_interest_domain_packs_workbench__pack_id___version__conflict_of_interest_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictDeclarationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictOfInterestDeclaration"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/domain-packs/workbench/{pack_id}/{version}/conflict-disclosure": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Add Conflict Disclosure",
+        "description": "参与者登记少数意见与未决依据；不能迫使少数方签署。",
+        "operationId": "add_conflict_disclosure_domain_packs_workbench__pack_id___version__conflict_disclosure_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictDisclosureRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConflictDisclosure"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "不是参与者"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/projects": {
       "post": {
         "tags": [
@@ -15025,6 +16185,31 @@
         "title": "AssetRegion",
         "description": "A detected region inside an image or scan."
       },
+      "AssignRoleRequest": {
+        "properties": {
+          "person_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Person Id"
+          }
+        },
+        "type": "object",
+        "required": [
+          "person_id"
+        ],
+        "title": "AssignRoleRequest",
+        "description": "分配独立复核者或平台发行者。"
+      },
+      "AttestationConclusion": {
+        "type": "string",
+        "enum": [
+          "approve",
+          "reject",
+          "needs_changes"
+        ],
+        "title": "AttestationConclusion",
+        "description": "一次签名或复核的结论。"
+      },
       "AuthError": {
         "properties": {
           "error": {
@@ -17078,6 +18263,170 @@
         "title": "ConflictBranchStatus",
         "description": "Lifecycle of a manually裁决的冲突分支。"
       },
+      "ConflictDeclarationRequest": {
+        "properties": {
+          "disclosures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disclosures"
+          }
+        },
+        "type": "object",
+        "title": "ConflictDeclarationRequest",
+        "description": "本版本利益冲突声明。"
+      },
+      "ConflictDisclosure": {
+        "properties": {
+          "disclosure_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Disclosure Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "item_ref": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Ref"
+          },
+          "minority_opinion": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Minority Opinion"
+          },
+          "basis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Basis"
+          },
+          "missing_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Evidence"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "default": ""
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "disclosure_id",
+          "pack_id",
+          "pack_version",
+          "item_ref",
+          "minority_opinion",
+          "created_at"
+        ],
+        "title": "ConflictDisclosure",
+        "description": "少数意见与未决依据；不能迫使少数方签署。"
+      },
+      "ConflictDisclosureRequest": {
+        "properties": {
+          "item_ref": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Ref"
+          },
+          "minority_opinion": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Minority Opinion"
+          },
+          "basis": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Basis"
+          },
+          "missing_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Missing Evidence"
+          },
+          "decision": {
+            "type": "string",
+            "title": "Decision",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_ref",
+          "minority_opinion"
+        ],
+        "title": "ConflictDisclosureRequest",
+        "description": "少数意见与未决依据。"
+      },
+      "ConflictOfInterestDeclaration": {
+        "properties": {
+          "declaration_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Declaration Id"
+          },
+          "person_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Person Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "disclosures": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disclosures"
+          },
+          "declared_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Declared At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "declaration_id",
+          "person_id",
+          "pack_id",
+          "pack_version",
+          "declared_at"
+        ],
+        "title": "ConflictOfInterestDeclaration",
+        "description": "逐版本利益冲突声明；签名前必须存在。"
+      },
       "ConflictResolutionRequest": {
         "properties": {
           "selected_operation_id": {
@@ -18649,6 +19998,66 @@
         ],
         "title": "DocumentVersion",
         "description": "Immutable content snapshot of a source.\n\nEach new upload, correction or re-parse creates a new DocumentVersion; older\nversions remain addressable so citations can be verified against the exact\nsnapshot that produced them."
+      },
+      "DomainCheckStatus": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "blocked",
+          "needs_human"
+        ],
+        "title": "DomainCheckStatus",
+        "description": "Outcome of one deterministic pack preflight check."
+      },
+      "DomainPackStatus": {
+        "type": "string",
+        "enum": [
+          "draft",
+          "in_review",
+          "signed",
+          "active",
+          "deprecated",
+          "suspended",
+          "revoked",
+          "expired"
+        ],
+        "title": "DomainPackStatus",
+        "description": "Governance state of a candidate domain pack."
+      },
+      "DomainValidationCheck": {
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Check Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Name"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DomainCheckStatus"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_id",
+          "name",
+          "status"
+        ],
+        "title": "DomainValidationCheck",
+        "description": "One explainable preflight or runtime check."
       },
       "DraftSpan": {
         "properties": {
@@ -20726,6 +22135,88 @@
         "title": "FigureGenerationRequest",
         "description": "Request to generate a scientific figure.\n\nThe caller provides element definitions and optional claim bindings."
       },
+      "FixtureResult": {
+        "properties": {
+          "fixture_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Fixture Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FixtureResultStatus"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed"
+          },
+          "expected_status": {
+            "type": "string",
+            "title": "Expected Status"
+          },
+          "actual_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Status"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "default": ""
+          },
+          "reason_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reason Codes"
+          },
+          "rule_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rule Ids"
+          },
+          "validator_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Validator Ids"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Details"
+          }
+        },
+        "type": "object",
+        "required": [
+          "fixture_id",
+          "status",
+          "passed",
+          "expected_status"
+        ],
+        "title": "FixtureResult",
+        "description": "Observed result of one replayable domain-pack fixture."
+      },
+      "FixtureResultStatus": {
+        "type": "string",
+        "enum": [
+          "pass",
+          "blocked",
+          "needs_human",
+          "failed"
+        ],
+        "title": "FixtureResultStatus",
+        "description": "Observed status of one fixture execution."
+      },
       "FormulaBinding": {
         "properties": {
           "binding_id": {
@@ -20871,6 +22362,84 @@
         ],
         "title": "GrantPermission",
         "description": "Fine-grained permission on a shared project object.\n\nPermissions are additive: a subject may hold multiple permissions on the\nsame object through role baseline + explicit object grant."
+      },
+      "GrayReleaseCandidate": {
+        "properties": {
+          "candidate_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Candidate Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "canonical_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canonical Digest"
+          },
+          "status": {
+            "$ref": "#/components/schemas/GrayReleaseStatus"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/DomainValidationCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "fixture_results": {
+            "items": {
+              "$ref": "#/components/schemas/FixtureResult"
+            },
+            "type": "array",
+            "title": "Fixture Results"
+          },
+          "fixture_summary": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Fixture Summary"
+          },
+          "created_by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Created By"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_id",
+          "pack_id",
+          "pack_version",
+          "canonical_digest",
+          "status",
+          "created_by",
+          "created_at"
+        ],
+        "title": "GrayReleaseCandidate",
+        "description": "可发行候选：灰度验证的完整结果，激活需要发行签名。"
+      },
+      "GrayReleaseStatus": {
+        "type": "string",
+        "enum": [
+          "ready_to_release",
+          "blocked",
+          "needs_human"
+        ],
+        "title": "GrayReleaseStatus",
+        "description": "灰度候选状态；READY_TO_RELEASE 不会自动激活。"
       },
       "HTTPValidationError": {
         "properties": {
@@ -24095,6 +25664,73 @@
         "title": "ObservationStatus",
         "description": "Lifecycle status of a profile observation."
       },
+      "PackRelease": {
+        "properties": {
+          "release_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Release Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "canonical_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canonical Digest"
+          },
+          "attestations": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewAttestation"
+            },
+            "type": "array",
+            "title": "Attestations"
+          },
+          "platform_attestation": {
+            "$ref": "#/components/schemas/ReviewAttestation"
+          },
+          "gray_candidate_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Gray Candidate Id"
+          },
+          "released_by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Released By"
+          },
+          "released_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Released At"
+          },
+          "transparent_record": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Transparent Record"
+          }
+        },
+        "type": "object",
+        "required": [
+          "release_id",
+          "pack_id",
+          "pack_version",
+          "canonical_digest",
+          "platform_attestation",
+          "gray_candidate_id",
+          "released_by",
+          "released_at"
+        ],
+        "title": "PackRelease",
+        "description": "发行摘要、平台签名和透明记录。"
+      },
       "PaperAssistElement": {
         "properties": {
           "element_id": {
@@ -26179,6 +27815,70 @@
         "title": "PublishGateResult",
         "description": "Result of running the claim-graph publish gate."
       },
+      "QualificationRecord": {
+        "properties": {
+          "qualification_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Qualification Id"
+          },
+          "person_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Person Id"
+          },
+          "qualification_type": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Qualification Type",
+            "description": "例如 clinical_expert、formal_proof、domain_expert。"
+          },
+          "verifier_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Verifier Id"
+          },
+          "disciplines": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Disciplines"
+          },
+          "scope": {
+            "type": "string",
+            "title": "Scope",
+            "default": ""
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Verified At"
+          },
+          "valid_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Until"
+          }
+        },
+        "type": "object",
+        "required": [
+          "qualification_id",
+          "person_id",
+          "qualification_type",
+          "verifier_id",
+          "verified_at"
+        ],
+        "title": "QualificationRecord",
+        "description": "可核验资质：类型、核验者、有效期和适用范围。"
+      },
       "RecoveryRequest": {
         "properties": {
           "email": {
@@ -26323,6 +28023,27 @@
         ],
         "title": "ReducedMotionVariant",
         "description": "减少动画合同：用静态帧序列替代连续动画。"
+      },
+      "RegisterPackRequest": {
+        "properties": {
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Version"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pack_id",
+          "version"
+        ],
+        "title": "RegisterPackRequest",
+        "description": "登记一个已注册的领域包版本到专家工作台。"
       },
       "RejectedSliceItem": {
         "properties": {
@@ -26755,6 +28476,78 @@
         "title": "RetrievalExerciseType",
         "description": "Retrieval-practice exercise types that require active recall.\n\nBrowsing or completion-only activities are deliberately excluded."
       },
+      "ReviewAttestation": {
+        "properties": {
+          "attestation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Attestation Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "canonical_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canonical Digest",
+            "description": "被签名的规范化包摘要。"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ReviewRole"
+          },
+          "person_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Person Id"
+          },
+          "qualification_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Qualification Ids"
+          },
+          "conflict_declaration_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Conflict Declaration Id"
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/AttestationConclusion"
+          },
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "default": ""
+          },
+          "signed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Signed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "attestation_id",
+          "pack_id",
+          "pack_version",
+          "canonical_digest",
+          "role",
+          "person_id",
+          "conflict_declaration_id",
+          "conclusion",
+          "signed_at"
+        ],
+        "title": "ReviewAttestation",
+        "description": "内容签名、独立验证签名或平台发行签名。\n\n三种签名必须绑定同一规范化包摘要；任一内容变化都会使旧签名不再适用。"
+      },
       "ReviewFinding": {
         "properties": {
           "finding_id": {
@@ -26888,6 +28681,16 @@
         ],
         "title": "ReviewReport",
         "description": "Genre-rule compliance review report for an expression draft."
+      },
+      "ReviewRole": {
+        "type": "string",
+        "enum": [
+          "content",
+          "independent",
+          "platform"
+        ],
+        "title": "ReviewRole",
+        "description": "三签职责分离中的签名角色。"
       },
       "ReviewSchedule": {
         "properties": {
@@ -28429,6 +30232,119 @@
         "title": "SeatPolicy",
         "description": "Seat and usage policy for an institution."
       },
+      "SemanticDiff": {
+        "properties": {
+          "diff_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Diff Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "from_version": {
+            "type": "string",
+            "title": "From Version"
+          },
+          "to_version": {
+            "type": "string",
+            "title": "To Version"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/SemanticDiffEntry"
+            },
+            "type": "array",
+            "title": "Entries"
+          },
+          "digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Digest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "diff_id",
+          "pack_id",
+          "from_version",
+          "to_version",
+          "digest"
+        ],
+        "title": "SemanticDiff",
+        "description": "两个包版本之间的判定差异；原始 YAML Diff 不能替代它。"
+      },
+      "SemanticDiffChange": {
+        "type": "string",
+        "enum": [
+          "added",
+          "removed",
+          "modified"
+        ],
+        "title": "SemanticDiffChange",
+        "description": "语义差异变化类型。"
+      },
+      "SemanticDiffEntry": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Category",
+            "description": "rule / wording / human_gate / source / fixture / dependency / validator。"
+          },
+          "change": {
+            "$ref": "#/components/schemas/SemanticDiffChange"
+          },
+          "item_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Item Id"
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Label"
+          },
+          "old_value": {
+            "title": "Old Value"
+          },
+          "new_value": {
+            "title": "New Value"
+          },
+          "impact": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Impact",
+            "description": "对判定的意义，例如“人工门升高”“BLOCKED 变为可发布”。"
+          },
+          "significance": {
+            "$ref": "#/components/schemas/SemanticSignificance",
+            "default": "low"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "change",
+          "item_id",
+          "label",
+          "impact"
+        ],
+        "title": "SemanticDiffEntry",
+        "description": "一条有判定意义的语义差异。"
+      },
+      "SemanticSignificance": {
+        "type": "string",
+        "enum": [
+          "high",
+          "medium",
+          "low"
+        ],
+        "title": "SemanticSignificance",
+        "description": "差异的判定意义级别。"
+      },
       "SequentialReadingBlock": {
         "properties": {
           "order": {
@@ -29079,6 +30995,22 @@
         ],
         "title": "ShortLesson",
         "description": "A short lesson around a single learning victory.\n\nExplanations, examples, exercises and feedback are bound to an EvidenceSet and\nconstrained by fact locks. The lesson status is independent of workflow run\nstatus; it reflects the teaching quality gate outcome."
+      },
+      "SignatureRequest": {
+        "properties": {
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "default": ""
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/AttestationConclusion",
+            "default": "approve"
+          }
+        },
+        "type": "object",
+        "title": "SignatureRequest",
+        "description": "提交签名时的意见与结论。"
       },
       "SliceStatus": {
         "type": "string",
@@ -32091,6 +34023,151 @@
         ],
         "title": "WorkOrderConfirmRequest",
         "description": "Explicit user confirmation that starts the compiled run.\n\nThe ``confirmed`` field is required (no default) so that an empty request\nbody is rejected with a clear validation error instead of silently accepted."
+      },
+      "WorkbenchPackRecord": {
+        "properties": {
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "manifest_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Manifest Digest"
+          },
+          "canonical_digest": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Canonical Digest"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/WorkbenchStage",
+            "default": "drafting"
+          },
+          "lifecycle_status": {
+            "$ref": "#/components/schemas/DomainPackStatus",
+            "default": "draft"
+          },
+          "maintainer_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Maintainer Id"
+          },
+          "reviewer_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewer Id"
+          },
+          "releaser_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Releaser Id"
+          },
+          "attestations": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewAttestation"
+            },
+            "type": "array",
+            "title": "Attestations"
+          },
+          "declarations": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictOfInterestDeclaration"
+            },
+            "type": "array",
+            "title": "Declarations"
+          },
+          "disclosures": {
+            "items": {
+              "$ref": "#/components/schemas/ConflictDisclosure"
+            },
+            "type": "array",
+            "title": "Disclosures"
+          },
+          "gray_candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GrayReleaseCandidate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "release": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PackRelease"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/components/schemas/DomainValidationCheck"
+            },
+            "type": "array",
+            "title": "Checks"
+          },
+          "fixture_results": {
+            "items": {
+              "$ref": "#/components/schemas/FixtureResult"
+            },
+            "type": "array",
+            "title": "Fixture Results"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "pack_id",
+          "pack_version",
+          "manifest_digest",
+          "canonical_digest",
+          "maintainer_id",
+          "updated_at"
+        ],
+        "title": "WorkbenchPackRecord",
+        "description": "专家工作台对一个包版本的完整治理记录。"
+      },
+      "WorkbenchStage": {
+        "type": "string",
+        "enum": [
+          "drafting",
+          "content_signed",
+          "review_assigned",
+          "review_completed",
+          "changes_requested",
+          "release_preflight",
+          "gray_release_ready",
+          "released"
+        ],
+        "title": "WorkbenchStage",
+        "description": "复核流程阶段；它描述工作台流程，不替代包治理状态。"
       },
       "WorkflowErrorResponse": {
         "properties": {

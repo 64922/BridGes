@@ -10,6 +10,7 @@ from pydantic import ValidationError as PydanticValidationError
 from science_companion import __version__
 from science_companion.ai import (
     CapabilityRegistry,
+    CapabilityRegistryError,
     CassetteStore,
     ModelGateway,
     QwenApiClient,
@@ -23,6 +24,7 @@ from science_companion.ai import (
 )
 from science_companion.api import (
     auth,
+    domain_packs,
     evaluation,
     expression,
     institution,
@@ -46,6 +48,20 @@ from science_companion.contracts.ai import (
 from science_companion.contracts.health import DependencyHealth, HealthProjection, HealthStatus
 from science_companion.contracts.projects import ObjectRef
 from science_companion.contracts.workflows import RunProjection, WorkflowRunStatus
+from science_companion.domain import (
+    DomainPackLoader,
+    DomainPackRegistry,
+    DomainPackValidationRuntime,
+    create_astronomy_pack,
+    create_computer_science_pack,
+    create_earth_climate_pack,
+    create_life_science_pack,
+    create_math_formal_proof_pack,
+    create_medical_high_risk_pack,
+    create_physics_chemistry_pack,
+    create_standards_datasets_pack,
+)
+from science_companion.domain.workbench import DomainPackWorkbenchService
 from science_companion.evaluation import EvaluationService
 from science_companion.expression import ExpressionService
 from science_companion.health.probe import build_health_projection
@@ -383,6 +399,66 @@ def _register_builtin_invalidation_resolvers(service: InvalidationService) -> No
     service.register_impact_resolver("vault_capsule", _vault_capsule_resolver)
 
 
+def _register_domain_pack_capabilities(capability_registry: CapabilityRegistry) -> None:
+    """Register the deterministic TOOL capabilities declared by built-in packs.
+
+    The packs declare logical capabilities (e.g. formal_proof_check) without
+    binding to a concrete implementation; the registry maps each logical
+    capability to a verified deterministic adapter, as required by T040.
+    """
+    factories = (
+        create_math_formal_proof_pack,
+        create_physics_chemistry_pack,
+        create_life_science_pack,
+        create_medical_high_risk_pack,
+        create_earth_climate_pack,
+        create_astronomy_pack,
+        create_computer_science_pack,
+        create_standards_datasets_pack,
+    )
+    for factory in factories:
+        manifest = factory().manifest
+        for validator in manifest.validators:
+            try:
+                capability_registry.get(
+                    validator.capability_name, validator.capability_version
+                )
+            except CapabilityRegistryError:
+                capability_registry.register(
+                    CapabilityRecord(
+                        name=validator.capability_name,
+                        version=validator.capability_version,
+                        kind=CapabilityKind.TOOL,
+                        vendor="builtin",
+                        region="local",
+                        model_id="deterministic",
+                        input_schema_version=validator.input_schema_version,
+                        output_schema_version=validator.output_schema_version,
+                        status=CapabilityStatus.VERIFIED,
+                    )
+                )
+
+
+def _register_builtin_domain_packs(registry: DomainPackRegistry) -> None:
+    """Register the eight built-in domain packs as draft candidates.
+
+    T040–T045 deliver the packs as loadable candidates; T046 exposes them to
+    the expert workbench where maintainers, reviewers and releasers govern
+    signing, semantic diffs, gray release and activation.
+    """
+    for factory in (
+        create_math_formal_proof_pack,
+        create_physics_chemistry_pack,
+        create_life_science_pack,
+        create_medical_high_risk_pack,
+        create_earth_climate_pack,
+        create_astronomy_pack,
+        create_computer_science_pack,
+        create_standards_datasets_pack,
+    ):
+        registry.register(factory())
+
+
 def create_app(state_store: StateStore | None = None) -> FastAPI:
     """Create and configure the FastAPI application."""
     app = FastAPI(
@@ -637,6 +713,19 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
 
+    # T040/T046: register the built-in domain packs as candidates and attach the
+    # expert workbench. The workbench owns three-signature release, semantic
+    # diffs and gray-release candidates; it never activates a pack implicitly.
+    _register_domain_pack_capabilities(capability_registry)
+    domain_pack_loader = DomainPackLoader(capability_registry=capability_registry)
+    domain_pack_registry = DomainPackRegistry(domain_pack_loader)
+    _register_builtin_domain_packs(domain_pack_registry)
+    app.state.domain_pack_workbench = DomainPackWorkbenchService(
+        registry=domain_pack_registry,
+        runtime=DomainPackValidationRuntime(domain_pack_loader),
+        loader=domain_pack_loader,
+    )
+
     # T006/T009: attach the in-memory workflow service and register workflows.
     workflow_service = WorkflowService(
         scope_enforcer=app.state.scope_enforcer,
@@ -784,6 +873,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(domain_packs.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
     app.include_router(sharing.router)

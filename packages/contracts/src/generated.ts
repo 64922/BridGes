@@ -127,6 +127,274 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/domain-packs/workbench": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Workbench
+         * @description 列出当前用户参与（维护者、复核者或发行者）的包版本治理记录。
+         */
+        get: operations["list_workbench_domain_packs_workbench_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/register": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Register Pack
+         * @description 当前用户以内容维护者身份登记一个包版本。
+         */
+        post: operations["register_pack_domain_packs_workbench_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Workbench Record
+         * @description 读取一个包版本的完整工作台治理记录（仅参与者）。
+         */
+        get: operations["get_workbench_record_domain_packs_workbench__pack_id___version__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/semantic-diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Semantic Diff
+         * @description 查看与上一版本（或空基线）之间的判定差异（仅参与者）。
+         */
+        get: operations["get_semantic_diff_domain_packs_workbench__pack_id___version__semantic_diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/content-signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Content Signature
+         * @description 内容维护者对规范化包摘要提交内容签名。
+         */
+        post: operations["submit_content_signature_domain_packs_workbench__pack_id___version__content_signature_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/reviewer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Reviewer
+         * @description 内容维护者分配独立复核者；同人双角色被拒绝。
+         */
+        post: operations["assign_reviewer_domain_packs_workbench__pack_id___version__reviewer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/releaser": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Assign Releaser
+         * @description 内容维护者分配平台发行者；发行者不能兼任维护者或复核者。
+         */
+        post: operations["assign_releaser_domain_packs_workbench__pack_id___version__releaser_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/independent-signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Independent Signature
+         * @description 独立复核者重跑夹具后提交独立验证签名。
+         */
+        post: operations["submit_independent_signature_domain_packs_workbench__pack_id___version__independent_signature_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/gray-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Gray Release
+         * @description 读取最近的灰度候选（仅参与者）。
+         */
+        get: operations["get_gray_release_domain_packs_workbench__pack_id___version__gray_release_get"];
+        put?: never;
+        /**
+         * Prepare Gray Release
+         * @description 生成可发行候选；灰度结果不会自动激活领域包。
+         */
+        post: operations["prepare_gray_release_domain_packs_workbench__pack_id___version__gray_release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Release Pack
+         * @description 平台发行者追加发行签名并激活；任何门变化都会回到相应阶段。
+         */
+        post: operations["release_pack_domain_packs_workbench__pack_id___version__release_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/qualifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Qualifications
+         * @description 列出当前账户（自然人）的资质记录。
+         */
+        get: operations["list_qualifications_domain_packs_qualifications_get"];
+        put?: never;
+        /**
+         * Register Qualification
+         * @description 登记当前账户自己的资质记录；不能为他人登记。
+         */
+        post: operations["register_qualification_domain_packs_qualifications_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/conflict-of-interest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Declare Conflict Of Interest
+         * @description 对当前包版本声明利益冲突；签名前必须存在。
+         */
+        post: operations["declare_conflict_of_interest_domain_packs_workbench__pack_id___version__conflict_of_interest_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/domain-packs/workbench/{pack_id}/{version}/conflict-disclosure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Conflict Disclosure
+         * @description 参与者登记少数意见与未决依据；不能迫使少数方签署。
+         */
+        post: operations["add_conflict_disclosure_domain_packs_workbench__pack_id___version__conflict_disclosure_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects": {
         parameters: {
             query?: never;
@@ -336,6 +604,610 @@ export interface paths {
         get: operations["get_cloud_projection_vault_objects__object_id__projection_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/devices/pair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pair Device
+         * @description Pair a new vault runtime with the current account.
+         */
+        post: operations["pair_device_vault_devices_pair_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/devices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Devices
+         * @description List paired devices for the current account.
+         */
+        get: operations["list_devices_vault_devices_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/vault/devices/{device_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Device
+         * @description Revoke a paired device and rotate its key epoch.
+         */
+        post: operations["revoke_device_vault_devices__device_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Shared Projects
+         * @description List shared projects where the current account is a member.
+         */
+        get: operations["list_shared_projects_sharing_projects_get"];
+        put?: never;
+        /**
+         * Create Shared Project
+         * @description Create a new explicit shared project owned by the current account.
+         */
+        post: operations["create_shared_project_sharing_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shared Project
+         * @description Get a shared project projection by deep-link identifier.
+         */
+        get: operations["get_shared_project_sharing_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview Share
+         * @description Preview what will be copied before confirming a share.
+         */
+        post: operations["preview_share_sharing_preview_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/execute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Execute Share
+         * @description Execute a share and create the minimized project copy and object grant.
+         */
+        post: operations["execute_share_sharing_execute_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/projects/{project_id}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Invite
+         * @description Create a short-lived, single-use invite token for a shared project.
+         */
+        post: operations["create_invite_sharing_projects__project_id__invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invite
+         * @description Accept an invite token and join the shared project.
+         */
+        post: operations["accept_invite_sharing_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/projects/{project_id}/objects/{object_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shared Object
+         * @description Get a shared project object projection if the current account is authorized.
+         */
+        get: operations["get_shared_object_sharing_projects__project_id__objects__object_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/projects/{project_id}/objects/{object_id}/content": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Shared Object Content
+         * @description Get the plaintext of a shared project object if the account has a grant.
+         */
+        get: operations["get_shared_object_content_sharing_projects__project_id__objects__object_id__content_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/projects/{project_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Project Members
+         * @description List members of a shared project.
+         */
+        get: operations["list_project_members_sharing_projects__project_id__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sharing/grants/{grant_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Grant
+         * @description Revoke an object grant.
+         */
+        post: operations["revoke_grant_sharing_grants__grant_id__revoke_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Control Snapshot
+         * @description Pull authorization, key epoch, revocations and tombstones.
+         */
+        get: operations["get_control_snapshot_sync_control_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/exchange": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Exchange
+         * @description Apply a device outbox only after the control snapshot is evaluated.
+         */
+        post: operations["exchange_sync_exchange_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/conflicts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conflicts
+         * @description List scientific conflicts retained for human裁决.
+         */
+        get: operations["list_conflicts_sync_conflicts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sync/conflicts/{conflict_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Conflict
+         * @description 记录人工选择的冲突分支，并保留两条历史记录。
+         */
+        post: operations["resolve_conflict_sync_conflicts__conflict_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Institutions
+         * @description List institutions the current account is a member of.
+         */
+        get: operations["list_institutions_institutions_get"];
+        put?: never;
+        /**
+         * Create Institution
+         * @description Create a new institution. The creator becomes the first admin.
+         */
+        post: operations["create_institution_institutions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Institution
+         * @description Get an institution projection.
+         */
+        get: operations["get_institution_institutions__institution_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/invites": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Invite
+         * @description Create an institution membership invite.
+         */
+        post: operations["create_invite_institutions__institution_id__invites_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/invites/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept Invite
+         * @description Accept an institution invite and join the institution.
+         */
+        post: operations["accept_invite_institutions_invites_accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Members
+         * @description List members of an institution.
+         */
+        get: operations["list_members_institutions__institution_id__members_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/members/{account_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove Member
+         * @description Remove a member from the institution.
+         */
+        delete: operations["remove_member_institutions__institution_id__members__account_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Member Role
+         * @description Update an institution member's role.
+         */
+        patch: operations["update_member_role_institutions__institution_id__members__account_id__patch"];
+        trace?: never;
+    };
+    "/institutions/{institution_id}/policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Policy
+         * @description Get the institution policy.
+         */
+        get: operations["get_policy_institutions__institution_id__policy_get"];
+        /**
+         * Update Policy
+         * @description Update the institution policy.
+         */
+        put: operations["update_policy_institutions__institution_id__policy_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/project-disclosure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project Disclosure
+         * @description Get the disclosure that must be acknowledged before creating an institution-owned project.
+         */
+        get: operations["get_project_disclosure_institutions__institution_id__project_disclosure_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Institution Projects
+         * @description List institution-owned projects visible to the current member.
+         */
+        get: operations["list_institution_projects_institutions__institution_id__projects_get"];
+        put?: never;
+        /**
+         * Create Institution Project
+         * @description Create an institution-owned project after disclosure acknowledgement.
+         */
+        post: operations["create_institution_project_institutions__institution_id__projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/content-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Content Access Requests
+         * @description List controlled content access requests visible to the caller.
+         */
+        get: operations["list_content_access_requests_institutions__institution_id__content_access_get"];
+        put?: never;
+        /**
+         * Request Content Access
+         * @description Request controlled access to member content for a security incident.
+         */
+        post: operations["request_content_access_institutions__institution_id__content_access_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/content-access/{request_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Content Access
+         * @description Approve a controlled content access request (second approval required).
+         */
+        post: operations["approve_content_access_institutions__institution_id__content_access__request_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/institutions/{institution_id}/content-access/{request_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Revoke Content Access
+         * @description Revoke an approved or pending controlled content access request.
+         */
+        post: operations["revoke_content_access_institutions__institution_id__content_access__request_id__revoke_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1629,6 +2501,414 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/media/charts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Chart
+         * @description Generate a data chart from structured data with claim bindings.
+         */
+        post: operations["create_chart_media_charts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/figures": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Figure
+         * @description Generate a scientific figure from element definitions.
+         */
+        post: operations["create_figure_media_figures_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/objects/{object_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Media Object
+         * @description Get a generated media object by ID.
+         */
+        get: operations["get_media_object_media_objects__object_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/objects/{object_id}/spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Media Object Spec
+         * @description Update the editable source of a chart or figure and re-validate.
+         */
+        put: operations["update_media_object_spec_media_objects__object_id__spec_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/validate-spec": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Spec
+         * @description Validate a chart or figure spec JSON without generating output.
+         */
+        post: operations["validate_spec_media_validate_spec_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/storyboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Storyboard
+         * @description Create a structured storyboard from a generation request.
+         */
+        post: operations["create_storyboard_media_storyboards_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/storyboards/{storyboard_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Storyboard
+         * @description Get a storyboard by ID.
+         */
+        get: operations["get_storyboard_media_storyboards__storyboard_id__get"];
+        /**
+         * Update Storyboard
+         * @description Update a storyboard's metadata.
+         */
+        put: operations["update_storyboard_media_storyboards__storyboard_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/storyboards/{storyboard_id}/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Storyboard Code
+         * @description Generate executable source code from a storyboard.
+         */
+        post: operations["generate_storyboard_code_media_storyboards__storyboard_id__code_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/storyboards/{storyboard_id}/sandbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run Storyboard Sandbox
+         * @description Run generated code in the isolated sandbox.
+         */
+        post: operations["run_storyboard_sandbox_media_storyboards__storyboard_id__sandbox_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/sandbox-runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Sandbox Run
+         * @description Get a sandbox run result by ID.
+         */
+        get: operations["get_sandbox_run_media_sandbox_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/sandbox-runs/{run_id}/repair": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Repair Sandbox Run
+         * @description Attempt a limited repair on a failed sandbox run.
+         */
+        post: operations["repair_sandbox_run_media_sandbox_runs__run_id__repair_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/storyboards/{storyboard_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Validate Storyboard
+         * @description Get a validation report for a storyboard sandbox run.
+         */
+        get: operations["validate_storyboard_media_storyboards__storyboard_id__validate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/accessibility/bundles": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Accessibility Bundle
+         * @description Generate a complete accessibility bundle for a media target.
+         */
+        post: operations["generate_accessibility_bundle_media_accessibility_bundles_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/accessibility/bundles/{bundle_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Accessibility Bundle
+         * @description Get an accessibility bundle by ID.
+         */
+        get: operations["get_accessibility_bundle_media_accessibility_bundles__bundle_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/accessibility/bundles/{bundle_id}/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Validate Accessibility Bundle
+         * @description Validate claim/version sharing, operability and science checks.
+         */
+        get: operations["validate_accessibility_bundle_media_accessibility_bundles__bundle_id__validate_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/accessibility/bundles/{bundle_id}/playback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Control Accessibility Playback
+         * @description Pause, resume, seek and toggle reduced motion for timed content.
+         */
+        post: operations["control_accessibility_playback_media_accessibility_bundles__bundle_id__playback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/cross-media/consistency": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Cross Media Consistency
+         * @description Check cross-media Claim consistency before publishing.
+         */
+        post: operations["check_cross_media_consistency_media_cross_media_consistency_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/publish/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Evaluate Publish Gate
+         * @description Evaluate multi-modal publish gates without publishing.
+         */
+        post: operations["evaluate_publish_gate_media_publish_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Publish Records
+         * @description List publish records for the current account, optionally filtered by project.
+         */
+        get: operations["list_publish_records_media_publish_get"];
+        put?: never;
+        /**
+         * Publish Media
+         * @description Execute multi-modal publish. All gates must pass.
+         */
+        post: operations["publish_media_media_publish_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/media/publish/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Publish Record
+         * @description Get a publish record by ID.
+         */
+        get: operations["get_publish_record_media_publish__record_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/learning/missions": {
         parameters: {
             query?: never;
@@ -2300,6 +3580,175 @@ export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         /**
+         * AccessibilityAlternative
+         * @description Accessibility alternative for a visual media object.
+         */
+        AccessibilityAlternative: {
+            /**
+             * Alt Text
+             * @description Concise alternative text describing the visual.
+             */
+            alt_text: string;
+            /**
+             * Long Description
+             * @description Detailed description for complex visuals.
+             */
+            long_description?: string | null;
+            /** @description Equivalent data table for charts; None for figures. */
+            data_table?: components["schemas"]["ChartDataTable"] | null;
+        };
+        /**
+         * AccessibilityBundle
+         * @description 一个科学媒体对象的完整无障碍替代包。
+         *
+         *     汇集朗读、文字稿、字幕、替代文本、键盘路径、减少动画和顺序阅读版本。
+         *     所有替代共享同一 Claim 集合和源版本，并经过相同的科学校验。
+         */
+        AccessibilityBundle: {
+            /**
+             * Bundle Id
+             * @description 稳定无障碍包标识符。
+             */
+            bundle_id: string;
+            /**
+             * Account Id
+             * @description 拥有账户 ID。
+             */
+            account_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** @description 目标对象类型。 */
+            target_kind: components["schemas"]["AccessibilityTargetKind"];
+            /**
+             * Target Id
+             * @description 目标对象 ID。
+             */
+            target_id: string;
+            /**
+             * Source Version
+             * @description 目标内容版本标识（内容哈希或版本号）。
+             */
+            source_version: string;
+            /**
+             * Language
+             * @default zh-CN
+             */
+            language: string;
+            /** Claim Ids */
+            claim_ids?: string[];
+            /**
+             * Alt Text
+             * @description 简短替代文本。
+             */
+            alt_text: string;
+            /** Long Description */
+            long_description?: string | null;
+            /** @description 完整文字稿。 */
+            transcript: components["schemas"]["Transcript"];
+            /** @description 字幕轨。 */
+            caption_track: components["schemas"]["CaptionTrack"];
+            /** @description 朗读替代。 */
+            narration: components["schemas"]["NarrationAudio"];
+            /** Keyboard Paths */
+            keyboard_paths?: components["schemas"]["KeyboardAccessPath"][];
+            playback_controls?: components["schemas"]["PlaybackControls"];
+            /** @description 减少动画变体。 */
+            reduced_motion: components["schemas"]["ReducedMotionVariant"];
+            /** @description 顺序阅读视图。 */
+            sequential_view: components["schemas"]["SequentialReadingView"];
+            /**
+             * Science Validated
+             * @description 无障碍替代是否通过了与主内容相同的科学校验。
+             * @default false
+             */
+            science_validated: boolean;
+            /** Validation Errors */
+            validation_errors?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间戳。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最后更新时间戳。
+             */
+            updated_at: string;
+        };
+        /**
+         * AccessibilityBundleRequest
+         * @description 生成无障碍包的请求。
+         */
+        AccessibilityBundleRequest: {
+            /** @description 目标对象类型。 */
+            target_kind: components["schemas"]["AccessibilityTargetKind"];
+            /**
+             * Target Id
+             * @description 目标对象 ID。
+             */
+            target_id: string;
+            /**
+             * Language
+             * @default zh-CN
+             */
+            language: string;
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /**
+         * AccessibilityTargetKind
+         * @description 无障碍包的目标对象类型。
+         * @enum {string}
+         */
+        AccessibilityTargetKind: "storyboard" | "media_object" | "media_asset";
+        /**
+         * AccessibilityValidationResult
+         * @description 无障碍包的验证结果。
+         */
+        AccessibilityValidationResult: {
+            /**
+             * Valid
+             * @description 是否通过全部检查。
+             */
+            valid: boolean;
+            /**
+             * Claims Consistent
+             * @description 音频、字幕和文字稿是否共享同一 Claim 集合。
+             * @default true
+             */
+            claims_consistent: boolean;
+            /**
+             * Version Consistent
+             * @description 所有替代是否绑定同一源版本。
+             * @default true
+             */
+            version_consistent: boolean;
+            /**
+             * Keyboard Operable
+             * @description 核心媒体任务是否可由键盘与屏幕阅读器完成。
+             * @default true
+             */
+            keyboard_operable: boolean;
+            /**
+             * Playback Controllable
+             * @description 是否支持暂停、时间控制和减少动画。
+             * @default true
+             */
+            playback_controllable: boolean;
+            /**
+             * Science Validated
+             * @description 替代内容是否通过相同的科学校验。
+             * @default true
+             */
+            science_validated: boolean;
+            /** Errors */
+            errors?: string[];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
          * Account
          * @description Public account projection.
          */
@@ -2512,6 +3961,20 @@ export interface components {
              */
             confidence: number;
         };
+        /**
+         * AssignRoleRequest
+         * @description 分配独立复核者或平台发行者。
+         */
+        AssignRoleRequest: {
+            /** Person Id */
+            person_id: string;
+        };
+        /**
+         * AttestationConclusion
+         * @description 一次签名或复核的结论。
+         * @enum {string}
+         */
+        AttestationConclusion: "approve" | "reject" | "needs_changes";
         /**
          * AuthError
          * @description Uniform authentication error response.
@@ -2764,6 +4227,176 @@ export interface components {
          * @enum {string}
          */
         CapsuleStatus: "issued" | "revoked" | "expired" | "consumed";
+        /**
+         * Caption
+         * @description A single subtitle/caption cue.
+         */
+        Caption: {
+            /**
+             * Caption Id
+             * @description Stable caption identifier.
+             */
+            caption_id: string;
+            /**
+             * Start Time
+             * @description Start time in seconds.
+             */
+            start_time: number;
+            /**
+             * End Time
+             * @description End time in seconds.
+             */
+            end_time: number;
+            /**
+             * Text
+             * @description Caption text.
+             */
+            text: string;
+            /** Language */
+            language?: string | null;
+        };
+        /**
+         * CaptionTrack
+         * @description Timed caption track for an audio or video asset.
+         */
+        CaptionTrack: {
+            /**
+             * Track Id
+             * @description Stable track identifier.
+             */
+            track_id: string;
+            /** Language */
+            language?: string | null;
+            /** Captions */
+            captions?: components["schemas"]["Caption"][];
+            /**
+             * Claim Ids
+             * @description T034: 字幕覆盖的科学 Claim ID 列表，与朗读和文字稿共享。
+             */
+            claim_ids?: string[];
+            /**
+             * Source Version
+             * @description T034: 字幕绑定的源内容版本标识。
+             */
+            source_version?: string | null;
+        };
+        /**
+         * ChartDataColumn
+         * @description Schema of one column in chart source data.
+         */
+        ChartDataColumn: {
+            /**
+             * Name
+             * @description Column name.
+             */
+            name: string;
+            /**
+             * Data Type
+             * @description Inferred data type.
+             * @default number
+             */
+            data_type: string;
+            /** Unit */
+            unit?: string | null;
+        };
+        /**
+         * ChartDataPoint
+         * @description A single data point in a chart dataset.
+         */
+        ChartDataPoint: {
+            /**
+             * Values
+             * @description Field -> value mapping.
+             */
+            values: {
+                [key: string]: string | number | null;
+            };
+            /**
+             * Is Missing
+             * @default false
+             */
+            is_missing: boolean;
+        };
+        /**
+         * ChartDataTable
+         * @description Structured source data for a chart.
+         */
+        ChartDataTable: {
+            /** Columns */
+            columns?: components["schemas"]["ChartDataColumn"][];
+            /** Rows */
+            rows?: components["schemas"]["ChartDataPoint"][];
+            /**
+             * Source Note
+             * @description Attribution or trace note.
+             */
+            source_note?: string | null;
+        };
+        /**
+         * ChartGenerationRequest
+         * @description Request to generate a data chart from source data.
+         *
+         *     The caller provides structured data and describes what to plot.
+         */
+        ChartGenerationRequest: {
+            /**
+             * Title
+             * @description Chart title.
+             */
+            title: string;
+            /** @description Visual mark type. */
+            mark: components["schemas"]["ChartMark"];
+            /** @description Source data for the chart. */
+            data: components["schemas"]["ChartDataTable"];
+            /**
+             * X Field
+             * @description Field name for the x-axis.
+             */
+            x_field: string;
+            /**
+             * Y Field
+             * @description Field name for the y-axis.
+             */
+            y_field: string;
+            /**
+             * Color Field
+             * @description Field name for color encoding.
+             */
+            color_field?: string | null;
+            /**
+             * Error Field
+             * @description Field name for error/uncertainty values.
+             */
+            error_field?: string | null;
+            /**
+             * X Label
+             * @description X-axis label (auto if omitted).
+             */
+            x_label?: string | null;
+            /**
+             * Y Label
+             * @description Y-axis label (auto if omitted).
+             */
+            y_label?: string | null;
+            /** X Unit */
+            x_unit?: string | null;
+            /** Y Unit */
+            y_unit?: string | null;
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Fact Lock Ids */
+            fact_lock_ids?: string[];
+            /** Aggregation */
+            aggregation?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /**
+         * ChartMark
+         * @description Visual mark type for a data chart.
+         * @enum {string}
+         */
+        ChartMark: "bar" | "line" | "point" | "area" | "scatter" | "error_bar" | "histogram";
         /**
          * ChunkCorrection
          * @description A human correction to a single chunk.
@@ -3206,7 +4839,7 @@ export interface components {
             /** @description Lock for the model call that generated claims. */
             model_run_lock?: components["schemas"]["ModelRunLock"] | null;
             /** @description Honest-degradation validation report (T016). */
-            validation_report?: components["schemas"]["ValidationReport"] | null;
+            validation_report?: components["schemas"]["science_companion__contracts__science__ValidationReport"] | null;
         };
         /**
          * ClaimImportance
@@ -3268,6 +4901,28 @@ export interface components {
          * @enum {string}
          */
         ClaimType: "definition" | "descriptive" | "quantitative" | "comparative" | "causal" | "mechanistic" | "predictive" | "normative" | "proof_step";
+        /**
+         * ClaimVisualBinding
+         * @description Binding from a visual element to a claim, evidence, or fact lock.
+         */
+        ClaimVisualBinding: {
+            /**
+             * Binding Id
+             * @description Stable binding identifier.
+             */
+            binding_id: string;
+            /**
+             * Element Ref
+             * @description Reference to the visual element: axis label, figure element id, etc.
+             */
+            element_ref: string;
+            /** Claim Id */
+            claim_id?: string | null;
+            /** Evidence Id */
+            evidence_id?: string | null;
+            /** Fact Lock Id */
+            fact_lock_id?: string | null;
+        };
         /**
          * CloudControlProjection
          * @description Minimal cloud-side projection of a vault object.
@@ -3390,6 +5045,179 @@ export interface components {
             user_visible_summary: string;
         };
         /**
+         * ConflictBranch
+         * @description Two valid scientific edits retained for human裁决 instead of last-write-wins.
+         */
+        ConflictBranch: {
+            /**
+             * Conflict Id
+             * @description Stable conflict identifier.
+             */
+            conflict_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the conflict.
+             */
+            account_id: string;
+            /** @description Object whose edits conflict. */
+            object_ref: components["schemas"]["ObjectRef"];
+            /**
+             * Common Ancestor Version
+             * @description Shared base version.
+             */
+            common_ancestor_version: number;
+            /**
+             * Local Operation Id
+             * @description Offline branch operation id.
+             */
+            local_operation_id: string;
+            /**
+             * Remote Operation Id
+             * @description Already accepted branch operation id.
+             */
+            remote_operation_id: string;
+            /**
+             * Local Payload
+             * @description Offline branch payload.
+             */
+            local_payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Remote Payload
+             * @description Accepted branch payload.
+             */
+            remote_payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Reason
+             * @description Why automatic merge is unsafe.
+             */
+            reason: string;
+            /**
+             * @description Human resolution status.
+             * @default open
+             */
+            status: components["schemas"]["ConflictBranchStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the branch was recorded.
+             */
+            created_at: string;
+            /**
+             * Resolved At
+             * @description When a human resolved it.
+             */
+            resolved_at?: string | null;
+            /**
+             * Selected Operation Id
+             * @description Operation selected by the human resolver.
+             */
+            selected_operation_id?: string | null;
+            /**
+             * Resolution Operation Id
+             * @description New accepted operation created by the human resolver.
+             */
+            resolution_operation_id?: string | null;
+        };
+        /**
+         * ConflictBranchStatus
+         * @description Lifecycle of a manually裁决的冲突分支。
+         * @enum {string}
+         */
+        ConflictBranchStatus: "open" | "resolved";
+        /**
+         * ConflictDeclarationRequest
+         * @description 本版本利益冲突声明。
+         */
+        ConflictDeclarationRequest: {
+            /** Disclosures */
+            disclosures?: string[];
+        };
+        /**
+         * ConflictDisclosure
+         * @description 少数意见与未决依据；不能迫使少数方签署。
+         */
+        ConflictDisclosure: {
+            /** Disclosure Id */
+            disclosure_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Item Ref */
+            item_ref: string;
+            /** Minority Opinion */
+            minority_opinion: string;
+            /** Basis */
+            basis?: string[];
+            /** Missing Evidence */
+            missing_evidence?: string[];
+            /**
+             * Decision
+             * @default
+             */
+            decision: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ConflictDisclosureRequest
+         * @description 少数意见与未决依据。
+         */
+        ConflictDisclosureRequest: {
+            /** Item Ref */
+            item_ref: string;
+            /** Minority Opinion */
+            minority_opinion: string;
+            /** Basis */
+            basis?: string[];
+            /** Missing Evidence */
+            missing_evidence?: string[];
+            /**
+             * Decision
+             * @default
+             */
+            decision: string;
+        };
+        /**
+         * ConflictOfInterestDeclaration
+         * @description 逐版本利益冲突声明；签名前必须存在。
+         */
+        ConflictOfInterestDeclaration: {
+            /** Declaration Id */
+            declaration_id: string;
+            /** Person Id */
+            person_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Disclosures */
+            disclosures?: string[];
+            /**
+             * Declared At
+             * Format: date-time
+             */
+            declared_at: string;
+        };
+        /**
+         * ConflictResolutionRequest
+         * @description 人工裁决冲突时选择保留的历史分支。
+         */
+        ConflictResolutionRequest: {
+            /**
+             * Selected Operation Id
+             * @description Chosen local or remote operation id.
+             */
+            selected_operation_id: string;
+        };
+        /**
          * ConflictResolutionStatus
          * @description Resolution state of a conflict.
          * @enum {string}
@@ -3415,6 +5243,159 @@ export interface components {
          */
         ContentAuthority: "device_local" | "server_replica" | "project_copy";
         /**
+         * ControlledContentAccessApproval
+         * @description Single approval for a controlled content access request.
+         */
+        ControlledContentAccessApproval: {
+            /**
+             * Approver Account Id
+             * @description Account that approved.
+             */
+            approver_account_id: string;
+            /**
+             * Approved At
+             * Format: date-time
+             * @description When the approval was given.
+             */
+            approved_at: string;
+            /**
+             * Reason
+             * @description Reason for approval.
+             */
+            reason: string;
+        };
+        /**
+         * ControlledContentAccessCreateRequest
+         * @description Request body to create a controlled content access request.
+         */
+        ControlledContentAccessCreateRequest: {
+            /**
+             * Target Account Id
+             * @description Account whose content may be accessed.
+             */
+            target_account_id: string;
+            /**
+             * Object Refs
+             * @description Specific object identifiers requested for access.
+             */
+            object_refs?: string[];
+            /**
+             * Purpose
+             * @description Documented purpose of the access.
+             */
+            purpose: string;
+            /**
+             * Duration Minutes
+             * @description How long the access lasts after approval.
+             * @default 60
+             */
+            duration_minutes: number;
+        };
+        /**
+         * ControlledContentAccessEvent
+         * @description Audit record of an actual content access under controlled access.
+         */
+        ControlledContentAccessEvent: {
+            /**
+             * Actor Account Id
+             * @description Account that performed the access.
+             */
+            actor_account_id: string;
+            /**
+             * Object Ref
+             * @description Object identifier accessed.
+             */
+            object_ref: string;
+            /**
+             * Accessed At
+             * Format: date-time
+             * @description When the access occurred.
+             */
+            accessed_at: string;
+            /**
+             * Action
+             * @description Action performed, e.g. read_content.
+             */
+            action: string;
+            /**
+             * Reason
+             * @description Reason recorded at access time.
+             */
+            reason: string;
+        };
+        /**
+         * ControlledContentAccessRequest
+         * @description Request to access member content for a security incident.
+         *
+         *     Access is purpose-limited, time-limited, requires two approvals and is fully
+         *     audited. It never grants blanket access to a member's personal vault.
+         */
+        ControlledContentAccessRequest: {
+            /**
+             * Request Id
+             * @description Stable request identifier.
+             */
+            request_id: string;
+            /**
+             * Institution Id
+             * @description Institution identifier.
+             */
+            institution_id: string;
+            /**
+             * Requester Account Id
+             * @description Account requesting access.
+             */
+            requester_account_id: string;
+            /**
+             * Target Account Id
+             * @description Account whose content may be accessed.
+             */
+            target_account_id: string;
+            /**
+             * Object Refs
+             * @description Specific object identifiers requested for access.
+             */
+            object_refs?: string[];
+            /**
+             * Purpose
+             * @description Documented purpose of the access.
+             */
+            purpose: string;
+            /**
+             * @description Current request status.
+             * @default pending
+             */
+            status: components["schemas"]["ControlledContentAccessStatus"];
+            /**
+             * Requested At
+             * Format: date-time
+             * @description When the request was created.
+             */
+            requested_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description When the approved access expires.
+             */
+            expires_at: string;
+            /**
+             * Approvals
+             * @description Approval records.
+             */
+            approvals?: components["schemas"]["ControlledContentAccessApproval"][];
+            /**
+             * Access Log
+             * @description Audit log of actual access events.
+             */
+            access_log?: components["schemas"]["ControlledContentAccessEvent"][];
+        };
+        /**
+         * ControlledContentAccessStatus
+         * @description Status of a controlled content access request.
+         * @enum {string}
+         */
+        ControlledContentAccessStatus: "pending" | "approved" | "expired" | "revoked" | "completed";
+        /**
          * CoverageGap
          * @description A coverage or recall gap reported to the caller.
          */
@@ -3431,6 +5412,97 @@ export interface components {
             reason: string;
             /** Detail */
             detail?: string | null;
+        };
+        /**
+         * CrossMediaClaimEntry
+         * @description 一个媒体对象中引用的 Claim 及其上下文。
+         */
+        CrossMediaClaimEntry: {
+            /**
+             * Claim Id
+             * @description Claim ID。
+             */
+            claim_id: string;
+            /**
+             * Media Ref
+             * @description 媒体对象中的引用位置：对象 ID、元素引用或轴字段。
+             */
+            media_ref: string;
+            /**
+             * Media Kind
+             * @description 媒体类型：text, chart, figure, storyboard, audio, video, interactive。
+             */
+            media_kind: string;
+            /**
+             * Canonical Value
+             * @description 该 Claim 在此媒体中表达的标准值。
+             */
+            canonical_value?: string | null;
+            /**
+             * Qualifiers
+             * @description 限定条件列表。
+             */
+            qualifiers?: string[];
+            /** Citation Ids */
+            citation_ids?: string[];
+        };
+        /**
+         * CrossMediaConsistencyResult
+         * @description 跨媒体 Claim 一致性检查结果。
+         */
+        CrossMediaConsistencyResult: {
+            /**
+             * Consistent
+             * @description 是否全部一致。
+             */
+            consistent: boolean;
+            /**
+             * Entries Checked
+             * @description 检查的条目数。
+             * @default 0
+             */
+            entries_checked: number;
+            /** Inconsistencies */
+            inconsistencies?: components["schemas"]["CrossMediaInconsistency"][];
+            /** Warnings */
+            warnings?: string[];
+        };
+        /**
+         * CrossMediaInconsistency
+         * @description 跨媒体一致性检查发现的单条不一致。
+         */
+        CrossMediaInconsistency: {
+            /**
+             * Inconsistency Id
+             * @description 稳定不一致标识符。
+             */
+            inconsistency_id: string;
+            /**
+             * Claim Id
+             * @description 涉及的 Claim ID。
+             */
+            claim_id: string;
+            /**
+             * Kind
+             * @description 不一致类型：value_mismatch, qualifier_missing, citation_missing, terminology_conflict。
+             */
+            kind: string;
+            /**
+             * Media Refs
+             * @description 涉及的媒体引用位置。
+             */
+            media_refs?: string[];
+            /**
+             * Description
+             * @description 不一致描述。
+             */
+            description: string;
+            /**
+             * Severity
+             * @description 严重程度：error 或 warning。
+             * @default error
+             */
+            severity: string;
         };
         /**
          * DataBinding
@@ -3586,6 +5658,178 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * DeviceAck
+         * @description Proof that a device received the latest control-plane state.
+         */
+        DeviceAck: {
+            /**
+             * Ack Id
+             * @description Stable acknowledgement identifier.
+             */
+            ack_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the device.
+             */
+            account_id: string;
+            /**
+             * Device Id
+             * @description Device acknowledging the state.
+             */
+            device_id: string;
+            /**
+             * Key Epoch
+             * @description Key epoch observed by the device.
+             */
+            key_epoch: string;
+            /**
+             * Authorization Version
+             * @description Authorization version observed by the device.
+             */
+            authorization_version: string;
+            /**
+             * Last Operation Id
+             * @description Newest operation received.
+             */
+            last_operation_id?: string | null;
+            /**
+             * Acknowledged At
+             * Format: date-time
+             * @description When the acknowledgement was recorded.
+             */
+            acknowledged_at: string;
+            /** @description Device status at acknowledgement time. */
+            status: components["schemas"]["DeviceSyncStatus"];
+        };
+        /**
+         * DeviceCertificate
+         * @description Binding between a user account and a trusted device.
+         *
+         *     The certificate carries only the public key and metadata; the corresponding
+         *     private key is held in the device system keychain and never written to
+         *     ordinary configuration or logs.
+         */
+        DeviceCertificate: {
+            /**
+             * Certificate Id
+             * @description Stable certificate identifier.
+             */
+            certificate_id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Device Id
+             * @description Stable device identifier.
+             */
+            device_id: string;
+            /**
+             * Device Name
+             * @description Human-readable device label.
+             */
+            device_name: string;
+            /** @description Category of device. */
+            device_type: components["schemas"]["DeviceType"];
+            /**
+             * Public Key Pem
+             * @description PEM-encoded device public key.
+             */
+            public_key_pem: string;
+            /**
+             * Fingerprint
+             * @description Deterministic fingerprint of the public key.
+             */
+            fingerprint: string;
+            /** @description Current pairing status. */
+            status: components["schemas"]["DevicePairingStatus"];
+            /**
+             * Key Epoch
+             * @description Active key epoch for this device.
+             */
+            key_epoch: string;
+            /**
+             * Paired At
+             * Format: date-time
+             * @description Pairing creation timestamp.
+             */
+            paired_at: string;
+            /**
+             * Revoked At
+             * @description If set, the device has been revoked.
+             */
+            revoked_at?: string | null;
+        };
+        /**
+         * DevicePairingRequest
+         * @description Request to pair a new vault runtime with an account.
+         */
+        DevicePairingRequest: {
+            /**
+             * Device Name
+             * @description Human-readable device label.
+             */
+            device_name: string;
+            /**
+             * @description Category of device.
+             * @default browser
+             */
+            device_type: components["schemas"]["DeviceType"];
+            /**
+             * Public Key Pem
+             * @description Optional client-supplied public key; otherwise generated server-side for tests.
+             */
+            public_key_pem?: string | null;
+        };
+        /**
+         * DevicePairingResponse
+         * @description Result of a successful device pairing.
+         */
+        DevicePairingResponse: {
+            /** @description Device certificate. */
+            certificate: components["schemas"]["DeviceCertificate"];
+            /** @description Initial active key epoch. */
+            key_epoch: components["schemas"]["KeyEpoch"];
+            /** @description Bound vault runtime. */
+            runtime: components["schemas"]["VaultRuntime"];
+        };
+        /**
+         * DevicePairingStatus
+         * @description Lifecycle status of a device pairing and its key epoch.
+         * @enum {string}
+         */
+        DevicePairingStatus: "paired" | "revoked";
+        /**
+         * DeviceRevocationRequest
+         * @description Request to revoke a paired device.
+         */
+        DeviceRevocationRequest: {
+            /**
+             * Device Id
+             * @description Device to revoke.
+             */
+            device_id: string;
+            /**
+             * Reason
+             * @description Reason for revocation.
+             * @default user_request
+             */
+            reason: string;
+        };
+        /**
+         * DeviceSyncStatus
+         * @description Whether the device has acknowledged the current control state.
+         * @enum {string}
+         */
+        DeviceSyncStatus: "active" | "revoked" | "awaiting_ack";
+        /**
+         * DeviceType
+         * @description Category of device running the vault runtime.
+         * @enum {string}
+         */
+        DeviceType: "browser" | "desktop" | "mobile";
         /**
          * DeviceUnavailableState
          * @description Legal wait state when the authoritative device is not available.
@@ -3975,6 +6219,38 @@ export interface components {
             created_at: string;
         };
         /**
+         * DomainCheckStatus
+         * @description Outcome of one deterministic pack preflight check.
+         * @enum {string}
+         */
+        DomainCheckStatus: "pass" | "blocked" | "needs_human";
+        /**
+         * DomainPackStatus
+         * @description Governance state of a candidate domain pack.
+         * @enum {string}
+         */
+        DomainPackStatus: "draft" | "in_review" | "signed" | "active" | "deprecated" | "suspended" | "revoked" | "expired";
+        /**
+         * DomainValidationCheck
+         * @description One explainable preflight or runtime check.
+         */
+        DomainValidationCheck: {
+            /** Check Id */
+            check_id: string;
+            /** Name */
+            name: string;
+            status: components["schemas"]["DomainCheckStatus"];
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
          * DraftSpan
          * @description A single text span in the expression draft.
          *
@@ -4023,6 +6299,42 @@ export interface components {
              * @default 1
              */
             style_policy_version: string;
+        };
+        /**
+         * EditableSource
+         * @description An editable source that defines a scientific media object.
+         *
+         *     The source is the authority — rendered SVGs and PNGs are derived from it.
+         *     Users can edit the source and re-validate to ensure consistency.
+         */
+        EditableSource: {
+            /**
+             * Source Id
+             * @description Stable source identifier.
+             */
+            source_id: string;
+            /**
+             * Source Type
+             * @description Type: chart_spec, figure_spec, svg, storyboard_spec, sandbox_code, static_validation_report.
+             */
+            source_type: string;
+            /**
+             * Content
+             * @description JSON-encoded spec or raw SVG content.
+             */
+            content: string;
+            /**
+             * Format
+             * @description MIME type of the content field.
+             * @default application/json
+             */
+            format: string;
+            /**
+             * Version
+             * @description Monotonic version.
+             * @default 1
+             */
+            version: number;
         };
         /**
          * EvaluationCreateRequest
@@ -5208,6 +7520,125 @@ export interface components {
          */
         FactLockType: "identifier" | "exact_value" | "relation" | "condition" | "strength" | "term_formula";
         /**
+         * FactLockViolation
+         * @description 沙箱修复过程中触犯事实锁的记录。
+         */
+        FactLockViolation: {
+            /**
+             * Lock Id
+             * @description 触犯的 FactLock ID。
+             */
+            lock_id: string;
+            /**
+             * Claim Id
+             * @description 关联的 Claim ID。
+             */
+            claim_id?: string | null;
+            /**
+             * Attempted Change
+             * @description 试图修改的值。
+             */
+            attempted_change: string;
+            /**
+             * Reason
+             * @description 被拒绝的原因。
+             */
+            reason: string;
+        };
+        /**
+         * FigureElement
+         * @description A labeled element in a scientific figure.
+         */
+        FigureElement: {
+            /**
+             * Element Id
+             * @description Stable element identifier.
+             */
+            element_id: string;
+            /**
+             * Role
+             * @description Semantic role: axis_label, curve, annotation, legend, scale_bar, etc.
+             */
+            role: string;
+            /**
+             * Label
+             * @description Display label text.
+             */
+            label: string;
+            /**
+             * Claim Id
+             * @description Bound claim if any.
+             */
+            claim_id?: string | null;
+            /**
+             * Svg Fragment
+             * @description Inline SVG markup for this element.
+             */
+            svg_fragment?: string | null;
+        };
+        /**
+         * FigureGenerationRequest
+         * @description Request to generate a scientific figure.
+         *
+         *     The caller provides element definitions and optional claim bindings.
+         */
+        FigureGenerationRequest: {
+            /**
+             * Title
+             * @description Figure title.
+             */
+            title: string;
+            /**
+             * Elements
+             * @description Figure elements. When empty, the service generates defaults.
+             */
+            elements?: components["schemas"]["FigureElement"][];
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Fact Lock Ids */
+            fact_lock_ids?: string[];
+            /** Description */
+            description?: string | null;
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /**
+         * FixtureResult
+         * @description Observed result of one replayable domain-pack fixture.
+         */
+        FixtureResult: {
+            /** Fixture Id */
+            fixture_id: string;
+            status: components["schemas"]["FixtureResultStatus"];
+            /** Passed */
+            passed: boolean;
+            /** Expected Status */
+            expected_status: string;
+            /** Actual Status */
+            actual_status?: string | null;
+            /**
+             * Reason
+             * @default
+             */
+            reason: string;
+            /** Reason Codes */
+            reason_codes?: string[];
+            /** Rule Ids */
+            rule_ids?: string[];
+            /** Validator Ids */
+            validator_ids?: string[];
+            /** Details */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * FixtureResultStatus
+         * @description Observed status of one fixture execution.
+         * @enum {string}
+         */
+        FixtureResultStatus: "pass" | "blocked" | "needs_human" | "failed";
+        /**
          * FormulaBinding
          * @description Binding from a formula asset to its scientific context.
          */
@@ -5245,6 +7676,22 @@ export interface components {
             evidence_bundle?: components["schemas"]["LessonEvidenceBundle"] | null;
         };
         /**
+         * GenerationResult
+         * @description Result of a media generation task.
+         */
+        GenerationResult: {
+            /** @description Generated media object. */
+            media_object: components["schemas"]["ScientificMediaObject"];
+            /** @description Model run lock when a model was used. */
+            model_run_lock?: components["schemas"]["ModelRunLock"] | null;
+        };
+        /**
+         * GenerationStatus
+         * @description Lifecycle status of a media generation task.
+         * @enum {string}
+         */
+        GenerationStatus: "pending" | "generating" | "completed" | "failed" | "validation_failed";
+        /**
          * Genre
          * @description Supported scientific expression genres.
          * @enum {string}
@@ -5263,6 +7710,51 @@ export interface components {
          * @enum {string}
          */
         GenreElementRole: "core_concept" | "analogy" | "analogy_boundary" | "action_relevance" | "learning_objective" | "prerequisite" | "comprehension_check" | "practice_pause" | "observation" | "analysis" | "interpretation" | "limitation" | "next_step" | "structure_suggestion" | "language_suggestion" | "citation_verification" | "argument_suggestion" | "ai_disclosure_reminder";
+        /**
+         * GrantPermission
+         * @description Fine-grained permission on a shared project object.
+         *
+         *     Permissions are additive: a subject may hold multiple permissions on the
+         *     same object through role baseline + explicit object grant.
+         * @enum {string}
+         */
+        GrantPermission: "view" | "edit" | "review" | "publish";
+        /**
+         * GrayReleaseCandidate
+         * @description 可发行候选：灰度验证的完整结果，激活需要发行签名。
+         */
+        GrayReleaseCandidate: {
+            /** Candidate Id */
+            candidate_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Canonical Digest */
+            canonical_digest: string;
+            status: components["schemas"]["GrayReleaseStatus"];
+            /** Checks */
+            checks?: components["schemas"]["DomainValidationCheck"][];
+            /** Fixture Results */
+            fixture_results?: components["schemas"]["FixtureResult"][];
+            /** Fixture Summary */
+            fixture_summary?: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * GrayReleaseStatus
+         * @description 灰度候选状态；READY_TO_RELEASE 不会自动激活。
+         * @enum {string}
+         */
+        GrayReleaseStatus: "ready_to_release" | "blocked" | "needs_human";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -5430,6 +7922,445 @@ export interface components {
          * @enum {string}
          */
         InputQualityGate: "mime_type" | "magic_number" | "size_limit" | "decompression_bomb" | "malicious_content" | "license" | "parse" | "scope";
+        /**
+         * Institution
+         * @description Public institution projection.
+         *
+         *     An institution is a management domain, not a data container for member
+         *     personal vaults.
+         */
+        Institution: {
+            /**
+             * Id
+             * @description Stable institution identifier.
+             */
+            id: string;
+            /**
+             * Name
+             * @description Human-readable institution name.
+             */
+            name: string;
+            /**
+             * @description Authority domain is always institution.
+             * @default institution
+             */
+            domain: components["schemas"]["InstitutionDomain"];
+            /** @description Lifecycle status. */
+            status: components["schemas"]["InstitutionStatus"];
+            /**
+             * Owner Account Id
+             * @description Account that created the institution.
+             */
+            owner_account_id: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Institution creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last institution update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * InstitutionCreateRequest
+         * @description Request to create a new institution.
+         */
+        InstitutionCreateRequest: {
+            /**
+             * Name
+             * @description Institution name.
+             */
+            name: string;
+        };
+        /**
+         * InstitutionDomain
+         * @description Authority domain for an institution.
+         * @enum {string}
+         */
+        InstitutionDomain: "institution";
+        /**
+         * InstitutionError
+         * @description Uniform institution error response.
+         */
+        InstitutionError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * InstitutionInviteRequest
+         * @description Request to invite an account to join an institution.
+         */
+        InstitutionInviteRequest: {
+            /**
+             * Recipient Account Id
+             * @description Expected recipient account.
+             */
+            recipient_account_id: string;
+            /**
+             * @description Role the recipient will hold.
+             * @default member
+             */
+            role: components["schemas"]["InstitutionRole"];
+            /**
+             * Ttl Seconds
+             * @description Token time-to-live in seconds.
+             * @default 3600
+             */
+            ttl_seconds: number;
+        };
+        /**
+         * InstitutionMemberUpdateRequest
+         * @description Request to update an institution member's role.
+         */
+        InstitutionMemberUpdateRequest: {
+            /** @description New role for the member. */
+            role: components["schemas"]["InstitutionRole"];
+        };
+        /**
+         * InstitutionOwnedProjectDisclosure
+         * @description Disclosure shown before creating an institution-owned project.
+         *
+         *     Creating an institution-owned project must make ownership, retention and
+         *     recovery boundaries explicit.
+         */
+        InstitutionOwnedProjectDisclosure: {
+            /**
+             * Institution Id
+             * @description Owning institution identifier.
+             */
+            institution_id: string;
+            /**
+             * Institution Name
+             * @description Owning institution name.
+             */
+            institution_name: string;
+            /**
+             * Ownership Statement
+             * @description Ownership statement.
+             * @default 该项目为机构所有，成员离开机构后保留的项目访问由机构策略决定。
+             */
+            ownership_statement: string;
+            /**
+             * Retention Statement
+             * @description Retention statement.
+             * @default 机构对象受机构数据保留策略约束；个人账户不保留恢复权威。
+             */
+            retention_statement: string;
+            /**
+             * Recovery Statement
+             * @description Recovery statement.
+             * @default 机构未启用恢复密钥；项目负责人可决定冻结或迁移。
+             */
+            recovery_statement: string;
+            /**
+             * Recovery Key Enabled
+             * @description Whether a recovery key is enabled for this institution.
+             */
+            recovery_key_enabled: boolean;
+            /**
+             * Acknowledged
+             * @description Whether the creator has acknowledged the disclosure.
+             * @default false
+             */
+            acknowledged: boolean;
+        };
+        /**
+         * InstitutionPolicy
+         * @description Governance policy for an institution.
+         */
+        InstitutionPolicy: {
+            /** @description Seat and authentication policy. */
+            seat_policy?: components["schemas"]["SeatPolicy"];
+            /**
+             * Data Retention Days
+             * @description Retention period for institution-owned objects, if set.
+             */
+            data_retention_days?: number | null;
+            /**
+             * Recovery Key Enabled
+             * @description Whether the institution holds a recovery key for its projects.
+             * @default false
+             */
+            recovery_key_enabled: boolean;
+            /**
+             * Policy Version
+             * @description Version of the institution policy.
+             * @default inst-policy-1.0
+             */
+            policy_version: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last policy update timestamp.
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * @description Account that last updated the policy.
+             */
+            updated_by: string;
+        };
+        /**
+         * InstitutionProjectCreateRequest
+         * @description Request to create an institution-owned project.
+         *
+         *     The request must include an explicit disclosure acknowledgement so the UI
+         *     cannot silently create an institution-owned project.
+         */
+        InstitutionProjectCreateRequest: {
+            /**
+             * Name
+             * @description Project name.
+             */
+            name: string;
+            /**
+             * Description
+             * @description Optional project goal.
+             */
+            description?: string | null;
+            /**
+             * Disclosure Acknowledged
+             * @description Creator has acknowledged ownership, retention and recovery boundaries.
+             */
+            disclosure_acknowledged: boolean;
+        };
+        /**
+         * InstitutionProjectCreateResponse
+         * @description Response when creating an institution-owned project.
+         */
+        InstitutionProjectCreateResponse: {
+            /** @description Created institution-owned project. */
+            project: components["schemas"]["Project"];
+            /** @description Disclosure that was acknowledged. */
+            disclosure: components["schemas"]["InstitutionOwnedProjectDisclosure"];
+        };
+        /**
+         * InstitutionRole
+         * @description Role of an account inside an institution.
+         *
+         *     - ADMIN: can manage members, policy and institution-owned projects.
+         *     - MEMBER: ordinary institution member.
+         *     - SECURITY_ADMIN: can manage security policy and request controlled content
+         *       access, but still cannot read member personal vaults without the
+         *       two-approval controlled access flow.
+         *     - BILLING_ADMIN: can manage seats and billing-related policy.
+         * @enum {string}
+         */
+        InstitutionRole: "admin" | "member" | "security_admin" | "billing_admin";
+        /**
+         * InstitutionStatus
+         * @description Lifecycle status of an institution.
+         * @enum {string}
+         */
+        InstitutionStatus: "active" | "suspended";
+        /**
+         * InviteAcceptRequest
+         * @description Request to accept an invite token.
+         */
+        InviteAcceptRequest: {
+            /**
+             * Token Secret
+             * @description Opaque token secret to redeem.
+             */
+            token_secret: string;
+        };
+        /**
+         * InviteCreateRequest
+         * @description Request to create an invite token for a shared project.
+         */
+        InviteCreateRequest: {
+            /**
+             * Project Id
+             * @description Project to invite into.
+             */
+            project_id: string;
+            /**
+             * Recipient Account Id
+             * @description Expected recipient account.
+             */
+            recipient_account_id: string;
+            /**
+             * @description Role the recipient will hold.
+             * @default viewer
+             */
+            role: components["schemas"]["SharedProjectRole"];
+            /**
+             * Ttl Seconds
+             * @description Token time-to-live in seconds (min 60, max 86400).
+             * @default 3600
+             */
+            ttl_seconds: number;
+        };
+        /**
+         * InviteToken
+         * @description Short-lived, single-use invitation token bound to project and identity.
+         *
+         *     The token is valid only for the specified project and expected recipient.
+         *     It expires after a short TTL and can only be consumed once.
+         */
+        InviteToken: {
+            /**
+             * Token Id
+             * @description Stable token identifier.
+             */
+            token_id: string;
+            /**
+             * Token Secret
+             * @description Opaque secret for token redemption.
+             */
+            token_secret: string;
+            /**
+             * Project Id
+             * @description Project the invite grants access to.
+             */
+            project_id: string;
+            /**
+             * Invited By
+             * @description Account that created the invitation.
+             */
+            invited_by: string;
+            /**
+             * Expected Recipient Id
+             * @description Account expected to redeem the invitation.
+             */
+            expected_recipient_id: string;
+            /** @description Role the recipient will hold upon acceptance. */
+            role: components["schemas"]["SharedProjectRole"];
+            /**
+             * @description Current token status.
+             * @default pending
+             */
+            status: components["schemas"]["InviteTokenStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Token creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * Format: date-time
+             * @description Token expiration timestamp.
+             */
+            expires_at: string;
+            /**
+             * Accepted At
+             * @description If set, the token has been accepted.
+             */
+            accepted_at?: string | null;
+            /**
+             * Single Use
+             * @description Token can only be redeemed once.
+             * @default true
+             */
+            single_use: boolean;
+        };
+        /**
+         * InviteTokenStatus
+         * @description Lifecycle status of an invite token.
+         * @enum {string}
+         */
+        InviteTokenStatus: "pending" | "accepted" | "revoked" | "expired";
+        /**
+         * KeyEpoch
+         * @description A key epoch under which device-local objects are encrypted.
+         *
+         *     Revoking a device creates a new key epoch so that old device keys can no
+         *     longer unwrap newly created capsules or decrypt fresh content.
+         */
+        KeyEpoch: {
+            /**
+             * Epoch Id
+             * @description Stable epoch identifier.
+             */
+            epoch_id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Device Id
+             * @description Device to which the epoch belongs.
+             */
+            device_id: string;
+            /** @description Current epoch status. */
+            status: components["schemas"]["DevicePairingStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Epoch creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Revoked At
+             * @description If set, the epoch has been rotated out.
+             */
+            revoked_at?: string | null;
+        };
+        /**
+         * KeyboardAccessPath
+         * @description 一个核心媒体任务的完整键盘操作路径。
+         */
+        KeyboardAccessPath: {
+            /**
+             * Path Id
+             * @description 稳定路径标识符。
+             */
+            path_id: string;
+            /**
+             * Task
+             * @description 任务标识：play_pause, seek, toggle_captions, toggle_reduced_motion, open_transcript。
+             */
+            task: string;
+            /** Steps */
+            steps?: components["schemas"]["KeyboardPathStep"][];
+        };
+        /**
+         * KeyboardPathStep
+         * @description 键盘路径中的一个操作步骤。
+         */
+        KeyboardPathStep: {
+            /**
+             * Step Number
+             * @description 步骤序号。
+             */
+            step_number: number;
+            /**
+             * Action
+             * @description 操作描述。
+             */
+            action: string;
+            /**
+             * Keys
+             * @description 按键组合，如 Space、Tab、ArrowRight。
+             */
+            keys: string;
+            /**
+             * Screen Reader Announcement
+             * @description 屏幕阅读器在该步骤的播报文本。
+             */
+            screen_reader_announcement: string;
+        };
         /**
          * KnowledgeConfidence
          * @description Calibration of the knowledge-state judgement, not a percentage.
@@ -6095,6 +9026,28 @@ export interface components {
          */
         LicenseState: "unknown" | "public_domain" | "open_access" | "closed_access" | "embargoed" | "user_owned" | "pending_review";
         /**
+         * LifecycleStage
+         * @description 动画对象的一个生命周期阶段。
+         */
+        LifecycleStage: {
+            /**
+             * Stage
+             * @description 阶段类型：进入、保持、变换、退出。
+             * @enum {string}
+             */
+            stage: "enter" | "hold" | "transform" | "exit";
+            /**
+             * Timing Seconds
+             * @description 阶段持续时间，单位秒。
+             */
+            timing_seconds: number;
+            /**
+             * Description
+             * @description 阶段描述。
+             */
+            description: string;
+        };
+        /**
          * LifecycleStatus
          * @description Lifecycle status of a specific document version.
          * @enum {string}
@@ -6283,6 +9236,12 @@ export interface components {
             created_at: string;
         };
         /**
+         * MediaObjectType
+         * @description Type of a generated scientific media object.
+         * @enum {string}
+         */
+        MediaObjectType: "chart" | "scientific_figure" | "interactive_html" | "animation";
+        /**
          * MediaProjection
          * @description Public projection of a media asset with its manifest and derived assets.
          */
@@ -6314,11 +9273,101 @@ export interface components {
             };
         };
         /**
+         * MediaPublishRequest
+         * @description 多模态发布请求。
+         */
+        MediaPublishRequest: {
+            /**
+             * Media Object Ids
+             * @description 要发布的媒体对象 ID 列表。
+             */
+            media_object_ids?: string[];
+            /**
+             * Source Asset Ids
+             * @description 关联的原始资产 ID 列表。
+             */
+            source_asset_ids?: string[];
+            /**
+             * Storyboard Ids
+             * @description 关联的分镜 ID 列表。
+             */
+            storyboard_ids?: string[];
+            /**
+             * Accessibility Bundle Ids
+             * @description 关联的无障碍包 ID 列表。
+             */
+            accessibility_bundle_ids?: string[];
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /**
          * MediaQualityGate
          * @description Named gates that imported media must pass before entering evidence.
          * @enum {string}
          */
         MediaQualityGate: "mime_type" | "magic_number" | "size_limit" | "malicious_content" | "license" | "parse" | "scope";
+        /**
+         * MediaStoryboard
+         * @description 结构化分镜——镜头时间序列。
+         *
+         *     定义教学目标、镜头序列（引用 SceneSpec）、媒体类型和 Claim 绑定。
+         *     每个镜头包含时间、过渡、旁白和无障碍描述。
+         */
+        MediaStoryboard: {
+            /**
+             * Storyboard Id
+             * @description 稳定分镜标识符。
+             */
+            storyboard_id: string;
+            /**
+             * Account Id
+             * @description 拥有账户 ID。
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description 所属项目 ID。
+             */
+            project_id?: string | null;
+            /**
+             * Title
+             * @description 分镜标题。
+             */
+            title: string;
+            /**
+             * Teaching Objectives
+             * @description 教学目标列表。
+             */
+            teaching_objectives?: string[];
+            /**
+             * Scenes
+             * @description 镜头列表。
+             */
+            scenes?: components["schemas"]["StoryboardScene"][];
+            /**
+             * Media Type
+             * @description 媒体类型：animation（动画）或 interactive_html（交互 HTML）。
+             * @enum {string}
+             */
+            media_type: "animation" | "interactive_html";
+            /**
+             * @description 分镜状态。
+             * @default draft
+             */
+            status: components["schemas"]["StoryboardStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间戳。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最后更新时间戳。
+             */
+            updated_at: string;
+        };
         /**
          * MediaType
          * @description Media type of an imported document or asset.
@@ -6345,6 +9394,48 @@ export interface components {
             license_state?: components["schemas"]["LicenseState"] | null;
             /** Title */
             title?: string | null;
+        };
+        /**
+         * Membership
+         * @description Relationship between an account and an institution.
+         */
+        Membership: {
+            /**
+             * Institution Id
+             * @description Institution identifier.
+             */
+            institution_id: string;
+            /**
+             * Account Id
+             * @description Member account identifier.
+             */
+            account_id: string;
+            /** @description Member's role in the institution. */
+            role: components["schemas"]["InstitutionRole"];
+            /**
+             * Joined At
+             * Format: date-time
+             * @description When the member joined.
+             */
+            joined_at: string;
+            /**
+             * Invited By
+             * @description Account that invited this member, if applicable.
+             */
+            invited_by?: string | null;
+        };
+        /**
+         * MembershipContext
+         * @description Lightweight membership context carried in the subject.
+         */
+        MembershipContext: {
+            /**
+             * Institution Id
+             * @description Institution identifier.
+             */
+            institution_id: string;
+            /** @description Member's role in the institution. */
+            role: components["schemas"]["InstitutionRole"];
         };
         /**
          * ModelCallStatus
@@ -6464,6 +9555,130 @@ export interface components {
             } | null;
         };
         /**
+         * MultimodalGateResult
+         * @description 多模态发布门单项结果。
+         * @enum {string}
+         */
+        MultimodalGateResult: "pass" | "fail";
+        /**
+         * MultimodalPublishGate
+         * @description 多模态发布门名称。
+         * @enum {string}
+         */
+        MultimodalPublishGate: "claim_consistency" | "license" | "authenticity" | "sandbox" | "accessibility" | "fact_lock" | "invalidation";
+        /**
+         * MultimodalPublishGateResult
+         * @description 多模态发布门综合结果。
+         */
+        MultimodalPublishGateResult: {
+            /**
+             * Passed
+             * @description 是否全部通过。
+             */
+            passed: boolean;
+            /** Gate Results */
+            gate_results?: {
+                [key: string]: components["schemas"]["MultimodalGateResult"];
+            };
+            /** Failed Gates */
+            failed_gates?: components["schemas"]["MultimodalPublishGate"][];
+            /** Reasons */
+            reasons?: string[];
+            consistency_result?: components["schemas"]["CrossMediaConsistencyResult"] | null;
+        };
+        /**
+         * NarrationAudio
+         * @description 科学媒体对象的朗读替代。
+         *
+         *     朗读文本必须来自与字幕/文字稿相同的、已经过科学校验的内容，
+         *     与它们共享同一 Claim 集合和源版本。
+         */
+        NarrationAudio: {
+            /**
+             * Narration Id
+             * @description 稳定朗读标识符。
+             */
+            narration_id: string;
+            /**
+             * Language
+             * @description 朗读语言。
+             * @default zh-CN
+             */
+            language: string;
+            /**
+             * Text
+             * @description 朗读正文，与文字稿同源。
+             */
+            text: string;
+            /**
+             * Voice
+             * @description 声音标识。
+             * @default default
+             */
+            voice: string;
+            /**
+             * @description 合成状态。
+             * @default pending_synthesis
+             */
+            status: components["schemas"]["NarrationSynthesisStatus"];
+            /**
+             * Audio Ref
+             * @description 合成音频的受控存储引用；未合成时为 None。
+             */
+            audio_ref?: string | null;
+            /**
+             * Duration Seconds
+             * @default 0
+             */
+            duration_seconds: number;
+            /**
+             * Timing
+             * @description 句段到音频时间的映射。
+             */
+            timing?: components["schemas"]["NarrationTimingEntry"][];
+            /** Pronunciation Notes */
+            pronunciation_notes?: components["schemas"]["PronunciationNote"][];
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Source Version */
+            source_version?: string | null;
+        };
+        /**
+         * NarrationSynthesisStatus
+         * @description 朗读音频的合成状态。
+         *
+         *     T034 使用确定性合成器；真实 Qwen TTS 适配器在 T062 接入。
+         *     未通过科学校验的文本保持 PENDING_SYNTHESIS，不直接合成语音。
+         * @enum {string}
+         */
+        NarrationSynthesisStatus: "pending_synthesis" | "synthesized" | "failed";
+        /**
+         * NarrationTimingEntry
+         * @description 句段到朗读音频时间轴的映射。
+         */
+        NarrationTimingEntry: {
+            /**
+             * Segment Id
+             * @description 对应的文字稿句段 ID。
+             */
+            segment_id: string;
+            /**
+             * Text
+             * @description 句段文本。
+             */
+            text: string;
+            /**
+             * Start Time
+             * @description 开始时间，单位秒。
+             */
+            start_time: number;
+            /**
+             * End Time
+             * @description 结束时间，单位秒。
+             */
+            end_time: number;
+        };
+        /**
          * NodeProgress
          * @description Progress of a single workflow node as shown on the task stage.
          */
@@ -6515,6 +9730,78 @@ export interface components {
          */
         ObjectDomain: "personal_vault" | "shared_project" | "institution_owned";
         /**
+         * ObjectGrant
+         * @description Per-object authorization in a shared project.
+         *
+         *     An object grant binds a subject to specific permissions on a specific
+         *     project object. Role baseline and object grants together determine the
+         *     effective permission set.
+         */
+        ObjectGrant: {
+            /**
+             * Grant Id
+             * @description Stable grant identifier.
+             */
+            grant_id: string;
+            /**
+             * Project Id
+             * @description Project that owns the object.
+             */
+            project_id: string;
+            /**
+             * Object Id
+             * @description Object to which the grant applies.
+             */
+            object_id: string;
+            /**
+             * Grantee Account Id
+             * @description Account that holds the grant.
+             */
+            grantee_account_id: string;
+            /**
+             * Permissions
+             * @description Permissions granted on the object.
+             */
+            permissions: components["schemas"]["GrantPermission"][];
+            /**
+             * Granted By
+             * @description Account that created the grant.
+             */
+            granted_by: string;
+            /**
+             * Purpose
+             * @description Declared purpose of the grant.
+             */
+            purpose: string;
+            /**
+             * @description Current grant status.
+             * @default active
+             */
+            status: components["schemas"]["ObjectGrantStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Grant creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Expires At
+             * @description If set, the grant expires at this time.
+             */
+            expires_at?: string | null;
+            /**
+             * Revoked At
+             * @description If set, the grant has been revoked.
+             */
+            revoked_at?: string | null;
+        };
+        /**
+         * ObjectGrantStatus
+         * @description Lifecycle status of an object grant.
+         * @enum {string}
+         */
+        ObjectGrantStatus: "active" | "revoked" | "expired";
+        /**
          * ObjectRef
          * @description Stable reference to an owned object.
          *
@@ -6547,6 +9834,36 @@ export interface components {
          * @enum {string}
          */
         ObservationStatus: "active" | "discarded";
+        /**
+         * PackRelease
+         * @description 发行摘要、平台签名和透明记录。
+         */
+        PackRelease: {
+            /** Release Id */
+            release_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Canonical Digest */
+            canonical_digest: string;
+            /** Attestations */
+            attestations?: components["schemas"]["ReviewAttestation"][];
+            platform_attestation: components["schemas"]["ReviewAttestation"];
+            /** Gray Candidate Id */
+            gray_candidate_id: string;
+            /** Released By */
+            released_by: string;
+            /**
+             * Released At
+             * Format: date-time
+             */
+            released_at: string;
+            /** Transparent Record */
+            transparent_record?: {
+                [key: string]: unknown;
+            };
+        };
         /**
          * PaperAssistElement
          * @description A structural element for the paper-assist genre contract (T027).
@@ -6601,6 +9918,126 @@ export interface components {
          * @enum {string}
          */
         PatchAction: "accept" | "reject" | "rewrite";
+        /**
+         * PlaybackControlRequest
+         * @description 播放控制请求。
+         */
+        PlaybackControlRequest: {
+            /**
+             * Action
+             * @description 控制动作。
+             * @enum {string}
+             */
+            action: "start" | "pause" | "resume" | "seek" | "set_reduced_motion";
+            /**
+             * Position Seconds
+             * @description seek 目标位置，单位秒。
+             */
+            position_seconds?: number | null;
+            /**
+             * Enabled
+             * @description set_reduced_motion 的开关值。
+             */
+            enabled?: boolean | null;
+        };
+        /**
+         * PlaybackControls
+         * @description 时间内容的播放控制能力声明。
+         */
+        PlaybackControls: {
+            /**
+             * Can Pause
+             * @default true
+             */
+            can_pause: boolean;
+            /**
+             * Can Seek
+             * @default true
+             */
+            can_seek: boolean;
+            /**
+             * Can Change Speed
+             * @default true
+             */
+            can_change_speed: boolean;
+            /**
+             * Captions Available
+             * @default true
+             */
+            captions_available: boolean;
+            /**
+             * Reduced Motion Available
+             * @default true
+             */
+            reduced_motion_available: boolean;
+            /**
+             * Keyboard Operable
+             * @default true
+             */
+            keyboard_operable: boolean;
+        };
+        /**
+         * PlaybackState
+         * @description 一个无障碍包的播放状态，支持暂停、时间控制和减少动画。
+         */
+        PlaybackState: {
+            /**
+             * State Id
+             * @description 稳定状态标识符。
+             */
+            state_id: string;
+            /**
+             * Bundle Id
+             * @description 关联的无障碍包 ID。
+             */
+            bundle_id: string;
+            /**
+             * Paused
+             * @default false
+             */
+            paused: boolean;
+            /**
+             * Position Seconds
+             * @default 0
+             */
+            position_seconds: number;
+            /**
+             * Duration Seconds
+             * @default 0
+             */
+            duration_seconds: number;
+            /**
+             * Speed
+             * @default 1
+             */
+            speed: number;
+            /**
+             * Reduced Motion Enabled
+             * @default false
+             */
+            reduced_motion_enabled: boolean;
+            /**
+             * Captions Enabled
+             * @default true
+             */
+            captions_enabled: boolean;
+            /**
+             * Active Caption Text
+             * @description 当前时间点的字幕文本。
+             */
+            active_caption_text?: string | null;
+            /**
+             * Active Frame Description
+             * @description 减少动画模式下当前时间点的静态帧描述。
+             */
+            active_frame_description?: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最后更新时间戳。
+             */
+            updated_at: string;
+        };
         /**
          * PopularScienceElement
          * @description A structural element required by the popular-science genre contract.
@@ -7469,7 +10906,8 @@ export interface components {
          * @description Public project projection.
          *
          *     Every project is owned by an account, lives in an object domain, and carries
-         *     a monotonic version for optimistic concurrency.
+         *     a monotonic version for optimistic concurrency. Institution-owned projects
+         *     also carry a tenant_id linking them to the institution management domain.
          */
         Project: {
             /**
@@ -7482,6 +10920,11 @@ export interface components {
              * @description Owning account identifier.
              */
             account_id: string;
+            /**
+             * Tenant Id
+             * @description Institution tenant identifier when the project is institution-owned.
+             */
+            tenant_id?: string | null;
             /**
              * Name
              * @description Human-readable project name.
@@ -7587,7 +11030,7 @@ export interface components {
          * @description Role of the current subject inside a project.
          * @enum {string}
          */
-        ProjectRole: "owner" | "editor" | "reviewer" | "viewer";
+        ProjectRole: "owner" | "editor" | "reviewer" | "commenter" | "viewer";
         /**
          * ProjectStatus
          * @description Lifecycle status of a project.
@@ -7631,6 +11074,36 @@ export interface components {
              */
             description?: string | null;
         };
+        /**
+         * PronunciationNote
+         * @description 朗读中数字、单位、公式和缩写的发音处理记录。
+         */
+        PronunciationNote: {
+            /**
+             * Token
+             * @description 原始文本片段。
+             */
+            token: string;
+            /** @description 片段类型。 */
+            kind: components["schemas"]["PronunciationNoteKind"];
+            /**
+             * Spoken Form
+             * @description 确定的口语化读法；无法可靠朗读时为 None。
+             */
+            spoken_form?: string | null;
+            /**
+             * Degraded
+             * @description 无法可靠朗读时的显式降级标记，提示查看可访问公式或文本。
+             * @default false
+             */
+            degraded: boolean;
+        };
+        /**
+         * PronunciationNoteKind
+         * @description 需要发音处理的朗读内容类型。
+         * @enum {string}
+         */
+        PronunciationNoteKind: "number" | "unit" | "formula" | "abbreviation";
         /**
          * ProposeKnowledgeStateUpdateRequest
          * @description Request to propose a knowledge-state update from learning records.
@@ -7745,6 +11218,37 @@ export interface components {
             reason?: string | null;
         };
         /**
+         * QualificationRecord
+         * @description 可核验资质：类型、核验者、有效期和适用范围。
+         */
+        QualificationRecord: {
+            /** Qualification Id */
+            qualification_id: string;
+            /** Person Id */
+            person_id: string;
+            /**
+             * Qualification Type
+             * @description 例如 clinical_expert、formal_proof、domain_expert。
+             */
+            qualification_type: string;
+            /** Verifier Id */
+            verifier_id: string;
+            /** Disciplines */
+            disciplines?: string[];
+            /**
+             * Scope
+             * @default
+             */
+            scope: string;
+            /**
+             * Verified At
+             * Format: date-time
+             */
+            verified_at: string;
+            /** Valid Until */
+            valid_until?: string | null;
+        };
+        /**
          * RecoveryRequest
          * @description Request a credential recovery flow.
          *
@@ -7775,6 +11279,76 @@ export interface components {
              * @description New account password.
              */
             new_password: string;
+        };
+        /**
+         * ReducedMotionFrame
+         * @description 减少动画模式下的一个静态帧。
+         */
+        ReducedMotionFrame: {
+            /**
+             * Frame Id
+             * @description 稳定帧标识符。
+             */
+            frame_id: string;
+            /**
+             * Order
+             * @description 帧序号。
+             */
+            order: number;
+            /**
+             * Source Ref
+             * @description 对应的镜头/场景/元素引用。
+             */
+            source_ref: string;
+            /**
+             * Description
+             * @description 帧的科学内容描述，与旁白一致。
+             */
+            description: string;
+            /**
+             * Start Time
+             * @default 0
+             */
+            start_time: number;
+            /**
+             * End Time
+             * @default 0
+             */
+            end_time: number;
+            /** Claim Ids */
+            claim_ids?: string[];
+        };
+        /**
+         * ReducedMotionVariant
+         * @description 减少动画合同：用静态帧序列替代连续动画。
+         */
+        ReducedMotionVariant: {
+            /**
+             * Variant Id
+             * @description 稳定变体标识符。
+             */
+            variant_id: string;
+            /** Frames */
+            frames?: components["schemas"]["ReducedMotionFrame"][];
+            /**
+             * Note
+             * @description 时间内容被逐帧展示的说明。
+             */
+            note?: string | null;
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Source Version */
+            source_version?: string | null;
+        };
+        /**
+         * RegisterPackRequest
+         * @description 登记一个已注册的领域包版本到专家工作台。
+         */
+        RegisterPackRequest: {
+            /** Pack Id */
+            pack_id: string;
+            /** Version */
+            version: string;
         };
         /**
          * RejectedSliceItem
@@ -8035,6 +11609,43 @@ export interface components {
          */
         RetrievalExerciseType: "recall" | "explanation" | "computation" | "comparison" | "application";
         /**
+         * ReviewAttestation
+         * @description 内容签名、独立验证签名或平台发行签名。
+         *
+         *     三种签名必须绑定同一规范化包摘要；任一内容变化都会使旧签名不再适用。
+         */
+        ReviewAttestation: {
+            /** Attestation Id */
+            attestation_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /**
+             * Canonical Digest
+             * @description 被签名的规范化包摘要。
+             */
+            canonical_digest: string;
+            role: components["schemas"]["ReviewRole"];
+            /** Person Id */
+            person_id: string;
+            /** Qualification Ids */
+            qualification_ids?: string[];
+            /** Conflict Declaration Id */
+            conflict_declaration_id: string;
+            conclusion: components["schemas"]["AttestationConclusion"];
+            /**
+             * Opinion
+             * @default
+             */
+            opinion: string;
+            /**
+             * Signed At
+             * Format: date-time
+             */
+            signed_at: string;
+        };
+        /**
          * ReviewFinding
          * @description A single finding explaining why a genre rule requires or prohibits content.
          *
@@ -8117,6 +11728,12 @@ export interface components {
              */
             findings?: components["schemas"]["ReviewFinding"][];
         };
+        /**
+         * ReviewRole
+         * @description 三签职责分离中的签名角色。
+         * @enum {string}
+         */
+        ReviewRole: "content" | "independent" | "platform";
         /**
          * ReviewSchedule
          * @description Collection of pending review tasks for a learning mission.
@@ -8577,6 +12194,322 @@ export interface components {
             context_envelope: components["schemas"]["RunContextEnvelope"];
         };
         /**
+         * SandboxDependency
+         * @description 沙箱运行的依赖项记录。
+         */
+        SandboxDependency: {
+            /**
+             * Name
+             * @description 依赖名称。
+             */
+            name: string;
+            /**
+             * Version
+             * @description 版本。
+             */
+            version?: string | null;
+            /**
+             * Allowed
+             * @description 是否在白名单中。
+             * @default true
+             */
+            allowed: boolean;
+        };
+        /**
+         * SandboxResourceLimits
+         * @description 沙箱资源限制。
+         */
+        SandboxResourceLimits: {
+            /**
+             * Max Cpu Seconds
+             * @description 最大 CPU 时间，单位秒。
+             * @default 30
+             */
+            max_cpu_seconds: number;
+            /**
+             * Max Memory Mb
+             * @description 最大内存，单位 MB。
+             * @default 512
+             */
+            max_memory_mb: number;
+            /**
+             * Max Disk Mb
+             * @description 最大磁盘，单位 MB。
+             * @default 100
+             */
+            max_disk_mb: number;
+            /**
+             * Max Processes
+             * @description 最大进程数。
+             * @default 10
+             */
+            max_processes: number;
+            /**
+             * Network Allowed
+             * @description 是否允许网络访问，默认禁止。
+             * @default false
+             */
+            network_allowed: boolean;
+            /**
+             * Keys Allowed
+             * @description 是否允许访问密钥，默认禁止。
+             * @default false
+             */
+            keys_allowed: boolean;
+        };
+        /**
+         * SandboxResourceUsage
+         * @description 沙箱运行实际资源使用记录。
+         */
+        SandboxResourceUsage: {
+            /**
+             * Cpu Time Ms
+             * @description CPU 时间，单位毫秒。
+             * @default 0
+             */
+            cpu_time_ms: number;
+            /**
+             * Memory Bytes
+             * @description 内存使用，单位字节。
+             * @default 0
+             */
+            memory_bytes: number;
+            /**
+             * Disk Bytes
+             * @description 磁盘使用，单位字节。
+             * @default 0
+             */
+            disk_bytes: number;
+            /**
+             * Network Blocked
+             * @description 网络是否被阻止。
+             * @default true
+             */
+            network_blocked: boolean;
+            /**
+             * Keys Blocked
+             * @description 密钥访问是否被阻止。
+             * @default true
+             */
+            keys_blocked: boolean;
+        };
+        /**
+         * SandboxRunRequest
+         * @description 提交沙箱运行的请求。
+         */
+        SandboxRunRequest: {
+            /**
+             * Storyboard Id
+             * @description 关联的分镜 ID。
+             */
+            storyboard_id: string;
+            /**
+             * Source Code
+             * @description 可执行代码（Python/HTML/JS）。
+             */
+            source_code: string;
+            /**
+             * Code Language
+             * @description 代码语言：python, html, javascript。
+             */
+            code_language: string;
+            /**
+             * Repair Budget
+             * @description 有限修复次数上限。
+             * @default 3
+             */
+            repair_budget: number;
+            /**
+             * Fact Lock Ids
+             * @description 禁止触犯的事实锁 ID 列表。
+             */
+            fact_lock_ids?: string[];
+            /** @description 资源限制。 */
+            resource_limits?: components["schemas"]["SandboxResourceLimits"];
+        };
+        /**
+         * SandboxRunResult
+         * @description 沙箱运行结果。
+         */
+        SandboxRunResult: {
+            /**
+             * Run Id
+             * @description 沙箱运行标识符。
+             */
+            run_id: string;
+            /**
+             * Storyboard Id
+             * @description 关联的分镜 ID。
+             */
+            storyboard_id: string;
+            /** @description 运行状态。 */
+            status: components["schemas"]["SandboxRunStatus"];
+            /**
+             * Output
+             * @description 标准输出或渲染产物。
+             */
+            output?: string | null;
+            /**
+             * Error Log
+             * @description 运行错误日志。
+             */
+            error_log?: string[];
+            /** @description 资源使用记录。 */
+            resource_usage?: components["schemas"]["SandboxResourceUsage"];
+            /**
+             * Dependencies
+             * @description 依赖项记录。
+             */
+            dependencies?: components["schemas"]["SandboxDependency"][];
+            /**
+             * Content Hash
+             * @description 输出内容 SHA-256 哈希。
+             */
+            content_hash: string;
+            /**
+             * Fact Lock Violations
+             * @description 触犯的事实锁记录。
+             */
+            fact_lock_violations?: components["schemas"]["FactLockViolation"][];
+            /**
+             * Repair Attempts
+             * @description 已尝试的修复次数。
+             * @default 0
+             */
+            repair_attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间戳。
+             */
+            created_at: string;
+            /**
+             * Completed At
+             * @description 完成时间戳。
+             */
+            completed_at?: string | null;
+        };
+        /**
+         * SandboxRunStatus
+         * @description 沙箱运行状态，只描述运行本身。
+         * @enum {string}
+         */
+        SandboxRunStatus: "pending" | "running" | "completed" | "failed";
+        /**
+         * SceneAccessibility
+         * @description 无障碍描述信息，附加给一个场景。
+         */
+        SceneAccessibility: {
+            /**
+             * Alt Text
+             * @description 场景替代文本。
+             */
+            alt_text: string;
+            /**
+             * Long Description
+             * @description 场景长描述，用于复杂视觉场景。
+             */
+            long_description?: string | null;
+        };
+        /**
+         * SceneSpec
+         * @description 单场景视觉定义，可独立编辑和验证。
+         *
+         *     SceneSpec 定义单个场景的静态视觉设计，包含视觉对象列表、布局、状态、
+         *     数据绑定和无障碍描述。被 MediaStoryboard 中的镜头引用。
+         */
+        SceneSpec: {
+            /**
+             * Scene Spec Id
+             * @description 稳定场景规格标识符。
+             */
+            scene_spec_id: string;
+            /**
+             * Title
+             * @description 场景标题。
+             */
+            title: string;
+            /**
+             * Visual Objects
+             * @description 场景中的视觉对象列表。
+             */
+            visual_objects?: components["schemas"]["VisualObject"][];
+            /**
+             * Layout Description
+             * @description 布局描述。
+             * @default
+             */
+            layout_description: string;
+            /**
+             * State Description
+             * @description 场景状态描述。
+             */
+            state_description?: string | null;
+            /** @description 场景级无障碍描述。 */
+            accessibility?: components["schemas"]["SceneAccessibility"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间戳。
+             */
+            created_at: string;
+        };
+        /**
+         * ScientificMediaObject
+         * @description A generated scientific media object with editable source and bindings.
+         *
+         *     This is the output of the generation pipeline — a stand-alone media work
+         *     with its editable source, rendered SVG, claim bindings and accessibility
+         *     alternative. It is versioned and can enter the task stage artifact system.
+         */
+        ScientificMediaObject: {
+            /**
+             * Media Object Id
+             * @description Stable media object identifier.
+             */
+            media_object_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /** Project Id */
+            project_id?: string | null;
+            /** @description Chart or scientific figure. */
+            media_type: components["schemas"]["MediaObjectType"];
+            /** @description Editable source spec. */
+            editable_source: components["schemas"]["EditableSource"];
+            /**
+             * Svg Content
+             * @description Rendered SVG output.
+             */
+            svg_content?: string | null;
+            /** Claim Bindings */
+            claim_bindings?: components["schemas"]["ClaimVisualBinding"][];
+            /** Data Bindings */
+            data_bindings?: components["schemas"]["DataBinding"][];
+            /** Fact Lock Set Id */
+            fact_lock_set_id?: string | null;
+            /** @description Alt text and equivalent data table. */
+            accessibility: components["schemas"]["AccessibilityAlternative"];
+            /** Validation Errors */
+            validation_errors?: string[];
+            /** @default completed */
+            status: components["schemas"]["GenerationStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last update timestamp.
+             */
+            updated_at: string;
+        };
+        /**
          * ScientificQualityGateCheck
          * @description Named checks performed by the scientific quality gate.
          * @enum {string}
@@ -8613,7 +12546,7 @@ export interface components {
          * @description Actions that scope isolation can authorize or deny.
          * @enum {string}
          */
-        ScopeAction: "create" | "read" | "update" | "delete" | "share" | "execute";
+        ScopeAction: "create" | "read" | "update" | "delete" | "share" | "execute" | "administer";
         /**
          * ScopeEnvelope
          * @description Immutable scope snapshot carried by requests, runs, cache keys and RLS.
@@ -8801,6 +12734,126 @@ export interface components {
             coverage_gaps?: components["schemas"]["CoverageGap"][];
         };
         /**
+         * SeatPolicy
+         * @description Seat and usage policy for an institution.
+         */
+        SeatPolicy: {
+            /**
+             * Max Seats
+             * @description Maximum number of member seats, if enforced.
+             */
+            max_seats?: number | null;
+            /**
+             * Enforce Mfa
+             * @description Whether members must use multi-factor authentication.
+             * @default false
+             */
+            enforce_mfa: boolean;
+            /**
+             * Allow Guest Invites
+             * @description Whether project-level guest invites are allowed.
+             * @default true
+             */
+            allow_guest_invites: boolean;
+        };
+        /**
+         * SemanticDiff
+         * @description 两个包版本之间的判定差异；原始 YAML Diff 不能替代它。
+         */
+        SemanticDiff: {
+            /** Diff Id */
+            diff_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** From Version */
+            from_version: string;
+            /** To Version */
+            to_version: string;
+            /** Entries */
+            entries?: components["schemas"]["SemanticDiffEntry"][];
+            /** Digest */
+            digest: string;
+        };
+        /**
+         * SemanticDiffChange
+         * @description 语义差异变化类型。
+         * @enum {string}
+         */
+        SemanticDiffChange: "added" | "removed" | "modified";
+        /**
+         * SemanticDiffEntry
+         * @description 一条有判定意义的语义差异。
+         */
+        SemanticDiffEntry: {
+            /**
+             * Category
+             * @description rule / wording / human_gate / source / fixture / dependency / validator。
+             */
+            category: string;
+            change: components["schemas"]["SemanticDiffChange"];
+            /** Item Id */
+            item_id: string;
+            /** Label */
+            label: string;
+            /** Old Value */
+            old_value?: unknown;
+            /** New Value */
+            new_value?: unknown;
+            /**
+             * Impact
+             * @description 对判定的意义，例如“人工门升高”“BLOCKED 变为可发布”。
+             */
+            impact: string;
+            /** @default low */
+            significance: components["schemas"]["SemanticSignificance"];
+        };
+        /**
+         * SemanticSignificance
+         * @description 差异的判定意义级别。
+         * @enum {string}
+         */
+        SemanticSignificance: "high" | "medium" | "low";
+        /**
+         * SequentialReadingBlock
+         * @description 顺序阅读视图中的一个文本块。
+         */
+        SequentialReadingBlock: {
+            /**
+             * Order
+             * @description 阅读顺序。
+             */
+            order: number;
+            /**
+             * Role
+             * @description 块角色：title, objective, scene_narration, description, data_row。
+             */
+            role: string;
+            /**
+             * Text
+             * @description 块文本。
+             */
+            text: string;
+            /** Claim Ids */
+            claim_ids?: string[];
+        };
+        /**
+         * SequentialReadingView
+         * @description 顺序阅读合同：屏幕阅读器可线性遍历的内容版本。
+         */
+        SequentialReadingView: {
+            /**
+             * View Id
+             * @description 稳定视图标识符。
+             */
+            view_id: string;
+            /** Blocks */
+            blocks?: components["schemas"]["SequentialReadingBlock"][];
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Source Version */
+            source_version?: string | null;
+        };
+        /**
          * Session
          * @description Public session projection.
          *
@@ -8847,6 +12900,280 @@ export interface components {
             session: components["schemas"]["Session"];
             /** @description Resolved subject context. */
             subject: components["schemas"]["SubjectContext"];
+        };
+        /**
+         * ShareExecuteRequest
+         * @description Request to execute a share after preview confirmation.
+         */
+        ShareExecuteRequest: {
+            /**
+             * Source Object Id
+             * @description Personal vault object to share.
+             */
+            source_object_id: string;
+            /**
+             * Target Project Id
+             * @description Project that will receive the copy.
+             */
+            target_project_id: string;
+            /**
+             * Grant Purpose
+             * @description Declared purpose of the share.
+             */
+            grant_purpose: string;
+            /**
+             * Recipient Account Id
+             * @description Account that will receive access to the project copy.
+             */
+            recipient_account_id: string;
+            /**
+             * @description Role the recipient will hold.
+             * @default viewer
+             */
+            recipient_role: components["schemas"]["SharedProjectRole"];
+            /**
+             * Permissions
+             * @description Explicit object-level permissions for the recipient.
+             */
+            permissions?: components["schemas"]["GrantPermission"][];
+            /**
+             * Expires At
+             * @description If set, the object grant expires at this time.
+             */
+            expires_at?: string | null;
+        };
+        /**
+         * ShareExecuteResult
+         * @description Result of a successful share execution.
+         */
+        ShareExecuteResult: {
+            /**
+             * Project Object Id
+             * @description New project copy object identifier.
+             */
+            project_object_id: string;
+            /**
+             * Project Object Domain
+             * @description Domain of the new object.
+             * @default shared_project
+             */
+            project_object_domain: string;
+            /**
+             * Target Project Id
+             * @description Project that received the copy.
+             */
+            target_project_id: string;
+            /**
+             * Source Object Id
+             * @description Original personal vault object.
+             */
+            source_object_id: string;
+            /**
+             * Grant Id
+             * @description Object grant identifier for the recipient.
+             */
+            grant_id: string;
+            /**
+             * Expires At
+             * @description If set, the object grant expires at this time.
+             */
+            expires_at?: string | null;
+            /**
+             * Independence Note
+             * @description Post-share independence guarantee.
+             * @default 副本与原件独立；后续修改不自动同步。
+             */
+            independence_note: string;
+        };
+        /**
+         * SharePreview
+         * @description Preview of what will be shared before the user confirms.
+         *
+         *     The preview explicitly shows included and excluded fields, the current
+         *     owner, the target project, the purpose, the expiry, and the post-share
+         *     independence guarantee.
+         */
+        SharePreview: {
+            /**
+             * Source Object Id
+             * @description Personal vault object to share.
+             */
+            source_object_id: string;
+            /**
+             * Source Owner Id
+             * @description Current owner of the source object.
+             */
+            source_owner_id: string;
+            /**
+             * Target Project Id
+             * @description Project that will receive the copy.
+             */
+            target_project_id: string;
+            /**
+             * Recipient Account Id
+             * @description Account that will receive access to the project copy.
+             */
+            recipient_account_id: string;
+            /**
+             * Grant Purpose
+             * @description Declared purpose of the share.
+             */
+            grant_purpose: string;
+            /**
+             * Included Fields
+             * @description Fields that will be copied to the project object.
+             */
+            included_fields?: components["schemas"]["SharePreviewField"][];
+            /**
+             * Excluded Fields
+             * @description Fields that will NOT be copied (private metadata, profiles, etc.).
+             */
+            excluded_fields?: components["schemas"]["SharePreviewField"][];
+            /**
+             * Independence Note
+             * @description Explains that the copy is independent from the original.
+             * @default 副本与原件独立；后续修改不自动同步。
+             */
+            independence_note: string;
+            /**
+             * @description Role the recipient will hold in the shared project.
+             * @default viewer
+             */
+            recipient_role: components["schemas"]["SharedProjectRole"];
+            /**
+             * Permissions
+             * @description Explicit object-level permissions being granted.
+             */
+            permissions?: components["schemas"]["GrantPermission"][];
+            /**
+             * Expires At
+             * @description If set, the share grant expires at this time.
+             */
+            expires_at?: string | null;
+        };
+        /**
+         * SharePreviewField
+         * @description A single field in the share preview, indicating inclusion or exclusion.
+         */
+        SharePreviewField: {
+            /**
+             * Field Name
+             * @description Name of the field.
+             */
+            field_name: string;
+            /**
+             * Included
+             * @description Whether this field will be copied.
+             */
+            included: boolean;
+            /**
+             * Reason
+             * @description Why the field is included or excluded.
+             * @default
+             */
+            reason: string;
+        };
+        /**
+         * SharePreviewRequest
+         * @description Request to preview a share before it is executed.
+         */
+        SharePreviewRequest: {
+            /**
+             * Source Object Id
+             * @description Personal vault object to share.
+             */
+            source_object_id: string;
+            /**
+             * Target Project Id
+             * @description Project that will receive the copy.
+             */
+            target_project_id: string;
+            /**
+             * Grant Purpose
+             * @description Declared purpose of the share.
+             */
+            grant_purpose: string;
+            /**
+             * Recipient Account Id
+             * @description Account that will receive access to the project copy.
+             */
+            recipient_account_id: string;
+            /**
+             * @description Role the recipient will hold.
+             * @default viewer
+             */
+            recipient_role: components["schemas"]["SharedProjectRole"];
+            /**
+             * Permissions
+             * @description Explicit object-level permissions being requested.
+             */
+            permissions?: components["schemas"]["GrantPermission"][];
+            /**
+             * Expires At
+             * @description If set, the object grant expires at this time.
+             */
+            expires_at?: string | null;
+        };
+        /**
+         * SharedProjectMember
+         * @description A member of a shared project with their role.
+         */
+        SharedProjectMember: {
+            /**
+             * Project Id
+             * @description Project identifier.
+             */
+            project_id: string;
+            /**
+             * Account Id
+             * @description Member account identifier.
+             */
+            account_id: string;
+            /** @description Member's role in the project. */
+            role: components["schemas"]["SharedProjectRole"];
+            /**
+             * Joined At
+             * Format: date-time
+             * @description When the member joined.
+             */
+            joined_at: string;
+            /**
+             * Invited By
+             * @description Account that invited this member, if applicable.
+             */
+            invited_by?: string | null;
+        };
+        /**
+         * SharedProjectRole
+         * @description Role of a member inside a shared project.
+         *
+         *     Roles provide a baseline permission range; object-level grants can further
+         *     tighten or extend specific object access within the role's maximum.
+         * @enum {string}
+         */
+        SharedProjectRole: "owner" | "editor" | "reviewer" | "commenter" | "viewer";
+        /**
+         * SharingError
+         * @description Uniform sharing error response.
+         */
+        SharingError: {
+            /**
+             * Error
+             * @description Stable error code.
+             */
+            error: string;
+            /**
+             * Message
+             * @description Human-readable, non-leaking message.
+             */
+            message: string;
+            /**
+             * Details
+             * @description Opaque detail safe for logging; must not expose internal state.
+             */
+            details?: {
+                [key: string]: unknown;
+            };
         };
         /**
          * ShortLesson
@@ -8937,6 +13264,19 @@ export interface components {
              * @description Creation timestamp.
              */
             created_at: string;
+        };
+        /**
+         * SignatureRequest
+         * @description 提交签名时的意见与结论。
+         */
+        SignatureRequest: {
+            /**
+             * Opinion
+             * @default
+             */
+            opinion: string;
+            /** @default approve */
+            conclusion: components["schemas"]["AttestationConclusion"];
         };
         /**
          * SliceStatus
@@ -9265,6 +13605,225 @@ export interface components {
             end_time?: number | null;
         };
         /**
+         * SpecValidationResult
+         * @description Result of validating a chart/figure spec against source data and facts.
+         */
+        SpecValidationResult: {
+            /**
+             * Valid
+             * @description Whether the spec passes all checks.
+             */
+            valid: boolean;
+            /** Errors */
+            errors?: string[];
+            /** Warnings */
+            warnings?: string[];
+            /**
+             * Data Consistent
+             * @description Whether values match the source data.
+             * @default true
+             */
+            data_consistent: boolean;
+            /**
+             * Claims Consistent
+             * @description Whether claim bindings are valid.
+             * @default true
+             */
+            claims_consistent: boolean;
+        };
+        /**
+         * StaticCheckResult
+         * @description 代码生成后的静态检查结果。
+         */
+        StaticCheckResult: {
+            /**
+             * Passed
+             * @description 是否通过静态检查。
+             */
+            passed: boolean;
+            /**
+             * Ast Valid
+             * @description AST 解析是否有效。
+             * @default true
+             */
+            ast_valid: boolean;
+            /**
+             * Deps Whitelisted
+             * @description 依赖是否在白名单中。
+             * @default true
+             */
+            deps_whitelisted: boolean;
+            /**
+             * Lint Ok
+             * @description 代码规范检查是否通过。
+             * @default true
+             */
+            lint_ok: boolean;
+            /**
+             * Errors
+             * @description 检查错误列表。
+             */
+            errors?: string[];
+        };
+        /**
+         * StoryboardClaimBinding
+         * @description 分镜场景中视觉元素到 Claim/FactLock 的绑定。
+         */
+        StoryboardClaimBinding: {
+            /**
+             * Binding Id
+             * @description 稳定绑定标识符。
+             */
+            binding_id: string;
+            /**
+             * Scene Id
+             * @description 关联的镜头 ID。
+             */
+            scene_id: string;
+            /**
+             * Element Ref
+             * @description 引用的视觉元素引用。
+             */
+            element_ref: string;
+            /**
+             * Claim Id
+             * @description 绑定的 Claim ID。
+             */
+            claim_id?: string | null;
+            /**
+             * Fact Lock Id
+             * @description 绑定的 FactLock ID。
+             */
+            fact_lock_id?: string | null;
+        };
+        /**
+         * StoryboardGenerationRequest
+         * @description 创建结构化分镜的请求。
+         */
+        StoryboardGenerationRequest: {
+            /**
+             * Title
+             * @description 分镜标题。
+             */
+            title: string;
+            /**
+             * Teaching Objectives
+             * @description 教学目标列表。
+             */
+            teaching_objectives?: string[];
+            /**
+             * Media Type
+             * @description 媒体类型。
+             * @enum {string}
+             */
+            media_type: "animation" | "interactive_html";
+            /**
+             * Scenes
+             * @description 预定义的镜头列表。为空时由生成器创建默认分镜。
+             */
+            scenes?: components["schemas"]["StoryboardScene"][];
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Fact Lock Ids */
+            fact_lock_ids?: string[];
+            /** Project Id */
+            project_id?: string | null;
+        };
+        /**
+         * StoryboardNarration
+         * @description 分镜中一个镜头的旁白描述。
+         */
+        StoryboardNarration: {
+            /**
+             * Text
+             * @description 旁白正文。
+             */
+            text: string;
+            /**
+             * Language
+             * @description 旁白语言。
+             * @default zh-CN
+             */
+            language: string;
+            /**
+             * Voice Over Text
+             * @description 录音文本，与旁白不同时使用。
+             */
+            voice_over_text?: string | null;
+            /**
+             * Claim Ids
+             * @description 本旁白覆盖的 Claim ID 列表。
+             */
+            claim_ids?: string[];
+        };
+        /**
+         * StoryboardResult
+         * @description 分镜生成结果。
+         */
+        StoryboardResult: {
+            /** @description 生成的分镜。 */
+            storyboard: components["schemas"]["MediaStoryboard"];
+            /**
+             * Scene Specs
+             * @description 分镜引用的 SceneSpec 字典。
+             */
+            scene_specs?: {
+                [key: string]: components["schemas"]["SceneSpec"];
+            };
+        };
+        /**
+         * StoryboardScene
+         * @description 分镜中的一个镜头，引用 SceneSpec。
+         *
+         *     镜头是时间序列中的一段，包含对 SceneSpec 的引用、持续时间、
+         *     过渡类型、旁白、Claim 绑定和无障碍描述。
+         */
+        StoryboardScene: {
+            /**
+             * Scene Id
+             * @description 稳定镜头标识符。
+             */
+            scene_id: string;
+            /**
+             * Scene Number
+             * @description 镜头序号。
+             */
+            scene_number: number;
+            /**
+             * Scene Spec Id
+             * @description 引用的 SceneSpec ID。
+             */
+            scene_spec_id: string;
+            /**
+             * Timing Seconds
+             * @description 镜头持续时间，单位秒。
+             */
+            timing_seconds: number;
+            /**
+             * Transition Type
+             * @description 镜头间过渡类型：cut（直接切换）、dissolve（溶解）、push（推入）。
+             */
+            transition_type?: ("cut" | "dissolve" | "push") | null;
+            /** @description 镜头旁白。 */
+            narration?: components["schemas"]["StoryboardNarration"] | null;
+            /**
+             * Scene Claim Bindings
+             * @description 场景级 Claim 绑定。
+             */
+            scene_claim_bindings?: components["schemas"]["StoryboardClaimBinding"][];
+            /**
+             * Scene Accessibility
+             * @description 场景级无障碍描述。
+             */
+            scene_accessibility?: string | null;
+        };
+        /**
+         * StoryboardStatus
+         * @description 结构化分镜生命周期状态，独立于 T032 的 GenerationStatus。
+         * @enum {string}
+         */
+        StoryboardStatus: "draft" | "designing" | "source_generated" | "static_validated" | "sandbox_rendering" | "completed" | "repairable" | "repair_exhausted" | "quarantined" | "failed";
+        /**
          * StyleDiagnosticFinding
          * @description A single Chinese expression issue with a suggested local patch.
          *
@@ -9450,7 +14009,9 @@ export interface components {
          * @description Resolved subject for an authenticated request.
          *
          *     This is the canonical object carried by request state, audit logs, and RLS
-         *     context. It never includes the session secret.
+         *     context. It never includes the session secret. Memberships are populated by
+         *     the API layer from the institution service so downstream services can
+         *     evaluate institution-scoped access without re-querying identity.
          */
         SubjectContext: {
             /**
@@ -9470,6 +14031,11 @@ export interface components {
              * @description Device identifier when known.
              */
             device_id?: string | null;
+            /**
+             * Memberships
+             * @description Institution memberships for the current account.
+             */
+            memberships?: components["schemas"]["MembershipContext"][];
         };
         /**
          * SubmitExpressionFeedbackRequest
@@ -9503,6 +14069,237 @@ export interface components {
             /** @description Confirmed routing target. */
             routed_to: components["schemas"]["UserFeedbackTarget"];
         };
+        /**
+         * SyncControlSnapshot
+         * @description Control state pulled before the server evaluates device content edits.
+         */
+        SyncControlSnapshot: {
+            /**
+             * Account Id
+             * @description Account scope of the snapshot.
+             */
+            account_id: string;
+            /**
+             * Device Id
+             * @description Device requesting the snapshot.
+             */
+            device_id: string;
+            /**
+             * Authorization Version
+             * @description Current authorization policy version.
+             */
+            authorization_version: string;
+            /**
+             * Key Epoch
+             * @description Current key epoch expected from this device.
+             */
+            key_epoch: string;
+            /** @description Current device status. */
+            device_status: components["schemas"]["DeviceSyncStatus"];
+            /**
+             * Revoked Device Ids
+             * @description Devices denied new sync.
+             */
+            revoked_device_ids?: string[];
+            /**
+             * Tombstones
+             * @description Deletion markers to apply first.
+             */
+            tombstones?: components["schemas"]["Tombstone"][];
+            /**
+             * Latest Versions
+             * @description Object reference key to authoritative version.
+             */
+            latest_versions?: {
+                [key: string]: number;
+            };
+            /**
+             * Outbox
+             * @description Accepted operations available to the account's replicas.
+             */
+            outbox?: components["schemas"]["SyncOutboxEntry"][];
+        };
+        /**
+         * SyncExchangeRequest
+         * @description Control snapshot acknowledgement plus a device outbox batch.
+         */
+        SyncExchangeRequest: {
+            /**
+             * Device Id
+             * @description Device submitting the batch.
+             */
+            device_id: string;
+            /**
+             * Key Epoch
+             * @description Key epoch held by the device.
+             */
+            key_epoch: string;
+            /**
+             * Authorization Version
+             * @description Authorization version held by the device.
+             */
+            authorization_version: string;
+            /**
+             * Last Operation Id
+             * @description Newest operation acknowledged by device.
+             */
+            last_operation_id?: string | null;
+            /**
+             * Operations
+             * @description Offline operations to submit.
+             */
+            operations?: components["schemas"]["SyncOperation"][];
+        };
+        /**
+         * SyncExchangeResponse
+         * @description Result of a control-first sync exchange.
+         */
+        SyncExchangeResponse: {
+            /** @description Control state applied before content operations. */
+            control: components["schemas"]["SyncControlSnapshot"];
+            /**
+             * Accepted Operations
+             * @description Accepted mutations.
+             */
+            accepted_operations?: components["schemas"]["SyncOperation"][];
+            /**
+             * Quarantined Operations
+             * @description Isolated mutations.
+             */
+            quarantined_operations?: components["schemas"]["SyncOperation"][];
+            /**
+             * Conflicts
+             * @description Conflicts requiring human choice.
+             */
+            conflicts?: components["schemas"]["ConflictBranch"][];
+            /**
+             * Tombstones
+             * @description Tombstones that must be applied locally.
+             */
+            tombstones?: components["schemas"]["Tombstone"][];
+            /** @description Server acknowledgement of the exchange. */
+            device_ack: components["schemas"]["DeviceAck"];
+        };
+        /**
+         * SyncOperation
+         * @description A signed, causally versioned device mutation.
+         */
+        SyncOperation: {
+            /**
+             * Operation Id
+             * @description Stable idempotency key for the operation.
+             */
+            operation_id: string;
+            /**
+             * Account Id
+             * @description Account that owns the device replica.
+             */
+            account_id: string;
+            /**
+             * Device Id
+             * @description Device that created the operation.
+             */
+            device_id: string;
+            /** @description Object affected by the operation. */
+            object_ref: components["schemas"]["ObjectRef"];
+            /** @description Mutation kind. */
+            operation_type: components["schemas"]["SyncOperationType"];
+            /**
+             * Base Version
+             * @description Version observed before the edit.
+             */
+            base_version: number;
+            /**
+             * Causal Parent Ids
+             * @description Operation ids that causally precede this operation.
+             */
+            causal_parent_ids?: string[];
+            /**
+             * Payload
+             * @description Typed object patch; never treated as an authorization grant.
+             */
+            payload?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Authorization Version
+             * @description Authorization snapshot used by the device.
+             */
+            authorization_version: string;
+            /**
+             * Key Epoch
+             * @description Device key epoch used to authorize the operation.
+             */
+            key_epoch: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the device created the operation.
+             */
+            created_at: string;
+            /**
+             * Signature
+             * @description Base64 device signature.
+             */
+            signature?: string | null;
+            /**
+             * @description Latest server decision.
+             * @default pending
+             */
+            status: components["schemas"]["SyncOperationStatus"];
+            /**
+             * Quarantine Reason
+             * @description Safe reason when the operation is isolated.
+             */
+            quarantine_reason?: string | null;
+        };
+        /**
+         * SyncOperationStatus
+         * @description Server decision for a submitted operation.
+         * @enum {string}
+         */
+        SyncOperationStatus: "pending" | "accepted" | "merged" | "quarantined" | "conflict";
+        /**
+         * SyncOperationType
+         * @description Mutation kind carried by a device outbox.
+         * @enum {string}
+         */
+        SyncOperationType: "upsert" | "delete";
+        /**
+         * SyncOutboxEntry
+         * @description Durable operation-log entry waiting for replica delivery.
+         */
+        SyncOutboxEntry: {
+            /**
+             * Entry Id
+             * @description Stable outbox entry identifier.
+             */
+            entry_id: string;
+            /**
+             * Account Id
+             * @description Account whose replicas receive the entry.
+             */
+            account_id: string;
+            /** @description Accepted operation to deliver. */
+            operation: components["schemas"]["SyncOperation"];
+            /**
+             * @description Delivery state of the entry.
+             * @default pending
+             */
+            status: components["schemas"]["SyncOutboxStatus"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the entry was appended.
+             */
+            created_at: string;
+        };
+        /**
+         * SyncOutboxStatus
+         * @description Delivery state of a durable synchronization outbox entry.
+         * @enum {string}
+         */
+        SyncOutboxStatus: "pending" | "delivered";
         /**
          * TeachingPlan
          * @description A minimal teaching plan derived from a mission and its knowledge states.
@@ -9668,6 +14465,153 @@ export interface components {
             status: components["schemas"]["CapsuleStatus"];
         };
         /**
+         * Tombstone
+         * @description An immutable deletion marker that wins over offline edits and restore.
+         */
+        Tombstone: {
+            /**
+             * Tombstone Id
+             * @description Stable tombstone identifier.
+             */
+            tombstone_id: string;
+            /** @description Deleted object reference. */
+            object_ref: components["schemas"]["ObjectRef"];
+            /**
+             * Account Id
+             * @description Account that owns the deleted object.
+             */
+            account_id: string;
+            /**
+             * Deleted By Device Id
+             * @description Device that recorded the deletion.
+             */
+            deleted_by_device_id: string;
+            /**
+             * Deletion Operation Id
+             * @description Operation that created the tombstone.
+             */
+            deletion_operation_id: string;
+            /**
+             * Deletion Version
+             * @description Version at which deletion became authoritative.
+             */
+            deletion_version: number;
+            /**
+             * Authorization Version
+             * @description Authorization version at deletion time.
+             */
+            authorization_version: string;
+            /**
+             * Key Epoch
+             * @description Key epoch used to create the tombstone.
+             */
+            key_epoch: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description When the tombstone was created.
+             */
+            created_at: string;
+        };
+        /**
+         * Transcript
+         * @description 媒体对象的完整文字稿，与朗读、字幕共享 Claim 与版本。
+         */
+        Transcript: {
+            /**
+             * Transcript Id
+             * @description 稳定文字稿标识符。
+             */
+            transcript_id: string;
+            /**
+             * Language
+             * @default zh-CN
+             */
+            language: string;
+            /** Segments */
+            segments?: components["schemas"]["TranscriptSegment"][];
+            /**
+             * Full Text
+             * @description 全文文本。
+             * @default
+             */
+            full_text: string;
+            /** Claim Ids */
+            claim_ids?: string[];
+            /** Source Version */
+            source_version?: string | null;
+        };
+        /**
+         * TranscriptSegment
+         * @description A timed transcript segment with optional word-level alignment.
+         */
+        TranscriptSegment: {
+            /**
+             * Segment Id
+             * @description Stable segment identifier.
+             */
+            segment_id: string;
+            /**
+             * Start Time
+             * @description Start time in seconds.
+             */
+            start_time: number;
+            /**
+             * End Time
+             * @description End time in seconds.
+             */
+            end_time: number;
+            /**
+             * Text
+             * @description Transcribed text.
+             */
+            text: string;
+            /**
+             * Language
+             * @description Detected or declared language.
+             */
+            language?: string | null;
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+            /**
+             * Low Confidence
+             * @description Whether the segment needs review.
+             * @default false
+             */
+            low_confidence: boolean;
+            /** Words */
+            words?: components["schemas"]["TranscriptWord"][];
+        };
+        /**
+         * TranscriptWord
+         * @description A single word inside a transcript segment.
+         */
+        TranscriptWord: {
+            /**
+             * Text
+             * @description Recognized word.
+             */
+            text: string;
+            /**
+             * Start Time
+             * @description Start time in seconds.
+             */
+            start_time: number;
+            /**
+             * End Time
+             * @description End time in seconds.
+             */
+            end_time: number;
+            /**
+             * Confidence
+             * @default 1
+             */
+            confidence: number;
+        };
+        /**
          * UnusedSliceItem
          * @description One active assertion that was not included in the slice, with a reason.
          */
@@ -9760,80 +14704,6 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
-        };
-        /**
-         * ValidationReport
-         * @description Report produced by honest-degradation analysis of a claim graph.
-         *
-         *     The report records the evidence state for each claim, detected conflicts,
-         *     missing evidence, fact lock set id, wording strength ceiling, scientific
-         *     quality gate result, and recommended recovery actions. It is the input to
-         *     downstream expression nodes (T025) and to the task stage (T006).
-         */
-        ValidationReport: {
-            /**
-             * Report Id
-             * @description Stable validation report identifier.
-             */
-            report_id: string;
-            /**
-             * Graph Id
-             * @description Claim graph this report analyses.
-             */
-            graph_id: string;
-            /**
-             * Account Id
-             * @description Owning account.
-             */
-            account_id: string;
-            /**
-             * Project Id
-             * @description Project scope if any.
-             */
-            project_id?: string | null;
-            /** @description Derived honest-degradation status. */
-            status: components["schemas"]["ClaimTrustStatus"];
-            /** @description Status before this analysis. */
-            previous_status?: components["schemas"]["ClaimTrustStatus"] | null;
-            /**
-             * Evidence States
-             * @description Claim id -> aggregated evidence state.
-             */
-            evidence_states?: {
-                [key: string]: components["schemas"]["EvidenceState"];
-            };
-            /** Conflicts */
-            conflicts?: components["schemas"]["Conflict"][];
-            /** Missing Evidence Claim Ids */
-            missing_evidence_claim_ids?: string[];
-            /** Blocked Claim Ids */
-            blocked_claim_ids?: string[];
-            /** Fact Lock Set Id */
-            fact_lock_set_id?: string | null;
-            /**
-             * @description Global wording strength ceiling for the graph.
-             * @default unassessable
-             */
-            wording_strength_ceiling: components["schemas"]["WordingStrength"];
-            scientific_gate?: components["schemas"]["ScientificQualityGateResult"] | null;
-            /**
-             * Human Gate Required
-             * @default false
-             */
-            human_gate_required: boolean;
-            /** Human Gate Reason */
-            human_gate_reason?: string | null;
-            /**
-             * Recovery Actions
-             * @description Suggested actions: add_evidence, human_review, revise_claim, block_publish.
-             */
-            recovery_actions?: string[];
-            /**
-             * Created At
-             * Format: date-time
-             * @description Report timestamp.
-             */
-            created_at: string;
         };
         /**
          * VaultError
@@ -9942,6 +14812,21 @@ export interface components {
              * @default authz-1.0
              */
             authorization_version: string;
+            /**
+             * @description Authority domain for the new vault object.
+             * @default personal_vault
+             */
+            domain: components["schemas"]["VaultObjectDomain"];
+            /**
+             * Content Hash
+             * @description Optional pre-computed hash of the authoritative plaintext.
+             */
+            content_hash?: string | null;
+            /**
+             * Content Length
+             * @description Optional pre-computed length of the authoritative plaintext.
+             */
+            content_length?: number | null;
         };
         /**
          * VaultObjectDomain
@@ -9998,6 +14883,52 @@ export interface components {
              * @description Last update timestamp.
              */
             updated_at: string;
+        };
+        /**
+         * VaultRuntime
+         * @description Projection of a device-side vault runtime.
+         *
+         *     The runtime is the authoritative location for encrypted personal content,
+         *     private indexes and offline operations. It binds to exactly one account and
+         *     device certificate.
+         */
+        VaultRuntime: {
+            /**
+             * Runtime Id
+             * @description Stable runtime identifier.
+             */
+            runtime_id: string;
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /**
+             * Device Id
+             * @description Bound device identifier.
+             */
+            device_id: string;
+            /**
+             * Certificate Id
+             * @description Bound device certificate.
+             */
+            certificate_id: string;
+            /**
+             * Version
+             * @description Runtime version.
+             */
+            version: string;
+            /**
+             * Capabilities
+             * @description Supported capabilities, e.g. encrypted_storage, offline_index.
+             */
+            capabilities?: string[];
+            /**
+             * Paired At
+             * Format: date-time
+             * @description When the runtime was paired.
+             */
+            paired_at: string;
         };
         /**
          * VaultShareRequest
@@ -10086,6 +15017,52 @@ export interface components {
          */
         VersionDifferenceField: "fact_lock_set" | "claim_ids" | "citation_ids" | "wording_strength_ceiling" | "argument_plan" | "span_text" | "genre" | "model_run_lock" | "applied_patches" | "artifact_trust_status" | "human_decisions";
         /**
+         * VisualObject
+         * @description 分镜场景中的一个视觉对象。
+         */
+        VisualObject: {
+            /**
+             * Object Id
+             * @description 稳定对象标识符。
+             */
+            object_id: string;
+            /**
+             * Label
+             * @description 对象显示标签。
+             */
+            label: string;
+            /**
+             * Role
+             * @description 语义角色，如 axis_label, curve, annotation, particle。
+             */
+            role: string;
+            /**
+             * Initial State
+             * @description 初始状态描述。
+             */
+            initial_state: string;
+            /**
+             * Final State
+             * @description 终态描述。
+             */
+            final_state?: string | null;
+            /**
+             * Lifecycle Stages
+             * @description 动画对象的进入/保持/变换/退出阶段。
+             */
+            lifecycle_stages?: components["schemas"]["LifecycleStage"][];
+            /**
+             * Motion Trajectory
+             * @description 运动轨迹描述，动画关键信息。
+             */
+            motion_trajectory?: string | null;
+            /**
+             * Claim Id
+             * @description 绑定的 Claim ID。
+             */
+            claim_id?: string | null;
+        };
+        /**
          * WordingStrength
          * @description Deterministic ceiling on how strongly a claim may be worded.
          *
@@ -10163,6 +15140,53 @@ export interface components {
              */
             confirmed: boolean;
         };
+        /**
+         * WorkbenchPackRecord
+         * @description 专家工作台对一个包版本的完整治理记录。
+         */
+        WorkbenchPackRecord: {
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Manifest Digest */
+            manifest_digest: string;
+            /** Canonical Digest */
+            canonical_digest: string;
+            /** @default drafting */
+            stage: components["schemas"]["WorkbenchStage"];
+            /** @default draft */
+            lifecycle_status: components["schemas"]["DomainPackStatus"];
+            /** Maintainer Id */
+            maintainer_id: string;
+            /** Reviewer Id */
+            reviewer_id?: string | null;
+            /** Releaser Id */
+            releaser_id?: string | null;
+            /** Attestations */
+            attestations?: components["schemas"]["ReviewAttestation"][];
+            /** Declarations */
+            declarations?: components["schemas"]["ConflictOfInterestDeclaration"][];
+            /** Disclosures */
+            disclosures?: components["schemas"]["ConflictDisclosure"][];
+            gray_candidate?: components["schemas"]["GrayReleaseCandidate"] | null;
+            release?: components["schemas"]["PackRelease"] | null;
+            /** Checks */
+            checks?: components["schemas"]["DomainValidationCheck"][];
+            /** Fixture Results */
+            fixture_results?: components["schemas"]["FixtureResult"][];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * WorkbenchStage
+         * @description 复核流程阶段；它描述工作台流程，不替代包治理状态。
+         * @enum {string}
+         */
+        WorkbenchStage: "drafting" | "content_signed" | "review_assigned" | "review_completed" | "changes_requested" | "release_preflight" | "gray_release_ready" | "released";
         /**
          * WorkflowErrorResponse
          * @description Uniform workflow error response.
@@ -10322,6 +15346,59 @@ export interface components {
          */
         science_companion__contracts__learning__HumanDecisionType: "accept" | "reject" | "modify";
         /**
+         * ValidationReport
+         * @description 分镜沙箱运行的完整验证报告。
+         */
+        science_companion__contracts__media__ValidationReport: {
+            /**
+             * Report Id
+             * @description 稳定报告标识符。
+             */
+            report_id: string;
+            /**
+             * Run Id
+             * @description 关联的沙箱运行 ID。
+             */
+            run_id: string;
+            /**
+             * Storyboard Id
+             * @description 关联的分镜 ID。
+             */
+            storyboard_id: string;
+            /** @description 静态检查结果。 */
+            static_check?: components["schemas"]["StaticCheckResult"] | null;
+            /** @description 沙箱运行结果。 */
+            sandbox_result?: components["schemas"]["SandboxRunResult"] | null;
+            /**
+             * Science Valid
+             * @description 科学一致性验证是否通过。
+             * @default false
+             */
+            science_valid: boolean;
+            /**
+             * Fact Locks Preserved
+             * @description 事实锁是否完整保持。
+             * @default false
+             */
+            fact_locks_preserved: boolean;
+            /**
+             * Accessibility Checked
+             * @description 是否进行了无障碍检查。
+             * @default false
+             */
+            accessibility_checked: boolean;
+            /** Errors */
+            errors?: string[];
+            /** Warnings */
+            warnings?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 报告创建时间戳。
+             */
+            created_at: string;
+        };
+        /**
          * HumanDecision
          * @description Named human decision on a candidate profile.
          */
@@ -10362,6 +15439,80 @@ export interface components {
              * Created At
              * Format: date-time
              * @description When the decision was recorded.
+             */
+            created_at: string;
+        };
+        /**
+         * ValidationReport
+         * @description Report produced by honest-degradation analysis of a claim graph.
+         *
+         *     The report records the evidence state for each claim, detected conflicts,
+         *     missing evidence, fact lock set id, wording strength ceiling, scientific
+         *     quality gate result, and recommended recovery actions. It is the input to
+         *     downstream expression nodes (T025) and to the task stage (T006).
+         */
+        science_companion__contracts__science__ValidationReport: {
+            /**
+             * Report Id
+             * @description Stable validation report identifier.
+             */
+            report_id: string;
+            /**
+             * Graph Id
+             * @description Claim graph this report analyses.
+             */
+            graph_id: string;
+            /**
+             * Account Id
+             * @description Owning account.
+             */
+            account_id: string;
+            /**
+             * Project Id
+             * @description Project scope if any.
+             */
+            project_id?: string | null;
+            /** @description Derived honest-degradation status. */
+            status: components["schemas"]["ClaimTrustStatus"];
+            /** @description Status before this analysis. */
+            previous_status?: components["schemas"]["ClaimTrustStatus"] | null;
+            /**
+             * Evidence States
+             * @description Claim id -> aggregated evidence state.
+             */
+            evidence_states?: {
+                [key: string]: components["schemas"]["EvidenceState"];
+            };
+            /** Conflicts */
+            conflicts?: components["schemas"]["Conflict"][];
+            /** Missing Evidence Claim Ids */
+            missing_evidence_claim_ids?: string[];
+            /** Blocked Claim Ids */
+            blocked_claim_ids?: string[];
+            /** Fact Lock Set Id */
+            fact_lock_set_id?: string | null;
+            /**
+             * @description Global wording strength ceiling for the graph.
+             * @default unassessable
+             */
+            wording_strength_ceiling: components["schemas"]["WordingStrength"];
+            scientific_gate?: components["schemas"]["ScientificQualityGateResult"] | null;
+            /**
+             * Human Gate Required
+             * @default false
+             */
+            human_gate_required: boolean;
+            /** Human Gate Reason */
+            human_gate_reason?: string | null;
+            /**
+             * Recovery Actions
+             * @description Suggested actions: add_evidence, human_review, revise_claim, block_publish.
+             */
+            recovery_actions?: string[];
+            /**
+             * Created At
+             * Format: date-time
+             * @description Report timestamp.
              */
             created_at: string;
         };
@@ -10616,6 +15767,816 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AuthError"];
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_workbench_domain_packs_workbench_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbenchPackRecord"][];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_pack_domain_packs_workbench_register_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RegisterPackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbenchPackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 包版本未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台已登记该版本 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_workbench_record_domain_packs_workbench__pack_id___version__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbenchPackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_semantic_diff_domain_packs_workbench__pack_id___version__semantic_diff_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SemanticDiff"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_content_signature_domain_packs_workbench__pack_id___version__content_signature_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewAttestation"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不是内容维护者 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 签名门不满足 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_reviewer_domain_packs_workbench__pack_id___version__reviewer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbenchPackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 职责冲突或角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    assign_releaser_domain_packs_workbench__pack_id___version__releaser_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AssignRoleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkbenchPackRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 职责冲突或角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    submit_independent_signature_domain_packs_workbench__pack_id___version__independent_signature_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignatureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviewAttestation"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 职责冲突、角色或资质不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 夹具覆盖或重放失败 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_gray_release_domain_packs_workbench__pack_id___version__gray_release_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrayReleaseCandidate"] | null;
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    prepare_gray_release_domain_packs_workbench__pack_id___version__gray_release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GrayReleaseCandidate"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 角色不符 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 签名或摘要不满足 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    release_pack_domain_packs_workbench__pack_id___version__release_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PackRelease"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不是平台发行者 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 签名、灰度或摘要门不满足 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_qualifications_domain_packs_qualifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationRecord"][];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    register_qualification_domain_packs_qualifications_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QualificationRecord"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QualificationRecord"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 资质已登记 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    declare_conflict_of_interest_domain_packs_workbench__pack_id___version__conflict_of_interest_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictDeclarationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictOfInterestDeclaration"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_conflict_disclosure_domain_packs_workbench__pack_id___version__conflict_disclosure_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictDisclosureRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictDisclosure"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不是参与者 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -11288,6 +17249,1849 @@ export interface operations {
             };
         };
     };
+    pair_device_vault_devices_pair_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DevicePairingRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DevicePairingResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+        };
+    };
+    list_devices_vault_devices_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCertificate"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_device_vault_devices__device_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                device_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceRevocationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceCertificate"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_shared_projects_sharing_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_shared_project_sharing_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+        };
+    };
+    get_shared_project_sharing_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    preview_share_sharing_preview_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SharePreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharePreview"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+        };
+    };
+    execute_share_sharing_execute_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ShareExecuteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ShareExecuteResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+        };
+    };
+    create_invite_sharing_projects__project_id__invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InviteToken"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+        };
+    };
+    accept_invite_sharing_invites_accept_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InviteAcceptRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedProjectMember"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+        };
+    };
+    get_shared_object_sharing_projects__project_id__objects__object_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_shared_object_content_sharing_projects__project_id__objects__object_id__content_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "application/octet-stream": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_project_members_sharing_projects__project_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharedProjectMember"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    revoke_grant_sharing_grants__grant_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                grant_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectGrant"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SharingError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_control_snapshot_sync_control_get: {
+        parameters: {
+            query: {
+                device_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncControlSnapshot"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    exchange_sync_exchange_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SyncExchangeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SyncExchangeResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conflicts_sync_conflicts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictBranch"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_conflict_sync_conflicts__conflict_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conflict_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConflictResolutionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConflictBranch"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_institutions_institutions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Institution"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_institution_institutions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Institution"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    get_institution_institutions__institution_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Institution"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_invite_institutions__institution_id__invites_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionInviteRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    accept_invite_institutions_invites_accept_post: {
+        parameters: {
+            query: {
+                token_secret: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    list_members_institutions__institution_id__members_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_member_institutions__institution_id__members__account_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+                account_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_member_role_institutions__institution_id__members__account_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+                account_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionMemberUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Membership"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    get_policy_institutions__institution_id__policy_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_policy_institutions__institution_id__policy_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionPolicy"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    get_project_disclosure_institutions__institution_id__project_disclosure_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionOwnedProjectDisclosure"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_institution_projects_institutions__institution_id__projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Project"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_institution_project_institutions__institution_id__projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InstitutionProjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionProjectCreateResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    list_content_access_requests_institutions__institution_id__content_access_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlledContentAccessRequest"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    request_content_access_institutions__institution_id__content_access_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ControlledContentAccessCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlledContentAccessRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    approve_content_access_institutions__institution_id__content_access__request_id__approve_post: {
+        parameters: {
+            query: {
+                reason: string;
+            };
+            header?: never;
+            path: {
+                institution_id: string;
+                request_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlledContentAccessRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
+    revoke_content_access_institutions__institution_id__content_access__request_id__revoke_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                institution_id: string;
+                request_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ControlledContentAccessRequest"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InstitutionError"];
+                };
+            };
+        };
+    };
     list_observations_profiles_observations_get: {
         parameters: {
             query?: never;
@@ -11681,7 +19485,7 @@ export interface operations {
                 /** @description Project scope. */
                 project_id?: string | null;
                 /** @description Allowed sensitivity classes. */
-                sensitivity_class?: components["schemas"]["ProfileSensitivityClass"][];
+                sensitivity_class?: components["schemas"]["ProfileSensitivityClass"][] | null;
                 /** @description Slice time-to-live in seconds. */
                 ttl_seconds?: number;
                 /** @description Authorization policy version snapshot. */
@@ -13851,7 +21655,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ValidationReport"];
+                    "application/json": components["schemas"]["science_companion__contracts__science__ValidationReport"];
                 };
             };
             /** @description Unauthorized */
@@ -14798,6 +22602,1087 @@ export interface operations {
             header?: never;
             path: {
                 asset_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_chart_media_charts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChartGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    create_figure_media_figures_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FigureGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GenerationResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    get_media_object_media_objects__object_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScientificMediaObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_media_object_spec_media_objects__object_id__spec_put: {
+        parameters: {
+            query: {
+                spec_json: string;
+            };
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScientificMediaObject"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    validate_spec_media_validate_spec_post: {
+        parameters: {
+            query: {
+                spec_json: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecValidationResult"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    create_storyboard_media_storyboards_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StoryboardGenerationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StoryboardResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_storyboard_media_storyboards__storyboard_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                storyboard_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStoryboard"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_storyboard_media_storyboards__storyboard_id__put: {
+        parameters: {
+            query?: {
+                title?: string | null;
+            };
+            header?: never;
+            path: {
+                storyboard_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "application/json": string[] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaStoryboard"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_storyboard_code_media_storyboards__storyboard_id__code_post: {
+        parameters: {
+            query?: {
+                code_language?: string;
+            };
+            header?: never;
+            path: {
+                storyboard_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_storyboard_sandbox_media_storyboards__storyboard_id__sandbox_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                storyboard_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SandboxRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    get_sandbox_run_media_sandbox_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    repair_sandbox_run_media_sandbox_runs__run_id__repair_post: {
+        parameters: {
+            query: {
+                patch: string;
+                code_language?: string;
+            };
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: {
+            content: {
+                "application/json": string[] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SandboxRunResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    validate_storyboard_media_storyboards__storyboard_id__validate_get: {
+        parameters: {
+            query: {
+                run_id: string;
+            };
+            header?: never;
+            path: {
+                storyboard_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["science_companion__contracts__media__ValidationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_accessibility_bundle_media_accessibility_bundles_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccessibilityBundleRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessibilityBundle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_accessibility_bundle_media_accessibility_bundles__bundle_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessibilityBundle"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    validate_accessibility_bundle_media_accessibility_bundles__bundle_id__validate_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccessibilityValidationResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    control_accessibility_playback_media_accessibility_bundles__bundle_id__playback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                bundle_id: string;
+            };
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaybackControlRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaybackState"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    check_cross_media_consistency_media_cross_media_consistency_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CrossMediaClaimEntry"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CrossMediaConsistencyResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    evaluate_publish_gate_media_publish_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MultimodalPublishGateResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_publish_records_media_publish_get: {
+        parameters: {
+            query?: {
+                project_id?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_media_media_publish_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                science_companion_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MediaPublishRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MediaError"];
+                };
+            };
+        };
+    };
+    get_publish_record_media_publish__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
             };
             cookie?: {
                 science_companion_session?: string | null;

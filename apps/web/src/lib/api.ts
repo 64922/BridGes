@@ -13,6 +13,15 @@ export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"]
 export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
 export type ProjectSummary = components["schemas"]["ProjectSummary"];
 export type ProjectError = components["schemas"]["ProjectError"];
+export type WorkbenchPackRecord = components["schemas"]["WorkbenchPackRecord"];
+export type ReviewAttestation = components["schemas"]["ReviewAttestation"];
+export type SemanticDiff = components["schemas"]["SemanticDiff"];
+export type SemanticDiffEntry = components["schemas"]["SemanticDiffEntry"];
+export type GrayReleaseCandidate = components["schemas"]["GrayReleaseCandidate"];
+export type PackRelease = components["schemas"]["PackRelease"];
+export type QualificationRecord = components["schemas"]["QualificationRecord"];
+export type ConflictOfInterestDeclaration = components["schemas"]["ConflictOfInterestDeclaration"];
+export type DomainPackError = { error?: string; message?: string };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -121,6 +130,217 @@ export async function getProject(projectId: string): Promise<Project> {
   }
   return res.json();
 }
+
+async function parseDomainPackError(res: Response): Promise<DomainPackError> {
+  try {
+    const body: { detail?: DomainPackError } = await res.json();
+    return body.detail ?? { message: `请求失败（${res.status}）` };
+  } catch {
+    return { message: `请求失败（${res.status}）` };
+  }
+}
+
+export async function listWorkbenchPacks(): Promise<WorkbenchPackRecord[]> {
+  const res = await fetch(`${API_BASE}/domain-packs/workbench`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function registerWorkbenchPack(
+  packId: string,
+  version: string
+): Promise<WorkbenchPackRecord> {
+  const res = await fetch(`${API_BASE}/domain-packs/workbench/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ pack_id: packId, version }),
+  });
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function getWorkbenchRecord(
+  packId: string,
+  version: string
+): Promise<WorkbenchPackRecord> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function getSemanticDiff(
+  packId: string,
+  version: string
+): Promise<SemanticDiff> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/semantic-diff`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function submitContentSignature(
+  packId: string,
+  version: string,
+  opinion: string
+): Promise<ReviewAttestation> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/content-signature`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ opinion, conclusion: "approve" }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function assignReviewer(
+  packId: string,
+  version: string,
+  personId: string
+): Promise<WorkbenchPackRecord> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/reviewer`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ person_id: personId }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function assignReleaser(
+  packId: string,
+  version: string,
+  personId: string
+): Promise<WorkbenchPackRecord> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/releaser`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ person_id: personId }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export type AttestationConclusion = "approve" | "reject" | "needs_changes";
+
+export async function submitIndependentSignature(
+  packId: string,
+  version: string,
+  opinion: string,
+  conclusion: AttestationConclusion = "approve"
+): Promise<ReviewAttestation> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/independent-signature`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ opinion, conclusion }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function prepareGrayRelease(
+  packId: string,
+  version: string
+): Promise<GrayReleaseCandidate> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/gray-release`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function releasePack(
+  packId: string,
+  version: string
+): Promise<PackRelease> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/release`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export async function declareConflictOfInterest(
+  packId: string,
+  version: string,
+  disclosures: string[]
+): Promise<ConflictOfInterestDeclaration> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/conflict-of-interest`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ disclosures }),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export type ConflictDisclosureInput = {
+  item_ref: string;
+  minority_opinion: string;
+  basis?: string[];
+  missing_evidence?: string[];
+  decision?: string;
+};
+
+export async function addConflictDisclosure(
+  packId: string,
+  version: string,
+  input: ConflictDisclosureInput
+): Promise<ConflictDisclosure> {
+  const res = await fetch(
+    `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/conflict-disclosure`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(input),
+    }
+  );
+  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+export type ConflictDisclosure = {
+  disclosure_id: string;
+  pack_id: string;
+  pack_version: string;
+  item_ref: string;
+  minority_opinion: string;
+  basis?: string[];
+  missing_evidence?: string[];
+  decision?: string;
+  created_at: string;
+};
 
 export function statusText(status: HealthStatus): string {
   switch (status) {
