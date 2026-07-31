@@ -1,6 +1,10 @@
 """领域包协议、加载、版本目录和候选验证运行时。"""
 
 from science_companion.domain.loader import DomainPackLoader
+from science_companion.domain.math_formal_proof import (
+    MathFormalProofDomainPack,
+    create_math_formal_proof_pack,
+)
 from science_companion.domain.protocol import (
     DomainPack,
     DomainPackLoadError,
@@ -18,4 +22,6 @@ __all__ = [
     "DomainPackRegistryError",
     "DomainPackValidationRuntime",
     "LoadedDomainPack",
+    "MathFormalProofDomainPack",
+    "create_math_formal_proof_pack",
 ]
