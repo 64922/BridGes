@@ -15,6 +15,7 @@ from science_companion.contracts.domain import (
     AttestationConclusion,
     DomainClaimSchema,
     DomainPackManifest,
+    DomainPackStatus,
     DomainRule,
     DomainSourcePolicy,
     DomainWordingPolicy,
@@ -277,6 +278,89 @@ def _complete_signatures(
         opinion="独立复核通过",
     )
     service.prepare_gray_release(reviewer, manifest.id, manifest.version)
+
+
+class TestH3JointGate:
+    """H3 高风险变更必须由安全治理责任人联合确认后才能发行。"""
+
+    def _complete_h3_flow(
+        self,
+        service: DomainPackWorkbenchService,
+        manifest: DomainPackManifest,
+    ) -> None:
+        service.register_pack("maintainer", service.get_loaded(manifest.id, manifest.version))
+        _qualify(service, "reviewer", manifest)
+        _declare_all(service, manifest, ["maintainer", "reviewer", "releaser"])
+        _complete_signatures(service, manifest, "maintainer", "reviewer", "releaser")
+
+    def test_h3_declared_pack_release_requires_security_confirmation(
+        self,
+    ) -> None:
+        loader = DomainPackLoader(require_capability_contracts=False)
+        registry = DomainPackRegistry(loader)
+        manifest = build_manifest(human_gate="H3")
+        registry.register(MinimalDomainPack(manifest))
+        service = DomainPackWorkbenchService(
+            registry, runtime=DomainPackValidationRuntime(loader), loader=loader
+        )
+        self._complete_h3_flow(service, manifest)
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            service.release("releaser", manifest.id, manifest.version)
+        assert exc_info.value.code == "h3_security_required"
+        # 未确认前治理记录仍是 DRAFT，未激活。
+        assert service.get_record(manifest.id, manifest.version).lifecycle_status == (
+            DomainPackStatus.DRAFT
+        )
+
+    def test_h3_confirmation_enables_release(self) -> None:
+        loader = DomainPackLoader(require_capability_contracts=False)
+        registry = DomainPackRegistry(loader)
+        manifest = build_manifest(human_gate="H3")
+        registry.register(MinimalDomainPack(manifest))
+        service = DomainPackWorkbenchService(
+            registry, runtime=DomainPackValidationRuntime(loader), loader=loader
+        )
+        self._complete_h3_flow(service, manifest)
+        confirmation = service.confirm_h3_joint_gate(
+            "sec-admin", manifest.id, manifest.version, opinion="安全门已复核"
+        )
+        assert confirmation.confirmed_by == "sec-admin"
+        release = service.release("releaser", manifest.id, manifest.version)
+        assert release.canonical_digest == service.get_record(
+            manifest.id, manifest.version
+        ).canonical_digest
+        assert service.get_record(manifest.id, manifest.version).lifecycle_status == (
+            DomainPackStatus.ACTIVE
+        )
+
+    def test_confirmation_rejected_for_non_h3_pack(self) -> None:
+        loader = DomainPackLoader(require_capability_contracts=False)
+        registry = DomainPackRegistry(loader)
+        manifest = build_manifest()  # 无 H3 规则
+        loaded = registry.register(MinimalDomainPack(manifest))
+        service = DomainPackWorkbenchService(
+            registry, runtime=DomainPackValidationRuntime(loader), loader=loader
+        )
+        service.register_pack("maintainer", loaded)
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            service.confirm_h3_joint_gate(
+                "sec-admin", manifest.id, manifest.version, opinion="不适用"
+            )
+        assert exc_info.value.code == "h3_not_declared"
+
+    def test_duplicate_h3_confirmation_rejected(self) -> None:
+        loader = DomainPackLoader(require_capability_contracts=False)
+        registry = DomainPackRegistry(loader)
+        manifest = build_manifest(human_gate="H3")
+        loaded = registry.register(MinimalDomainPack(manifest))
+        service = DomainPackWorkbenchService(
+            registry, runtime=DomainPackValidationRuntime(loader), loader=loader
+        )
+        service.register_pack("maintainer", loaded)
+        service.confirm_h3_joint_gate("sec-admin", manifest.id, manifest.version)
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            service.confirm_h3_joint_gate("sec-admin", manifest.id, manifest.version)
+        assert exc_info.value.code == "already_confirmed"
 
 
 class TestThreeSignatureChain:

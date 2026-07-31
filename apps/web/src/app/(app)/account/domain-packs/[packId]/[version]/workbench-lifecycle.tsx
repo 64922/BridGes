@@ -133,11 +133,14 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
   const [newTrigger, setNewTrigger] = useState<PackInvalidationTrigger>("source_retracted");
   const [newReason, setNewReason] = useState("");
 
-  // 紧急撤销表单
+  // 紧急撤销表单：决策 6.10 要求二次认证、输入包 ID/版本并确认影响范围。
   const [showRevokeForm, setShowRevokeForm] = useState(false);
+  const [revokePackId, setRevokePackId] = useState(packId);
+  const [revokeVersion, setRevokeVersion] = useState(version);
   const [revokeTrigger, setRevokeTrigger] = useState<PackInvalidationTrigger>("security_event");
   const [revokeReason, setRevokeReason] = useState("");
   const [revokeFactor, setRevokeFactor] = useState("");
+  const [revokeImpactConfirmed, setRevokeImpactConfirmed] = useState(false);
 
   // 回滚表单
   const [showRollbackForm, setShowRollbackForm] = useState(false);
@@ -252,6 +255,9 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
   const revalidationAreas = revalidation?.areas ?? [];
   const currentRollbacks = rollbacks.filter(
     (rollback) => rollback.pack_id === packId
+  );
+  const currentRevocations = revocations.filter(
+    (item) => item.pack_id === packId
   );
 
   return (
@@ -470,7 +476,10 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
                     isLoading={busy === `advance:${next}`}
                     disabled={
                       (next === "impacted_objects_found" && !event.impact_set_id) ||
-                      (next === "closed" && revalidation?.status !== "completed")
+                      // 重验证报告只对展开事件加载；关闭门按各事件自身的报告裁决。
+                      (next === "closed" &&
+                        expanded &&
+                        revalidation?.status !== "completed")
                     }
                     onClick={() => handleAdvance(event)}
                   >
@@ -493,7 +502,7 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
                 </Button>
               </div>
 
-              {next === "closed" && revalidation?.status !== "completed" && (
+              {next === "closed" && expanded && revalidation?.status !== "completed" && (
                 <p role="status" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-wait)" }}>
                   重验证未完成前不能关闭失效事件。
                 </p>
@@ -659,23 +668,25 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
           {showRevokeForm && (
             <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
               <p role="status" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-                破坏性操作：将阻止该版本开始任何新运行。请确认包 ID 与版本，并输入二次认证令牌。
+                破坏性操作：将阻止该版本开始任何新运行。请输入目标包 ID 与版本（须与当前版本一致）、二次认证令牌，并确认影响范围。
               </p>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))", gap: "var(--space-3)" }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
                   <span className="sc-landmark-label" style={{ textTransform: "none" }}>包 ID</span>
                   <input
-                    value={packId}
-                    readOnly
-                    style={{ font: "inherit", padding: "var(--space-2)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-strong)", backgroundColor: "var(--color-bg-secondary)", minHeight: "var(--target-size)" }}
+                    value={revokePackId}
+                    onChange={(event) => setRevokePackId(event.target.value)}
+                    placeholder={packId}
+                    style={{ font: "inherit", padding: "var(--space-2)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-strong)", minHeight: "var(--target-size)" }}
                   />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
                   <span className="sc-landmark-label" style={{ textTransform: "none" }}>版本</span>
                   <input
-                    value={version}
-                    readOnly
-                    style={{ font: "inherit", padding: "var(--space-2)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-strong)", backgroundColor: "var(--color-bg-secondary)", minHeight: "var(--target-size)" }}
+                    value={revokeVersion}
+                    onChange={(event) => setRevokeVersion(event.target.value)}
+                    placeholder={version}
+                    style={{ font: "inherit", padding: "var(--space-2)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-strong)", minHeight: "var(--target-size)" }}
                   />
                 </label>
                 <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
@@ -712,9 +723,23 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
                   style={{ font: "inherit", padding: "var(--space-2)", borderRadius: "var(--radius-md)", border: "1px solid var(--color-border-strong)" }}
                 />
               </label>
+              <label style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)" }}>
+                <input
+                  type="checkbox"
+                  checked={revokeImpactConfirmed}
+                  onChange={(event) => setRevokeImpactConfirmed(event.target.checked)}
+                />
+                我确认该撤销将阻断本版本新运行，并影响其全部下游包、运行、Claim、Evidence、Wording、产物、项目与用户动作
+              </label>
               <Button
                 variant="danger"
-                disabled={!revokeReason.trim() || !revokeFactor.trim()}
+                disabled={
+                  !revokeReason.trim() ||
+                  !revokeFactor.trim() ||
+                  !revokeImpactConfirmed ||
+                  revokePackId.trim() !== packId ||
+                  revokeVersion.trim() !== version
+                }
                 isLoading={busy === "revoke"}
                 onClick={() =>
                   run("revoke", () =>
@@ -729,6 +754,7 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
                     setShowRevokeForm(false);
                     setRevokeReason("");
                     setRevokeFactor("");
+                    setRevokeImpactConfirmed(false);
                   })
                 }
               >
@@ -736,9 +762,9 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
               </Button>
             </div>
           )}
-          {revocations.length > 0 && (
+          {currentRevocations.length > 0 && (
             <ul role="list" style={{ margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
-              {revocations.map((item) => (
+              {currentRevocations.map((item) => (
                 <li
                   key={item.revocation_id}
                   style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "var(--space-2)", flexWrap: "wrap", fontSize: "var(--text-sm)" }}
@@ -771,7 +797,7 @@ export function WorkbenchLifecycle({ packId, version }: { packId: string; versio
           <Button
             variant="secondary"
             size="sm"
-            disabled={revocations.length === 0}
+            disabled={currentRevocations.length === 0}
             onClick={() => setShowRollbackForm((value) => !value)}
           >
             提议回滚

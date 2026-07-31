@@ -560,6 +560,58 @@ class TestEmergencyRevocation:
         with pytest.raises(DomainPackLifecycleError, match="领域包已撤销或失效"):
             env.lifecycle.require_packs_usable(["unknown.pack@1.0.0"])
 
+    def test_revoked_version_cannot_be_revived_through_workbench(
+        self, env: LifecycleEnv
+    ) -> None:
+        """撤销后的版本不能通过工作台三签、灰度或发行路径复活。
+
+        回滚门之外不允许存在第二条复活路径：治理状态只能由平台状态机
+        改变，工作台流程不能把 REVOKED 版本重新激活为 ACTIVE。
+        """
+        manifest = env.add_pack(build_manifest())
+        _sign_and_release(env.workbench, manifest, "maintainer", "reviewer", "releaser")
+        env.lifecycle.register_security_admin("sec-admin")
+        env.lifecycle.emergency_revoke(
+            "sec-admin",
+            manifest.id,
+            manifest.version,
+            PackInvalidationTrigger.SECURITY_EVENT,
+            "签名密钥泄漏",
+            second_factor="token-123",
+        )
+        assert env.workbench.get_record(manifest.id, manifest.version).lifecycle_status == (
+            DomainPackStatus.REVOKED
+        )
+        # 内容签名、独立签名、灰度、发行全部被治理状态门拒绝。
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            env.workbench.submit_content_signature(
+                "maintainer",
+                manifest.id,
+                manifest.version,
+                conclusion=AttestationConclusion.APPROVE,
+                opinion="复活尝试",
+            )
+        assert exc_info.value.code == "governance_blocked"
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            env.workbench.submit_independent_signature(
+                "reviewer",
+                manifest.id,
+                manifest.version,
+                conclusion=AttestationConclusion.APPROVE,
+                opinion="复活尝试",
+            )
+        assert exc_info.value.code == "governance_blocked"
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            env.workbench.prepare_gray_release("releaser", manifest.id, manifest.version)
+        assert exc_info.value.code == "governance_blocked"
+        with pytest.raises(DomainPackWorkbenchError) as exc_info:
+            env.workbench.release("releaser", manifest.id, manifest.version)
+        assert exc_info.value.code == "governance_blocked"
+        # 治理状态未被工作台流程改写。
+        assert env.workbench.get_record(manifest.id, manifest.version).lifecycle_status == (
+            DomainPackStatus.REVOKED
+        )
+
 
 class TestImpactSet:
     def test_impact_set_covers_all_categories(self, env: LifecycleEnv) -> None:

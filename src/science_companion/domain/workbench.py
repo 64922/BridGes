@@ -25,6 +25,7 @@ from science_companion.contracts.domain import (
     DomainPackStatus,
     GrayReleaseCandidate,
     GrayReleaseStatus,
+    H3SecurityConfirmation,
     PackRelease,
     QualificationRecord,
     ReviewAttestation,
@@ -208,6 +209,9 @@ def _diff_entries_between(
         old_rule = previous_rules[rule_id]
         new_rule = current_rules[rule_id]
         if old_rule.human_gate != new_rule.human_gate:
+            gate_level = {"H0": 1, "H1": 2, "H2": 3, "H3": 4}
+            old_level = gate_level.get(str(old_rule.human_gate).upper(), 0)
+            new_level = gate_level.get(str(new_rule.human_gate).upper(), 0)
             entries.append(
                 _modified(
                     "human_gate",
@@ -215,7 +219,13 @@ def _diff_entries_between(
                     f"规则 {rule_id} 人工门",
                     old_rule.human_gate,
                     new_rule.human_gate,
-                    "人工门升高" if new_rule.human_gate else "人工门降低",
+                    (
+                        "人工门升高"
+                        if new_level > old_level
+                        else "人工门降低"
+                        if new_level < old_level
+                        else "人工门调整"
+                    ),
                     SemanticSignificance.HIGH,
                 )
             )
@@ -354,20 +364,20 @@ def _diff_entries_between(
                 )
             )
             continue
-        old_policy = previous_sources[policy_id]
-        new_policy = current_sources[policy_id]
+        old_source = previous_sources[policy_id]
+        new_source = current_sources[policy_id]
         if (
-            old_policy.applies_to != new_policy.applies_to
-            or old_policy.allowed_source_roles != new_policy.allowed_source_roles
-            or old_policy.on_failure != new_policy.on_failure
-            or old_policy.evidence_requirements != new_policy.evidence_requirements
+            old_source.applies_to != new_source.applies_to
+            or old_source.allowed_source_roles != new_source.allowed_source_roles
+            or old_source.on_failure != new_source.on_failure
+            or old_source.evidence_requirements != new_source.evidence_requirements
         ):
             entries.append(
                 _modified(
                     "source",
                     policy_id,
                     f"来源策略 {policy_id} 权威范围",
-                    old_policy.model_dump(
+                    old_source.model_dump(
                         mode="json",
                         include={
                             "applies_to",
@@ -376,7 +386,7 @@ def _diff_entries_between(
                             "on_failure",
                         },
                     ),
-                    new_policy.model_dump(
+                    new_source.model_dump(
                         mode="json",
                         include={
                             "applies_to",
@@ -481,18 +491,31 @@ def _diff_entries_between(
         old_fixture = previous_fixtures[fixture_id]
         new_fixture = current_fixtures[fixture_id]
         if old_fixture.expected_status != new_fixture.expected_status:
-            flipped = {old_fixture.expected_status, new_fixture.expected_status}
+            # 翻转方向有判定意义：回归（可发布变 BLOCKED）与放宽
+            # （BLOCKED 变可发布）必须区分，不能只按集合判断。
+            publishable = {"verified", "qualified", "partial", "pass", "passed"}
+            human_gate = {"needs_human", "conflicted"}
+            old_status = old_fixture.expected_status
+            new_status = new_fixture.expected_status
             impact = "夹具翻转"
             significance = SemanticSignificance.MEDIUM
-            if "blocked" in flipped and any(
-                status in flipped for status in ("verified", "qualified", "pass")
-            ):
+            if old_status in publishable and new_status == "blocked":
+                impact = "可发布变为 BLOCKED"
+                significance = SemanticSignificance.HIGH
+            elif old_status == "blocked" and new_status in publishable:
                 impact = "BLOCKED 变为可发布"
                 significance = SemanticSignificance.HIGH
-            if "blocked" in flipped and any(
-                status in flipped for status in ("needs_human", "conflicted")
-            ):
+            elif old_status in human_gate and new_status == "blocked":
+                impact = "人工门判定变为 BLOCKED"
+                significance = SemanticSignificance.HIGH
+            elif old_status == "blocked" and new_status in human_gate:
                 impact = "变为人工门判定"
+                significance = SemanticSignificance.HIGH
+            elif old_status in publishable and new_status in human_gate:
+                impact = "可发布变为人工门判定"
+                significance = SemanticSignificance.HIGH
+            elif old_status in human_gate and new_status in publishable:
+                impact = "人工门判定变为可发布"
                 significance = SemanticSignificance.HIGH
             entries.append(
                 _modified(
@@ -695,7 +718,13 @@ class DomainPackWorkbenchService:
                 f"工作台已登记该版本：{key[0]}@{key[1]}。",
                 code="already_registered",
             )
-        summary = canonical_pack_summary(loaded.manifest)
+        # 规范化摘要的语义 Diff 组件与工作台展示的版本对 Diff 一致：
+        # 签名绑定的必须是评审者实际看到的判定差异。
+        previous = self._previous_loaded(loaded.pack_id, loaded.pack_version)
+        summary = canonical_pack_summary(
+            loaded.manifest,
+            previous.manifest if previous is not None else None,
+        )
         run = self._runtime.run(loaded)
         record = WorkbenchPackRecord(
             pack_id=loaded.pack_id,
@@ -859,9 +888,12 @@ class DomainPackWorkbenchService:
         pack_id: str,
         version: str,
         status: DomainPackStatus,
-        by: str,
     ) -> WorkbenchPackRecord:
-        """由平台状态机设置包治理状态（撤销、暂停等），不能由包文件自设。"""
+        """由平台状态机设置包治理状态（撤销、暂停等），不能由包文件自设。
+
+        操作者记录在对应的事件（如 RevocationEvent.revoked_by）中，
+        工作台记录本身不保存 actor。
+        """
         key = (pack_id, version)
         record = self._records.get(key)
         if record is None:
@@ -913,6 +945,23 @@ class DomainPackWorkbenchService:
     # 三签
     # ------------------------------------------------------------------
 
+    def _require_governance_usable(self, record: WorkbenchPackRecord) -> None:
+        """已撤销、暂停或过期的版本不能重新签名、灰度或发行。
+
+        治理状态只能由平台状态机（安全管理员撤销等）改变；工作台流程
+        不能把 REVOKED/SUSPENDED/EXPIRED 版本重新激活为 ACTIVE，
+        否则撤销记录之外存在第二条复活路径。
+        """
+        if record.lifecycle_status in {
+            DomainPackStatus.REVOKED,
+            DomainPackStatus.SUSPENDED,
+            DomainPackStatus.EXPIRED,
+        }:
+            raise DomainPackWorkbenchError(
+                f"版本处于 {record.lifecycle_status.value} 治理状态，不能继续签名、灰度或发行。",
+                code="governance_blocked",
+            )
+
     def submit_content_signature(
         self,
         person_id: str,
@@ -924,6 +973,7 @@ class DomainPackWorkbenchService:
     ) -> ReviewAttestation:
         """内容维护者对规范化包摘要提交内容签名。"""
         record = self.get_record(pack_id, version)
+        self._require_governance_usable(record)
         if record.stage in {WorkbenchStage.RELEASED}:
             raise DomainPackWorkbenchError(
                 "已发行版本不能重新签名。",
@@ -1056,6 +1106,7 @@ class DomainPackWorkbenchService:
         缺少反例、恶意例或人工门夹具时阻止进入独立复核。
         """
         record = self.get_record(pack_id, version)
+        self._require_governance_usable(record)
         if person_id == record.maintainer_id:
             raise DomainPackWorkbenchError(
                 "同一自然人不能同时充当维护者和独立复核者。",
@@ -1124,6 +1175,7 @@ class DomainPackWorkbenchService:
     ) -> GrayReleaseCandidate:
         """生成可发行候选；灰度结果不会自动激活领域包。"""
         record = self.get_record(pack_id, version)
+        self._require_governance_usable(record)
         if person_id not in {
             record.maintainer_id,
             record.reviewer_id,
@@ -1175,12 +1227,75 @@ class DomainPackWorkbenchService:
     ) -> GrayReleaseCandidate | None:
         return self.get_record(pack_id, version).gray_candidate
 
+    # ------------------------------------------------------------------
+    # H3 高风险联合门
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def declares_h3(manifest: DomainPackManifest) -> bool:
+        """包是否声明 H3 高风险变更（publication_stage_rules 或规则人工门）。"""
+        if any(
+            str(rule.get("gate_level", "")).upper() == "H3"
+            or "h3" in str(rule.get("stage", "")).lower()
+            for rule in manifest.publication_stage_rules
+        ):
+            return True
+        return any(rule.human_gate == "H3" for rule in manifest.rules)
+
+    def confirm_h3_joint_gate(
+        self,
+        security_admin_id: str,
+        pack_id: str,
+        version: str,
+        *,
+        opinion: str = "",
+    ) -> H3SecurityConfirmation:
+        """安全/治理责任人对 H3 高风险变更的联合确认。
+
+        调用方（API 层）必须先验证 security_admin_id 是安全管理员；
+        本方法只登记确认，不自行判定身份。
+        """
+        record = self.get_record(pack_id, version)
+        loaded = self.get_loaded(pack_id, version)
+        if not self.declares_h3(loaded.manifest):
+            raise DomainPackWorkbenchError(
+                "该包版本未声明 H3 高风险变更，不需要安全治理联合确认。",
+                code="h3_not_declared",
+            )
+        if any(
+            item.confirmed_by == security_admin_id
+            for item in record.h3_security_confirmations
+        ):
+            raise DomainPackWorkbenchError(
+                "该安全管理员已经确认过本版本的 H3 联合门。",
+                code="already_confirmed",
+            )
+        confirmation = H3SecurityConfirmation(
+            confirmation_id=f"h3-confirm-{secrets.token_urlsafe(10)}",
+            pack_id=pack_id,
+            pack_version=version,
+            confirmed_by=security_admin_id,
+            opinion=opinion,
+            confirmed_at=datetime.now(UTC),
+        )
+        self._records[(pack_id, version)] = record.model_copy(
+            update={
+                "h3_security_confirmations": list(
+                    record.h3_security_confirmations
+                )
+                + [confirmation],
+                "updated_at": datetime.now(UTC),
+            }
+        )
+        return confirmation
+
     def release(self, person_id: str, pack_id: str, version: str) -> PackRelease:
         """平台发行者重新验证全部签名与门后追加发行签名并激活。
 
         灰度只生成可发行候选；激活必须经过这里的发行签名。
         """
         record = self.get_record(pack_id, version)
+        self._require_governance_usable(record)
         if person_id != record.releaser_id:
             raise DomainPackWorkbenchError(
                 "只有平台发行者可以追加发行签名。",
@@ -1213,6 +1328,13 @@ class DomainPackWorkbenchService:
             raise DomainPackWorkbenchError(
                 "预检存在阻塞项，不能发行。",
                 code="preflight_blocked",
+            )
+        # H3 高风险变更：合资格领域专家（独立复核者资质）之外，
+        # 还要求安全/治理责任人联合确认；任一缺失即闭锁发行。
+        if self.declares_h3(loaded.manifest) and not record.h3_security_confirmations:
+            raise DomainPackWorkbenchError(
+                "H3 高风险变更要求安全治理责任人联合确认后才能发行。",
+                code="h3_security_required",
             )
         platform_attestation = ReviewAttestation(
             attestation_id=f"attestation-{secrets.token_urlsafe(10)}",
@@ -1287,7 +1409,11 @@ class DomainPackWorkbenchService:
         self, record: WorkbenchPackRecord, loaded: LoadedDomainPack
     ) -> CanonicalPackSummary:
         """内容与登记摘要一致时返回当前规范化摘要；任何变化使旧签名失效。"""
-        summary = canonical_pack_summary(loaded.manifest)
+        previous = self._previous_loaded(loaded.pack_id, loaded.pack_version)
+        summary = canonical_pack_summary(
+            loaded.manifest,
+            previous.manifest if previous is not None else None,
+        )
         if summary.canonical_digest != record.canonical_digest:
             raise DomainPackWorkbenchError(
                 "包内容已变化，旧摘要不再适用；请重新登记。",

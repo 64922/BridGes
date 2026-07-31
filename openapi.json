@@ -2569,6 +2569,96 @@
         }
       }
     },
+    "/domain-packs/workbench/{pack_id}/{version}/h3-confirmation": {
+      "post": {
+        "tags": [
+          "domain-packs"
+        ],
+        "summary": "Confirm H3 Joint Gate",
+        "description": "安全/治理责任人对 H3 高风险变更的联合确认（决策 15 §1.4）。",
+        "operationId": "confirm_h3_joint_gate_domain_packs_workbench__pack_id___version__h3_confirmation_post",
+        "parameters": [
+          {
+            "name": "pack_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Pack Id"
+            }
+          },
+          {
+            "name": "version",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          {
+            "name": "science_companion_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Science Companion Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/H3ConfirmationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/H3SecurityConfirmation"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未认证"
+          },
+          "403": {
+            "description": "不是安全管理员"
+          },
+          "404": {
+            "description": "工作台未登记"
+          },
+          "409": {
+            "description": "未声明 H3 或已确认"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/domain-packs/workbench/{pack_id}/{version}/conflict-disclosure": {
       "post": {
         "tags": [
@@ -23711,6 +23801,62 @@
         "title": "GrayReleaseStatus",
         "description": "灰度候选状态；READY_TO_RELEASE 不会自动激活。"
       },
+      "H3ConfirmationRequest": {
+        "properties": {
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "title": "H3ConfirmationRequest",
+        "description": "安全/治理责任人对 H3 高风险变更的联合确认。"
+      },
+      "H3SecurityConfirmation": {
+        "properties": {
+          "confirmation_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Confirmation Id"
+          },
+          "pack_id": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Id"
+          },
+          "pack_version": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Pack Version"
+          },
+          "confirmed_by": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Confirmed By"
+          },
+          "opinion": {
+            "type": "string",
+            "title": "Opinion",
+            "default": ""
+          },
+          "confirmed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Confirmed At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmation_id",
+          "pack_id",
+          "pack_version",
+          "confirmed_by",
+          "confirmed_at"
+        ],
+        "title": "H3SecurityConfirmation",
+        "description": "H3 高风险变更的安全/治理责任人联合确认。\n\n决策 15：H3 高风险变更要求合资格领域专家（由独立复核者资质承担）\n与安全/治理责任人联合签名；本对象记录安全治理一方的确认。"
+      },
       "HTTPValidationError": {
         "properties": {
           "detail": {
@@ -36121,6 +36267,13 @@
             },
             "type": "array",
             "title": "Disclosures"
+          },
+          "h3_security_confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/H3SecurityConfirmation"
+            },
+            "type": "array",
+            "title": "H3 Security Confirmations"
           },
           "gray_candidate": {
             "anyOf": [

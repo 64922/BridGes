@@ -19,6 +19,7 @@ from science_companion.contracts.domain import (
     ConflictDisclosure,
     ConflictOfInterestDeclaration,
     GrayReleaseCandidate,
+    H3SecurityConfirmation,
     PackImpactCategory,
     PackImpactSet,
     PackInvalidationEvent,
@@ -146,6 +147,12 @@ class ConflictDisclosureRequest(BaseModel):
     basis: list[str] = Field(default_factory=list)
     missing_evidence: list[str] = Field(default_factory=list)
     decision: str = Field(default="")
+
+
+class H3ConfirmationRequest(BaseModel):
+    """安全/治理责任人对 H3 高风险变更的联合确认。"""
+
+    opinion: str = Field(default="")
 
 
 @router.get(
@@ -962,6 +969,42 @@ async def declare_conflict_of_interest(
     try:
         return service.declare_conflict_of_interest(
             subject.account_id, pack_id, version, request.disclosures
+        )
+    except DomainPackWorkbenchError as exc:
+        raise _handle(exc) from exc
+
+
+@router.post(
+    "/workbench/{pack_id}/{version}/h3-confirmation",
+    response_model=H3SecurityConfirmation,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"description": "未认证"},
+        status.HTTP_403_FORBIDDEN: {"description": "不是安全管理员"},
+        status.HTTP_404_NOT_FOUND: {"description": "工作台未登记"},
+        status.HTTP_409_CONFLICT: {"description": "未声明 H3 或已确认"},
+    },
+)
+async def confirm_h3_joint_gate(
+    service: WorkbenchDep,
+    lifecycle: LifecycleDep,
+    subject: SubjectDep,
+    pack_id: str,
+    version: str,
+    request: H3ConfirmationRequest,
+) -> H3SecurityConfirmation:
+    """安全/治理责任人对 H3 高风险变更的联合确认（决策 15 §1.4）。"""
+    if not lifecycle.is_security_admin(subject.account_id):
+        raise _workbench_error(
+            status.HTTP_403_FORBIDDEN,
+            "role_required",
+            "只有安全管理员可以确认 H3 高风险变更的联合门。",
+        )
+    try:
+        return service.confirm_h3_joint_gate(
+            subject.account_id,
+            pack_id,
+            version,
+            opinion=request.opinion,
         )
     except DomainPackWorkbenchError as exc:
         raise _handle(exc) from exc

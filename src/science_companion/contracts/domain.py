@@ -719,6 +719,23 @@ class PackRelease(BaseModel):
     transparent_record: dict[str, Any] = Field(default_factory=dict)
 
 
+class H3SecurityConfirmation(BaseModel):
+    """H3 高风险变更的安全/治理责任人联合确认。
+
+    决策 15：H3 高风险变更要求合资格领域专家（由独立复核者资质承担）
+    与安全/治理责任人联合签名；本对象记录安全治理一方的确认。
+    """
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    confirmation_id: str = Field(min_length=1)
+    pack_id: str = Field(min_length=1)
+    pack_version: str = Field(min_length=1)
+    confirmed_by: str = Field(min_length=1)
+    opinion: str = Field(default="")
+    confirmed_at: datetime
+
+
 class WorkbenchPackRecord(BaseModel):
     """专家工作台对一个包版本的完整治理记录。"""
 
@@ -736,6 +753,7 @@ class WorkbenchPackRecord(BaseModel):
     attestations: list[ReviewAttestation] = Field(default_factory=list)
     declarations: list[ConflictOfInterestDeclaration] = Field(default_factory=list)
     disclosures: list[ConflictDisclosure] = Field(default_factory=list)
+    h3_security_confirmations: list[H3SecurityConfirmation] = Field(default_factory=list)
     gray_candidate: GrayReleaseCandidate | None = None
     release: PackRelease | None = None
     checks: list[DomainValidationCheck] = Field(default_factory=list)

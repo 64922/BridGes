@@ -311,17 +311,17 @@ class DomainPackLoader:
 
     @staticmethod
     def manifest_digest(manifest: DomainPackManifest) -> str:
-        """Return the canonical SHA-256 digest covered by pack signatures."""
+        """返回包签名所覆盖的规范化 SHA-256 摘要。
+
+        摘要排除 content_digest 自身与 signatures（避免循环依赖）；
+        声明值与重算值不一致由预检 check 判定，这里只负责重算。
+        """
         payload = manifest.model_dump(
             mode="json",
             exclude={"content_digest", "signatures"},
         )
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-        digest = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-        declared = manifest.content_digest
-        if declared and _normalize_digest(declared) != digest:
-            return digest
-        return digest
+        return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     @staticmethod
     def _check(

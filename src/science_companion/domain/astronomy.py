@@ -680,7 +680,11 @@ class AstronomyDomainPack:
             checks.append(_check("geocentric_topocentric", True, "非位置问题类型无需检查。"))
             return
         location = str(claim.get("observer_location", "")).lower()
-        if "and" in location and ("geocenter" in location or "地心" in location):
+        # 地心/站心混用：英文 and 分隔或中文“与/和”连接两种写法都要检出
+        # （规格 5.6：地心/站心混用必须进入夹具与规则）。
+        has_geocentric = "geocenter" in location or "地心" in location
+        has_topocentric = "topocentric" in location or "站心" in location
+        if has_geocentric and has_topocentric:
             reasons.append("geocentric_topocentric_mix")
             checks.append(
                 _check(

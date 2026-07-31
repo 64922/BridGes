@@ -523,7 +523,7 @@ class DomainPackLifecycleService:
         )
         self._revocations[revocation.revocation_id] = revocation
         self._workbench.set_lifecycle_status(
-            pack_id, version, DomainPackStatus.REVOKED, admin_id
+            pack_id, version, DomainPackStatus.REVOKED
         )
         return event, revocation
 
@@ -583,9 +583,7 @@ class DomainPackLifecycleService:
             for item in self._revocations.values()
         ):
             return False
-        if self._has_active_contained_event(pack_id, version):
-            return False
-        return True
+        return not self._has_active_contained_event(pack_id, version)
 
     def require_packs_usable(self, pack_refs: Sequence[str]) -> None:
         """新运行前检查全部领域包引用；任一失效即拒绝启动。"""

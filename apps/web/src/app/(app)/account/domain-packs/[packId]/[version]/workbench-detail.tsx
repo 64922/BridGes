@@ -144,6 +144,12 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
   const contentSig = attestations.find((item) => item.role === "content");
   const independentSig = attestations.find((item) => item.role === "independent");
   const platformSig = attestations.find((item) => item.role === "platform");
+  // 最近一次签名结论：变更请求（needs_changes）后旧 approve 不算已批准，
+  // 维护者重签、复核者重新提交后流程才能从 changes_requested 恢复。
+  const contentApproved =
+    attestations.filter((item) => item.role === "content").at(-1)?.conclusion === "approve";
+  const independentApproved =
+    attestations.filter((item) => item.role === "independent").at(-1)?.conclusion === "approve";
   const isMaintainer = accountId === record.maintainer_id;
   const isReviewer = accountId === record.reviewer_id;
   const isReleaser = accountId === record.releaser_id;
@@ -322,8 +328,8 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
           </h2>
           <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-3)" }}>
             {[
-              { role: "维护者", person: record.maintainer_id, active: isMaintainer, done: Boolean(contentSig) },
-              { role: "独立复核者", person: record.reviewer_id, active: isReviewer, done: Boolean(independentSig) },
+              { role: "维护者", person: record.maintainer_id, active: isMaintainer, done: contentApproved },
+              { role: "独立复核者", person: record.reviewer_id, active: isReviewer, done: independentApproved },
               { role: "平台发行者", person: record.releaser_id, active: isReleaser, done: Boolean(platformSig) },
             ].map((lane) => (
               <div
@@ -565,7 +571,9 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
               </div>
             )}
 
-            {isMaintainer && record.stage === "drafting" && !contentSig && (
+            {isMaintainer &&
+              !contentApproved &&
+              (record.stage === "drafting" || record.stage === "changes_requested") && (
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
                   <span className="sc-landmark-label" style={{ textTransform: "none" }}>签名意见</span>
@@ -580,7 +588,7 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
                   isLoading={busy === "content"}
                   onClick={() => run("content", () => submitContentSignature(packId, version, opinion))}
                 >
-                  提交内容签名
+                  {record.stage === "changes_requested" ? "按变更请求修订后重新提交内容签名" : "提交内容签名"}
                 </Button>
               </div>
             )}
@@ -633,7 +641,11 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
               </div>
             )}
 
-            {isReviewer && record.stage === "review_assigned" && !independentSig && (
+            {isReviewer &&
+              !independentApproved &&
+              (record.stage === "review_assigned" ||
+                record.stage === "changes_requested" ||
+                record.stage === "content_signed") && (
               <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
                 <label style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
                   <span className="sc-landmark-label" style={{ textTransform: "none" }}>复核意见</span>
@@ -665,7 +677,7 @@ export function WorkbenchDetail({ packId, version }: { packId: string; version: 
                   </Button>
                 </div>
                 <span style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-sm)" }}>
-                  变更请求把流程退回编写阶段，发行者不能覆盖。
+                  变更请求把流程退回编写阶段，发行者不能覆盖；维护者重签后你可再次提交独立验证。
                 </span>
               </div>
             )}

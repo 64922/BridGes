@@ -143,8 +143,19 @@ export async function getProject(projectId: string): Promise<Project> {
 
 async function parseDomainPackError(res: Response): Promise<DomainPackError> {
   try {
-    const body: { detail?: DomainPackError } = await res.json();
-    return body.detail ?? { message: `请求失败（${res.status}）` };
+    const body: { detail?: unknown } = await res.json();
+    // 领域包路由返回 {error, message} 对象；认证中间件（401）返回字符串、
+    // 校验错误（422）返回数组，统一折叠为可展示的消息。
+    if (typeof body.detail === "string" || Array.isArray(body.detail)) {
+      return { message: body.detail as string };
+    }
+    if (body.detail && typeof body.detail === "object") {
+      const detail = body.detail as { message?: unknown };
+      if (typeof detail.message === "string" && detail.message) {
+        return { message: detail.message };
+      }
+    }
+    return { message: `请求失败（${res.status}）` };
   } catch {
     return { message: `请求失败（${res.status}）` };
   }

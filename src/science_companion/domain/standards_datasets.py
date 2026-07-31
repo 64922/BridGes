@@ -864,7 +864,7 @@ class StandardsDatasetsDomainPack:
         reasons: list[str],
         checks: list[dict[str, Any]],
     ) -> None:
-        if question_type != "standard_definition":
+        if question_type not in {"standard_definition", "crosswalk"}:
             checks.append(_check("same_name_definition", True, "非标准定义问题无需检查。"))
             return
         content = str(claim.get("value", "")) + str(claim.get("description", ""))

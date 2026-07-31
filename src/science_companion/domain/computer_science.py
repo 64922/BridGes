@@ -1189,7 +1189,13 @@ def _build_manifest() -> DomainPackManifest:
         ),
         DomainRule(
             rule_id="cs.version_pinning",
-            applies_to=list(_QUESTION_TYPES),
+            # 复杂度与算法正确性结论绑定数学性质而非软件版本，不参与版本锁定
+            # （与 _validate_version_pinning 的豁免路径一致）。
+            applies_to=[
+                question_type
+                for question_type in _QUESTION_TYPES
+                if question_type not in {"complexity", "algorithm_correctness"}
+            ],
             explanation=(
                 "软件与规范结论绑定明确版本、发布日期和状态；"
                 "“最新版”或无版本声明不能作为有效一手结论。"
