@@ -113,13 +113,23 @@ class SqliteStateStore:
     def _build_fernet(encryption_key: SecretStr | str | None) -> Fernet | None:
         if encryption_key is None:
             return None
-        raw_key = (
-            encryption_key.get_secret_value()
-            if isinstance(encryption_key, SecretStr)
-            else encryption_key
-        )
-        digest = hashlib.sha256(raw_key.encode("utf-8")).digest()
-        return Fernet(base64.urlsafe_b64encode(digest))
+        return derive_fernet(encryption_key)
+
+
+def derive_fernet(encryption_key: SecretStr | str) -> Fernet:
+    """From a master secret, derive a Fernet key for at-rest encryption.
+
+    The derived key exists only in memory; it is never written to the database,
+    logs, or API responses. ``SqliteStateStore`` 与存储层对象库共用同一派生
+    规则，保证同一主密钥可解密两侧数据。
+    """
+    raw_key = (
+        encryption_key.get_secret_value()
+        if isinstance(encryption_key, SecretStr)
+        else encryption_key
+    )
+    digest = hashlib.sha256(raw_key.encode("utf-8")).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
 
 
 def _sqlite_path(database_url: str) -> str:
@@ -142,6 +152,20 @@ def _sqlite_path(database_url: str) -> str:
     if not path:
         raise PersistenceError("sqlite 数据库地址缺少文件路径。")
     return path
+
+
+def resolve_database_path(database_url: SecretStr | str) -> str:
+    """返回配置的 sqlite 数据库地址对应的磁盘路径。
+
+    ``build_state_store`` 内部使用同一解析规则；独立暴露供迁移命令等
+    只解析路径、不建连接的调用方使用。
+    """
+    value = (
+        database_url.get_secret_value()
+        if isinstance(database_url, SecretStr)
+        else database_url
+    )
+    return _sqlite_path(value)
 
 
 def build_state_store(

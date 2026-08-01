@@ -105,13 +105,26 @@ def doctor() -> None:
 def migrate() -> None:
     """Run database migrations.
 
-    T008 has no persistent schema yet; this command validates the migration
-    contract and configuration, then exits successfully.
+    Issue 05: 配置 BRIDGES_DATABASE_URL 时在空数据目录事务化创建带版本记录的
+    ``bridges.db``；重复执行幂等，只补齐缺失的迁移，绝不重复迁移或破坏数据。
     """
     _load_settings_or_exit()
     settings = get_settings()
     typer.echo(f"environment: {settings.environment}")
-    typer.echo("migrate: no migrations to apply in T008")
+    database_url = settings.database_url
+    if database_url is None or not database_url.get_secret_value():
+        typer.echo("migrate: 未配置 BRIDGES_DATABASE_URL，无需迁移。")
+        return
+    from bridges.persistence import PersistenceError, resolve_database_path
+    from bridges.storage import BridgesDatabase, StorageError
+
+    try:
+        path = resolve_database_path(database_url)
+        version = BridgesDatabase(path).initialize()
+    except (PersistenceError, StorageError) as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    typer.echo(f"migrate: 数据库迁移完成，当前模式版本 {version}")
 
 
 @app.command()

@@ -99,7 +99,12 @@ from bridges.media import (
     build_media_publish_impact_resolver,
 )
 from bridges.observability.service import ObservabilityService
-from bridges.persistence import PersistenceError, StateStore, build_state_store
+from bridges.persistence import (
+    PersistenceError,
+    SqliteStateStore,
+    StateStore,
+    build_state_store,
+)
 from bridges.profiles import InMemoryProfileRepository, ProfileService
 from bridges.profiles.api import router as profiles_router
 from bridges.projects import ProjectService
@@ -115,6 +120,12 @@ from bridges.science.claims import (
 from bridges.science.service import build_source_impact_resolver
 from bridges.scope import ScopeEnforcer
 from bridges.sharing import SharingService
+from bridges.storage import (
+    BridgesDatabase,
+    BridgesObjectRepository,
+    EncryptedFileObjectStore,
+    StorageError,
+)
 from bridges.sync import SyncService
 from bridges.vault import (
     FernetVaultEncryptionAdapter,
@@ -513,6 +524,34 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         else "memory"
     )
 
+    # Issue 05: 配置数据库时以同一数据目录初始化版本化 bridges.db 与账户隔离
+    # 加密对象库（对象目录为数据库同目录下的 objects/）。首次启动事务化创建
+    # 带版本记录的 bridges.db；失败与持久化错误同样进入 503 拒绝路径，绝不
+    # 静默降级。对象加密密钥派生自 BRIDGES_SECRET_KEY，任何位置不落盘密钥。
+    app.state.bridges_database = None
+    app.state.object_repository = None
+    if (
+        isinstance(state_store, SqliteStateStore)
+        and state_store.path != ":memory:"
+        and app.state.persistence_error is None
+    ):
+        settings = app.state.settings
+        if settings is not None and settings.secret_key is not None:
+            secret_value = settings.secret_key.get_secret_value()
+            if secret_value:
+                try:
+                    database = BridgesDatabase(Path(state_store.path))
+                    app.state.bridges_database = database
+                    app.state.object_repository = BridgesObjectRepository(
+                        database,
+                        EncryptedFileObjectStore(
+                            Path(state_store.path).parent / "objects",
+                            encryption_key=settings.secret_key,
+                        ),
+                    )
+                except StorageError as exc:
+                    app.state.persistence_error = str(exc)
+
     @app.middleware("http")
     async def reject_unpersisted_requests(request: Request, call_next: Any) -> Any:
         """持久化不可用时只保留健康检查，阻止私人数据进入内存。"""
@@ -537,6 +576,27 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 )
             )
             projection.ready = HealthStatus.FAIL
+        # Issue 05: 配置了版本化数据库时，把 bridges.db 健康度作为可选依赖
+        # 上报；数据库不可查询时进入降级状态而非静默成功。
+        bridges_database = getattr(app.state, "bridges_database", None)
+        if bridges_database is not None:
+            database_healthy = bridges_database.health_check()
+            projection.dependencies.append(
+                DependencyHealth(
+                    name="bridges_storage",
+                    status=(
+                        HealthStatus.PASS if database_healthy else HealthStatus.FAIL
+                    ),
+                    required=False,
+                    message=(
+                        None
+                        if database_healthy
+                        else "bridges.db 当前不可查询，请检查数据目录。"
+                    ),
+                )
+            )
+            if not database_healthy:
+                projection.degraded = HealthStatus.FAIL
         return projection
 
     # T007: attach the shared scope enforcer. All services, routes and background
