@@ -86,7 +86,7 @@ const variantStyles: Record<NonNullable<ButtonProps["variant"]>, React.CSSProper
 
 const sizeStyles: Record<NonNullable<ButtonProps["size"]>, React.CSSProperties> = {
   sm: {
-    minHeight: "2.25rem",
+    minHeight: "var(--target-size)",
     padding: "0.375rem 0.75rem",
     fontSize: "var(--text-sm)",
   },

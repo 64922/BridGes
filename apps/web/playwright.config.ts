@@ -9,28 +9,19 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 1 : undefined,
+  // 限制本地并发，避免 Windows 上多个重页面同时触发 Next 开发编译；
+  // CI 保持串行，视觉快照与跨页面状态回归可稳定复现。
+  workers: process.env.CI ? 1 : 4,
   reporter: "list",
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",
   },
   projects: [
+    // ADR-0023：BridGes 只面向桌面浏览器，不创建移动端 E2E 项目。
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
-    },
-    {
-      name: "chromium-mobile",
-      use: {
-        browserName: "chromium",
-        viewport: { width: 375, height: 667 },
-        deviceScaleFactor: 2,
-        isMobile: true,
-        hasTouch: true,
-        userAgent:
-          "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
-      },
     },
   ],
   webServer: [

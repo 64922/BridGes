@@ -15,7 +15,10 @@ const PUBLIC_PREFIXES = [
   "/api",
   "/favicon.ico",
   "/static",
+  "/brand",
 ];
+
+const DEVELOPMENT_ONLY_PREFIXES = ["/templates"];
 
 function isPublicPath(pathname: string): boolean {
   if (PUBLIC_PATHS.includes(pathname)) {
@@ -36,6 +39,13 @@ export function middleware(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
   const sessionCookie = request.cookies.get(SESSION_COOKIE_NAME);
   const hasSession = Boolean(sessionCookie?.value);
+
+  if (DEVELOPMENT_ONLY_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+    if (process.env.NODE_ENV !== "development") {
+      return NextResponse.redirect(new URL("/", request.url));
+    }
+    return NextResponse.next();
+  }
 
   if (isPublicPath(pathname)) {
     // Authenticated users don't need to see login/register pages.

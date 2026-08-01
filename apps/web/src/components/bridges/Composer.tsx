@@ -1,0 +1,343 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+
+import { Button } from "@/components/design-system/Button";
+import { Icon } from "@/components/design-system/Icon";
+
+interface ComposerProps {
+  onSend: (text: string) => void;
+  generating?: boolean;
+  onStop?: () => void;
+}
+
+interface SpeechRecognitionResultEventLike {
+  results: ArrayLike<{ 0: { transcript: string } }>;
+}
+
+interface SpeechRecognitionErrorEventLike {
+  error: string;
+}
+
+interface SpeechRecognitionLike {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+
+/**
+ * 对话输入区。
+ *
+ * 键位约定（与行为基线一致）：Enter 发送、Shift+Enter 换行；
+ * 空输入时发送按钮禁用并说明原因；生成中发送键变为「停止」；
+ * 文件与图片按钮打开真实的本地文件选择器，模板仅保存文件名，不读取文件内容。
+ */
+export function Composer({ onSend, generating = false, onStop }: ComposerProps) {
+  const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState<string[]>([]);
+  const [dictating, setDictating] = useState(false);
+  const [dictationError, setDictationError] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+
+  const canSend = text.trim().length > 0 || attachments.length > 0;
+
+  const autoGrow = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 12 * 16)}px`;
+  };
+
+  const send = () => {
+    if (!canSend || generating) return;
+    onSend(text.trim() || "（仅附件）");
+    setText("");
+    setAttachments([]);
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setDictating(false);
+    requestAnimationFrame(autoGrow);
+  };
+
+  const addSelectedFiles = (files: FileList | null) => {
+    if (!files) return;
+    const names = Array.from(files, (file) => file.name);
+    setAttachments((current) => Array.from(new Set([...current, ...names])));
+  };
+
+  const stopDictation = () => {
+    recognitionRef.current?.stop();
+    recognitionRef.current = null;
+    setDictating(false);
+  };
+
+  const toggleDictation = () => {
+    if (dictating) {
+      stopDictation();
+      return;
+    }
+
+    const speechWindow = window as typeof window & {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
+    if (!Recognition) {
+      setDictationError("当前浏览器不支持语音听写，请改用键盘输入。");
+      return;
+    }
+
+    const recognition = new Recognition();
+    recognition.lang = "zh-CN";
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.onresult = (event) => {
+      const last = event.results[event.results.length - 1];
+      const transcript = last?.[0]?.transcript?.trim();
+      if (!transcript) return;
+      setText((current) => `${current}${current ? " " : ""}${transcript}`);
+      requestAnimationFrame(autoGrow);
+    };
+    recognition.onerror = (event) => {
+      setDictationError(`听写失败（${event.error}），请重试或改用键盘输入。`);
+      recognitionRef.current = null;
+      setDictating(false);
+    };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setDictating(false);
+    };
+
+    try {
+      setDictationError("");
+      recognition.start();
+      recognitionRef.current = recognition;
+      setDictating(true);
+    } catch {
+      setDictationError("无法启动语音听写，请检查麦克风权限后重试。");
+    }
+  };
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && generating) {
+        event.preventDefault();
+        onStop?.();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [generating, onStop]);
+
+  useEffect(() => () => recognitionRef.current?.stop(), []);
+
+  const iconButtonStyle: React.CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: "var(--target-size)",
+    minHeight: "var(--target-size)",
+    border: "none",
+    borderRadius: "var(--radius-md)",
+    backgroundColor: "transparent",
+    color: "var(--color-text-secondary)",
+    cursor: "pointer",
+  };
+
+  return (
+    <div
+      data-testid="composer"
+      style={{
+        border: "1px solid var(--color-border-strong)",
+        borderRadius: "var(--radius-xl)",
+        backgroundColor: "var(--color-surface)",
+        boxShadow: "var(--shadow-sm)",
+        padding: "var(--space-3)",
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-2)",
+      }}
+    >
+      {attachments.length > 0 && (
+        <ul role="list" aria-label="待发送附件" style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
+          {attachments.map((name) => (
+            <li
+              key={name}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "var(--space-2)",
+                maxWidth: "100%",
+                padding: "var(--space-1) var(--space-2)",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--color-border)",
+                backgroundColor: "var(--color-bg-secondary)",
+                fontSize: "var(--text-sm)",
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              <Icon name="uploadFile" size={16} aria-hidden />
+              <span
+                style={{
+                  maxWidth: "22rem",
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                }}
+                title={name}
+              >
+                {name}
+              </span>
+              <button
+                type="button"
+                aria-label={`移除附件 ${name}`}
+                onClick={() => setAttachments((list) => list.filter((item) => item !== name))}
+                style={{
+                  display: "inline-flex",
+                  border: "none",
+                  background: "none",
+                  color: "var(--color-text-tertiary)",
+                  cursor: "pointer",
+                  padding: "var(--space-1)",
+                }}
+              >
+                <Icon name="close" size={14} aria-hidden />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <label htmlFor="composer-input" className="sc-visually-hidden">
+        输入消息
+      </label>
+      <textarea
+        ref={textareaRef}
+        id="composer-input"
+        rows={2}
+        value={text}
+        onChange={(event) => {
+          setText(event.target.value);
+          autoGrow();
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" && !event.shiftKey) {
+            event.preventDefault();
+            send();
+          }
+        }}
+        placeholder="向 BridGes 提问，或描述你的学习目标"
+        style={{
+          width: "100%",
+          border: "none",
+          outline: "none",
+          resize: "none",
+          backgroundColor: "transparent",
+          color: "var(--color-text-primary)",
+          fontSize: "var(--text-base)",
+          lineHeight: "var(--line-height-normal)",
+          maxHeight: "12rem",
+        }}
+      />
+
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          tabIndex={-1}
+          aria-hidden="true"
+          data-testid="composer-file-input"
+          onChange={(event) => {
+            addSelectedFiles(event.target.files);
+            event.target.value = "";
+          }}
+          style={{ display: "none" }}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          multiple
+          tabIndex={-1}
+          aria-hidden="true"
+          data-testid="composer-image-input"
+          onChange={(event) => {
+            addSelectedFiles(event.target.files);
+            event.target.value = "";
+          }}
+          style={{ display: "none" }}
+        />
+        <button
+          type="button"
+          aria-label="上传文件"
+          onClick={() => fileInputRef.current?.click()}
+          style={iconButtonStyle}
+        >
+          <Icon name="uploadFile" size={20} aria-hidden />
+        </button>
+        <button
+          type="button"
+          aria-label="上传图片"
+          onClick={() => imageInputRef.current?.click()}
+          style={iconButtonStyle}
+        >
+          <Icon name="uploadImage" size={20} aria-hidden />
+        </button>
+        <button
+          type="button"
+          aria-label={dictating ? "停止听写" : "开始听写"}
+          aria-pressed={dictating}
+          onClick={toggleDictation}
+          style={{
+            ...iconButtonStyle,
+            color: dictating ? "var(--color-accent-primary)" : "var(--color-text-secondary)",
+          }}
+        >
+          <Icon name="dictation" size={20} aria-hidden />
+        </button>
+        {dictating && (
+          <span role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-accent-primary)" }}>
+            听写中，请开始说话…
+          </span>
+        )}
+        {dictationError && (
+          <span role="alert" style={{ fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
+            {dictationError}
+          </span>
+        )}
+
+        <span style={{ flex: 1 }} />
+
+        {generating ? (
+          <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
+            <Icon name="close" size={16} aria-hidden />
+            停止
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={send}
+            disabled={!canSend}
+            aria-label="发送消息"
+            title={canSend ? "发送" : "输入内容后才能发送"}
+          >
+            <Icon name="send" size={16} aria-hidden />
+            发送
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}

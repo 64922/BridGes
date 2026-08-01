@@ -38,6 +38,23 @@
     font: inherit;
   }
 
+  button,
+  a {
+    transition:
+      filter var(--motion-duration-fast) var(--motion-easing),
+      opacity var(--motion-duration-fast) var(--motion-easing);
+  }
+
+  button:not(:disabled):hover,
+  nav a:hover {
+    filter: brightness(0.96);
+  }
+
+  button:not(:disabled):active,
+  nav a:active {
+    filter: brightness(0.9);
+  }
+
   p,
   h1,
   h2,
@@ -56,27 +73,33 @@
 
 @layer base {
   :root {
-    /* 颜色令牌：颜色只作为冗余编码，所有状态必须同时有文字 */
-    --color-bg-primary: #fdfbf7;
-    --color-bg-secondary: #f5f3ee;
+    /* 颜色令牌（浅色主题，默认）：Claude-inspired 的温暖、克制、高可读性方向。
+       所有取值均为 BridGes 原创选择，不复制任何品牌配色；
+       颜色只作为冗余编码，所有状态必须同时有文字。
+       对比度由 scripts/check_contrast.py 校验（37 对全部通过 WCAG AA）。 */
+    --color-bg-primary: #faf9f5;
+    --color-bg-secondary: #f2efe6;
     --color-surface: #ffffff;
     --color-surface-elevated: #ffffff;
-    --color-border: #dddad3;
-    --color-border-strong: #c7c4bd;
+    --color-border: #e4e0d5;
+    --color-border-strong: #c7c2b2;
 
-    --color-text-primary: #1a1a1a;
-    --color-text-secondary: #4a4a4a;
-    --color-text-tertiary: #6b6b6b;
+    --color-text-primary: #1f1e1a;
+    --color-text-secondary: #4a463c;
+    --color-text-tertiary: #6b6659;
     --color-text-on-accent: #ffffff;
 
-    --color-accent-primary: #1b4d3e;
-    --color-accent-primary-hover: #143d31;
-    --color-accent-secondary: #2563eb;
-    --color-accent-secondary-hover: #1d4ed8;
+    /* 主强调色：暖赭石（terracotta 方向），用于主要操作与品牌 */
+    --color-accent-primary: #a84b2a;
+    --color-accent-primary-hover: #8c3e22;
+    --color-accent-primary-soft: #f3e2d8;
+    /* 次强调色：高可读链接蓝 */
+    --color-accent-secondary: #1d4ed8;
+    --color-accent-secondary-hover: #1e40af;
 
-    --color-status-success: #15803d;
+    --color-status-success: #166534;
     --color-status-success-bg: #dcfce7;
-    --color-status-wait: #b45309;
+    --color-status-wait: #92400e;
     --color-status-wait-bg: #fef3c7;
     --color-status-error: #b91c1c;
     --color-status-error-bg: #fee2e2;
@@ -85,8 +108,8 @@
     --color-status-unknown: #525252;
     --color-status-unknown-bg: #f5f5f5;
 
-    --color-focus-ring: #2563eb;
-    --color-focus-ring-offset: #fdfbf7;
+    --color-focus-ring: #1d4ed8;
+    --color-focus-ring-offset: #faf9f5;
 
     /* 间距令牌 */
     --space-1: 0.25rem;
@@ -136,10 +159,51 @@
 
     /* 布局令牌 */
     --sidebar-width: 16rem;
+    --sidebar-width-collapsed: 4rem;
     --topbar-height: 3.5rem;
     --inspector-width: 20rem;
     --max-content-width: 80rem;
+    --chat-column-width: 48rem;
     --target-size: 2.75rem; /* 44px */
+  }
+
+  /* 深色主题：通过 <html data-theme="dark"> 启用（设置模板提供真实切换） */
+  [data-theme="dark"] {
+    --color-bg-primary: #201e19;
+    --color-bg-secondary: #26231d;
+    --color-surface: #2a2822;
+    --color-surface-elevated: #34312a;
+    --color-border: #413c31;
+    --color-border-strong: #57503f;
+
+    --color-text-primary: #f5f2ea;
+    --color-text-secondary: #cfc9b8;
+    --color-text-tertiary: #a8a291;
+    --color-text-on-accent: #241207;
+
+    --color-accent-primary: #e1936b;
+    --color-accent-primary-hover: #eaa582;
+    --color-accent-primary-soft: #3d2b22;
+    --color-accent-secondary: #93b4fd;
+    --color-accent-secondary-hover: #b6cbfe;
+
+    --color-status-success: #86efac;
+    --color-status-success-bg: #14532d;
+    --color-status-wait: #fcd34d;
+    --color-status-wait-bg: #713f12;
+    --color-status-error: #fca5a5;
+    --color-status-error-bg: #7f1d1d;
+    --color-status-info: #93b4fd;
+    --color-status-info-bg: #1e3a8a;
+    --color-status-unknown: #d4d4d4;
+    --color-status-unknown-bg: #404040;
+
+    --color-focus-ring: #93b4fd;
+    --color-focus-ring-offset: #201e19;
+
+    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.35), 0 2px 4px -2px rgb(0 0 0 / 0.35);
+    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.4), 0 4px 6px -4px rgb(0 0 0 / 0.4);
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -161,6 +225,10 @@
 
   html {
     color-scheme: light;
+  }
+
+  [data-theme="dark"] {
+    color-scheme: dark;
   }
 
   body {
@@ -214,6 +282,26 @@
 }
 
 @layer components {
+  .bridges-logo,
+  .bridges-logo-light,
+  .bridges-logo-dark {
+    display: block;
+    height: auto;
+    max-width: 100%;
+  }
+
+  .bridges-logo-dark {
+    display: none;
+  }
+
+  [data-theme="dark"] .bridges-logo-light {
+    display: none;
+  }
+
+  [data-theme="dark"] .bridges-logo-dark {
+    display: block;
+  }
+
   .sc-container {
     width: 100%;
     max-width: var(--max-content-width);
@@ -224,7 +312,7 @@
   .sc-card {
     background-color: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-xl);
     padding: var(--space-5);
     box-shadow: var(--shadow-sm);
   }
@@ -246,6 +334,22 @@
 }
 
 @layer utilities {
+  @keyframes bg-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .bg-spinner {
+    display: inline-block;
+    width: 1.5rem;
+    height: 1.5rem;
+    border-radius: 50%;
+    border: 2px solid var(--color-border-strong);
+    border-top-color: var(--color-accent-primary);
+    animation: bg-spin 0.8s linear infinite;
+  }
+
   .sc-visually-hidden {
     position: absolute;
     width: 1px;
