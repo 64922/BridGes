@@ -12,11 +12,11 @@ import socket
 import subprocess
 import sys
 import time
+import urllib.request
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
-import urllib.request
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -27,12 +27,36 @@ def _find_free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def _clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
+    """构造显式子进程环境。
+
+    剔除所有 ``SCIENCE_COMPANION_*`` 与 Conda 变量，再显式写入确定性配置，
+    使子进程既不继承用户环境中的真实凭据，也不会读取仓库 ``.env`` 中的
+    数据库或录制配置——冒烟测试保持离线、确定性。
+    """
+    merged = {
+        key: value
+        for key, value in os.environ.items()
+        if not key.startswith("SCIENCE_COMPANION_")
+        and key not in {"CONDA_PREFIX", "CONDA_DEFAULT_ENV", "CONDA_SHLVL"}
+    }
+    merged.update(
+        {
+            "SCIENCE_COMPANION_ENVIRONMENT": "test",
+            "SCIENCE_COMPANION_QWEN_FORCE_STUB": "true",
+            "SCIENCE_COMPANION_QWEN_API_KEY": "",
+            "SCIENCE_COMPANION_QWEN_RECORD_CASSETTES": "false",
+            "SCIENCE_COMPANION_DATABASE_URL": "",
+            "SCIENCE_COMPANION_SECRET_KEY": "",
+        }
+    )
+    if extra:
+        merged.update(extra)
+    return merged
+
+
 def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    merged = {**os.environ, **(env or {})}
-    # Clear Conda variables to simulate a production-like runtime.
-    merged.pop("CONDA_PREFIX", None)
-    merged.pop("CONDA_DEFAULT_ENV", None)
-    merged.pop("CONDA_SHLVL", None)
+    merged = _clean_env(env)
     return subprocess.run(
         [sys.executable, "-m", "science_companion.cli.main", *args],
         cwd=REPO_ROOT,
@@ -62,14 +86,7 @@ def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
 def running_api() -> Any:
     """Start the API on a free port and yield its base URL, then shut it down."""
     port = _find_free_port()
-    env = {
-        **os.environ,
-        "SCIENCE_COMPANION_API_PORT": str(port),
-        "SCIENCE_COMPANION_ENVIRONMENT": "test",
-    }
-    env.pop("CONDA_PREFIX", None)
-    env.pop("CONDA_DEFAULT_ENV", None)
-    env.pop("CONDA_SHLVL", None)
+    env = _clean_env({"SCIENCE_COMPANION_API_PORT": str(port)})
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "science_companion.cli.main", "api", "--port", str(port)],
