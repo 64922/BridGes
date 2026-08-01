@@ -35,7 +35,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `python -m science_companion.cli.main api --port ${API_PORT}`,
+      command: `python -m bridges.cli.main api --port ${API_PORT}`,
       url: `http://127.0.0.1:${API_PORT}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

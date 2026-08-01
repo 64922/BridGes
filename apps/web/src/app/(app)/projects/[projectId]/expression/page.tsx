@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "科学表达工坊 — Science Companion",
+  title: "科学表达工坊 — BridGes",
 };
 
 export default function ExpressionWorkshopPage() {

@@ -29,10 +29,10 @@ def test_dockerfiles_do_not_reference_conda() -> None:
 
 def test_compose_uses_unified_config_env_prefix() -> None:
     text = COMPOSE_FILE.read_text(encoding="utf-8")
-    assert "SCIENCE_COMPANION_" in text, "Compose must inject unified config variables"
+    assert "BRIDGES_" in text, "Compose must inject BridGes unified config variables"
 
 
-def test_compose_api_service_uses_science_companion_api() -> None:
+def test_compose_api_service_uses_bridges_api() -> None:
     text = COMPOSE_FILE.read_text(encoding="utf-8")
     assert "apps/api/Dockerfile" in text, "API service must build from the production API Dockerfile"
 

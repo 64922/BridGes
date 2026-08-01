@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.learning import (
+from bridges.contracts.learning import (
     AnswerEvaluatedState,
     DiagnosticAnswerCreateRequest,
     DiagnosticQuestionCreateRequest,
@@ -24,8 +24,8 @@ from science_companion.contracts.learning import (
     RetrievalExerciseType,
     TeachingQualityGateCheck,
 )
-from science_companion.contracts.science import FactLock, FactLockType, WordingStrength
-from science_companion.learning import InMemoryLearningRepository, LearningError, LearningService, TeachingService
+from bridges.contracts.science import FactLock, FactLockType, WordingStrength
+from bridges.learning import InMemoryLearningRepository, LearningError, LearningService, TeachingService
 
 
 @pytest.fixture

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.vault import (
+from bridges.contracts.vault import (
     CapsuleStatus,
     ContentAuthority,
     DevicePairingRequest,
@@ -18,14 +18,14 @@ from science_companion.contracts.vault import (
     DeviceRevocationRequest,
     DeviceType,
 )
-from science_companion.vault import (
+from bridges.vault import (
     FernetVaultEncryptionAdapter,
     InMemoryDeviceKeychain,
     InMemoryDevicePairingRepository,
     InMemoryVaultRepository,
     VaultService,
 )
-from science_companion.vault.adapters import VaultError
+from bridges.vault.adapters import VaultError
 
 
 @pytest.fixture

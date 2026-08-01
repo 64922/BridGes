@@ -13,13 +13,13 @@ from typing import cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
-from science_companion.contracts.media import (
+from bridges.api.main import create_app
+from bridges.contracts.media import (
     MediaCorrectionRequest,
     MediaCorrectionType,
     MediaUploadRequest,
 )
-from science_companion.contracts.science import LicenseState, MediaType
+from bridges.contracts.science import LicenseState, MediaType
 
 
 @pytest.fixture

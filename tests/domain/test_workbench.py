@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.domain import (
+from bridges.contracts.domain import (
     AttestationConclusion,
     DomainClaimSchema,
     DomainPackManifest,
@@ -28,12 +28,12 @@ from science_companion.contracts.domain import (
     ValidatorRequirement,
     WorkbenchStage,
 )
-from science_companion.domain import (
+from bridges.domain import (
     DomainPackLoader,
     DomainPackRegistry,
     DomainPackValidationRuntime,
 )
-from science_companion.domain.workbench import (
+from bridges.domain.workbench import (
     DomainPackWorkbenchError,
     DomainPackWorkbenchService,
     compute_semantic_diff_between,

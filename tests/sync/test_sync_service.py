@@ -2,15 +2,15 @@
 
 from datetime import UTC, datetime
 
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.sync import (
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.sync import (
     DeviceSyncStatus,
     SyncExchangeRequest,
     SyncOperation,
     SyncOperationStatus,
     SyncOperationType,
 )
-from science_companion.sync import SyncService
+from bridges.sync import SyncService
 
 
 def _operation(

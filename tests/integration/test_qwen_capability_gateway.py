@@ -13,15 +13,15 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.ai.adapters import AdapterResult, CapabilityAdapter, RegionError
-from science_companion.api.main import create_app
-from science_companion.contracts.ai import (
+from bridges.ai.adapters import AdapterResult, CapabilityAdapter, RegionError
+from bridges.api.main import create_app
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
     ModelCallStatus,
 )
-from science_companion.contracts.workflows import WorkflowRunStatus
+from bridges.contracts.workflows import WorkflowRunStatus
 
 
 def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
@@ -95,7 +95,7 @@ def test_unregistered_capability_blocks_run_via_api() -> None:
     project_id = _create_project(client, "未注册能力项目")
 
     workflow_service = client.app.state.workflow_service  # type: ignore[attr-defined]
-    from science_companion.contracts.workflows import WorkflowRunStatus
+    from bridges.contracts.workflows import WorkflowRunStatus
 
     workflow_service.register_workflow(
         name="unknown_cap_task",
@@ -168,7 +168,7 @@ def test_region_error_blocks_run_without_cross_region_fallback() -> None:
 
     gateway.register_adapter("region_locked_model", "1", _RegionErrorAdapter())
 
-    from science_companion.contracts.workflows import WorkflowRunStatus
+    from bridges.contracts.workflows import WorkflowRunStatus
 
     workflow_service.register_workflow(
         name="region_task",

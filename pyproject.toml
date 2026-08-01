@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "science-companion"
+name = "bridges"
 version = "0.1.0"
-description = "长期科学学习与表达伙伴"
+description = "BridGes —— 长期科学学习与表达伙伴"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111",
@@ -30,10 +30,13 @@ dev = [
 ]
 
 [project.scripts]
-science-companion = "science_companion.cli.main:app"
+# BridGes 为规范命令入口；science-companion 为迁移期兼容层入口，
+# 与 BridGes 指向同一实现，不维护两套 CLI。兼容层由退出 Issue 删除。
+BridGes = "bridges.cli.main:app"
+science-companion = "bridges.cli.main:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/science_companion"]
+packages = ["src/bridges", "src/science_companion"]
 
 [tool.ruff]
 line-length = 100

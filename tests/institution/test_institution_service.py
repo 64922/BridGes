@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.institution import (
+from bridges.contracts.institution import (
     ControlledContentAccessStatus,
     InstitutionCreateRequest,
     InstitutionInviteRequest,
@@ -18,13 +18,13 @@ from science_companion.contracts.institution import (
     InstitutionRole,
     SeatPolicy,
 )
-from science_companion.contracts.projects import ObjectDomain
-from science_companion.contracts.scope import ScopeAction
-from science_companion.contracts.vault import ContentAuthority, VaultObjectDomain
-from science_companion.institution import InstitutionService, InstitutionServiceError
-from science_companion.scope import ScopeEnforcer
-from science_companion.sharing import SharingService
-from science_companion.vault import (
+from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.scope import ScopeAction
+from bridges.contracts.vault import ContentAuthority, VaultObjectDomain
+from bridges.institution import InstitutionService, InstitutionServiceError
+from bridges.scope import ScopeEnforcer
+from bridges.sharing import SharingService
+from bridges.vault import (
     InMemoryVaultRepository,
     MemoryDeviceVaultPort,
     VaultService,
@@ -304,7 +304,7 @@ class TestAdminCannotReadPersonalVault:
         assert obj.ref.domain == VaultObjectDomain.PERSONAL_VAULT
 
         # Alice is admin but cannot authorize reading Bob's personal vault object.
-        from science_companion.contracts.identity import AuthMethod, SubjectContext
+        from bridges.contracts.identity import AuthMethod, SubjectContext
 
         alice_subject = SubjectContext(
             account_id=alice_id,
@@ -320,8 +320,8 @@ class TestAdminCannotReadPersonalVault:
         alice_id: str,
         bob_id: str,
     ) -> None:
-        from science_companion.contracts.identity import AuthMethod, SubjectContext
-        from science_companion.contracts.projects import ObjectRef
+        from bridges.contracts.identity import AuthMethod, SubjectContext
+        from bridges.contracts.projects import ObjectRef
 
         alice_subject = SubjectContext(
             account_id=alice_id,
@@ -334,7 +334,7 @@ class TestAdminCannotReadPersonalVault:
             object_id="obj-1",
             version=1,
         )
-        from science_companion.contracts.scope import ScopeIsolationError
+        from bridges.contracts.scope import ScopeIsolationError
 
         with pytest.raises(ScopeIsolationError):
             scope_enforcer.authorize(alice_subject, ScopeAction.READ, ref)

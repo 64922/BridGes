@@ -653,6 +653,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/domain-packs/workbench/{pack_id}/{version}/h3-confirmation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm H3 Joint Gate
+         * @description 安全/治理责任人对 H3 高风险变更的联合确认（决策 15 §1.4）。
+         */
+        post: operations["confirm_h3_joint_gate_domain_packs_workbench__pack_id___version__h3_confirmation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/domain-packs/workbench/{pack_id}/{version}/conflict-disclosure": {
         parameters: {
             query?: never;
@@ -4130,7 +4150,7 @@ export interface components {
          */
         ApproveArtifactRequest: {
             /** @default approve */
-            decision: components["schemas"]["science_companion__contracts__expression__HumanDecisionType"];
+            decision: components["schemas"]["bridges__contracts__expression__HumanDecisionType"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -5129,7 +5149,7 @@ export interface components {
             /** @description Lock for the model call that generated claims. */
             model_run_lock?: components["schemas"]["ModelRunLock"] | null;
             /** @description Honest-degradation validation report (T016). */
-            validation_report?: components["schemas"]["science_companion__contracts__science__ValidationReport"] | null;
+            validation_report?: components["schemas"]["bridges__contracts__science__ValidationReport"] | null;
         };
         /**
          * ClaimImportance
@@ -5829,7 +5849,7 @@ export interface components {
          */
         DecideKnowledgeStateProposalRequest: {
             /** @description Decision type. */
-            decision: components["schemas"]["science_companion__contracts__learning__HumanDecisionType"];
+            decision: components["schemas"]["bridges__contracts__learning__HumanDecisionType"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -7518,12 +7538,12 @@ export interface components {
              * @description Scientific trust state of the artifact.
              * @default draft
              */
-            artifact_trust_status: components["schemas"]["science_companion__contracts__expression__ArtifactTrustStatus"];
+            artifact_trust_status: components["schemas"]["bridges__contracts__expression__ArtifactTrustStatus"];
             /**
              * Approval Decisions
              * @description Human decisions recorded for this artifact.
              */
-            approval_decisions?: components["schemas"]["science_companion__contracts__expression__HumanDecision"][];
+            approval_decisions?: components["schemas"]["bridges__contracts__expression__HumanDecision"][];
             /**
              * Popular Science Elements
              * @description Genre-specific elements for popular science (T026).
@@ -8079,6 +8099,44 @@ export interface components {
          * @enum {string}
          */
         GrayReleaseStatus: "ready_to_release" | "blocked" | "needs_human";
+        /**
+         * H3ConfirmationRequest
+         * @description 安全/治理责任人对 H3 高风险变更的联合确认。
+         */
+        H3ConfirmationRequest: {
+            /**
+             * Opinion
+             * @default
+             */
+            opinion: string;
+        };
+        /**
+         * H3SecurityConfirmation
+         * @description H3 高风险变更的安全/治理责任人联合确认。
+         *
+         *     决策 15：H3 高风险变更要求合资格领域专家（由独立复核者资质承担）
+         *     与安全/治理责任人联合签名；本对象记录安全治理一方的确认。
+         */
+        H3SecurityConfirmation: {
+            /** Confirmation Id */
+            confirmation_id: string;
+            /** Pack Id */
+            pack_id: string;
+            /** Pack Version */
+            pack_version: string;
+            /** Confirmed By */
+            confirmed_by: string;
+            /**
+             * Opinion
+             * @default
+             */
+            opinion: string;
+            /**
+             * Confirmed At
+             * Format: date-time
+             */
+            confirmed_at: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -8876,7 +8934,7 @@ export interface components {
             /** @default pending */
             status: components["schemas"]["KnowledgeStateProposalStatus"];
             /** @description Recorded human decision, if any. */
-            decision?: components["schemas"]["science_companion__contracts__learning__HumanDecision"] | null;
+            decision?: components["schemas"]["bridges__contracts__learning__HumanDecision"] | null;
             /**
              * Version
              * @description Optimistic concurrency version.
@@ -10904,7 +10962,7 @@ export interface components {
              */
             expires_at?: string | null;
             /** @description Recorded human decision, if any. */
-            human_decision?: components["schemas"]["science_companion__contracts__profiles__HumanDecision"] | null;
+            human_decision?: components["schemas"]["bridges__contracts__profiles__HumanDecision"] | null;
         };
         /**
          * ProfileCandidateCreateRequest
@@ -12803,7 +12861,7 @@ export interface components {
             /** @description Workflow execution state. */
             run_status: components["schemas"]["WorkflowRunStatus"];
             /** @description Scientific trust state of the run's primary artifact. */
-            artifact_trust_status: components["schemas"]["science_companion__contracts__workflows__ArtifactTrustStatus"];
+            artifact_trust_status: components["schemas"]["bridges__contracts__workflows__ArtifactTrustStatus"];
             /**
              * Publish Eligible
              * @description Whether all current conditions allow publishing the artifact.
@@ -15829,6 +15887,8 @@ export interface components {
             declarations?: components["schemas"]["ConflictOfInterestDeclaration"][];
             /** Disclosures */
             disclosures?: components["schemas"]["ConflictDisclosure"][];
+            /** H3 Security Confirmations */
+            h3_security_confirmations?: components["schemas"]["H3SecurityConfirmation"][];
             gray_candidate?: components["schemas"]["GrayReleaseCandidate"] | null;
             release?: components["schemas"]["PackRelease"] | null;
             /** Checks */
@@ -15919,12 +15979,12 @@ export interface components {
          * @description Scientific trust state of an expression artifact (draft).
          * @enum {string}
          */
-        science_companion__contracts__expression__ArtifactTrustStatus: "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "invalidated";
+        bridges__contracts__expression__ArtifactTrustStatus: "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "invalidated";
         /**
          * HumanDecision
          * @description A named, auditable human decision to approve, reject or revise an artifact.
          */
-        science_companion__contracts__expression__HumanDecision: {
+        bridges__contracts__expression__HumanDecision: {
             /**
              * Decision Id
              * @description Stable decision identifier.
@@ -15941,7 +16001,7 @@ export interface components {
              */
             account_id: string;
             /** @description Decision type. */
-            decision: components["schemas"]["science_companion__contracts__expression__HumanDecisionType"];
+            decision: components["schemas"]["bridges__contracts__expression__HumanDecisionType"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -15959,12 +16019,12 @@ export interface components {
          * @description Named human decision on an expression artifact.
          * @enum {string}
          */
-        science_companion__contracts__expression__HumanDecisionType: "approve" | "reject" | "request_changes";
+        bridges__contracts__expression__HumanDecisionType: "approve" | "reject" | "request_changes";
         /**
          * HumanDecision
          * @description A named, auditable human decision on a knowledge-state proposal.
          */
-        science_companion__contracts__learning__HumanDecision: {
+        bridges__contracts__learning__HumanDecision: {
             /**
              * Decision Id
              * @description Stable decision identifier.
@@ -15981,7 +16041,7 @@ export interface components {
              */
             account_id: string;
             /** @description Decision type. */
-            decision: components["schemas"]["science_companion__contracts__learning__HumanDecisionType"];
+            decision: components["schemas"]["bridges__contracts__learning__HumanDecisionType"];
             /**
              * Reason
              * @description Human-readable rationale.
@@ -16004,12 +16064,12 @@ export interface components {
          * @description Named human decision on a proposed knowledge-state or path change.
          * @enum {string}
          */
-        science_companion__contracts__learning__HumanDecisionType: "accept" | "reject" | "modify";
+        bridges__contracts__learning__HumanDecisionType: "accept" | "reject" | "modify";
         /**
          * ValidationReport
          * @description 分镜沙箱运行的完整验证报告。
          */
-        science_companion__contracts__media__ValidationReport: {
+        bridges__contracts__media__ValidationReport: {
             /**
              * Report Id
              * @description 稳定报告标识符。
@@ -16062,7 +16122,7 @@ export interface components {
          * HumanDecision
          * @description Named human decision on a candidate profile.
          */
-        science_companion__contracts__profiles__HumanDecision: {
+        bridges__contracts__profiles__HumanDecision: {
             /**
              * Decision Id
              * @description Stable decision identifier.
@@ -16111,7 +16171,7 @@ export interface components {
          *     quality gate result, and recommended recovery actions. It is the input to
          *     downstream expression nodes (T025) and to the task stage (T006).
          */
-        science_companion__contracts__science__ValidationReport: {
+        bridges__contracts__science__ValidationReport: {
             /**
              * Report Id
              * @description Stable validation report identifier.
@@ -16181,7 +16241,7 @@ export interface components {
          * @description Lifecycle status of the scientific artifact produced by a run.
          * @enum {string}
          */
-        science_companion__contracts__workflows__ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
+        bridges__contracts__workflows__ArtifactTrustStatus: "not_created" | "draft" | "evidence_bound" | "qualified" | "approved" | "conflicted" | "quarantined" | "invalidated";
     };
     responses: never;
     parameters: never;
@@ -16290,7 +16350,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16405,7 +16465,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16445,7 +16505,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16483,7 +16543,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -16542,7 +16602,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16590,7 +16650,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16638,7 +16698,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -16704,7 +16764,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -16763,7 +16823,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -16822,7 +16882,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -16888,7 +16948,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16936,7 +16996,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -16998,7 +17058,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17057,7 +17117,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17097,7 +17157,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17135,7 +17195,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17173,7 +17233,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -17231,7 +17291,7 @@ export interface operations {
                 event_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17285,7 +17345,7 @@ export interface operations {
                 event_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -17350,7 +17410,7 @@ export interface operations {
                 event_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17404,7 +17464,7 @@ export interface operations {
                 event_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17458,7 +17518,7 @@ export interface operations {
                 event_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -17523,7 +17583,7 @@ export interface operations {
                 event_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17575,7 +17635,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17613,7 +17673,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -17678,7 +17738,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17716,7 +17776,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -17781,7 +17841,7 @@ export interface operations {
                 rollback_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17828,7 +17888,7 @@ export interface operations {
                 rollback_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -17893,7 +17953,7 @@ export interface operations {
                 rollback_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17952,7 +18012,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -17990,7 +18050,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18042,7 +18102,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18085,6 +18145,72 @@ export interface operations {
             };
         };
     };
+    confirm_h3_joint_gate_domain_packs_workbench__pack_id___version__h3_confirmation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                pack_id: string;
+                version: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["H3ConfirmationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["H3SecurityConfirmation"];
+                };
+            };
+            /** @description 未认证 */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 不是安全管理员 */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 工作台未登记 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未声明 H3 或已确认 */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     add_conflict_disclosure_domain_packs_workbench__pack_id___version__conflict_disclosure_post: {
         parameters: {
             query?: never;
@@ -18094,7 +18220,7 @@ export interface operations {
                 version: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18150,7 +18276,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18190,7 +18316,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18245,7 +18371,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18296,7 +18422,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18351,7 +18477,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18400,7 +18526,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18440,7 +18566,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18486,7 +18612,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18537,7 +18663,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18598,7 +18724,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18653,7 +18779,7 @@ export interface operations {
                 capsule_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18704,7 +18830,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18761,7 +18887,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18810,7 +18936,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18854,7 +18980,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18896,7 +19022,7 @@ export interface operations {
                 device_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -18949,7 +19075,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -18989,7 +19115,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19035,7 +19161,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19084,7 +19210,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19146,7 +19272,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19210,7 +19336,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19272,7 +19398,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19337,7 +19463,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19398,7 +19524,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19459,7 +19585,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19510,7 +19636,7 @@ export interface operations {
                 grant_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19570,7 +19696,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19601,7 +19727,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19636,7 +19762,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19669,7 +19795,7 @@ export interface operations {
                 conflict_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19704,7 +19830,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19744,7 +19870,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19790,7 +19916,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19841,7 +19967,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -19907,7 +20033,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -19958,7 +20084,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20010,7 +20136,7 @@ export interface operations {
                 account_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20071,7 +20197,7 @@ export interface operations {
                 account_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20135,7 +20261,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20186,7 +20312,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20250,7 +20376,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20301,7 +20427,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20352,7 +20478,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20416,7 +20542,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20467,7 +20593,7 @@ export interface operations {
                 institution_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20534,7 +20660,7 @@ export interface operations {
                 request_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20595,7 +20721,7 @@ export interface operations {
                 request_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20653,7 +20779,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20693,7 +20819,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20748,7 +20874,7 @@ export interface operations {
                 observation_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20797,7 +20923,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20837,7 +20963,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20892,7 +21018,7 @@ export interface operations {
                 candidate_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -20943,7 +21069,7 @@ export interface operations {
                 candidate_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -20996,7 +21122,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21051,7 +21177,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21093,7 +21219,7 @@ export interface operations {
                 slice_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21144,7 +21270,7 @@ export interface operations {
                 slice_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21198,7 +21324,7 @@ export interface operations {
                 slice_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21260,7 +21386,7 @@ export interface operations {
                 assertion_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21311,7 +21437,7 @@ export interface operations {
                 assertion_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21366,7 +21492,7 @@ export interface operations {
                 assertion_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21421,7 +21547,7 @@ export interface operations {
                 assertion_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21476,7 +21602,7 @@ export interface operations {
                 assertion_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21529,7 +21655,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21571,7 +21697,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21636,7 +21762,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21701,7 +21827,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21753,7 +21879,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21819,7 +21945,7 @@ export interface operations {
                 todo_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21881,7 +22007,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -21925,7 +22051,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -21989,7 +22115,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22040,7 +22166,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22105,7 +22231,7 @@ export interface operations {
                 evaluation_run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22166,7 +22292,7 @@ export interface operations {
                 evaluation_run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22219,7 +22345,7 @@ export interface operations {
                 bundle_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22270,7 +22396,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22334,7 +22460,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22376,7 +22502,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22429,7 +22555,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22469,7 +22595,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22524,7 +22650,7 @@ export interface operations {
                 source_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22575,7 +22701,7 @@ export interface operations {
                 source_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22626,7 +22752,7 @@ export interface operations {
                 source_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22682,7 +22808,7 @@ export interface operations {
                 chunk_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22733,7 +22859,7 @@ export interface operations {
                 source_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22786,7 +22912,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22839,7 +22965,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22894,7 +23020,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -22949,7 +23075,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -22989,7 +23115,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23044,7 +23170,7 @@ export interface operations {
                 graph_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23095,7 +23221,7 @@ export interface operations {
                 graph_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23146,7 +23272,7 @@ export interface operations {
                 graph_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23199,7 +23325,7 @@ export interface operations {
                 graph_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23210,7 +23336,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["science_companion__contracts__science__ValidationReport"];
+                    "application/json": components["schemas"]["bridges__contracts__science__ValidationReport"];
                 };
             };
             /** @description Unauthorized */
@@ -23250,7 +23376,7 @@ export interface operations {
                 graph_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23302,7 +23428,7 @@ export interface operations {
                 citation_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23351,7 +23477,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23406,7 +23532,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23457,7 +23583,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23508,7 +23634,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23564,7 +23690,7 @@ export interface operations {
                 patch_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23619,7 +23745,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23674,7 +23800,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23731,7 +23857,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -23782,7 +23908,7 @@ export interface operations {
                 draft_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23835,7 +23961,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23890,7 +24016,7 @@ export interface operations {
                 project_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23943,7 +24069,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -23998,7 +24124,7 @@ export interface operations {
                 asset_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24049,7 +24175,7 @@ export interface operations {
                 asset_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24104,7 +24230,7 @@ export interface operations {
                 asset_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24159,7 +24285,7 @@ export interface operations {
                 asset_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24210,7 +24336,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24254,7 +24380,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24300,7 +24426,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24353,7 +24479,7 @@ export interface operations {
                 object_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24404,7 +24530,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24435,7 +24561,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24490,7 +24616,7 @@ export interface operations {
                 storyboard_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24543,7 +24669,7 @@ export interface operations {
                 storyboard_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: {
@@ -24600,7 +24726,7 @@ export interface operations {
                 storyboard_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24653,7 +24779,7 @@ export interface operations {
                 storyboard_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24699,7 +24825,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24753,7 +24879,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: {
@@ -24801,7 +24927,7 @@ export interface operations {
                 storyboard_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24812,7 +24938,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["science_companion__contracts__media__ValidationReport"];
+                    "application/json": components["schemas"]["bridges__contracts__media__ValidationReport"];
                 };
             };
             /** @description Unauthorized */
@@ -24850,7 +24976,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -24905,7 +25031,7 @@ export interface operations {
                 bundle_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -24956,7 +25082,7 @@ export interface operations {
                 bundle_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25007,7 +25133,7 @@ export interface operations {
                 bundle_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25060,7 +25186,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25104,7 +25230,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25150,7 +25276,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25192,7 +25318,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25240,7 +25366,7 @@ export interface operations {
                 record_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25293,7 +25419,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25324,7 +25450,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25370,7 +25496,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25412,7 +25538,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: {
@@ -25458,7 +25584,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25500,7 +25626,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25555,7 +25681,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25606,7 +25732,7 @@ export interface operations {
                 result_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25648,7 +25774,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25681,7 +25807,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25736,7 +25862,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25778,7 +25904,7 @@ export interface operations {
                 plan_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25820,7 +25946,7 @@ export interface operations {
                 plan_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: {
@@ -25875,7 +26001,7 @@ export interface operations {
                 lesson_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -25918,7 +26044,7 @@ export interface operations {
                 exercise_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -25975,7 +26101,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26008,7 +26134,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26066,7 +26192,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26099,7 +26225,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26154,7 +26280,7 @@ export interface operations {
                 proposal_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26209,7 +26335,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26251,7 +26377,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26293,7 +26419,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26335,7 +26461,7 @@ export interface operations {
                 mission_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26377,7 +26503,7 @@ export interface operations {
                 task_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26419,7 +26545,7 @@ export interface operations {
                 task_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26474,7 +26600,7 @@ export interface operations {
                 task_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26529,7 +26655,7 @@ export interface operations {
                 task_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26584,7 +26710,7 @@ export interface operations {
                 task_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody: {
@@ -26639,7 +26765,7 @@ export interface operations {
                 task_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26768,7 +26894,7 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;
@@ -26836,7 +26962,7 @@ export interface operations {
                 run_id: string;
             };
             cookie?: {
-                science_companion_session?: string | null;
+                bridges_session?: string | null;
             };
         };
         requestBody?: never;

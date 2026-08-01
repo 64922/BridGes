@@ -12,7 +12,7 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
+from bridges.api.main import create_app
 
 
 @pytest.fixture
@@ -215,7 +215,7 @@ class TestDeviceUnavailableAPI:
         # Replace the device port with an unavailable one to simulate offline device.
         from fastapi import FastAPI
 
-        from science_companion.vault import UnavailableDeviceVaultPort, VaultService
+        from bridges.vault import UnavailableDeviceVaultPort, VaultService
 
         app = cast(FastAPI, client.app)
         repository = app.state.vault_service._repository

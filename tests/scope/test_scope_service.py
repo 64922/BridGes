@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.scope import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.scope import (
     BackgroundTaskEnvelope,
     ScopeAction,
     ScopeCacheKey,
     ScopeEnvelope,
     ScopeIsolationError,
 )
-from science_companion.contracts.vault import VaultObjectDomain, VaultObjectRef
-from science_companion.scope import ScopeEnforcer, ScopeFixtureFactory
+from bridges.contracts.vault import VaultObjectDomain, VaultObjectRef
+from bridges.scope import ScopeEnforcer, ScopeFixtureFactory
 
 
 @pytest.fixture

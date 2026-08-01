@@ -2,8 +2,8 @@
 
 import pytest
 
-from science_companion.contracts.observability import AlertState, SLISeverity
-from science_companion.observability.alert_manager import AlertManager, AlertManagerError
+from bridges.contracts.observability import AlertState, SLISeverity
+from bridges.observability.alert_manager import AlertManager, AlertManagerError
 
 
 def test_fire_alert_creates_firing_record() -> None:

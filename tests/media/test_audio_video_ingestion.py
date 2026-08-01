@@ -12,8 +12,8 @@ import base64
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.media import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.media import (
     AudioVideoDerivedData,
     MediaAssetKind,
     MediaAssetStatus,
@@ -24,8 +24,8 @@ from science_companion.contracts.media import (
     MediaQualityGate,
     MediaUploadRequest,
 )
-from science_companion.contracts.science import LicenseState, MediaType
-from science_companion.media import MediaError, MediaIngestionService
+from bridges.contracts.science import LicenseState, MediaType
+from bridges.media import MediaError, MediaIngestionService
 
 
 @pytest.fixture

@@ -6,9 +6,9 @@ from typing import Any
 
 import pytest
 
-from science_companion.ai.capability_registry import CapabilityRegistry
-from science_companion.contracts.ai import CapabilityKind, CapabilityRecord
-from science_companion.contracts.domain import (
+from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.contracts.ai import CapabilityKind, CapabilityRecord
+from bridges.contracts.domain import (
     DomainClaimSchema,
     DomainCompatibility,
     DomainEvaluationResult,
@@ -25,7 +25,7 @@ from science_companion.contracts.domain import (
     PlatformSafetyFloor,
     ValidatorRequirement,
 )
-from science_companion.domain import (
+from bridges.domain import (
     DomainPackLoader,
     DomainPackLoadError,
     DomainPackRegistry,

@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "学习实验室 — Science Companion",
+  title: "学习实验室 — BridGes",
 };
 
 export default function LearningLabPage() {

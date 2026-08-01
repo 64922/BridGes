@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "多模态科学实验室 — Science Companion",
+  title: "多模态科学实验室 — BridGes",
 };
 
 export default function MultimediaLabPage() {

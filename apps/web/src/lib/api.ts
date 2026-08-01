@@ -1,6 +1,6 @@
 "use client";
 
-import type { components } from "@science-companion/contracts";
+import type { components } from "@bridges/contracts";
 
 export type HealthProjection = components["schemas"]["HealthProjection"];
 export type HealthStatus = components["schemas"]["HealthStatus"];

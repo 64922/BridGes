@@ -7,14 +7,14 @@ version are always present and correct.
 
 import pytest
 
-from science_companion.contracts.projects import (
+from bridges.contracts.projects import (
     ObjectDomain,
     ProjectCreateRequest,
     ProjectRole,
     ProjectStatus,
     ProjectUpdateRequest,
 )
-from science_companion.projects import ProjectError, ProjectService
+from bridges.projects import ProjectError, ProjectService
 
 
 @pytest.fixture

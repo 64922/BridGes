@@ -8,7 +8,7 @@ to protected routes are rejected with uniform errors.
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
+from bridges.api.main import create_app
 
 
 @pytest.fixture
@@ -32,7 +32,7 @@ def test_register_returns_account_and_sets_session_cookie(client: TestClient) ->
     assert response.status_code == 201
     body = response.json()
     assert body["account"]["email"] == "user@example.com"
-    assert "science_companion_session" in response.cookies
+    assert "bridges_session" in response.cookies
 
 
 def test_login_with_valid_credentials_sets_session_cookie(client: TestClient) -> None:
@@ -44,7 +44,7 @@ def test_login_with_valid_credentials_sets_session_cookie(client: TestClient) ->
     )
     assert response.status_code == 200
     assert response.json()["account"]["email"] == "user@example.com"
-    assert "science_companion_session" in response.cookies
+    assert "bridges_session" in response.cookies
 
 
 def test_login_with_invalid_credentials_returns_uniform_error(client: TestClient) -> None:

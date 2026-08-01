@@ -8,14 +8,14 @@ revokes prior sessions.
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from science_companion.contracts.identity import (
+from bridges.contracts.identity import (
     AccountRegistration,
     AuthMethod,
     LoginCredential,
     RecoveryRequest,
     RecoveryReset,
 )
-from science_companion.identity import IdentityError, IdentityService
+from bridges.identity import IdentityError, IdentityService
 
 
 @pytest.fixture

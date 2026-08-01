@@ -84,7 +84,7 @@ export function AppShell({ children, mode = "account", projectId }: AppShellProp
               textDecoration: "none",
             }}
           >
-            Science Companion
+            BridGes
           </a>
         </div>
 

@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from science_companion.contracts.learning import (
+from bridges.contracts.learning import (
     AnswerEvaluatedState,
     HumanDecisionType,
     KnowledgeStateStatus,
@@ -24,13 +24,13 @@ from science_companion.contracts.learning import (
     ReviewTaskStatus,
     ReviewTaskType,
 )
-from science_companion.learning import (
+from bridges.learning import (
     InMemoryLearningRepository,
     LearningPathService,
     LearningService,
     ReviewSchedulingService,
 )
-from science_companion.learning.adapters import LearningError
+from bridges.learning.adapters import LearningError
 
 
 @pytest.fixture
@@ -99,7 +99,7 @@ def _complete_diagnostic_and_accept(
     account_id: str,
     mission_id: str,
 ) -> None:
-    from science_companion.contracts.learning import (
+    from bridges.contracts.learning import (
         DecideKnowledgeStateProposalRequest,
         DiagnosticAnswerCreateRequest,
         DiagnosticQuestionCreateRequest,
@@ -207,7 +207,7 @@ class TestScheduleReviews:
             mission.mission_id,
             ProposeKnowledgeStateUpdateRequest(concept_id="光反应"),
         )
-        from science_companion.contracts.learning import (
+        from bridges.contracts.learning import (
             DecideKnowledgeStateProposalRequest,
         )
 
@@ -322,7 +322,7 @@ class TestUserAdjustments:
         task = review_service.get_review_task(alice_id, schedule.task_ids[0])
 
         new_due = datetime.now(UTC) + timedelta(days=7)
-        from science_companion.contracts.learning import ReviewTaskPostponeRequest
+        from bridges.contracts.learning import ReviewTaskPostponeRequest
 
         postponed = review_service.postpone_review_task(
             alice_id,
@@ -351,7 +351,7 @@ class TestUserAdjustments:
         schedule = review_service.schedule_reviews_for_mission(alice_id, mission.mission_id)
         task = review_service.get_review_task(alice_id, schedule.task_ids[0])
 
-        from science_companion.contracts.learning import ReviewTaskAdjustRequest
+        from bridges.contracts.learning import ReviewTaskAdjustRequest
 
         new_due = datetime.now(UTC) + timedelta(days=14)
         adjusted = review_service.adjust_review_task(
@@ -383,7 +383,7 @@ class TestUserAdjustments:
         schedule = review_service.schedule_reviews_for_mission(alice_id, mission.mission_id)
         task = review_service.get_review_task(alice_id, schedule.task_ids[0])
 
-        from science_companion.contracts.learning import ReviewTaskCancelRequest
+        from bridges.contracts.learning import ReviewTaskCancelRequest
 
         cancelled = review_service.cancel_review_task(
             alice_id,
@@ -418,7 +418,7 @@ class TestCompleteReviewTask:
         schedule = review_service.schedule_reviews_for_mission(alice_id, mission.mission_id)
         task = review_service.get_review_task(alice_id, schedule.task_ids[0])
 
-        from science_companion.contracts.learning import ReviewTaskCompleteRequest
+        from bridges.contracts.learning import ReviewTaskCompleteRequest
 
         completed_task, record = review_service.complete_review_task(
             alice_id,
@@ -492,7 +492,7 @@ class TestPathChangeRescheduling:
         )
 
         # Accepting the proposal recompiles the path, which should trigger review reschedule.
-        from science_companion.contracts.learning import DecideKnowledgeStateProposalRequest
+        from bridges.contracts.learning import DecideKnowledgeStateProposalRequest
 
         pathway_service.decide_knowledge_state_proposal(
             alice_id,

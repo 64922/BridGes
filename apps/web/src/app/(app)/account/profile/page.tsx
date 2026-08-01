@@ -1,7 +1,7 @@
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
-  title: "画像与记忆中心 — Science Companion",
+  title: "画像与记忆中心 — BridGes",
 };
 
 export default function ProfileCenterPage() {

@@ -2,9 +2,9 @@
 
 from datetime import datetime, timezone
 
-from science_companion.contracts.ai import ModelCallStatus, ModelRunLock
-from science_companion.contracts.projects import ObjectDomain
-from science_companion.contracts.workflows import (
+from bridges.contracts.ai import ModelCallStatus, ModelRunLock
+from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.workflows import (
     ArtifactTrustStatus,
     NodeProgress,
     NodeStatus,
@@ -12,8 +12,8 @@ from science_companion.contracts.workflows import (
     RunProjection,
     WorkflowRunStatus,
 )
-from science_companion.observability.run_summary import build_run_summary
-from science_companion.observability.telemetry_context import build_correlation
+from bridges.observability.run_summary import build_run_summary
+from bridges.observability.telemetry_context import build_correlation
 
 
 def _sample_projection() -> RunProjection:

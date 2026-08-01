@@ -1,7 +1,7 @@
 import { TaskStage } from "@/components/project/TaskStage";
 
 export const metadata = {
-  title: "项目总览 — Science Companion",
+  title: "项目总览 — BridGes",
 };
 
 /**

@@ -14,25 +14,25 @@ from typing import Any
 
 import pytest
 
-from science_companion.ai import CapabilityRegistry, ModelGateway
-from science_companion.ai.adapters import AdapterResult
-from science_companion.contracts.ai import (
+from bridges.ai import CapabilityRegistry, ModelGateway
+from bridges.ai.adapters import AdapterResult
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     RetryPolicy,
 )
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     MediaAssetKind,
     MediaAssetStatus,
 )
-from science_companion.contracts.science import (
+from bridges.contracts.science import (
     LicenseState,
     MediaType,
     SourceLicense,
 )
-from science_companion.contracts.workflows import RunContextEnvelope
-from science_companion.media import MediaIngestionService
-from science_companion.media.qwen_extraction import QwenOcrExtractor
+from bridges.contracts.workflows import RunContextEnvelope
+from bridges.media import MediaIngestionService
+from bridges.media.qwen_extraction import QwenOcrExtractor
 
 
 def _context() -> RunContextEnvelope:
@@ -47,7 +47,7 @@ def _context() -> RunContextEnvelope:
 
 
 def _source_asset(filename: str, media_type: MediaType) -> Any:
-    from science_companion.contracts.media import SourceAsset
+    from bridges.contracts.media import SourceAsset
 
     return SourceAsset(
         asset_id="asset-1",
@@ -193,12 +193,12 @@ def test_table_extraction_parses_markdown_table() -> None:
 
 
 def test_extraction_failure_does_not_fabricate_data() -> None:
-    from science_companion.ai.adapters import AdapterError
+    from bridges.ai.adapters import AdapterError
 
     gateway = _ocr_gateway(AdapterError(code="transient", message="down", retryable=True))
     extractor = QwenOcrExtractor(gateway, _context())
 
-    from science_companion.media.extraction import ExtractionError
+    from bridges.media.extraction import ExtractionError
 
     with pytest.raises(ExtractionError):
         extractor.extract(_source_asset("graph.png", MediaType.IMAGE_PNG), _png_bytes())
@@ -212,7 +212,7 @@ def test_service_uses_model_backed_extractor_when_gateway_present() -> None:
         )
     )
     service = MediaIngestionService(model_gateway=gateway)
-    from science_companion.contracts.media import MediaUploadRequest
+    from bridges.contracts.media import MediaUploadRequest
 
     upload = MediaUploadRequest(
         filename="scan.png",
@@ -225,4 +225,4 @@ def test_service_uses_model_backed_extractor_when_gateway_present() -> None:
     assert run.asset_id is not None
 
     projection = service.get_asset("account-1", run.asset_id)
-    assert projection.derived_assets[0].tool == "science_companion.ocr.qwen"
+    assert projection.derived_assets[0].tool == "bridges.ocr.qwen"

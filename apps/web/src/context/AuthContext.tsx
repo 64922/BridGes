@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
-import type { components } from "@science-companion/contracts";
+import type { components } from "@bridges/contracts";
 import { fetchSession, login as apiLogin, logout as apiLogout, register as apiRegister } from "@/lib/api";
 
 export type User = components["schemas"]["Account"];

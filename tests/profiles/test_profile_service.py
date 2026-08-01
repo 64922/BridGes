@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.profiles import (
+from bridges.contracts.profiles import (
     AssertionStatus,
     CandidateDecision,
     CandidateReviewStatus,
@@ -23,7 +23,7 @@ from science_companion.contracts.profiles import (
     ProfileSignalKind,
     ProfileSourceType,
 )
-from science_companion.profiles import (
+from bridges.profiles import (
     InMemoryProfileRepository,
     ProfileError,
     ProfileService,

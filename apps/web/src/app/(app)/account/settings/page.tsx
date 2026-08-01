@@ -1,7 +1,7 @@
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
-  title: "设置、设备与同步 — Science Companion",
+  title: "设置、设备与同步 — BridGes",
 };
 
 export default function SettingsPage() {

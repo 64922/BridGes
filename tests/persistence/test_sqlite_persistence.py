@@ -3,17 +3,17 @@
 import sqlite3
 from pathlib import Path
 
-from science_companion.contracts.identity import AccountRegistration, LoginCredential
-from science_companion.contracts.projects import ProjectCreateRequest
-from science_companion.identity import IdentityService
-from science_companion.persistence import SqliteStateStore, build_state_store
-from science_companion.projects import ProjectService
-from science_companion.sync import SyncService
+from bridges.contracts.identity import AccountRegistration, LoginCredential
+from bridges.contracts.projects import ProjectCreateRequest
+from bridges.identity import IdentityService
+from bridges.persistence import SqliteStateStore, build_state_store
+from bridges.projects import ProjectService
+from bridges.sync import SyncService
 from tests.sync.test_sync_service import _exchange, _operation
 
 
 def test_identity_and_projects_survive_service_reconstruction(tmp_path: Path) -> None:
-    store = SqliteStateStore(tmp_path / "science-companion.db")
+    store = SqliteStateStore(tmp_path / "bridges.db")
     first_identity = IdentityService(state_store=store)
     registered = first_identity.register(
         AccountRegistration(
@@ -29,13 +29,13 @@ def test_identity_and_projects_survive_service_reconstruction(tmp_path: Path) ->
     )
 
     second_identity = IdentityService(
-        state_store=SqliteStateStore(tmp_path / "science-companion.db")
+        state_store=SqliteStateStore(tmp_path / "bridges.db")
     )
     authenticated = second_identity.authenticate(
         LoginCredential(email="durable@example.com", password="correct-horse-12")
     )
     second_projects = ProjectService(
-        state_store=SqliteStateStore(tmp_path / "science-companion.db")
+        state_store=SqliteStateStore(tmp_path / "bridges.db")
     )
 
     assert authenticated.account.id == registered.account.id

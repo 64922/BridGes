@@ -3,18 +3,16 @@ services:
     build:
       context: ../..
       dockerfile: apps/api/Dockerfile
-    env_file:
-      - ../../.env
     ports:
       - "8000:8000"
     environment:
-      - SCIENCE_COMPANION_ENVIRONMENT=production
-      - SCIENCE_COMPANION_API_HOST=0.0.0.0
-      - SCIENCE_COMPANION_API_PORT=8000
-      - SCIENCE_COMPANION_WEB_DEV=false
-      - SCIENCE_COMPANION_DATABASE_URL=sqlite:////var/lib/science-companion/science_companion.db
+      - BRIDGES_ENVIRONMENT=production
+      - BRIDGES_API_HOST=0.0.0.0
+      - BRIDGES_API_PORT=8000
+      - BRIDGES_WEB_DEV=false
+      - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
     volumes:
-      - api-data:/var/lib/science-companion
+      - bridges-data:/var/lib/bridges
     healthcheck:
       test:
         - CMD
@@ -38,8 +36,8 @@ services:
       - "3000:3000"
     environment:
       - API_BASE_URL=http://api:8000
-      - SCIENCE_COMPANION_WEB_DEV=false
-      - SCIENCE_COMPANION_WEB_PORT=3000
+      - BRIDGES_WEB_DEV=false
+      - BRIDGES_WEB_PORT=3000
     depends_on:
       api:
         condition: service_healthy
@@ -47,6 +45,9 @@ services:
 
 # Podman-compatible: podman-compose -f infra/compose/docker-compose.yml up
 # Production images use standard Python and Node.js runtimes.
+# 容器部署不要求宿主机创建 `.env`：全部运行配置由上方 Compose 环境变量注入，
+# 秘密（如 BRIDGES_SECRET_KEY、BRIDGES_QWEN_API_KEY）可通过
+# `docker compose run -e`、`--env-file` 或受保护账户设置提供。
 
 volumes:
-  api-data:
+  bridges-data:

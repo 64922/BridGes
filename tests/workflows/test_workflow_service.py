@@ -8,14 +8,14 @@ todos, and receives deterministic rejections for illegal transitions.
 
 import pytest
 
-from science_companion.contracts.workflows import (
+from bridges.contracts.workflows import (
     ArtifactTrustStatus,
     HumanTodoStatus,
     NodeStatus,
     WorkOrder,
     WorkflowRunStatus,
 )
-from science_companion.workflows import WorkflowError, WorkflowService
+from bridges.workflows import WorkflowError, WorkflowService
 
 
 @pytest.fixture

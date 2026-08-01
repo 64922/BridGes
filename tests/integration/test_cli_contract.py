@@ -17,7 +17,7 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
     # production runtimes without Conda variables.
     merged = {**os.environ, **(env or {})}
     return subprocess.run(
-        [sys.executable, "-m", "science_companion.cli.main", *args],
+        [sys.executable, "-m", "bridges.cli.main", *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,

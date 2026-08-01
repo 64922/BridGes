@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.learning import (
+from bridges.contracts.learning import (
     AnswerEvaluatedState,
     DecideKnowledgeStateProposalRequest,
     HumanDecisionType,
@@ -25,7 +25,7 @@ from science_companion.contracts.learning import (
     LearningRecordType,
     ProposeKnowledgeStateUpdateRequest,
 )
-from science_companion.learning import (
+from bridges.learning import (
     InMemoryLearningRepository,
     LearningPathService,
     LearningService,
@@ -73,7 +73,7 @@ def _complete_diagnostic(
     mission_id: str,
     state: AnswerEvaluatedState,
 ) -> None:
-    from science_companion.contracts.learning import (
+    from bridges.contracts.learning import (
         DiagnosticAnswerCreateRequest,
         DiagnosticQuestionCreateRequest,
         DiagnosticQuestionType,
@@ -316,7 +316,7 @@ class TestKnowledgeStateProposal:
     ) -> None:
         mission = learning_service.create_mission(alice_id, _mission_request())
 
-        from science_companion.learning import LearningError
+        from bridges.learning import LearningError
 
         with pytest.raises(LearningError):
             pathway_service.propose_knowledge_state_update(
@@ -635,7 +635,7 @@ class TestIsolation:
             ),
         )
 
-        from science_companion.learning import LearningError
+        from bridges.learning import LearningError
 
         with pytest.raises(LearningError):
             pathway_service.list_learning_records(bob_id, mission.mission_id)

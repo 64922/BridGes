@@ -1,7 +1,7 @@
 """Tests for telemetry correlation context propagation."""
 
-from science_companion.contracts.projects import ObjectDomain
-from science_companion.observability.telemetry_context import (
+from bridges.contracts.projects import ObjectDomain
+from bridges.observability.telemetry_context import (
     TelemetryCorrelationScope,
     build_correlation,
     get_correlation,

@@ -13,10 +13,10 @@ import base64
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationState
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.science import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.invalidation import InvalidationState
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.science import (
     LicenseState,
     MediaType,
     RetrievalChannel,
@@ -24,10 +24,10 @@ from science_companion.contracts.science import (
     SourceStatus,
     SourceUploadRequest,
 )
-from science_companion.invalidation import InvalidationService
-from science_companion.science import ScienceSourceService
-from science_companion.science.search import ScienceSearchService
-from science_companion.scope import ScopeEnforcer
+from bridges.invalidation import InvalidationService
+from bridges.science import ScienceSourceService
+from bridges.science.search import ScienceSearchService
+from bridges.scope import ScopeEnforcer
 
 
 @pytest.fixture
@@ -43,7 +43,7 @@ def invalidation_service(scope_enforcer: ScopeEnforcer) -> InvalidationService:
 @pytest.fixture
 def source_service(invalidation_service: InvalidationService) -> ScienceSourceService:
     svc = ScienceSourceService(invalidation_service=invalidation_service)
-    from science_companion.science.service import build_source_impact_resolver
+    from bridges.science.service import build_source_impact_resolver
 
     invalidation_service.register_impact_resolver(
         "science_source", build_source_impact_resolver(svc)

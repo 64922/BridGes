@@ -5,7 +5,7 @@ secrets or keys. The scrubber removes or hashes forbidden fields and produces a
 privacy manifest.
 """
 
-from science_companion.observability.scrubber import scrub_payload, scrub_value
+from bridges.observability.scrubber import scrub_payload, scrub_value
 
 
 def test_scrubber_removes_private_body() -> None:

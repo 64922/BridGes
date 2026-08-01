@@ -6,14 +6,14 @@
 
 from __future__ import annotations
 
-from science_companion.ai.capability_registry import CapabilityRegistry
-from science_companion.contracts.ai import CapabilityKind, CapabilityRecord
-from science_companion.domain import (
+from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.contracts.ai import CapabilityKind, CapabilityRecord
+from bridges.domain import (
     DomainPackLoader,
     DomainPackValidationRuntime,
     LoadedDomainPack,
 )
-from science_companion.domain.standards_datasets import StandardsDatasetsDomainPack
+from bridges.domain.standards_datasets import StandardsDatasetsDomainPack
 
 
 def _loaded_pack() -> tuple[StandardsDatasetsDomainPack, LoadedDomainPack]:

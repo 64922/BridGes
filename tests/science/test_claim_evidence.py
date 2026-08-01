@@ -13,12 +13,12 @@ import base64
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.invalidation import (
     InvalidationEventType,
     RevalidationStatus,
 )
-from science_companion.contracts.science import (
+from bridges.contracts.science import (
     CitationVerificationStatus,
     ClaimImportance,
     ClaimRequest,
@@ -30,14 +30,14 @@ from science_companion.contracts.science import (
     PublishGateCheck,
     SourceUploadRequest,
 )
-from science_companion.invalidation import InvalidationService
-from science_companion.science import ClaimEvidenceService, ScienceSourceService
-from science_companion.science.claims import (
+from bridges.invalidation import InvalidationService
+from bridges.science import ClaimEvidenceService, ScienceSourceService
+from bridges.science.claims import (
     ClaimGraphRevalidationHandler,
     build_claim_impact_resolver,
 )
-from science_companion.science.search import ScienceSearchService
-from science_companion.scope import ScopeEnforcer
+from bridges.science.search import ScienceSearchService
+from bridges.scope import ScopeEnforcer
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def invalidation_service(scope_enforcer: ScopeEnforcer) -> InvalidationService:
 @pytest.fixture
 def source_service(invalidation_service: InvalidationService) -> ScienceSourceService:
     svc = ScienceSourceService(invalidation_service=invalidation_service)
-    from science_companion.science.service import build_source_impact_resolver
+    from bridges.science.service import build_source_impact_resolver
 
     invalidation_service.register_impact_resolver(
         "science_source", build_source_impact_resolver(svc)
@@ -246,7 +246,7 @@ class TestCitationVerification:
         citation_id = result.graph.claims[0].citation_ids[0]
 
         # Create a new version of the source.
-        from science_companion.contracts.science import ChunkCorrection, SourceVersionRequest
+        from bridges.contracts.science import ChunkCorrection, SourceVersionRequest
 
         projection = source_service.get_source(alice.account_id, source_id)
         assert projection.current_document is not None

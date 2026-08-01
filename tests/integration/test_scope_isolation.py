@@ -14,9 +14,9 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.scope import ScopeEnforcer
+from bridges.api.main import create_app
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.scope import ScopeEnforcer
 
 
 @pytest.fixture

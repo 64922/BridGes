@@ -12,17 +12,17 @@ from typing import Any
 
 import pytest
 
-from science_companion.ai import CapabilityRegistry, ModelGateway
-from science_companion.ai.adapters import AdapterError, AdapterResult
-from science_companion.contracts.ai import (
+from bridges.ai import CapabilityRegistry, ModelGateway
+from bridges.ai.adapters import AdapterError, AdapterResult
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     RetryPolicy,
 )
-from science_companion.contracts.science import GateResult, InputQualityGate
-from science_companion.contracts.workflows import RunContextEnvelope
-from science_companion.science.parser import ParserError
-from science_companion.science.qwen_parser import QwenOcrPDFParser
+from bridges.contracts.science import GateResult, InputQualityGate
+from bridges.contracts.workflows import RunContextEnvelope
+from bridges.science.parser import ParserError
+from bridges.science.qwen_parser import QwenOcrPDFParser
 
 
 def _context() -> RunContextEnvelope:

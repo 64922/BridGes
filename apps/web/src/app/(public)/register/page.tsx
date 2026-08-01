@@ -1,7 +1,7 @@
 import RegisterForm from "./register-form";
 
 export const metadata = {
-  title: "注册 — Science Companion",
+  title: "注册 — BridGes",
 };
 
 /**

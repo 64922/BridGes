@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "项目材料与产物 — Science Companion",
+  title: "项目材料与产物 — BridGes",
 };
 
 export default function ProjectMaterialsPage() {

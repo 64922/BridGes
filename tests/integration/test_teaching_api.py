@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.contracts.learning import LessonStatus
+from bridges.contracts.learning import LessonStatus
 
 
 @pytest.fixture

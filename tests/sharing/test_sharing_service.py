@@ -11,8 +11,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from science_companion.contracts.projects import ObjectDomain
-from science_companion.contracts.sharing import (
+from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.sharing import (
     GrantPermission,
     InviteAcceptRequest,
     InviteCreateRequest,
@@ -21,8 +21,8 @@ from science_companion.contracts.sharing import (
     ShareExecuteRequest,
     SharePreviewRequest,
 )
-from science_companion.sharing import SharingService, SharingServiceError
-from science_companion.vault import (
+from bridges.sharing import SharingService, SharingServiceError
+from bridges.vault import (
     InMemoryVaultRepository,
     MemoryDeviceVaultPort,
     VaultService,

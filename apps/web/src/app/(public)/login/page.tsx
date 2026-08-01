@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import LoginForm from "./login-form";
 
 export const metadata = {
-  title: "登录 — Science Companion",
+  title: "登录 — BridGes",
 };
 
 /**

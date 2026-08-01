@@ -12,8 +12,8 @@ from typing import Any
 
 import pytest
 
-from science_companion.ai import CapabilityRegistry, ModelGateway
-from science_companion.ai.adapters import (
+from bridges.ai import CapabilityRegistry, ModelGateway
+from bridges.ai.adapters import (
     AdapterError,
     AdapterResult,
     AuthError,
@@ -22,7 +22,7 @@ from science_companion.ai.adapters import (
     RegionError,
     TransientError,
 )
-from science_companion.contracts.ai import (
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
@@ -30,7 +30,7 @@ from science_companion.contracts.ai import (
     ModelCallStatus,
     RetryPolicy,
 )
-from science_companion.contracts.workflows import RunContextEnvelope
+from bridges.contracts.workflows import RunContextEnvelope
 
 
 class _ProgrammableAdapter:

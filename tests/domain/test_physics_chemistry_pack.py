@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from science_companion.ai.capability_registry import CapabilityRegistry
-from science_companion.contracts.ai import CapabilityKind, CapabilityRecord
-from science_companion.domain import DomainPackLoader, DomainPackValidationRuntime
-from science_companion.domain.physics_chemistry import (
+from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.contracts.ai import CapabilityKind, CapabilityRecord
+from bridges.domain import DomainPackLoader, DomainPackValidationRuntime
+from bridges.domain.physics_chemistry import (
     PhysicsChemistryDomainPack,
 )
 

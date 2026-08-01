@@ -11,7 +11,7 @@ import os
 
 import pytest
 
-from science_companion.config import get_settings
+from bridges.config import get_settings
 
 # 显式覆盖的运行时配置。任何来自用户 shell 环境或仓库 ``.env`` 的同名值
 # 都会被这些确定性值压过，保证测试不读取真实凭据、不录制真实网络调用、
@@ -24,32 +24,32 @@ from science_companion.config import get_settings
 #   - DATABASE_URL/SECRET_KEY 置空：绝不落盘真实数据库文件
 #   - BUILD_DIGEST 置空：等价于未设置（evaluation._build_digest 有空值回退）
 _DETERMINISTIC_ENV: dict[str, str] = {
-    "SCIENCE_COMPANION_ENVIRONMENT": "test",
-    "SCIENCE_COMPANION_QWEN_FORCE_STUB": "true",
-    "SCIENCE_COMPANION_QWEN_API_KEY": "",
-    "SCIENCE_COMPANION_QWEN_API_KEY_FILE": "",
-    "SCIENCE_COMPANION_QWEN_WORKSPACE_ID": "",
-    "SCIENCE_COMPANION_QWEN_REGION": "cn-beijing",
-    "SCIENCE_COMPANION_QWEN_CASSETTE_DIR": "",
-    "SCIENCE_COMPANION_QWEN_RECORD_CASSETTES": "false",
-    "SCIENCE_COMPANION_DATABASE_URL": "",
-    "SCIENCE_COMPANION_DATABASE_URL_FILE": "",
-    "SCIENCE_COMPANION_SECRET_KEY": "",
-    "SCIENCE_COMPANION_SECRET_KEY_FILE": "",
-    "SCIENCE_COMPANION_REDIS_URL": "",
-    "SCIENCE_COMPANION_REDIS_URL_FILE": "",
-    "SCIENCE_COMPANION_OBJECT_STORAGE_URL": "",
-    "SCIENCE_COMPANION_OBJECT_STORAGE_URL_FILE": "",
-    "SCIENCE_COMPANION_BUILD_DIGEST": "",
+    "BRIDGES_ENVIRONMENT": "test",
+    "BRIDGES_QWEN_FORCE_STUB": "true",
+    "BRIDGES_QWEN_API_KEY": "",
+    "BRIDGES_QWEN_API_KEY_FILE": "",
+    "BRIDGES_QWEN_WORKSPACE_ID": "",
+    "BRIDGES_QWEN_REGION": "cn-beijing",
+    "BRIDGES_QWEN_CASSETTE_DIR": "",
+    "BRIDGES_QWEN_RECORD_CASSETTES": "false",
+    "BRIDGES_DATABASE_URL": "",
+    "BRIDGES_DATABASE_URL_FILE": "",
+    "BRIDGES_SECRET_KEY": "",
+    "BRIDGES_SECRET_KEY_FILE": "",
+    "BRIDGES_REDIS_URL": "",
+    "BRIDGES_REDIS_URL_FILE": "",
+    "BRIDGES_OBJECT_STORAGE_URL": "",
+    "BRIDGES_OBJECT_STORAGE_URL_FILE": "",
+    "BRIDGES_BUILD_DIGEST": "",
 }
 
 # 显式启用真实 Qwen 冒烟（重录 cassette）所需的环境变量开关。只有用户在
-# 测试进程外显式设置这两个键（如 ``SCIENCE_COMPANION_QWEN_RECORD_CASSETTES=true``
-# 且提供真实 ``SCIENCE_COMPANION_QWEN_API_KEY``）时，对应键才不被覆盖——
+# 测试进程外显式设置这两个键（如 ``BRIDGES_QWEN_RECORD_CASSETTES=true``
+# 且提供真实 ``BRIDGES_QWEN_API_KEY``）时，对应键才不被覆盖——
 # 这是验收标准中"真实 Qwen 冒烟测试必须显式启用"的入口。凭据只接受
 # 环境变量显式提供，仓库 ``.env`` 里的值仍被确定性键压过。
-_RECORD_CASSETTES_KEY = "SCIENCE_COMPANION_QWEN_RECORD_CASSETTES"
-_QWEN_API_KEY_KEY = "SCIENCE_COMPANION_QWEN_API_KEY"
+_RECORD_CASSETTES_KEY = "BRIDGES_QWEN_RECORD_CASSETTES"
+_QWEN_API_KEY_KEY = "BRIDGES_QWEN_API_KEY"
 
 
 def _explicit_real_recording_requested() -> bool:

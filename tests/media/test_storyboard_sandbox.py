@@ -18,7 +18,7 @@ import json
 
 import pytest
 
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     EditableSource,
     FactLockViolation,
     LifecycleStage,
@@ -39,8 +39,8 @@ from science_companion.contracts.media import (
     ValidationReport,
     VisualObject,
 )
-from science_companion.contracts.science import FactLock, FactLockType
-from science_companion.media.storyboard_service import (
+from bridges.contracts.science import FactLock, FactLockType
+from bridges.media.storyboard_service import (
     DeterministicStoryboardGenerator,
     InMemorySandboxRuntime,
     SandboxError,

@@ -7,7 +7,7 @@ test.describe("T002 — 项目主壳、设计系统、响应式与无障碍基�
   test("公共入口显示健康状态、跳转链接和地标", async ({ page }) => {
     await page.goto("/");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "Science Companion" }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: "BridGes" }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
     await expect(page.getByRole("link", { name: "注册" })).toBeVisible();
     await expect(page.getByTestId("main-content")).toBeVisible();

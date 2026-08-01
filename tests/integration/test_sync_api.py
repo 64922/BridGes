@@ -9,7 +9,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
 from fastapi.testclient import TestClient
 
-from science_companion.contracts.sync import SyncOperation
+from bridges.contracts.sync import SyncOperation
 
 
 def _register(client: TestClient) -> dict[str, Any]:

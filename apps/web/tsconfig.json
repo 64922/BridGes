@@ -19,7 +19,7 @@
     ],
     "paths": {
       "@/*": ["./src/*"],
-      "@science-companion/contracts": ["../../packages/contracts/src/generated.ts"]
+      "@bridges/contracts": ["../../packages/contracts/src/generated.ts"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

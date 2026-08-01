@@ -9,15 +9,15 @@ their own SLIs via the SLI/SLO contract.
 from datetime import datetime, timezone
 from typing import Any
 
-from science_companion.ai import CapabilityRegistry, ModelGateway
-from science_companion.ai.adapters import (
+from bridges.ai import CapabilityRegistry, ModelGateway
+from bridges.ai.adapters import (
     AdapterError,
     AdapterResult,
     CapabilityAdapter,
     RateLimitError,
     RegionError,
 )
-from science_companion.contracts.ai import (
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
@@ -25,21 +25,21 @@ from science_companion.contracts.ai import (
     ModelCallStatus,
     RetryPolicy,
 )
-from science_companion.contracts.observability import (
+from bridges.contracts.observability import (
     AuditAction,
     AuditResult,
     SLIMetricKind,
     SLISeverity,
 )
-from science_companion.contracts.workflows import (
+from bridges.contracts.workflows import (
     ArtifactTrustStatus,
     NodeStatus,
     WorkOrder,
     WorkflowRunStatus,
 )
-from science_companion.observability.service import ObservabilityService
-from science_companion.observability.telemetry_context import TelemetryCorrelationScope
-from science_companion.workflows import WorkflowService
+from bridges.observability.service import ObservabilityService
+from bridges.observability.telemetry_context import TelemetryCorrelationScope
+from bridges.workflows import WorkflowService
 
 
 class _ProgrammableAdapter:

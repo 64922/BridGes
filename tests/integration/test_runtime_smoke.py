@@ -30,24 +30,24 @@ def _find_free_port() -> int:
 def _clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     """构造显式子进程环境。
 
-    剔除所有 ``SCIENCE_COMPANION_*`` 与 Conda 变量，再显式写入确定性配置，
-    使子进程既不继承用户环境中的真实凭据，也不会读取仓库 ``.env`` 中的
-    数据库或录制配置——冒烟测试保持离线、确定性。
+    剔除所有 ``BRIDGES_*`` / 旧 ``SCIENCE_COMPANION_*`` 与 Conda 变量，
+    再显式写入确定性配置，使子进程既不继承用户环境中的真实凭据，也
+    不读取仓库 ``.env`` 中的数据库或录制配置——冒烟测试保持离线、确定性。
     """
     merged = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("SCIENCE_COMPANION_")
+        if not key.startswith(("BRIDGES_", "SCIENCE_COMPANION_"))
         and key not in {"CONDA_PREFIX", "CONDA_DEFAULT_ENV", "CONDA_SHLVL"}
     }
     merged.update(
         {
-            "SCIENCE_COMPANION_ENVIRONMENT": "test",
-            "SCIENCE_COMPANION_QWEN_FORCE_STUB": "true",
-            "SCIENCE_COMPANION_QWEN_API_KEY": "",
-            "SCIENCE_COMPANION_QWEN_RECORD_CASSETTES": "false",
-            "SCIENCE_COMPANION_DATABASE_URL": "",
-            "SCIENCE_COMPANION_SECRET_KEY": "",
+            "BRIDGES_ENVIRONMENT": "test",
+            "BRIDGES_QWEN_FORCE_STUB": "true",
+            "BRIDGES_QWEN_API_KEY": "",
+            "BRIDGES_QWEN_RECORD_CASSETTES": "false",
+            "BRIDGES_DATABASE_URL": "",
+            "BRIDGES_SECRET_KEY": "",
         }
     )
     if extra:
@@ -58,7 +58,7 @@ def _clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
 def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     merged = _clean_env(env)
     return subprocess.run(
-        [sys.executable, "-m", "science_companion.cli.main", *args],
+        [sys.executable, "-m", "bridges.cli.main", *args],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
@@ -86,10 +86,10 @@ def _wait_for_health(base_url: str, timeout: float = 30.0) -> None:
 def running_api() -> Any:
     """Start the API on a free port and yield its base URL, then shut it down."""
     port = _find_free_port()
-    env = _clean_env({"SCIENCE_COMPANION_API_PORT": str(port)})
+    env = _clean_env({"BRIDGES_API_PORT": str(port)})
 
     proc = subprocess.Popen(
-        [sys.executable, "-m", "science_companion.cli.main", "api", "--port", str(port)],
+        [sys.executable, "-m", "bridges.cli.main", "api", "--port", str(port)],
         cwd=REPO_ROOT,
         env=env,
     )
@@ -120,6 +120,28 @@ def test_migrate_smoke() -> None:
     assert result.returncode == 0, result.stderr
     assert "environment:" in result.stdout
     assert "migrate:" in result.stdout
+
+
+def test_doctor_hints_when_external_capability_unconfigured() -> None:
+    """缺少外部能力（Qwen Key）时给出中文可操作提示，而非导入失败或假成功。"""
+    result = _run_cli("doctor")
+    assert result.returncode == 0, result.stderr
+    assert "BRIDGES_QWEN_API_KEY" in result.stdout
+    assert "离线桩" in result.stdout
+
+
+def test_legacy_compat_module_runs_same_implementation() -> None:
+    """迁移兼容层：旧 ``science_companion`` 模块入口与规范入口同一实现。"""
+    result = subprocess.run(
+        [sys.executable, "-m", "science_companion.cli.main", "doctor"],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        env=_clean_env(),
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "doctor: passed" in result.stdout
 
 
 def _get_json(url: str) -> dict[str, Any]:

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from science_companion.contracts.learning import (
+from bridges.contracts.learning import (
     AnswerEvaluatedState,
     DiagnosticAnswerCreateRequest,
     DiagnosticQuestionCreateRequest,
@@ -21,7 +21,7 @@ from science_companion.contracts.learning import (
     LearningActivityType,
     LearningMissionCreateRequest,
 )
-from science_companion.learning import InMemoryLearningRepository, LearningService
+from bridges.learning import InMemoryLearningRepository, LearningService
 
 
 @pytest.fixture

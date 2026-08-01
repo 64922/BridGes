@@ -4,7 +4,7 @@ import { Providers } from "./providers";
 import "@/styles/globals.css";
 
 export const metadata: Metadata = {
-  title: "Science Companion",
+  title: "BridGes",
   description: "长期科学学习与表达伙伴",
 };
 

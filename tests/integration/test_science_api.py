@@ -14,11 +14,11 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationEventType, InvalidationState
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.science import (
+from bridges.api.main import create_app
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.invalidation import InvalidationEventType, InvalidationState
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.science import (
     GateResult,
     IngestionStatus,
     InputQualityGate,

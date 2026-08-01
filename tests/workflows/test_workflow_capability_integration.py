@@ -11,9 +11,9 @@ from typing import Any
 
 import pytest
 
-from science_companion.ai import CapabilityRegistry, ModelGateway
-from science_companion.ai.adapters import AdapterResult, CapabilityAdapter, RateLimitError
-from science_companion.contracts.ai import (
+from bridges.ai import CapabilityRegistry, ModelGateway
+from bridges.ai.adapters import AdapterResult, CapabilityAdapter, RateLimitError
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
@@ -21,13 +21,13 @@ from science_companion.contracts.ai import (
     ModelCallStatus,
     RetryPolicy,
 )
-from science_companion.contracts.workflows import (
+from bridges.contracts.workflows import (
     ArtifactTrustStatus,
     NodeStatus,
     WorkOrder,
     WorkflowRunStatus,
 )
-from science_companion.workflows import WorkflowError, WorkflowService
+from bridges.workflows import WorkflowError, WorkflowService
 
 
 class _FixedAdapter:

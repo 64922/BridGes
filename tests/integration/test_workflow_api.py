@@ -11,7 +11,7 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
+from bridges.api.main import create_app
 
 
 @pytest.fixture
@@ -199,7 +199,7 @@ def test_human_todo_flow_through_api(client: TestClient) -> None:
 
     # Register a gated workflow for this test via the service attached to the app.
     workflow_service = client.app.state.workflow_service  # type: ignore[attr-defined]
-    from science_companion.contracts.workflows import WorkflowRunStatus
+    from bridges.contracts.workflows import WorkflowRunStatus
 
     workflow_service.register_workflow(
         name="gated_science_task",

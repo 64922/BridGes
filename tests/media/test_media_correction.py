@@ -11,9 +11,9 @@ import base64
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationState
-from science_companion.contracts.media import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.invalidation import InvalidationState
+from bridges.contracts.media import (
     MediaAssetStatus,
     MediaCorrectionRequest,
     MediaCorrectionType,
@@ -21,10 +21,10 @@ from science_companion.contracts.media import (
     MediaType,
     MediaUploadRequest,
 )
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.science import LicenseState
-from science_companion.invalidation import InvalidationService
-from science_companion.media import MediaError, MediaIngestionService
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.science import LicenseState
+from bridges.invalidation import InvalidationService
+from bridges.media import MediaError, MediaIngestionService
 
 
 @pytest.fixture
@@ -35,7 +35,7 @@ def invalidation_service() -> InvalidationService:
 @pytest.fixture
 def service(invalidation_service: InvalidationService) -> MediaIngestionService:
     svc = MediaIngestionService(invalidation_service=invalidation_service)
-    from science_companion.media.service import build_media_impact_resolver
+    from bridges.media.service import build_media_impact_resolver
 
     invalidation_service.register_impact_resolver(
         "media_asset", build_media_impact_resolver(svc)

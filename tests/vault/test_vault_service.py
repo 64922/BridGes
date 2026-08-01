@@ -8,15 +8,15 @@ returns a legal wait state instead of silently uploading full text.
 
 import pytest
 
-from science_companion.contracts.projects import ObjectDomain
-from science_companion.contracts.vault import (
+from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.vault import (
     CapsuleStatus,
     CloudProjectionStatus,
     ContentAuthority,
     DeviceUnavailableState,
     VaultObjectDomain,
 )
-from science_companion.vault import (
+from bridges.vault import (
     InMemoryVaultRepository,
     MemoryDeviceVaultPort,
     UnavailableDeviceVaultPort,
@@ -194,7 +194,7 @@ class TestProjectCopyBoundary:
     def test_share_as_project_copy_creates_separate_authority(
         self, available_service: VaultService, alice_id: str
     ) -> None:
-        from science_companion.contracts.vault import VaultShareRequest
+        from bridges.contracts.vault import VaultShareRequest
 
         content = b"Draft to share"
         source = available_service.create_private_object(
@@ -227,7 +227,7 @@ class TestCrossAccountIsolation:
             content_authority=ContentAuthority.SERVER_REPLICA,
         )
 
-        from science_companion.vault.adapters import VaultError
+        from bridges.vault.adapters import VaultError
 
         with pytest.raises(VaultError, match="对象不存在"):
             available_service.get_object("account-bob", obj.ref.object_id)

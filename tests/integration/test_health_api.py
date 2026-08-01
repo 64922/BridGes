@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion import __version__
-from science_companion.api.main import create_app
-from science_companion.config import get_settings
+from bridges import __version__
+from bridges.api.main import create_app
+from bridges.config import get_settings
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ def test_health_degraded_reports_optional_dependencies(client: TestClient) -> No
 
 def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
     """Configuration failure (e.g. missing secret file) returns fail, not 500."""
-    env_key = "SCIENCE_COMPANION_SECRET_KEY_FILE"
+    env_key = "BRIDGES_SECRET_KEY_FILE"
     missing = tmp_path / "nonexistent-secret.key"
     os.environ[env_key] = str(missing)
     get_settings.cache_clear()
@@ -87,8 +87,8 @@ def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
 
 
 def test_health_ready_reports_missing_production_persistence() -> None:
-    env_key = "SCIENCE_COMPANION_ENVIRONMENT"
-    database_key = "SCIENCE_COMPANION_DATABASE_URL"
+    env_key = "BRIDGES_ENVIRONMENT"
+    database_key = "BRIDGES_DATABASE_URL"
     previous_environment = os.environ.get(env_key)
     previous_database = os.environ.get(database_key)
     os.environ[env_key] = "production"

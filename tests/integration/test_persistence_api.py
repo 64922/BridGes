@@ -4,8 +4,8 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
-from science_companion.persistence import SqliteStateStore
+from bridges.api.main import create_app
+from bridges.persistence import SqliteStateStore
 
 
 def test_recreated_app_reads_identity_and_project_from_sqlite(tmp_path: Path) -> None:

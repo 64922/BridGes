@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from science_companion.config import ENV_PREFIX, Settings, get_settings
+from bridges.config import ENV_PREFIX, Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -100,7 +100,8 @@ def test_invalid_value_raises_validation_error() -> None:
     try:
         with pytest.raises(ValidationError) as exc_info:
             Settings()
-        assert "api_port" in str(exc_info.value)
+        # 错误信息按环境变量名（别名）定位，用户可直接据此修正配置。
+        assert "API_PORT" in str(exc_info.value)
     finally:
         if old is None:
             os.environ.pop(env_key, None)

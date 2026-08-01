@@ -2,8 +2,8 @@
 
 import pytest
 
-from science_companion.contracts.observability import SLIMetricKind, SLISeverity
-from science_companion.observability.sli_registry import SLIRegistry, SLIRegistryError
+from bridges.contracts.observability import SLIMetricKind, SLISeverity
+from bridges.observability.sli_registry import SLIRegistry, SLIRegistryError
 
 
 def test_register_and_list_sli() -> None:

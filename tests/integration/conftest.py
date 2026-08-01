@@ -13,7 +13,7 @@ from typing import Any, Protocol, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
+from bridges.api.main import create_app
 
 
 class _RegisteredUser(Protocol):

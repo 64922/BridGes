@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.domain import (
+from bridges.contracts.domain import (
     AttestationConclusion,
     DomainClaimSchema,
     DomainManifestSignature,
@@ -33,19 +33,19 @@ from science_companion.contracts.domain import (
     ReviewRole,
     ValidatorRequirement,
 )
-from science_companion.contracts.workflows import WorkflowRunStatus, WorkOrder
-from science_companion.domain.loader import DomainPackLoader
-from science_companion.domain.pack_lifecycle import (
+from bridges.contracts.workflows import WorkflowRunStatus, WorkOrder
+from bridges.domain.loader import DomainPackLoader
+from bridges.domain.pack_lifecycle import (
     DomainPackLifecycleError,
     DomainPackLifecycleService,
 )
-from science_companion.domain.registry import DomainPackRegistry
-from science_companion.domain.runtime import DomainPackValidationRuntime
-from science_companion.domain.workbench import (
+from bridges.domain.registry import DomainPackRegistry
+from bridges.domain.runtime import DomainPackValidationRuntime
+from bridges.domain.workbench import (
     DomainPackWorkbenchError,
     DomainPackWorkbenchService,
 )
-from science_companion.workflows import WorkflowError, WorkflowService
+from bridges.workflows import WorkflowError, WorkflowService
 
 
 class MinimalDomainPack:

@@ -18,24 +18,24 @@ from typing import Any
 
 import httpx
 
-from science_companion.ai import ModelGateway
-from science_companion.ai.capability_registry import CapabilityRegistry
-from science_companion.ai.qwen_client import QwenApiClient
-from science_companion.ai.qwen_tts_adapter import QwenTtsAdapter
-from science_companion.contracts.ai import (
+from bridges.ai import ModelGateway
+from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.ai.qwen_client import QwenApiClient
+from bridges.ai.qwen_tts_adapter import QwenTtsAdapter
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     ModelCallStatus,
     RetryPolicy,
 )
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     NarrationAudio,
     NarrationSynthesisStatus,
     PronunciationNote,
     PronunciationNoteKind,
 )
-from science_companion.contracts.workflows import RunContextEnvelope
-from science_companion.media.accessibility_service import (
+from bridges.contracts.workflows import RunContextEnvelope
+from bridges.media.accessibility_service import (
     InMemoryAudioStorage,
     NarrationSynthesisContext,
     QwenTtsNarrationSynthesizer,

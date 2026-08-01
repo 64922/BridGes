@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "证据与校验台 — Science Companion",
+  title: "证据与校验台 — BridGes",
 };
 
 export default function EvidenceDeskPage() {

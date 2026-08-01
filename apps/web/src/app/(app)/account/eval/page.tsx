@@ -1,7 +1,7 @@
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
-  title: "评测与运行中心 — Science Companion",
+  title: "评测与运行中心 — BridGes",
 };
 
 export default function EvalCenterPage() {

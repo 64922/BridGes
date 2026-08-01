@@ -13,7 +13,7 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.expression import (
+from bridges.contracts.expression import (
     ApplyRevisionPatchRequest,
     ApproveArtifactRequest,
     CompareVersionsRequest,
@@ -28,10 +28,10 @@ from science_companion.contracts.expression import (
     RiskTier,
     VersionDifferenceField,
 )
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationEventType
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.science import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.invalidation import InvalidationEventType
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.science import (
     Citation,
     CitationLocator,
     CitationVerificationStatus,
@@ -45,18 +45,18 @@ from science_companion.contracts.science import (
     FactLockSet,
     ValidationReport,
 )
-from science_companion.contracts.workflows import WorkOrder
-from science_companion.expression import ExpressionService, ExpressionServiceError
-from science_companion.invalidation import InvalidationService
-from science_companion.science import (
+from bridges.contracts.workflows import WorkOrder
+from bridges.expression import ExpressionService, ExpressionServiceError
+from bridges.invalidation import InvalidationService
+from bridges.science import (
     ClaimEvidenceService,
     ScienceSearchService,
     ScienceSourceService,
 )
-from science_companion.contracts.expression import StyleDiagnosticSeverity
-from science_companion.science.fact_lock import apply_honest_degradation, compile_fact_locks
-from science_companion.scope import ScopeEnforcer
-from science_companion.workflows import WorkflowService
+from bridges.contracts.expression import StyleDiagnosticSeverity
+from bridges.science.fact_lock import apply_honest_degradation, compile_fact_locks
+from bridges.scope import ScopeEnforcer
+from bridges.workflows import WorkflowService
 
 
 def _now() -> datetime:

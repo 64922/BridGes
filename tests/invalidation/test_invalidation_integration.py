@@ -12,22 +12,22 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.invalidation import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.invalidation import (
     AffectedDownstream,
     InvalidationEventType,
     InvalidationState,
 )
-from science_companion.invalidation import InvalidationService
-from science_companion.vault import (
+from bridges.invalidation import InvalidationService
+from bridges.vault import (
     InMemoryVaultRepository,
     MemoryDeviceVaultPort,
     VaultError,
     VaultService,
 )
-from science_companion.workflows import WorkflowError, WorkflowService
-from science_companion.contracts.workflows import WorkOrder, WorkflowRunStatus
+from bridges.workflows import WorkflowError, WorkflowService
+from bridges.contracts.workflows import WorkOrder, WorkflowRunStatus
 
 
 @pytest.fixture

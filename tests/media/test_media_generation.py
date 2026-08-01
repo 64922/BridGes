@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     AccessibilityAlternative,
     ChartAxis,
     ChartAxisType,
@@ -39,8 +39,8 @@ from science_companion.contracts.media import (
     ScientificMediaObject,
     SpecValidationResult,
 )
-from science_companion.contracts.science import FactLock, FactLockType
-from science_companion.media.generation import (
+from bridges.contracts.science import FactLock, FactLockType
+from bridges.media.generation import (
     MediaGenerationError,
     MediaGenerationService,
 )

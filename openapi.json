@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "Science Companion API",
+    "title": "BridGes API",
     "description": "长期科学学习与表达伙伴 API",
     "version": "0.1.0"
   },
@@ -130,7 +130,7 @@
         "operationId": "logout_auth_logout_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -142,7 +142,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -281,7 +281,7 @@
         "operationId": "get_session_auth_session_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -293,7 +293,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -341,7 +341,7 @@
         "operationId": "list_workbench_domain_packs_workbench_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -353,7 +353,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -398,7 +398,7 @@
         "operationId": "register_pack_domain_packs_workbench_register_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -410,7 +410,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -485,7 +485,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -497,7 +497,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -559,7 +559,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -571,7 +571,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -633,7 +633,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -645,7 +645,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -723,7 +723,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -735,7 +735,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -810,7 +810,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -822,7 +822,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -897,7 +897,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -909,7 +909,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -987,7 +987,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -999,7 +999,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1065,7 +1065,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1077,7 +1077,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1147,7 +1147,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1159,7 +1159,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1209,7 +1209,7 @@
         "operationId": "register_security_admin_domain_packs_security_admins_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1221,7 +1221,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1253,7 +1253,7 @@
         "operationId": "security_admin_status_domain_packs_security_admins_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1265,7 +1265,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1310,7 +1310,7 @@
         "operationId": "record_invalidation_domain_packs_invalidations_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1322,7 +1322,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1393,7 +1393,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1405,7 +1405,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1459,7 +1459,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1471,7 +1471,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1527,7 +1527,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1539,7 +1539,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1608,7 +1608,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1620,7 +1620,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1676,7 +1676,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1688,7 +1688,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1744,7 +1744,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1756,7 +1756,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1825,7 +1825,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1837,7 +1837,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1892,7 +1892,7 @@
         "operationId": "emergency_revoke_domain_packs_revocations_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1904,7 +1904,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -1973,7 +1973,7 @@
         "operationId": "list_revocations_domain_packs_revocations_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -1985,7 +1985,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2030,7 +2030,7 @@
         "operationId": "propose_rollback_domain_packs_rollbacks_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2042,7 +2042,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2100,7 +2100,7 @@
         "operationId": "list_rollbacks_domain_packs_rollbacks_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2112,7 +2112,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2166,7 +2166,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2178,7 +2178,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2231,7 +2231,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2243,7 +2243,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2312,7 +2312,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2324,7 +2324,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2374,7 +2374,7 @@
         "operationId": "register_qualification_domain_packs_qualifications_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2386,7 +2386,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2438,7 +2438,7 @@
         "operationId": "list_qualifications_domain_packs_qualifications_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2450,7 +2450,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2513,7 +2513,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2525,7 +2525,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2597,7 +2597,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2609,7 +2609,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2687,7 +2687,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2699,7 +2699,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2756,7 +2756,7 @@
         "operationId": "create_project_projects_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2768,7 +2768,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2834,7 +2834,7 @@
         "operationId": "list_projects_projects_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2846,7 +2846,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2903,7 +2903,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2915,7 +2915,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -2980,7 +2980,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -2992,7 +2992,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3069,7 +3069,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3081,7 +3081,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3139,7 +3139,7 @@
         "operationId": "create_object_vault_objects_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3151,7 +3151,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3207,7 +3207,7 @@
         "operationId": "list_objects_vault_objects_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3219,7 +3219,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3280,7 +3280,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3292,7 +3292,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3359,7 +3359,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3371,7 +3371,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3447,7 +3447,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3459,7 +3459,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3536,7 +3536,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3548,7 +3548,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3615,7 +3615,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3627,7 +3627,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3706,7 +3706,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3718,7 +3718,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3776,7 +3776,7 @@
         "operationId": "pair_device_vault_devices_pair_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3788,7 +3788,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3846,7 +3846,7 @@
         "operationId": "list_devices_vault_devices_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3858,7 +3858,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3919,7 +3919,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -3931,7 +3931,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -3999,7 +3999,7 @@
         "operationId": "create_shared_project_sharing_projects_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4011,7 +4011,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4067,7 +4067,7 @@
         "operationId": "list_shared_projects_sharing_projects_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4079,7 +4079,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4140,7 +4140,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4152,7 +4152,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4210,7 +4210,7 @@
         "operationId": "preview_share_sharing_preview_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4222,7 +4222,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4300,7 +4300,7 @@
         "operationId": "execute_share_sharing_execute_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4312,7 +4312,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4399,7 +4399,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4411,7 +4411,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4489,7 +4489,7 @@
         "operationId": "accept_invite_sharing_invites_accept_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4501,7 +4501,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4597,7 +4597,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4609,7 +4609,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4695,7 +4695,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4707,7 +4707,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4783,7 +4783,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4795,7 +4795,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4866,7 +4866,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4878,7 +4878,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -4955,7 +4955,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -4967,7 +4967,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5005,7 +5005,7 @@
         "operationId": "exchange_sync_exchange_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5017,7 +5017,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5065,7 +5065,7 @@
         "operationId": "list_conflicts_sync_conflicts_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5077,7 +5077,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5128,7 +5128,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5140,7 +5140,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5188,7 +5188,7 @@
         "operationId": "create_institution_institutions_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5200,7 +5200,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5256,7 +5256,7 @@
         "operationId": "list_institutions_institutions_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5268,7 +5268,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5329,7 +5329,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5341,7 +5341,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5408,7 +5408,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5420,7 +5420,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5509,7 +5509,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5521,7 +5521,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5588,7 +5588,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5600,7 +5600,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5680,7 +5680,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5692,7 +5692,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5786,7 +5786,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5798,7 +5798,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5875,7 +5875,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5887,7 +5887,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -5952,7 +5952,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -5964,7 +5964,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6051,7 +6051,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6063,7 +6063,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6130,7 +6130,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6142,7 +6142,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6227,7 +6227,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6239,7 +6239,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6310,7 +6310,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6322,7 +6322,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6407,7 +6407,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6419,7 +6419,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6508,7 +6508,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6520,7 +6520,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6606,7 +6606,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6618,7 +6618,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6686,7 +6686,7 @@
         "operationId": "create_observation_profiles_observations_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6698,7 +6698,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6764,7 +6764,7 @@
         "operationId": "list_observations_profiles_observations_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6776,7 +6776,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6837,7 +6837,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6849,7 +6849,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6907,7 +6907,7 @@
         "operationId": "propose_candidate_profiles_candidates_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6919,7 +6919,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -6985,7 +6985,7 @@
         "operationId": "list_candidates_profiles_candidates_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -6997,7 +6997,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7058,7 +7058,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7070,7 +7070,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7137,7 +7137,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7149,7 +7149,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7217,7 +7217,7 @@
         "operationId": "list_assertions_profiles_assertions_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7229,7 +7229,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7378,7 +7378,7 @@
             "description": "Key epoch."
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7390,7 +7390,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7447,7 +7447,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7459,7 +7459,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7526,7 +7526,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7538,7 +7538,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7616,7 +7616,7 @@
             "description": "Run identifier the slice must be bound to."
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7628,7 +7628,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7707,7 +7707,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7719,7 +7719,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7786,7 +7786,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7798,7 +7798,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7875,7 +7875,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7887,7 +7887,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -7964,7 +7964,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -7976,7 +7976,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8053,7 +8053,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8065,7 +8065,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8133,7 +8133,7 @@
         "operationId": "export_profile_profiles_export_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8145,7 +8145,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8202,7 +8202,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8214,7 +8214,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8310,7 +8310,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8322,7 +8322,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8418,7 +8418,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8430,7 +8430,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8506,7 +8506,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8518,7 +8518,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8623,7 +8623,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8635,7 +8635,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8713,7 +8713,7 @@
         "operationId": "get_scope_context_scope_context_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8725,7 +8725,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8777,7 +8777,7 @@
         "operationId": "validate_background_task_scope_validate_task_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8789,7 +8789,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8882,7 +8882,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8894,7 +8894,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -8974,7 +8974,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -8986,7 +8986,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9082,7 +9082,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9094,7 +9094,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9180,7 +9180,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9192,7 +9192,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9277,7 +9277,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9289,7 +9289,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9356,7 +9356,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9368,7 +9368,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9455,7 +9455,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9467,7 +9467,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9542,7 +9542,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9554,7 +9554,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9606,7 +9606,7 @@
         "operationId": "upload_source_science_sources_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9618,7 +9618,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9684,7 +9684,7 @@
         "operationId": "list_sources_science_sources_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9696,7 +9696,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9757,7 +9757,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9769,7 +9769,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9836,7 +9836,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9848,7 +9848,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -9917,7 +9917,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -9929,7 +9929,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10015,7 +10015,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10027,7 +10027,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10094,7 +10094,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10106,7 +10106,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10175,7 +10175,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10187,7 +10187,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10255,7 +10255,7 @@
         "operationId": "search_personal_sources_science_search_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10267,7 +10267,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10344,7 +10344,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10356,7 +10356,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10424,7 +10424,7 @@
         "operationId": "generate_personal_claim_graph_science_claim_graphs_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10436,7 +10436,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10518,7 +10518,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10530,7 +10530,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10591,7 +10591,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10603,7 +10603,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10670,7 +10670,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10682,7 +10682,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10749,7 +10749,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10761,7 +10761,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10838,7 +10838,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10850,7 +10850,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -10860,7 +10860,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/science_companion__contracts__science__ValidationReport"
+                  "$ref": "#/components/schemas/bridges__contracts__science__ValidationReport"
                 }
               }
             }
@@ -10917,7 +10917,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -10929,7 +10929,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11005,7 +11005,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11017,7 +11017,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11075,7 +11075,7 @@
         "operationId": "create_expression_draft_expression_drafts_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11087,7 +11087,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11164,7 +11164,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11176,7 +11176,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11243,7 +11243,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11255,7 +11255,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11322,7 +11322,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11334,7 +11334,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11420,7 +11420,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11432,7 +11432,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11509,7 +11509,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11521,7 +11521,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11598,7 +11598,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11610,7 +11610,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11703,7 +11703,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11715,7 +11715,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11782,7 +11782,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11794,7 +11794,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11862,7 +11862,7 @@
         "operationId": "compare_expression_versions_expression_drafts_compare_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11874,7 +11874,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -11951,7 +11951,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -11963,7 +11963,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12031,7 +12031,7 @@
         "operationId": "upload_media_media_assets_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12043,7 +12043,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12120,7 +12120,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12132,7 +12132,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12199,7 +12199,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12211,7 +12211,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12288,7 +12288,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12300,7 +12300,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12377,7 +12377,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12389,7 +12389,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12449,7 +12449,7 @@
         "operationId": "create_chart_media_charts_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12461,7 +12461,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12519,7 +12519,7 @@
         "operationId": "create_figure_media_figures_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12531,7 +12531,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12598,7 +12598,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12610,7 +12610,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12686,7 +12686,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12698,7 +12698,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12765,7 +12765,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12777,7 +12777,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12815,7 +12815,7 @@
         "operationId": "create_storyboard_media_storyboards_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12827,7 +12827,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12904,7 +12904,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -12916,7 +12916,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -12997,7 +12997,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13009,7 +13009,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13106,7 +13106,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13118,7 +13118,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13187,7 +13187,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13199,7 +13199,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13266,7 +13266,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13278,7 +13278,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13364,7 +13364,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13376,7 +13376,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13462,7 +13462,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13474,7 +13474,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13484,7 +13484,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/science_companion__contracts__media__ValidationReport"
+                  "$ref": "#/components/schemas/bridges__contracts__media__ValidationReport"
                 }
               }
             }
@@ -13532,7 +13532,7 @@
         "operationId": "generate_accessibility_bundle_media_accessibility_bundles_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13544,7 +13544,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13621,7 +13621,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13633,7 +13633,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13700,7 +13700,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13712,7 +13712,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13779,7 +13779,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13791,7 +13791,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13859,7 +13859,7 @@
         "operationId": "check_cross_media_consistency_media_cross_media_consistency_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13871,7 +13871,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -13933,7 +13933,7 @@
         "operationId": "evaluate_publish_gate_media_publish_check_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -13945,7 +13945,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14003,7 +14003,7 @@
         "operationId": "publish_media_media_publish_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14015,7 +14015,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14089,7 +14089,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14101,7 +14101,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14163,7 +14163,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14175,7 +14175,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14235,7 +14235,7 @@
         "operationId": "create_mission_learning_missions_post",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14247,7 +14247,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14319,7 +14319,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14331,7 +14331,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14382,7 +14382,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14394,7 +14394,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14451,7 +14451,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14463,7 +14463,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14540,7 +14540,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14552,7 +14552,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14609,7 +14609,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14621,7 +14621,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14698,7 +14698,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14710,7 +14710,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14777,7 +14777,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14789,7 +14789,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14846,7 +14846,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14858,7 +14858,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14909,7 +14909,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -14921,7 +14921,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -14998,7 +14998,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15010,7 +15010,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15067,7 +15067,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15079,7 +15079,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15138,7 +15138,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15150,7 +15150,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15234,7 +15234,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15246,7 +15246,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15312,7 +15312,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15324,7 +15324,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15401,7 +15401,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15413,7 +15413,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15504,7 +15504,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15516,7 +15516,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15567,7 +15567,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15579,7 +15579,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15686,7 +15686,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15698,7 +15698,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15749,7 +15749,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15761,7 +15761,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15838,7 +15838,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15850,7 +15850,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15907,7 +15907,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15919,7 +15919,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -15974,7 +15974,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -15986,7 +15986,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16043,7 +16043,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16055,7 +16055,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16116,7 +16116,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16128,7 +16128,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16185,7 +16185,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16197,7 +16197,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16274,7 +16274,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16286,7 +16286,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16363,7 +16363,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16375,7 +16375,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16452,7 +16452,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16464,7 +16464,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16541,7 +16541,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16553,7 +16553,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16684,7 +16684,7 @@
         "operationId": "me_me_get",
         "parameters": [
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16696,7 +16696,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -16784,7 +16784,7 @@
             }
           },
           {
-            "name": "science_companion_session",
+            "name": "bridges_session",
             "in": "cookie",
             "required": false,
             "schema": {
@@ -16796,7 +16796,7 @@
                   "type": "null"
                 }
               ],
-              "title": "Science Companion Session"
+              "title": "Bridges Session"
             }
           }
         ],
@@ -17263,7 +17263,7 @@
       "ApproveArtifactRequest": {
         "properties": {
           "decision": {
-            "$ref": "#/components/schemas/science_companion__contracts__expression__HumanDecisionType",
+            "$ref": "#/components/schemas/bridges__contracts__expression__HumanDecisionType",
             "default": "approve"
           },
           "reason": {
@@ -19060,7 +19060,7 @@
           "validation_report": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/science_companion__contracts__science__ValidationReport"
+                "$ref": "#/components/schemas/bridges__contracts__science__ValidationReport"
               },
               {
                 "type": "null"
@@ -20182,7 +20182,7 @@
       "DecideKnowledgeStateProposalRequest": {
         "properties": {
           "decision": {
-            "$ref": "#/components/schemas/science_companion__contracts__learning__HumanDecisionType",
+            "$ref": "#/components/schemas/bridges__contracts__learning__HumanDecisionType",
             "description": "Decision type."
           },
           "reason": {
@@ -22782,13 +22782,13 @@
             "description": "Model run lock for the generator."
           },
           "artifact_trust_status": {
-            "$ref": "#/components/schemas/science_companion__contracts__expression__ArtifactTrustStatus",
+            "$ref": "#/components/schemas/bridges__contracts__expression__ArtifactTrustStatus",
             "description": "Scientific trust state of the artifact.",
             "default": "draft"
           },
           "approval_decisions": {
             "items": {
-              "$ref": "#/components/schemas/science_companion__contracts__expression__HumanDecision"
+              "$ref": "#/components/schemas/bridges__contracts__expression__HumanDecision"
             },
             "type": "array",
             "title": "Approval Decisions",
@@ -24985,7 +24985,7 @@
           "decision": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/science_companion__contracts__learning__HumanDecision"
+                "$ref": "#/components/schemas/bridges__contracts__learning__HumanDecision"
               },
               {
                 "type": "null"
@@ -28352,7 +28352,7 @@
           "human_decision": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/science_companion__contracts__profiles__HumanDecision"
+                "$ref": "#/components/schemas/bridges__contracts__profiles__HumanDecision"
               },
               {
                 "type": "null"
@@ -31444,7 +31444,7 @@
             "description": "Workflow execution state."
           },
           "artifact_trust_status": {
-            "$ref": "#/components/schemas/science_companion__contracts__workflows__ArtifactTrustStatus",
+            "$ref": "#/components/schemas/bridges__contracts__workflows__ArtifactTrustStatus",
             "description": "Scientific trust state of the run's primary artifact."
           },
           "publish_eligible": {
@@ -36435,7 +36435,7 @@
         "title": "_TodoResolveRequest",
         "description": "Request body for resolving a human todo."
       },
-      "science_companion__contracts__expression__ArtifactTrustStatus": {
+      "bridges__contracts__expression__ArtifactTrustStatus": {
         "type": "string",
         "enum": [
           "draft",
@@ -36448,7 +36448,7 @@
         "title": "ArtifactTrustStatus",
         "description": "Scientific trust state of an expression artifact (draft)."
       },
-      "science_companion__contracts__expression__HumanDecision": {
+      "bridges__contracts__expression__HumanDecision": {
         "properties": {
           "decision_id": {
             "type": "string",
@@ -36466,7 +36466,7 @@
             "description": "Account that made the decision."
           },
           "decision": {
-            "$ref": "#/components/schemas/science_companion__contracts__expression__HumanDecisionType",
+            "$ref": "#/components/schemas/bridges__contracts__expression__HumanDecisionType",
             "description": "Decision type."
           },
           "reason": {
@@ -36492,7 +36492,7 @@
         "title": "HumanDecision",
         "description": "A named, auditable human decision to approve, reject or revise an artifact."
       },
-      "science_companion__contracts__expression__HumanDecisionType": {
+      "bridges__contracts__expression__HumanDecisionType": {
         "type": "string",
         "enum": [
           "approve",
@@ -36502,7 +36502,7 @@
         "title": "HumanDecisionType",
         "description": "Named human decision on an expression artifact."
       },
-      "science_companion__contracts__learning__HumanDecision": {
+      "bridges__contracts__learning__HumanDecision": {
         "properties": {
           "decision_id": {
             "type": "string",
@@ -36520,7 +36520,7 @@
             "description": "Account that made the decision."
           },
           "decision": {
-            "$ref": "#/components/schemas/science_companion__contracts__learning__HumanDecisionType",
+            "$ref": "#/components/schemas/bridges__contracts__learning__HumanDecisionType",
             "description": "Decision type."
           },
           "reason": {
@@ -36559,7 +36559,7 @@
         "title": "HumanDecision",
         "description": "A named, auditable human decision on a knowledge-state proposal."
       },
-      "science_companion__contracts__learning__HumanDecisionType": {
+      "bridges__contracts__learning__HumanDecisionType": {
         "type": "string",
         "enum": [
           "accept",
@@ -36569,7 +36569,7 @@
         "title": "HumanDecisionType",
         "description": "Named human decision on a proposed knowledge-state or path change."
       },
-      "science_companion__contracts__media__ValidationReport": {
+      "bridges__contracts__media__ValidationReport": {
         "properties": {
           "report_id": {
             "type": "string",
@@ -36657,7 +36657,7 @@
         "title": "ValidationReport",
         "description": "分镜沙箱运行的完整验证报告。"
       },
-      "science_companion__contracts__profiles__HumanDecision": {
+      "bridges__contracts__profiles__HumanDecision": {
         "properties": {
           "decision_id": {
             "type": "string",
@@ -36729,7 +36729,7 @@
         "title": "HumanDecision",
         "description": "Named human decision on a candidate profile."
       },
-      "science_companion__contracts__science__ValidationReport": {
+      "bridges__contracts__science__ValidationReport": {
         "properties": {
           "report_id": {
             "type": "string",
@@ -36870,7 +36870,7 @@
         "title": "ValidationReport",
         "description": "Report produced by honest-degradation analysis of a claim graph.\n\nThe report records the evidence state for each claim, detected conflicts,\nmissing evidence, fact lock set id, wording strength ceiling, scientific\nquality gate result, and recommended recovery actions. It is the input to\ndownstream expression nodes (T025) and to the task stage (T006)."
       },
-      "science_companion__contracts__workflows__ArtifactTrustStatus": {
+      "bridges__contracts__workflows__ArtifactTrustStatus": {
         "type": "string",
         "enum": [
           "not_created",

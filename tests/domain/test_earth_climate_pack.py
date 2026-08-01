@@ -7,14 +7,14 @@ Claim 限定条件；数据修订和来源状态变化触发影响分析；夹�
 
 from __future__ import annotations
 
-from science_companion.ai.capability_registry import CapabilityRegistry
-from science_companion.contracts.ai import CapabilityKind, CapabilityRecord
-from science_companion.domain import (
+from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.contracts.ai import CapabilityKind, CapabilityRecord
+from bridges.domain import (
     DomainPackLoader,
     DomainPackValidationRuntime,
     LoadedDomainPack,
 )
-from science_companion.domain.earth_climate import EarthClimateDomainPack
+from bridges.domain.earth_climate import EarthClimateDomainPack
 
 
 def _loaded_pack() -> tuple[EarthClimateDomainPack, LoadedDomainPack]:

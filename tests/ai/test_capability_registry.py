@@ -6,8 +6,8 @@ unverified capabilities are rejected deterministically.
 
 import pytest
 
-from science_companion.ai import CapabilityRegistry, CapabilityRegistryError
-from science_companion.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus
+from bridges.ai import CapabilityRegistry, CapabilityRegistryError
+from bridges.contracts.ai import CapabilityKind, CapabilityRecord, CapabilityStatus
 
 
 def _sample_capability(name: str = "test_cap", version: str = "1") -> CapabilityRecord:

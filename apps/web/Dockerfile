@@ -7,7 +7,7 @@ COPY apps/web/package.json apps/web/package-lock.json ./
 RUN npm ci
 
 COPY apps/web/. .
-COPY packages/contracts/src/generated.ts ./node_modules/@science-companion/contracts/generated.ts
+COPY packages/contracts/src/generated.ts ./node_modules/@bridges/contracts/generated.ts
 
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

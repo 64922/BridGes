@@ -20,7 +20,7 @@ import base64
 
 import pytest
 
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     AccessibilityBundle,
     AccessibilityBundleRequest,
     AccessibilityTargetKind,
@@ -38,19 +38,19 @@ from science_companion.contracts.media import (
     StoryboardNarration,
     StoryboardScene,
 )
-from science_companion.contracts.science import (
+from bridges.contracts.science import (
     FactLock,
     FactLockType,
     LicenseState,
     MediaType,
 )
-from science_companion.media import MediaGenerationService, MediaIngestionService
-from science_companion.media.accessibility_service import (
+from bridges.media import MediaGenerationService, MediaIngestionService
+from bridges.media.accessibility_service import (
     CORE_MEDIA_TASKS,
     AccessibilityError,
     AccessibilityService,
 )
-from science_companion.media.storyboard_service import StoryboardService
+from bridges.media.storyboard_service import StoryboardService
 
 ACCOUNT = "account-alice"
 OTHER_ACCOUNT = "account-bob"

@@ -12,14 +12,14 @@ import base64
 from datetime import UTC, datetime
 from typing import Any
 
-from science_companion.ai import CapabilityRegistry, ModelGateway
-from science_companion.ai.adapters import AdapterResult, CapabilityAdapter
-from science_companion.contracts.ai import (
+from bridges.ai import CapabilityRegistry, ModelGateway
+from bridges.ai.adapters import AdapterResult, CapabilityAdapter
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     RetryPolicy,
 )
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     AudioVideoDerivedData,
     MediaAssetKind,
     MediaAssetStatus,
@@ -27,9 +27,9 @@ from science_companion.contracts.media import (
     MediaQualityGate,
     MediaUploadRequest,
 )
-from science_companion.contracts.science import LicenseState, MediaType
-from science_companion.contracts.workflows import RunContextEnvelope
-from science_companion.media import MediaIngestionService
+from bridges.contracts.science import LicenseState, MediaType
+from bridges.contracts.workflows import RunContextEnvelope
+from bridges.media import MediaIngestionService
 
 
 def _context(run_id: str = "run-1") -> RunContextEnvelope:
@@ -118,7 +118,7 @@ def test_audio_extraction_records_model_run_lock() -> None:
 
     derived = projection.derived_assets[0]
     assert derived.derivation_type == MediaAssetKind.AUDIO_TRANSCRIPT
-    assert derived.tool == "science_companion.asr.qwen"
+    assert derived.tool == "bridges.asr.qwen"
     assert derived.parameters["asr_capability"] == "qwen_asr_short"
 
     lock = derived.parameters.get("model_run_lock")
@@ -216,7 +216,7 @@ def test_asr_failure_keeps_asset_for_correction() -> None:
             run_context: RunContextEnvelope,
             payload: dict[str, Any],
         ) -> AdapterResult:
-            from science_companion.ai.adapters import TransientError
+            from bridges.ai.adapters import TransientError
             raise TransientError("ASR service unavailable")
 
     gateway.register_adapter("qwen_asr_short", "1", _FailingAdapter())

@@ -12,11 +12,11 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.invalidation import InvalidationEventType, InvalidationState
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.workflows import WorkOrder
+from bridges.api.main import create_app
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.invalidation import InvalidationEventType, InvalidationState
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.workflows import WorkOrder
 
 
 def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
@@ -102,13 +102,13 @@ def test_app_wires_invalidation_service_to_workflow_and_vault(
         risk_statement="无",
         object_refs=[object_id],
     )
-    from science_companion.workflows import WorkflowError
+    from bridges.workflows import WorkflowError
 
     with pytest.raises(WorkflowError, match="对象已失效"):
         workflow_service.submit_work_order(account_id, order)
 
     # A new vault read is blocked.
-    from science_companion.vault import VaultError
+    from bridges.vault import VaultError
 
     with pytest.raises(VaultError, match="对象已失效"):
         vault_service.get_object(account_id, object_id)

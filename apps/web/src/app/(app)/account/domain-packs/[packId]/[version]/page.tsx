@@ -3,7 +3,7 @@ import { MainContent } from "@/components/layout/MainContent";
 import { WorkbenchDetail } from "./workbench-detail";
 
 export const metadata = {
-  title: "领域包专家工作台详情 — Science Companion",
+  title: "领域包专家工作台详情 — BridGes",
 };
 
 export default function WorkbenchDetailPage({

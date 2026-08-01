@@ -13,9 +13,9 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.invalidation import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.invalidation import (
     AffectedDownstream,
     InvalidationEventType,
     InvalidationState,
@@ -23,7 +23,7 @@ from science_companion.contracts.invalidation import (
     RevalidationResult,
     RevalidationStatus,
 )
-from science_companion.invalidation import InvalidationError, InvalidationService
+from bridges.invalidation import InvalidationError, InvalidationService
 
 
 @pytest.fixture
@@ -201,7 +201,7 @@ class TestImpactSetAndOutbox:
         event = enforcer.record_invalidation_event(
             alice, object_ref, InvalidationEventType.REVOKE, "撤权"
         )
-        from science_companion.contracts.scope import ScopeEnvelope
+        from bridges.contracts.scope import ScopeEnvelope
 
         bob_scope = ScopeEnvelope(account_id=bob.account_id)
 

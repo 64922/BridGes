@@ -1,8 +1,8 @@
 """Tests for the audit event logger."""
 
-from science_companion.contracts.observability import AuditAction, AuditResult, TelemetryCorrelation
-from science_companion.observability.audit_event import AuditEventLogger
-from science_companion.observability.telemetry_context import build_correlation
+from bridges.contracts.observability import AuditAction, AuditResult, TelemetryCorrelation
+from bridges.observability.audit_event import AuditEventLogger
+from bridges.observability.telemetry_context import build_correlation
 
 
 def test_log_audit_event_with_correlation() -> None:

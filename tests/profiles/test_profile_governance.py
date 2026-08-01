@@ -13,13 +13,13 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.invalidation import (
+from bridges.contracts.invalidation import (
     AffectedDownstream,
     InvalidationEventType,
     InvalidationState,
 )
-from science_companion.contracts.observability import AuditAction
-from science_companion.contracts.profiles import (
+from bridges.contracts.observability import AuditAction
+from bridges.contracts.profiles import (
     AssertionStatus,
     CandidateDecision,
     CandidateReviewStatus,
@@ -30,9 +30,9 @@ from science_companion.contracts.profiles import (
     ProfileSourceType,
     SliceStatus,
 )
-from science_companion.invalidation import InvalidationService
-from science_companion.observability.service import ObservabilityService
-from science_companion.profiles import (
+from bridges.invalidation import InvalidationService
+from bridges.observability.service import ObservabilityService
+from bridges.profiles import (
     InMemoryProfileRepository,
     ProfileError,
     ProfileService,

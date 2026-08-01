@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const SESSION_COOKIE_NAME = "science_companion_session";
+const SESSION_COOKIE_NAME = "bridges_session";
 
 const PUBLIC_PATHS = [
   "/",

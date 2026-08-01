@@ -13,11 +13,11 @@ import base64
 
 import pytest
 
-from science_companion.contracts.invalidation import (
+from bridges.contracts.invalidation import (
     InvalidationEvent,
     InvalidationEventType,
 )
-from science_companion.contracts.media import (
+from bridges.contracts.media import (
     AccessibilityBundleRequest,
     AccessibilityTargetKind,
     ChartDataTable,
@@ -32,8 +32,8 @@ from science_companion.contracts.media import (
     StoryboardScene,
     StoryboardStatus,
 )
-from science_companion.contracts.projects import ObjectDomain, ObjectRef
-from science_companion.contracts.science import (
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.science import (
     FactLock,
     FactLockSet,
     FactLockType,
@@ -41,10 +41,10 @@ from science_companion.contracts.science import (
     MediaType,
     WordingStrength,
 )
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.scope import ScopeAction, ScopeEnvelope
-from science_companion.invalidation import InvalidationService
-from science_companion.media import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.scope import ScopeAction, ScopeEnvelope
+from bridges.invalidation import InvalidationService
+from bridges.media import (
     AccessibilityService,
     MediaGenerationService,
     MediaIngestionService,
@@ -53,7 +53,7 @@ from science_companion.media import (
     StoryboardService,
     build_media_publish_impact_resolver,
 )
-from science_companion.contracts.media import MediaUploadRequest
+from bridges.contracts.media import MediaUploadRequest
 
 from datetime import UTC, datetime
 

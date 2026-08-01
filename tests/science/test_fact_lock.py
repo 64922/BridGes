@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from science_companion.contracts.science import (
+from bridges.contracts.science import (
     Citation,
     CitationLocator,
     CitationVerificationStatus,
@@ -27,7 +27,7 @@ from science_companion.contracts.science import (
     ScientificQualityGateCheck,
     WordingStrength,
 )
-from science_companion.science.fact_lock import (
+from bridges.science.fact_lock import (
     apply_honest_degradation,
     compile_fact_locks,
     detect_conflicts,

@@ -4,7 +4,7 @@ import { ButtonLink } from "@/components/design-system/ButtonLink";
 import HealthPanel from "@/components/HealthPanel";
 
 export const metadata = {
-  title: "Science Companion — 公共入口",
+  title: "BridGes — 公共入口",
 };
 
 /**
@@ -15,7 +15,7 @@ export const metadata = {
  * direct link to their account shell. No private project data is shown.
  */
 export default function PublicEntryPage() {
-  const hasSession = Boolean(cookies().get("science_companion_session")?.value);
+  const hasSession = Boolean(cookies().get("bridges_session")?.value);
 
   return (
     <div
@@ -41,7 +41,7 @@ export default function PublicEntryPage() {
               marginTop: "var(--space-2)",
             }}
           >
-            Science Companion
+            BridGes
           </h1>
         </div>
       </header>
@@ -63,7 +63,7 @@ export default function PublicEntryPage() {
           <section className="sc-card">
             <h2 className="sc-section-title">从第一张页面开始，科学学习与表达就有根有据</h2>
             <p style={{ color: "var(--color-text-secondary)", maxWidth: "60ch" }}>
-              Science Companion 是面向大学生、研究生、青年科研人员及深度科学爱好者的长期科学学习与表达伙伴。
+              BridGes 是面向大学生、研究生、青年科研人员及深度科学爱好者的长期科学学习与表达伙伴。
               它在持续互动中同时提升你的科学理解、表达质量与事实可靠性。
             </p>
             <div
@@ -105,7 +105,7 @@ export default function PublicEntryPage() {
         }}
       >
         <div className="sc-container">
-          <p>© Science Companion · 公共入口不显示私人项目数据</p>
+          <p>© BridGes · 公共入口不显示私人项目数据</p>
         </div>
       </footer>
     </div>

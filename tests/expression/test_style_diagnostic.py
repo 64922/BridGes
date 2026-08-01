@@ -14,7 +14,7 @@ from typing import Any
 
 import pytest
 
-from science_companion.contracts.expression import (
+from bridges.contracts.expression import (
     ApplyRevisionPatchRequest,
     ExpressionBrief,
     ExpressionDraftRequest,
@@ -30,8 +30,8 @@ from science_companion.contracts.expression import (
     SubmitExpressionFeedbackRequest,
     UserFeedbackTarget,
 )
-from science_companion.contracts.identity import AuthMethod, SubjectContext
-from science_companion.contracts.science import (
+from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.science import (
     Citation,
     CitationLocator,
     CitationVerificationStatus,
@@ -45,18 +45,18 @@ from science_companion.contracts.science import (
     FactLockSet,
     ValidationReport,
 )
-from science_companion.expression import ExpressionService, ExpressionServiceError
-from science_companion.expression.style import (
+from bridges.expression import ExpressionService, ExpressionServiceError
+from bridges.expression.style import (
     build_style_policy,
     run_diagnostic,
     suggest_patch_for_finding,
 )
-from science_companion.science import (
+from bridges.science import (
     ClaimEvidenceService,
     ScienceSearchService,
     ScienceSourceService,
 )
-from science_companion.science.fact_lock import apply_honest_degradation, compile_fact_locks
+from bridges.science.fact_lock import apply_honest_degradation, compile_fact_locks
 
 
 def _now() -> datetime:

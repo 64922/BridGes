@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "项目设置 — Science Companion",
+  title: "项目设置 — BridGes",
 };
 
 export default function ProjectSettingsPage() {

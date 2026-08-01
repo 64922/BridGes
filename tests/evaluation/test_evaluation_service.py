@@ -12,14 +12,14 @@ import os
 
 import pytest
 
-from science_companion.contracts.evaluation import (
+from bridges.contracts.evaluation import (
     EvaluationCreateRequest,
     EvaluationFailureCategory,
     EvaluationRunStatus,
 )
-from science_companion.contracts.workflows import WorkOrder, WorkflowRunStatus
-from science_companion.evaluation import EvaluationError, EvaluationService
-from science_companion.workflows import WorkflowService
+from bridges.contracts.workflows import WorkOrder, WorkflowRunStatus
+from bridges.evaluation import EvaluationError, EvaluationService
+from bridges.workflows import WorkflowService
 
 
 @pytest.fixture
@@ -155,7 +155,7 @@ def test_replay_produces_comparable_bundle(
     assert "full_prompt" not in str(bundle.logs_and_traces)
     assert "api_key" not in str(bundle.logs_and_traces)
     assert bundle.reproduction_command
-    assert bundle.reproduction_command.startswith("science-companion evaluation replay")
+    assert bundle.reproduction_command.startswith("BridGes evaluation replay")
 
 
 def test_same_lock_replay_produces_matching_results(
@@ -221,7 +221,7 @@ def test_build_digest_respects_environment_override(
     run_id = _completed_run(workflow_service, alice_id)
     source_run = workflow_service.get_run(account_id=alice_id, run_id=run_id)
 
-    os.environ["SCIENCE_COMPANION_BUILD_DIGEST"] = "git-deadbeef"
+    os.environ["BRIDGES_BUILD_DIGEST"] = "git-deadbeef"
     try:
         eval_run = evaluation_service.create_evaluation_run(
             account_id=alice_id,
@@ -232,7 +232,7 @@ def test_build_digest_respects_environment_override(
             ),
         )
     finally:
-        del os.environ["SCIENCE_COMPANION_BUILD_DIGEST"]
+        del os.environ["BRIDGES_BUILD_DIGEST"]
 
     assert eval_run.lock.code_commit_or_build_digest == "git-deadbeef"
 

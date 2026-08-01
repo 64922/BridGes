@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from science_companion.contracts.profiles import (
+from bridges.contracts.profiles import (
     CandidateDecision,
     DecisionType,
     ProfileObservationCreateRequest,
@@ -22,7 +22,7 @@ from science_companion.contracts.profiles import (
     ProfileSourceType,
     SliceStatus,
 )
-from science_companion.profiles import (
+from bridges.profiles import (
     InMemoryProfileRepository,
     ProfileError,
     ProfileService,

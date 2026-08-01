@@ -14,8 +14,8 @@ from typing import Any, cast
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.api.main import create_app
-from science_companion.contracts.science import (
+from bridges.api.main import create_app
+from bridges.contracts.science import (
     CitationVerificationStatus,
     ClaimImportance,
     ClaimTrustStatus,

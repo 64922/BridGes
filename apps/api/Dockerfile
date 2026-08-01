@@ -17,5 +17,11 @@ ENV PYTHONUNBUFFERED=1
 COPY --from=builder /app/dist/*.whl ./
 RUN pip install --no-cache-dir ./*.whl && rm ./*.whl
 
+# 入口脚本负责数据卷内主密钥的自举（见 entrypoint.sh 注释），
+# 使容器部署不要求宿主机创建 `.env`。
+COPY apps/api/entrypoint.sh /usr/local/bin/bridges-entrypoint.sh
+RUN chmod +x /usr/local/bin/bridges-entrypoint.sh
+
 EXPOSE 8000
-CMD ["science-companion", "api", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/usr/local/bin/bridges-entrypoint.sh"]
+CMD ["BridGes", "api", "--host", "0.0.0.0", "--port", "8000"]

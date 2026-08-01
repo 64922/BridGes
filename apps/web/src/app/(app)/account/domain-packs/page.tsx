@@ -3,7 +3,7 @@ import { MainContent } from "@/components/layout/MainContent";
 import { DomainPacksList } from "./domain-packs-list";
 
 export const metadata = {
-  title: "领域包专家工作台 — Science Companion",
+  title: "领域包专家工作台 — BridGes",
 };
 
 export default function DomainPacksPage() {

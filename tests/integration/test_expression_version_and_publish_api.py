@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from science_companion.contracts.expression import (
+from bridges.contracts.expression import (
     ApproveArtifactRequest,
     CompareVersionsRequest,
     ExpressionBrief,
@@ -26,7 +26,7 @@ from science_companion.contracts.expression import (
     ReleaseGateCheck,
     RiskTier,
 )
-from science_companion.contracts.science import MediaType
+from bridges.contracts.science import MediaType
 
 
 def _source_payload(text: str) -> dict[str, Any]:

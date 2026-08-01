@@ -13,18 +13,18 @@ from typing import Any
 
 import httpx
 
-from science_companion.ai import ModelGateway
-from science_companion.ai.capability_registry import CapabilityRegistry
-from science_companion.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
-from science_companion.ai.qwen_client import QwenApiClient
-from science_companion.contracts.ai import (
+from bridges.ai import ModelGateway
+from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
+from bridges.ai.qwen_client import QwenApiClient
+from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     FallbackPolicy,
     ModelCallStatus,
     RetryPolicy,
 )
-from science_companion.contracts.workflows import RunContextEnvelope
+from bridges.contracts.workflows import RunContextEnvelope
 
 
 def _context(run_id: str = "run-1") -> RunContextEnvelope:
