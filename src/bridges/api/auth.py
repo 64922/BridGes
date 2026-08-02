@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 
 from bridges.contracts.identity import (
     Account,
@@ -17,6 +17,10 @@ from bridges.contracts.identity import (
     AccountRegistration,
     AuthError,
     AuthResponse,
+    DeviceAccountsResponse,
+    DeviceLogoutResponse,
+    DeviceReauthenticationRequest,
+    DeviceSwitchRequest,
     KeySettingsProjection,
     KeySettingsStatus,
     LoginCredential,
@@ -34,6 +38,7 @@ if TYPE_CHECKING:
     from bridges.institution import InstitutionService
 
 SESSION_COOKIE_NAME = "bridges_session"
+DEVICE_COOKIE_NAME = "bridges_device"
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -66,6 +71,22 @@ def _clear_session_cookie(response: Response) -> None:
     response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
 
 
+def _set_device_cookie(response: Response, token: str, *, secure: bool) -> None:
+    response.set_cookie(
+        key=DEVICE_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=secure,
+        samesite="lax",
+        max_age=30 * 24 * 60 * 60,
+        path="/",
+    )
+
+
+def _clear_device_cookie(response: Response) -> None:
+    response.delete_cookie(key=DEVICE_COOKIE_NAME, path="/")
+
+
 def _clear_site_data(response: Response) -> None:
     """Tell the browser to drop cached state when switching accounts.
 
@@ -78,6 +99,12 @@ def _clear_site_data(response: Response) -> None:
 def _clear_account_site_data(response: Response) -> None:
     """Clear cached account views without deleting device-wide origin storage."""
     response.headers["Clear-Site-Data"] = '"cache"'
+    response.headers["Cache-Control"] = "no-store"
+
+
+def _clear_device_site_data(response: Response) -> None:
+    """Clear all browser-local account state when every device account exits."""
+    response.headers["Clear-Site-Data"] = '"cache", "storage"'
     response.headers["Cache-Control"] = "no-store"
 
 
@@ -129,6 +156,9 @@ _IDENTITY_ERROR_STATUS = {
     "credentials": status.HTTP_401_UNAUTHORIZED,
     "session": status.HTTP_401_UNAUTHORIZED,
     "too_large": status.HTTP_413_CONTENT_TOO_LARGE,
+    "device_account": status.HTTP_403_FORBIDDEN,
+    "reauth_required": status.HTTP_403_FORBIDDEN,
+    "device_operation_stale": status.HTTP_409_CONFLICT,
 }
 
 
@@ -233,7 +263,25 @@ async def register(
     _set_session_cookie(
         response, result.session_token, secure=request.url.scheme == "https"
     )
+    device_token, _ = service.ensure_device(
+        request.cookies.get(DEVICE_COOKIE_NAME), result.session.id
+    )
+    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
     return result.public_response()
+
+
+def _claim_device_operation(
+    service: IdentityService, device_token: str, operation_id: int | None
+) -> None:
+    """Prevent an older browser response from changing the session cookie."""
+    if operation_id is not None and not service.claim_device_operation(
+        device_token, operation_id
+    ):
+        raise _auth_error(
+            status.HTTP_409_CONFLICT,
+            "device_operation_stale",
+            "设备账户操作已过期。",
+        )
 
 
 @router.post(
@@ -263,6 +311,10 @@ async def login(
     _set_session_cookie(
         response, result.session_token, secure=request.url.scheme == "https"
     )
+    device_token, _ = service.ensure_device(
+        request.cookies.get(DEVICE_COOKIE_NAME), result.session.id
+    )
+    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
     return result.public_response()
 
 
@@ -504,6 +556,10 @@ async def recover_reset(
     _set_session_cookie(
         response, result.session_token, secure=request.url.scheme == "https"
     )
+    device_token, _ = service.ensure_device(
+        request.cookies.get(DEVICE_COOKIE_NAME), result.session.id
+    )
+    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
     return result.public_response()
 
 
@@ -534,3 +590,235 @@ async def get_session(
             "会话已失效。",
         )
     return SessionResponse(account=account, session=session, subject=subject)
+
+
+def _device_accounts_response(
+    service: IdentityService, device_token: str, current_session_id: str | None
+) -> DeviceAccountsResponse:
+    accounts = (
+        service.list_device_accounts(device_token, current_session_id)
+        if current_session_id is not None
+        else []
+    )
+    current_account = None
+    if current_session_id is not None:
+        current_session = service.get_session(current_session_id)
+        if current_session is not None:
+            current_account = service.get_account(current_session.account_id)
+    return DeviceAccountsResponse(
+        accounts=accounts,
+        current_account=current_account,
+        current_session_id=current_session_id,
+    )
+
+
+@router.get(
+    "/device/accounts",
+    response_model=DeviceAccountsResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_403_FORBIDDEN: {"model": AuthError},
+    },
+)
+async def list_device_accounts(
+    request: Request,
+    response: Response,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> DeviceAccountsResponse:
+    """List the accounts explicitly authenticated in this browser device."""
+    device_token, _ = service.ensure_device(
+        request.cookies.get(DEVICE_COOKIE_NAME), subject.session_id
+    )
+    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    return _device_accounts_response(service, device_token, subject.session_id)
+
+
+@router.post(
+    "/device/accounts/add",
+    response_model=DeviceAccountsResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_403_FORBIDDEN: {"model": AuthError},
+    },
+)
+async def add_device_account(
+    request: Request,
+    response: Response,
+    credentials: LoginCredential,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+    operation_id: int | None = Header(default=None, alias="X-Bridges-Account-Operation"),
+) -> DeviceAccountsResponse:
+    """Authenticate a new account, preserve existing device sessions, and activate it."""
+    device_token, _ = service.ensure_device(
+        request.cookies.get(DEVICE_COOKIE_NAME), subject.session_id
+    )
+    _claim_device_operation(service, device_token, operation_id)
+    try:
+        result = service.authenticate(credentials)
+        service.attach_session_to_device(device_token, result.session.id)
+    except IdentityError as exc:
+        raise _identity_error(exc, "device_account_add_failed") from exc
+    _set_session_cookie(response, result.session_token, secure=request.url.scheme == "https")
+    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    _clear_account_site_data(response)
+    return _device_accounts_response(service, device_token, result.session.id)
+
+
+@router.post(
+    "/device/switch",
+    response_model=DeviceAccountsResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_403_FORBIDDEN: {"model": AuthError},
+    },
+)
+async def switch_device_account(
+    request: Request,
+    response: Response,
+    selection: DeviceSwitchRequest,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+    operation_id: int | None = Header(default=None, alias="X-Bridges-Account-Operation"),
+) -> DeviceAccountsResponse:
+    """Switch only to an active session previously registered by this device."""
+    device_token = request.cookies.get(DEVICE_COOKIE_NAME)
+    if not device_token:
+        raise _auth_error(
+            status.HTTP_403_FORBIDDEN,
+            "device_account_unavailable",
+            "该账户无法在此设备上切换，请重新登录。",
+        )
+    if not service.is_session_registered_on_device(device_token, subject.session_id):
+        raise _auth_error(
+            status.HTTP_403_FORBIDDEN,
+            "device_account_unavailable",
+            "该设备账户不可用，请重新登录。",
+        )
+    try:
+        if operation_id is not None:
+            _claim_device_operation(service, device_token, operation_id)
+        result = service.activate_device_session(device_token, selection.session_id)
+    except IdentityError as exc:
+        raise _auth_error(
+            status.HTTP_403_FORBIDDEN,
+            "device_account_unavailable",
+            "该设备账户不可用，请重新登录。",
+        ) from exc
+    _set_session_cookie(response, result.session_token, secure=request.url.scheme == "https")
+    _clear_account_site_data(response)
+    return _device_accounts_response(service, device_token, result.session.id)
+
+
+@router.post(
+    "/device/reauthenticate",
+    response_model=DeviceAccountsResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_403_FORBIDDEN: {"model": AuthError},
+    },
+)
+async def reauthenticate_device_account(
+    request: Request,
+    response: Response,
+    confirmation: DeviceReauthenticationRequest,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+    operation_id: int | None = Header(default=None, alias="X-Bridges-Account-Operation"),
+) -> DeviceAccountsResponse:
+    """Restore a stale device account using that account's password only."""
+    device_token = request.cookies.get(DEVICE_COOKIE_NAME)
+    if not device_token:
+        raise _auth_error(
+            status.HTTP_403_FORBIDDEN,
+            "device_account_unavailable",
+            "该账户无法在此设备上切换，请重新登录。",
+        )
+    if not service.is_session_registered_on_device(device_token, subject.session_id):
+        raise _auth_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "device_reauthentication_failed",
+            "账户信息或密码不正确。",
+        )
+    _claim_device_operation(service, device_token, operation_id)
+    try:
+        result = service.reauthenticate_device_session(
+            device_token,
+            confirmation.session_id,
+            confirmation.password.get_secret_value(),
+        )
+    except IdentityError as exc:
+        raise _auth_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "device_reauthentication_failed",
+            "账户信息或密码不正确。",
+        ) from exc
+    _set_session_cookie(response, result.session_token, secure=request.url.scheme == "https")
+    _clear_account_site_data(response)
+    return _device_accounts_response(service, device_token, result.session.id)
+
+
+@router.post(
+    "/device/logout",
+    response_model=DeviceLogoutResponse,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": AuthError}},
+)
+async def logout_device_account(
+    request: Request,
+    response: Response,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+    operation_id: int | None = Header(default=None, alias="X-Bridges-Account-Operation"),
+) -> DeviceLogoutResponse:
+    """Revoke only the active account session and fall back safely if possible."""
+    device_token = request.cookies.get(DEVICE_COOKIE_NAME)
+    device_bound = bool(
+        device_token
+        and service.is_session_registered_on_device(device_token, subject.session_id)
+    )
+    if device_bound and device_token:
+        _claim_device_operation(service, device_token, operation_id)
+    service.revoke_session(subject.session_id)
+    fallback = (
+        service.activate_next_device_session(device_token, subject.session_id)
+        if device_bound and device_token
+        else None
+    )
+    if fallback is None:
+        _clear_session_cookie(response)
+        _clear_account_site_data(response)
+        return DeviceLogoutResponse()
+    _set_session_cookie(response, fallback.session_token, secure=request.url.scheme == "https")
+    _clear_account_site_data(response)
+    return DeviceLogoutResponse(
+        current_account=fallback.account,
+        current_session_id=fallback.session.id,
+    )
+
+
+@router.post(
+    "/device/logout-all",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": AuthError}},
+)
+async def logout_all_device_accounts(
+    request: Request,
+    response: Response,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+    operation_id: int | None = Header(default=None, alias="X-Bridges-Account-Operation"),
+) -> None:
+    """Revoke every session registered to this browser and return to login."""
+    device_token = request.cookies.get(DEVICE_COOKIE_NAME)
+    if device_token and service.is_session_registered_on_device(
+        device_token, subject.session_id
+    ):
+        _claim_device_operation(service, device_token, operation_id)
+        service.revoke_device_sessions(device_token)
+    # The device cookie is an opaque client-held locator. Revoke the current
+    # authenticated session even if it is stale, forged, or missing.
+    service.revoke_session(subject.session_id)
+    _clear_session_cookie(response)
+    _clear_device_cookie(response)
+    _clear_device_site_data(response)

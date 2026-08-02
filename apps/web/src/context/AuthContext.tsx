@@ -1,14 +1,19 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import type { components } from "@bridges/contracts";
 import {
   ApiError,
+  addDeviceAccount,
   fetchSession,
+  logoutAllDeviceAccounts,
+  logoutCurrentDeviceAccount,
   login as apiLogin,
   logout as apiLogout,
+  reauthenticateDeviceAccount,
   register as apiRegister,
+  switchDeviceAccount,
 } from "@/lib/api";
 
 export type User = components["schemas"]["Account"];
@@ -20,9 +25,15 @@ interface AuthContextValue {
   isLoading: boolean;
   authState: AuthState;
   sessionError: string | null;
+  accountRevision: number;
   login: (identifier: string, password: string) => Promise<void>;
   register: (username: string, qqEmail: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  addAccount: (identifier: string, password: string) => Promise<boolean>;
+  switchAccount: (sessionId: string) => Promise<boolean>;
+  reauthenticateAccount: (sessionId: string, password: string) => Promise<boolean>;
+  logoutCurrentAccount: () => Promise<User | null>;
+  logoutAllAccounts: () => Promise<void>;
   refreshSession: () => Promise<void>;
 }
 
@@ -40,8 +51,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [authState, setAuthState] = useState<AuthState>("loading");
   const [sessionError, setSessionError] = useState<string | null>(null);
+  const [accountRevision, setAccountRevision] = useState(0);
+  const authRequestRef = useRef(0);
 
   const checkSession = useCallback(async () => {
+    const requestId = ++authRequestRef.current;
     setIsLoading(true);
     // Keep an already-authorized subtree mounted during a background refresh
     // so successful form feedback and local focus are not discarded.
@@ -51,9 +65,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionError(null);
     try {
       const data = await fetchSession();
+      if (requestId !== authRequestRef.current) return;
       setUser(data.account);
       setAuthState("authenticated");
     } catch (error) {
+      if (requestId !== authRequestRef.current) return;
       setUser(null);
       if (error instanceof ApiError && error.status === 401) {
         setAuthState("unauthenticated");
@@ -64,7 +80,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
     } finally {
-      setIsLoading(false);
+      if (requestId === authRequestRef.current) setIsLoading(false);
     }
   }, []);
 
@@ -73,25 +89,91 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [checkSession]);
 
   const login = useCallback(async (identifier: string, password: string) => {
+    const requestId = ++authRequestRef.current;
     const data = await apiLogin(identifier, password);
+    if (requestId !== authRequestRef.current) return;
     setUser(data.account);
     setAuthState("authenticated");
     setSessionError(null);
   }, []);
 
   const register = useCallback(async (username: string, qqEmail: string, password: string) => {
+    const requestId = ++authRequestRef.current;
     const data = await apiRegister(username, qqEmail, password);
+    if (requestId !== authRequestRef.current) return;
     setUser(data.account);
     setAuthState("authenticated");
     setSessionError(null);
   }, []);
 
   const logout = useCallback(async () => {
+    const requestId = ++authRequestRef.current;
     await apiLogout();
+    if (requestId !== authRequestRef.current) return;
     setUser(null);
     setAuthState("unauthenticated");
     setSessionError(null);
   }, []);
+
+  const applyDeviceAccount = useCallback((account: User | null) => {
+    setAccountRevision((revision) => revision + 1);
+    setUser(account);
+    setAuthState(account ? "authenticated" : "unauthenticated");
+    setSessionError(null);
+  }, []);
+
+  const addAccount = useCallback(
+    async (identifier: string, password: string) => {
+      const requestId = ++authRequestRef.current;
+      const operationId = Date.now() * 1000 + (requestId % 1000);
+      const data = await addDeviceAccount(identifier, password, operationId);
+      if (requestId !== authRequestRef.current) return false;
+      applyDeviceAccount(data.current_account ?? null);
+      return true;
+    },
+    [applyDeviceAccount]
+  );
+
+  const switchAccount = useCallback(
+    async (sessionId: string) => {
+      const requestId = ++authRequestRef.current;
+      const operationId = Date.now() * 1000 + (requestId % 1000);
+      const data = await switchDeviceAccount(sessionId, operationId);
+      if (requestId !== authRequestRef.current) return false;
+      applyDeviceAccount(data.current_account ?? null);
+      return true;
+    },
+    [applyDeviceAccount]
+  );
+
+  const reauthenticateAccount = useCallback(
+    async (sessionId: string, password: string) => {
+      const requestId = ++authRequestRef.current;
+      const operationId = Date.now() * 1000 + (requestId % 1000);
+      const data = await reauthenticateDeviceAccount(sessionId, password, operationId);
+      if (requestId !== authRequestRef.current) return false;
+      applyDeviceAccount(data.current_account ?? null);
+      return true;
+    },
+    [applyDeviceAccount]
+  );
+
+  const logoutCurrentAccount = useCallback(async () => {
+    const requestId = ++authRequestRef.current;
+    const operationId = Date.now() * 1000 + (requestId % 1000);
+    const data = await logoutCurrentDeviceAccount(operationId);
+    if (requestId !== authRequestRef.current) return null;
+    applyDeviceAccount(data.current_account ?? null);
+    return data.current_account ?? null;
+  }, [applyDeviceAccount]);
+
+  const logoutAllAccounts = useCallback(async () => {
+    const requestId = ++authRequestRef.current;
+    const operationId = Date.now() * 1000 + (requestId % 1000);
+    await logoutAllDeviceAccounts(operationId);
+    if (requestId !== authRequestRef.current) return;
+    applyDeviceAccount(null);
+  }, [applyDeviceAccount]);
 
   return (
     <AuthContext.Provider
@@ -101,9 +183,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         isLoading,
         authState,
         sessionError,
+        accountRevision,
         login,
         register,
         logout,
+        addAccount,
+        switchAccount,
+        reauthenticateAccount,
+        logoutCurrentAccount,
+        logoutAllAccounts,
         refreshSession: checkSession,
       }}
     >

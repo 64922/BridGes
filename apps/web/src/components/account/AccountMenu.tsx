@@ -1,13 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 
 import { Menu } from "@/components/bridges/Menu";
 import type { User } from "@/context/AuthContext";
 import { useAuth } from "@/context/AuthContext";
 
 import { AccountAvatar } from "./AccountAvatar";
+import { AccountSwitcher } from "./AccountSwitcher";
 
 function maskQqEmail(email: string): string {
   const [local = "", domain = "qq.com"] = email.split("@", 2);
@@ -27,6 +28,8 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
   const { logout } = useAuth();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [switcherOpen, setSwitcherOpen] = useState(false);
+  const closeSwitcher = useCallback(() => setSwitcherOpen(false), []);
   const maskedEmail = maskQqEmail(user.qq_email);
 
   const go = (href: string) => {
@@ -35,13 +38,13 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
     router.push(href);
   };
 
-  const exitSession = async (reason: "logout" | "switch") => {
+  const exitSession = async () => {
     if (pending) return;
     setPending(true);
     setError(null);
     try {
       await logout();
-      window.location.replace(`/login?from=${reason}`);
+      window.location.replace("/login?from=logout");
     } catch (cause) {
       setPending(false);
       setError(
@@ -109,7 +112,10 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
           {
             label: "切换账号",
             icon: "account",
-            onSelect: () => void exitSession("switch"),
+            onSelect: () => {
+              onNavigate?.();
+              setSwitcherOpen(true);
+            },
           },
           {
             label: "密钥设置",
@@ -125,7 +131,7 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
             label: "退出登录",
             icon: "close",
             danger: true,
-            onSelect: () => void exitSession("logout"),
+            onSelect: () => void exitSession(),
           },
         ]}
       />
@@ -142,6 +148,7 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
           {error}
         </p>
       )}
+      <AccountSwitcher open={switcherOpen} onClose={closeSwitcher} />
     </div>
   );
 }

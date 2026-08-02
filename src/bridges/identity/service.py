@@ -16,7 +16,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import zlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
@@ -32,6 +32,8 @@ from bridges.contracts.identity import (
     AuthMethod,
     AuthResponse,
     AvatarChoice,
+    DeviceAccountProjection,
+    DeviceAccountStatus,
     LoginCredential,
     RecoveryRequest,
     RecoveryReset,
@@ -56,6 +58,10 @@ _PASSWORD_HASHER = PasswordHasher(
 _SESSION_TTL = timedelta(hours=8)
 _RECOVERY_TTL = timedelta(minutes=30)
 _RECENT_AUTH_TTL = timedelta(minutes=5)
+_REAUTH_FAILURE_LIMIT = 5
+_REAUTH_LOCKOUT = timedelta(minutes=5)
+_MAX_SESSION_TOKEN_ALIASES = 16
+_MAX_SECURITY_AUDIT_EVENTS = 1000
 MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 
@@ -103,6 +109,16 @@ class _StoredSession:
     token_hash: str
     auth_method: AuthMethod
     reauthenticated_at: datetime
+    token_hashes: set[str] = field(default_factory=set)
+    reauth_failures: int = 0
+    reauth_locked_until: datetime | None = None
+
+
+@dataclass
+class _StoredDevice:
+    token_hash: str
+    session_ids: list[str] = field(default_factory=list)
+    last_device_operation: int = 0
 
 
 @dataclass(frozen=True)
@@ -164,6 +180,8 @@ class IdentityService:
         self._avatars: dict[str, _StoredAvatar] = {}
         self._memory_avatar_content: dict[str, bytes] = {}
         self._recovery_states: dict[str, _RecoveryState] = {}
+        self._devices: dict[str, _StoredDevice] = {}
+        self.security_audit_log: list[dict[str, str]] = []
         self._state_store = state_store
         self._object_repository = object_repository
         self._load_state()
@@ -189,6 +207,13 @@ class IdentityService:
                         "reauthenticated_at",
                         value["session"]["created_at"],
                     )
+                ),
+                token_hashes=set(value.get("token_hashes", [value["token_hash"]])),
+                reauth_failures=int(value.get("reauth_failures", 0)),
+                reauth_locked_until=(
+                    datetime.fromisoformat(value["reauth_locked_until"])
+                    if value.get("reauth_locked_until")
+                    else None
                 ),
             )
             for session_id, value in state.get("sessions", {}).items()
@@ -216,6 +241,27 @@ class IdentityService:
             )
             for account_id, value in state.get("recovery_states", {}).items()
         }
+        self._devices = {
+            device_id: _StoredDevice(
+                token_hash=str(value["token_hash"]),
+                session_ids=[str(session_id) for session_id in value.get("session_ids", [])],
+                last_device_operation=int(
+                    value.get(
+                        "last_device_operation", value.get("last_switch_operation", 0)
+                    )
+                ),
+            )
+            for device_id, value in state.get("devices", {}).items()
+        }
+        self.security_audit_log = [
+            {
+                key: str(event[key])
+                for key in ("action", "account_id", "session_id", "outcome", "at")
+                if key in event
+            }
+            for event in state.get("security_audit_log", [])
+            if isinstance(event, dict)
+        ]
 
     def _persist(self) -> None:
         if self._state_store is None:
@@ -234,8 +280,15 @@ class IdentityService:
                     session_id: {
                         "session": stored.session.model_dump(mode="json"),
                         "token_hash": stored.token_hash,
+                        "token_hashes": sorted(stored.token_hashes or {stored.token_hash}),
                         "auth_method": stored.auth_method.value,
                         "reauthenticated_at": stored.reauthenticated_at.isoformat(),
+                        "reauth_failures": stored.reauth_failures,
+                        "reauth_locked_until": (
+                            stored.reauth_locked_until.isoformat()
+                            if stored.reauth_locked_until
+                            else None
+                        ),
                     }
                     for session_id, stored in self._sessions.items()
                 },
@@ -256,6 +309,15 @@ class IdentityService:
                     }
                     for account_id, state in self._recovery_states.items()
                 },
+                "devices": {
+                    device_id: {
+                        "token_hash": device.token_hash,
+                        "session_ids": device.session_ids,
+                        "last_device_operation": device.last_device_operation,
+                    }
+                    for device_id, device in self._devices.items()
+                },
+                "security_audit_log": self.security_audit_log[-_MAX_SECURITY_AUDIT_EVENTS:],
             },
         )
 
@@ -266,6 +328,20 @@ class IdentityService:
         # Tokens are opaque high-entropy secrets; a simple hash is sufficient to
         # prevent timing leaks and to allow revocation without storing plaintext.
         return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def _audit_security_event(
+        self, action: str, account_id: str, session_id: str, outcome: str
+    ) -> None:
+        """Record security metadata without passwords, tokens, or mailbox secrets."""
+        self.security_audit_log.append(
+            {
+                "action": action,
+                "account_id": account_id,
+                "session_id": session_id,
+                "outcome": outcome,
+                "at": self._now().isoformat(),
+            }
+        )
 
     @staticmethod
     def _validate_username(username: str) -> str:
@@ -601,13 +677,27 @@ class IdentityService:
         session = self._sessions.get(session_id)
         if account is None or session is None or session.session.account_id != account_id:
             raise IdentityError("会话已失效。", code="session")
+        now = self._now()
+        if session.reauth_locked_until is not None and session.reauth_locked_until > now:
+            self._audit_security_event("reauthenticate", account_id, session_id, "locked")
+            raise IdentityError("验证失败次数过多，请稍后再试。", code="credentials")
         try:
             _PASSWORD_HASHER.verify(account.password_hash, password)
         except VerifyMismatchError:
+            session.reauth_failures += 1
+            if session.reauth_failures >= _REAUTH_FAILURE_LIMIT:
+                session.reauth_locked_until = now + _REAUTH_LOCKOUT
+            self._audit_security_event("reauthenticate", account_id, session_id, "failure")
+            self._persist()
+            if session.reauth_locked_until is not None:
+                raise IdentityError("验证失败次数过多，请稍后再试。", code="credentials") from None
             raise IdentityError("当前账户密码不正确。", code="credentials") from None
         if _PASSWORD_HASHER.check_needs_rehash(account.password_hash):
             account.password_hash = _PASSWORD_HASHER.hash(password)
-        session.reauthenticated_at = self._now()
+        session.reauthenticated_at = now
+        session.reauth_failures = 0
+        session.reauth_locked_until = None
+        self._audit_security_event("reauthenticate", account_id, session_id, "success")
         self._persist()
 
     def requires_recent_auth(self, session_id: str) -> bool:
@@ -627,11 +717,13 @@ class IdentityService:
             expires_at=now + _SESSION_TTL,
             revoked_at=None,
         )
+        token_hash = self._hash_token(token)
         self._sessions[session.id] = _StoredSession(
             session=session,
-            token_hash=self._hash_token(token),
+            token_hash=token_hash,
             auth_method=method,
             reauthenticated_at=now,
+            token_hashes={token_hash},
         )
         return AuthResult(account=account, session=session, session_token=token)
 
@@ -641,7 +733,7 @@ class IdentityService:
         now = self._now()
 
         for stored in self._sessions.values():
-            if stored.token_hash != token_hash:
+            if token_hash not in (stored.token_hashes or {stored.token_hash}):
                 continue
             if stored.session.revoked_at is not None:
                 raise IdentityError("会话已失效。", code="session")
@@ -664,6 +756,291 @@ class IdentityService:
             )
 
         raise IdentityError("会话无效。", code="session")
+
+    def ensure_device(self, device_token: str | None, session_id: str) -> tuple[str, str]:
+        """Create or reuse a device registry and attach the current session."""
+        if session_id not in self._sessions:
+            raise IdentityError("会话已失效。", code="session")
+        device: _StoredDevice | None = None
+        device_id: str | None = None
+        if device_token:
+            token_hash = self._hash_token(device_token)
+            for candidate_id, candidate in self._devices.items():
+                if candidate.token_hash == token_hash:
+                    device_id = candidate_id
+                    device = candidate
+                    break
+        if device is not None and session_id not in device.session_ids:
+            # A device cookie must not be enough to join another device's
+            # registry. Start a fresh registry for this authenticated session.
+            device = None
+            device_id = None
+        if device is None or device_id is None:
+            device_token = secrets.token_urlsafe(32)
+            device_id = secrets.token_urlsafe(16)
+            device = _StoredDevice(token_hash=self._hash_token(device_token))
+            self._devices[device_id] = device
+        if session_id not in device.session_ids:
+            device.session_ids.append(session_id)
+        self._persist()
+        assert device_token is not None
+        return device_token, device_id
+
+    def is_session_registered_on_device(self, device_token: str, session_id: str) -> bool:
+        """Check the device/session binding without exposing registry contents."""
+        token_hash = self._hash_token(device_token)
+        return any(
+            candidate.token_hash == token_hash and session_id in candidate.session_ids
+            for candidate in self._devices.values()
+        )
+
+    def claim_device_operation(self, device_token: str, operation_id: int) -> bool:
+        """Reject an older device operation before it can mint a cookie token."""
+        token_hash = self._hash_token(device_token)
+        device = next(
+            (
+                candidate
+                for candidate in self._devices.values()
+                if candidate.token_hash == token_hash
+            ),
+            None,
+        )
+        if device is None or operation_id <= device.last_device_operation:
+            return False
+        device.last_device_operation = operation_id
+        self._persist()
+        return True
+
+    def attach_session_to_device(self, device_token: str, session_id: str) -> None:
+        """Attach a newly authenticated session to an existing device."""
+        token_hash = self._hash_token(device_token)
+        device = next(
+            (
+                candidate
+                for candidate in self._devices.values()
+                if candidate.token_hash == token_hash
+            ),
+            None,
+        )
+        if device is None or session_id not in self._sessions:
+            raise IdentityError("设备账户不可用。", code="device_account")
+        if session_id not in device.session_ids:
+            device.session_ids.append(session_id)
+        self._persist()
+
+    @staticmethod
+    def _mask_qq_email(qq_email: str) -> str:
+        local, _, domain = qq_email.partition("@")
+        if len(local) <= 3:
+            return f"{local[:1]}***@{domain or 'qq.com'}"
+        return f"{local[:2]}***{local[-2:]}@{domain or 'qq.com'}"
+
+    def list_device_accounts(
+        self, device_token: str, current_session_id: str
+    ) -> list[DeviceAccountProjection]:
+        """Return one safe, status-aware projection per account on this device."""
+        token_hash = self._hash_token(device_token)
+        device = next(
+            (
+                candidate
+                for candidate in self._devices.values()
+                if candidate.token_hash == token_hash
+            ),
+            None,
+        )
+        if device is None:
+            raise IdentityError("设备账户不可用。", code="device_account")
+
+        candidates: dict[str, list[_StoredSession]] = {}
+        for session_id in device.session_ids:
+            stored = self._sessions.get(session_id)
+            if stored is None:
+                continue
+            candidates.setdefault(stored.session.account_id, []).append(stored)
+
+        projections: list[DeviceAccountProjection] = []
+        now = self._now()
+        for account_id, sessions in candidates.items():
+            account_stored = self._accounts.get(account_id)
+            if account_stored is None:
+                continue
+            selected = max(
+                sessions,
+                key=lambda item: (
+                    item.session.id == current_session_id,
+                    item.session.revoked_at is None and item.session.expires_at > now,
+                    item.session.created_at,
+                ),
+            )
+            active = selected.session.revoked_at is None and selected.session.expires_at > now
+            projections.append(
+                DeviceAccountProjection(
+                    session_id=selected.session.id,
+                    username=account_stored.account.username,
+                    masked_qq_email=self._mask_qq_email(account_stored.account.qq_email),
+                    avatar_choice=account_stored.account.avatar_choice,
+                    has_uploaded_avatar=account_stored.account.has_uploaded_avatar,
+                    status=(
+                        DeviceAccountStatus.ACTIVE
+                        if active
+                        else DeviceAccountStatus.REAUTH_REQUIRED
+                    ),
+                    is_current=selected.session.id == current_session_id,
+                )
+            )
+        return sorted(projections, key=lambda item: (not item.is_current, item.username.casefold()))
+
+    def _get_device_session(self, device_token: str, session_id: str) -> _StoredSession:
+        """Resolve a session only through a device registry membership."""
+        token_hash = self._hash_token(device_token)
+        device = next(
+            (
+                candidate
+                for candidate in self._devices.values()
+                if candidate.token_hash == token_hash
+            ),
+            None,
+        )
+        stored = (
+            self._sessions.get(session_id)
+            if device and session_id in device.session_ids
+            else None
+        )
+        if stored is None:
+            raise IdentityError("设备账户不可用。", code="device_account")
+        return stored
+
+    def issue_session_token(self, session_id: str) -> str:
+        """Mint a fresh opaque cookie token for an active session."""
+        stored = self._sessions.get(session_id)
+        if (
+            stored is None
+            or stored.session.revoked_at is not None
+            or stored.session.expires_at <= self._now()
+        ):
+            raise IdentityError("需要重新认证。", code="reauth_required")
+        token = secrets.token_urlsafe(32)
+        stored.token_hashes.add(self._hash_token(token))
+        if len(stored.token_hashes) > _MAX_SESSION_TOKEN_ALIASES:
+            preserved = sorted(stored.token_hashes - {stored.token_hash})[
+                -(_MAX_SESSION_TOKEN_ALIASES - 1) :
+            ]
+            stored.token_hashes = {stored.token_hash, *preserved}
+        self._persist()
+        return token
+
+    def activate_device_session(self, device_token: str, session_id: str) -> AuthResult:
+        """Activate a currently valid account session registered on this device."""
+        stored = self._get_device_session(device_token, session_id)
+        if stored.session.revoked_at is not None or stored.session.expires_at <= self._now():
+            raise IdentityError("请重新输入该账户密码。", code="reauth_required")
+        account = self._accounts.get(stored.session.account_id)
+        if account is None:
+            raise IdentityError("设备账户不可用。", code="device_account")
+        return AuthResult(
+            account=account.account,
+            session=stored.session,
+            session_token=self.issue_session_token(session_id),
+        )
+
+    def reauthenticate_device_session(
+        self, device_token: str, session_id: str, password: str
+    ) -> AuthResult:
+        """Recreate a device account session after verifying that account's password."""
+        stored = self._get_device_session(device_token, session_id)
+        account = self._accounts.get(stored.session.account_id)
+        if account is None:
+            raise IdentityError("账户信息或密码不正确。", code="credentials")
+        now = self._now()
+        if stored.reauth_locked_until is not None and stored.reauth_locked_until > now:
+            self._audit_security_event(
+                "device_reauthenticate", account.account.id, session_id, "locked"
+            )
+            raise IdentityError("验证失败次数过多，请稍后再试。", code="credentials")
+        try:
+            _PASSWORD_HASHER.verify(account.password_hash, password)
+        except VerifyMismatchError:
+            stored.reauth_failures += 1
+            if stored.reauth_failures >= _REAUTH_FAILURE_LIMIT:
+                stored.reauth_locked_until = now + _REAUTH_LOCKOUT
+            self._audit_security_event(
+                "device_reauthenticate", account.account.id, session_id, "failure"
+            )
+            self._persist()
+            if stored.reauth_locked_until is not None:
+                raise IdentityError("验证失败次数过多，请稍后再试。", code="credentials") from None
+            raise IdentityError("账户信息或密码不正确。", code="credentials") from None
+        stored.reauth_failures = 0
+        stored.reauth_locked_until = None
+        result = self._create_session(account.account, AuthMethod.PASSWORD)
+        token_hash = self._hash_token(device_token)
+        device = next(
+            device for device in self._devices.values() if device.token_hash == token_hash
+        )
+        device.session_ids.append(result.session.id)
+        self._audit_security_event(
+            "device_reauthenticate", account.account.id, result.session.id, "success"
+        )
+        self._persist()
+        return result
+
+    def activate_next_device_session(
+        self, device_token: str, excluded_session_id: str
+    ) -> AuthResult | None:
+        """Find the next active account after a current-session logout."""
+        token_hash = self._hash_token(device_token)
+        device = next(
+            (
+                candidate
+                for candidate in self._devices.values()
+                if candidate.token_hash == token_hash
+            ),
+            None,
+        )
+        if device is None:
+            return None
+        active_sessions = [
+            stored
+            for session_id in device.session_ids
+            if session_id != excluded_session_id
+            and (stored := self._sessions.get(session_id)) is not None
+            and stored.session.revoked_at is None
+            and stored.session.expires_at > self._now()
+        ]
+        if not active_sessions:
+            return None
+        selected = max(active_sessions, key=lambda item: item.session.created_at)
+        account = self._accounts.get(selected.session.account_id)
+        if account is None:
+            return None
+        return AuthResult(
+            account=account.account,
+            session=selected.session,
+            session_token=self.issue_session_token(selected.session.id),
+        )
+
+    def revoke_device_sessions(self, device_token: str) -> list[Session]:
+        """Revoke every session registered to one browser device."""
+        token_hash = self._hash_token(device_token)
+        device = next(
+            (
+                candidate
+                for candidate in self._devices.values()
+                if candidate.token_hash == token_hash
+            ),
+            None,
+        )
+        if device is None:
+            return []
+        revoked: list[Session] = []
+        for session_id in device.session_ids:
+            stored = self._sessions.get(session_id)
+            if stored is None or stored.session.revoked_at is not None:
+                continue
+            stored.session.revoked_at = self._now()
+            revoked.append(stored.session)
+        self._persist()
+        return revoked
 
     def revoke_session(self, session_id: str) -> Session:
         """Revoke a single session."""

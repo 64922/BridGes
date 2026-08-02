@@ -42,16 +42,16 @@ test.describe("Issue 08 — 账户上拉菜单", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("切换账号撤销当前会话并进入目标账户登录提示", async ({ page }) => {
+  test("同设备只有当前账户时，切换账号展示安全空态", async ({ page }) => {
     const creds = uniqueCredentials("i8-switch");
     await signUp(page, creds.username, creds.qqEmail, PASSWORD);
 
     await page.getByRole("button", { name: /账户菜单：/ }).click();
     await page.getByRole("menuitem", { name: "切换账号" }).click();
-    await page.waitForURL(/\/login\?from=switch/);
-    await expect(page.getByText("请使用目标账户的用户名或 QQ 邮箱登录。")).toBeVisible();
-    expect((await page.context().cookies()).some((cookie) => cookie.name === "bridges_session"))
-      .toBeFalsy();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByTestId("no-other-account")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 });
 

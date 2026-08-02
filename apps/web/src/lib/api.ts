@@ -10,6 +10,9 @@ export type SessionResponse = components["schemas"]["SessionResponse"];
 export type AuthError = components["schemas"]["AuthError"];
 export type AvatarChoice = components["schemas"]["AvatarChoice"];
 export type AccountProfileUpdate = components["schemas"]["AccountProfileUpdate"];
+export type DeviceAccountProjection = components["schemas"]["DeviceAccountProjection"];
+export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsResponse"];
+export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
 export type KeySettingsProjection = components["schemas"]["KeySettingsProjection"];
 export type Project = components["schemas"]["Project"];
 export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
@@ -37,6 +40,12 @@ export type PackRollbackStatus = components["schemas"]["PackRollbackStatus"];
 export type DomainPackError = { error?: string; message?: string };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
+
+function deviceOperationHeaders(operationId?: number): Record<string, string> {
+  return operationId
+    ? { "X-Bridges-Account-Operation": String(operationId) }
+    : {};
+}
 
 export class ApiError extends Error {
   constructor(
@@ -99,6 +108,89 @@ export async function login(identifier: string, password: string): Promise<AuthR
     throw await parseAuthError(res);
   }
   return res.json();
+}
+
+export async function listDeviceAccounts(): Promise<DeviceAccountsResponse> {
+  const res = await fetch(`${API_BASE}/auth/device/accounts`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function addDeviceAccount(
+  identifier: string,
+  password: string,
+  operationId?: number
+): Promise<DeviceAccountsResponse> {
+  const res = await fetch(`${API_BASE}/auth/device/accounts/add`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...deviceOperationHeaders(operationId),
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({ identifier, password }),
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function switchDeviceAccount(
+  sessionId: string,
+  operationId?: number
+): Promise<DeviceAccountsResponse> {
+  const res = await fetch(`${API_BASE}/auth/device/switch`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...deviceOperationHeaders(operationId),
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function reauthenticateDeviceAccount(
+  sessionId: string,
+  password: string,
+  operationId?: number
+): Promise<DeviceAccountsResponse> {
+  const res = await fetch(`${API_BASE}/auth/device/reauthenticate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...deviceOperationHeaders(operationId),
+    },
+    credentials: "same-origin",
+    body: JSON.stringify({ session_id: sessionId, password }),
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function logoutCurrentDeviceAccount(
+  operationId?: number
+): Promise<DeviceLogoutResponse> {
+  const res = await fetch(`${API_BASE}/auth/device/logout`, {
+    method: "POST",
+    headers: deviceOperationHeaders(operationId),
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function logoutAllDeviceAccounts(operationId?: number): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/device/logout-all`, {
+    method: "POST",
+    headers: deviceOperationHeaders(operationId),
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseAuthError(res);
 }
 
 export async function register(

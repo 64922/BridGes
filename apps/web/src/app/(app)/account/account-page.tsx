@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ButtonLink } from "@/components/design-system/ButtonLink";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
@@ -45,9 +45,10 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
  */
 export default function AccountPageClient() {
   const router = useRouter();
-  const { user, isLoading: isAuthLoading } = useAuth();
+  const { accountRevision, user, isLoading: isAuthLoading } = useAuth();
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [isProjectsLoading, setIsProjectsLoading] = useState(true);
+  const projectRequestRef = useRef(0);
 
   useEffect(() => {
     if (!isAuthLoading && user === null) {
@@ -56,13 +57,22 @@ export default function AccountPageClient() {
   }, [isAuthLoading, user, router]);
 
   const loadProjects = useCallback(async () => {
+    const requestId = ++projectRequestRef.current;
+    setProjects([]);
+    setIsProjectsLoading(true);
     try {
       const data = await listProjects();
-      setProjects(data.active ?? []);
+      if (requestId === projectRequestRef.current) {
+        setProjects(data.active ?? []);
+      }
     } catch {
-      setProjects([]);
+      if (requestId === projectRequestRef.current) {
+        setProjects([]);
+      }
     } finally {
-      setIsProjectsLoading(false);
+      if (requestId === projectRequestRef.current) {
+        setIsProjectsLoading(false);
+      }
     }
   }, []);
 
@@ -70,7 +80,7 @@ export default function AccountPageClient() {
     if (user) {
       loadProjects();
     }
-  }, [user, loadProjects]);
+  }, [accountRevision, user, loadProjects]);
 
   if (isAuthLoading) {
     return (

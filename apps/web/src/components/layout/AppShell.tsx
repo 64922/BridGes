@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { Button } from "@/components/design-system/Button";
@@ -27,11 +27,11 @@ interface AppShellProps {
  */
 export function AppShell({ children, mode = "account", projectId, showSkipLink = true }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-  const { authState, sessionError, refreshSession } = useAuth();
+  const { accountRevision, authState, sessionError, refreshSession } = useAuth();
 
   const protectedContent =
     authState === "authenticated" ? (
-      children
+      <Fragment key={accountRevision}>{children}</Fragment>
     ) : (
       <MainContent>
         {authState === "loading" ? (

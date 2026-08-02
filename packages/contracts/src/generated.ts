@@ -215,6 +215,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/device/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Device Accounts
+         * @description List the accounts explicitly authenticated in this browser device.
+         */
+        get: operations["list_device_accounts_auth_device_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/device/accounts/add": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add Device Account
+         * @description Authenticate a new account, preserve existing device sessions, and activate it.
+         */
+        post: operations["add_device_account_auth_device_accounts_add_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/device/switch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Device Account
+         * @description Switch only to an active session previously registered by this device.
+         */
+        post: operations["switch_device_account_auth_device_switch_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/device/reauthenticate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reauthenticate Device Account
+         * @description Restore a stale device account using that account's password only.
+         */
+        post: operations["reauthenticate_device_account_auth_device_reauthenticate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/device/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout Device Account
+         * @description Revoke only the active account session and fall back safely if possible.
+         */
+        post: operations["logout_device_account_auth_device_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/device/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Logout All Device Accounts
+         * @description Revoke every session registered to this browser and return to login.
+         */
+        post: operations["logout_all_device_accounts_auth_device_logout_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/domain-packs/workbench": {
         parameters: {
             query?: never;
@@ -6099,6 +6219,65 @@ export interface components {
             created_at: string;
         };
         /**
+         * DeviceAccountProjection
+         * @description Safe account summary shown by the same-device account switcher.
+         */
+        DeviceAccountProjection: {
+            /**
+             * Session Id
+             * @description Opaque device-scoped session handle.
+             */
+            session_id: string;
+            /**
+             * Username
+             * @description Public account username.
+             */
+            username: string;
+            /**
+             * Masked Qq Email
+             * @description QQ mailbox with its local part masked.
+             */
+            masked_qq_email: string;
+            /** @description Owner-selected static avatar. */
+            avatar_choice: components["schemas"]["AvatarChoice"];
+            /**
+             * Has Uploaded Avatar
+             * @description Whether the account owns an uploaded avatar.
+             */
+            has_uploaded_avatar: boolean;
+            /** @description Whether password confirmation is needed. */
+            status: components["schemas"]["DeviceAccountStatus"];
+            /**
+             * Is Current
+             * @description Whether this is the active account in the browser.
+             */
+            is_current: boolean;
+        };
+        /**
+         * DeviceAccountStatus
+         * @description Whether a same-device account can switch without a password.
+         * @enum {string}
+         */
+        DeviceAccountStatus: "active" | "reauth_required";
+        /**
+         * DeviceAccountsResponse
+         * @description Account switcher state for the current authenticated device.
+         */
+        DeviceAccountsResponse: {
+            /**
+             * Accounts
+             * @description Accounts registered on this device.
+             */
+            accounts: components["schemas"]["DeviceAccountProjection"][];
+            /** @description Full projection for the newly active account, if any. */
+            current_account?: components["schemas"]["Account"] | null;
+            /**
+             * Current Session Id
+             * @description Opaque handle for the active account session.
+             */
+            current_session_id?: string | null;
+        };
+        /**
          * DeviceAck
          * @description Proof that a device received the latest control-plane state.
          */
@@ -6203,6 +6382,19 @@ export interface components {
             revoked_at?: string | null;
         };
         /**
+         * DeviceLogoutResponse
+         * @description Safe landing projection after logging out the current account.
+         */
+        DeviceLogoutResponse: {
+            /** @description Fallback account activated on this device, if any. */
+            current_account?: components["schemas"]["Account"] | null;
+            /**
+             * Current Session Id
+             * @description Opaque handle for the fallback session, if any.
+             */
+            current_session_id?: string | null;
+        };
+        /**
          * DevicePairingRequest
          * @description Request to pair a new vault runtime with an account.
          */
@@ -6242,6 +6434,23 @@ export interface components {
          */
         DevicePairingStatus: "paired" | "revoked";
         /**
+         * DeviceReauthenticationRequest
+         * @description Request to restore a stale device account with its own password.
+         */
+        DeviceReauthenticationRequest: {
+            /**
+             * Session Id
+             * @description Opaque session handle returned by the device list.
+             */
+            session_id: string;
+            /**
+             * Password
+             * Format: password
+             * @description Password belonging to the target account.
+             */
+            password: string;
+        };
+        /**
          * DeviceRevocationRequest
          * @description Request to revoke a paired device.
          */
@@ -6257,6 +6466,17 @@ export interface components {
              * @default user_request
              */
             reason: string;
+        };
+        /**
+         * DeviceSwitchRequest
+         * @description Request to activate an account session already registered on this device.
+         */
+        DeviceSwitchRequest: {
+            /**
+             * Session Id
+             * @description Opaque session handle returned by the device list.
+             */
+            session_id: string;
         };
         /**
          * DeviceSyncStatus
@@ -16936,6 +17156,302 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["SessionResponse"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_device_accounts_auth_device_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_device_account_auth_device_accounts_add_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bridges-Account-Operation"?: number | null;
+            };
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginCredential"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    switch_device_account_auth_device_switch_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bridges-Account-Operation"?: number | null;
+            };
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reauthenticate_device_account_auth_device_reauthenticate_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bridges-Account-Operation"?: number | null;
+            };
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeviceReauthenticationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccountsResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_device_account_auth_device_logout_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bridges-Account-Operation"?: number | null;
+            };
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceLogoutResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    logout_all_device_accounts_auth_device_logout_all_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Bridges-Account-Operation"?: number | null;
+            };
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

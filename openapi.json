@@ -730,6 +730,509 @@
         }
       }
     },
+    "/auth/device/accounts": {
+      "get": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "List Device Accounts",
+        "description": "List the accounts explicitly authenticated in this browser device.",
+        "operationId": "list_device_accounts_auth_device_accounts_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAccountsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/device/accounts/add": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Add Device Account",
+        "description": "Authenticate a new account, preserve existing device sessions, and activate it.",
+        "operationId": "add_device_account_auth_device_accounts_add_post",
+        "parameters": [
+          {
+            "name": "X-Bridges-Account-Operation",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Bridges-Account-Operation"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginCredential"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAccountsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/device/switch": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Switch Device Account",
+        "description": "Switch only to an active session previously registered by this device.",
+        "operationId": "switch_device_account_auth_device_switch_post",
+        "parameters": [
+          {
+            "name": "X-Bridges-Account-Operation",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Bridges-Account-Operation"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceSwitchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAccountsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/device/reauthenticate": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Reauthenticate Device Account",
+        "description": "Restore a stale device account using that account's password only.",
+        "operationId": "reauthenticate_device_account_auth_device_reauthenticate_post",
+        "parameters": [
+          {
+            "name": "X-Bridges-Account-Operation",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Bridges-Account-Operation"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceReauthenticationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAccountsResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/device/logout": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Logout Device Account",
+        "description": "Revoke only the active account session and fall back safely if possible.",
+        "operationId": "logout_device_account_auth_device_logout_post",
+        "parameters": [
+          {
+            "name": "X-Bridges-Account-Operation",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Bridges-Account-Operation"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceLogoutResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/device/logout-all": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Logout All Device Accounts",
+        "description": "Revoke every session registered to this browser and return to login.",
+        "operationId": "logout_all_device_accounts_auth_device_logout_all_post",
+        "parameters": [
+          {
+            "name": "X-Bridges-Account-Operation",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Bridges-Account-Operation"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/domain-packs/workbench": {
       "get": {
         "tags": [
@@ -20857,6 +21360,105 @@
         "title": "DerivedAsset",
         "description": "Any extraction, OCR, structure parse or human correction result.\n\nDerivedAssets are immutable. A human correction creates a new DerivedAsset\nthat points to the previous one via `derived_from_asset_id`, preserving the\nfull correction chain."
       },
+      "DeviceAccountProjection": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Opaque device-scoped session handle."
+          },
+          "username": {
+            "type": "string",
+            "title": "Username",
+            "description": "Public account username."
+          },
+          "masked_qq_email": {
+            "type": "string",
+            "title": "Masked Qq Email",
+            "description": "QQ mailbox with its local part masked."
+          },
+          "avatar_choice": {
+            "$ref": "#/components/schemas/AvatarChoice",
+            "description": "Owner-selected static avatar."
+          },
+          "has_uploaded_avatar": {
+            "type": "boolean",
+            "title": "Has Uploaded Avatar",
+            "description": "Whether the account owns an uploaded avatar."
+          },
+          "status": {
+            "$ref": "#/components/schemas/DeviceAccountStatus",
+            "description": "Whether password confirmation is needed."
+          },
+          "is_current": {
+            "type": "boolean",
+            "title": "Is Current",
+            "description": "Whether this is the active account in the browser."
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "username",
+          "masked_qq_email",
+          "avatar_choice",
+          "has_uploaded_avatar",
+          "status",
+          "is_current"
+        ],
+        "title": "DeviceAccountProjection",
+        "description": "Safe account summary shown by the same-device account switcher."
+      },
+      "DeviceAccountStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "reauth_required"
+        ],
+        "title": "DeviceAccountStatus",
+        "description": "Whether a same-device account can switch without a password."
+      },
+      "DeviceAccountsResponse": {
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/DeviceAccountProjection"
+            },
+            "type": "array",
+            "title": "Accounts",
+            "description": "Accounts registered on this device."
+          },
+          "current_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Full projection for the newly active account, if any."
+          },
+          "current_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Session Id",
+            "description": "Opaque handle for the active account session."
+          }
+        },
+        "type": "object",
+        "required": [
+          "accounts"
+        ],
+        "title": "DeviceAccountsResponse",
+        "description": "Account switcher state for the current authenticated device."
+      },
       "DeviceAck": {
         "properties": {
           "ack_id": {
@@ -21001,6 +21603,36 @@
         "title": "DeviceCertificate",
         "description": "Binding between a user account and a trusted device.\n\nThe certificate carries only the public key and metadata; the corresponding\nprivate key is held in the device system keychain and never written to\nordinary configuration or logs."
       },
+      "DeviceLogoutResponse": {
+        "properties": {
+          "current_account": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Account"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Fallback account activated on this device, if any."
+          },
+          "current_session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Session Id",
+            "description": "Opaque handle for the fallback session, if any."
+          }
+        },
+        "type": "object",
+        "title": "DeviceLogoutResponse",
+        "description": "Safe landing projection after logging out the current account."
+      },
       "DevicePairingRequest": {
         "properties": {
           "device_name": {
@@ -21066,6 +21698,29 @@
         "title": "DevicePairingStatus",
         "description": "Lifecycle status of a device pairing and its key epoch."
       },
+      "DeviceReauthenticationRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Opaque session handle returned by the device list."
+          },
+          "password": {
+            "type": "string",
+            "format": "password",
+            "title": "Password",
+            "description": "Password belonging to the target account.",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id",
+          "password"
+        ],
+        "title": "DeviceReauthenticationRequest",
+        "description": "Request to restore a stale device account with its own password."
+      },
       "DeviceRevocationRequest": {
         "properties": {
           "device_id": {
@@ -21086,6 +21741,21 @@
         ],
         "title": "DeviceRevocationRequest",
         "description": "Request to revoke a paired device."
+      },
+      "DeviceSwitchRequest": {
+        "properties": {
+          "session_id": {
+            "type": "string",
+            "title": "Session Id",
+            "description": "Opaque session handle returned by the device list."
+          }
+        },
+        "type": "object",
+        "required": [
+          "session_id"
+        ],
+        "title": "DeviceSwitchRequest",
+        "description": "Request to activate an account session already registered on this device."
       },
       "DeviceSyncStatus": {
         "type": "string",

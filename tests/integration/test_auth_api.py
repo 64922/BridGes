@@ -370,3 +370,121 @@ def test_recovery_request_is_silent_for_unknown_qq_email(client: TestClient) -> 
     )
     assert response.status_code == 202
     assert response.json()["status"] == "accepted"
+
+
+def test_device_accounts_add_and_switch_without_revoking_the_previous_session() -> None:
+    app = create_app()
+    alice = TestClient(app)
+    bob_creator = TestClient(app)
+    alice_account = _register(alice, username="Alice", qq_email="111111@qq.com")
+    _register(bob_creator, username="Bob", qq_email="222222@qq.com")
+
+    initial = alice.get("/auth/device/accounts")
+    assert initial.status_code == 200
+    assert [item["username"] for item in initial.json()["accounts"]] == ["Alice"]
+    alice_session_id = initial.json()["current_session_id"]
+
+    added = alice.post(
+        "/auth/device/accounts/add",
+        json={"identifier": "Bob", "password": "correct-horse-12"},
+    )
+    assert added.status_code == 200
+    assert added.json()["current_account"]["username"] == "Bob"
+    assert alice.get("/auth/session").json()["account"]["username"] == "Bob"
+
+    accounts = alice.get("/auth/device/accounts").json()["accounts"]
+    assert {item["username"] for item in accounts} == {"Alice", "Bob"}
+    alice_handle = next(item["session_id"] for item in accounts if item["username"] == "Alice")
+    assert alice_handle == alice_session_id
+
+    switched = alice.post("/auth/device/switch", json={"session_id": alice_handle})
+    assert switched.status_code == 200
+    assert switched.json()["current_account"]["id"] == alice_account["id"]
+    assert alice.get("/auth/session").json()["account"]["username"] == "Alice"
+
+    guessed = alice.post(
+        "/auth/device/switch",
+        json={"session_id": alice_account["id"]},
+    )
+    assert guessed.status_code == 403
+    assert guessed.json()["detail"]["error"] == "device_account_unavailable"
+
+
+def test_expired_device_account_requires_password_and_does_not_leak_session_state() -> None:
+    app = create_app()
+    alice = TestClient(app)
+    bob_creator = TestClient(app)
+    _register(alice, username="Alice", qq_email="111111@qq.com")
+    _register(bob_creator, username="Bob", qq_email="222222@qq.com")
+    added = alice.post(
+        "/auth/device/accounts/add",
+        json={"identifier": "Bob", "password": "correct-horse-12"},
+    )
+    bob_session_id = added.json()["current_session_id"]
+    alice_session_id = next(
+        item["session_id"]
+        for item in alice.get("/auth/device/accounts").json()["accounts"]
+        if item["username"] == "Alice"
+    )
+    assert (
+        alice.post("/auth/device/switch", json={"session_id": alice_session_id}).status_code
+        == 200
+    )
+    service = app.state.identity_service
+    service.revoke_session(bob_session_id)
+
+    stale = alice.post("/auth/device/switch", json={"session_id": bob_session_id})
+    assert stale.status_code == 403
+    assert stale.json()["detail"]["error"] == "device_account_unavailable"
+    assert "仍然有效" not in stale.json()["detail"]["message"]
+
+    wrong = alice.post(
+        "/auth/device/reauthenticate",
+        json={"session_id": bob_session_id, "password": "wrong-password-12"},
+    )
+    assert wrong.status_code == 401
+    assert wrong.json()["detail"]["error"] == "device_reauthentication_failed"
+
+    restored = alice.post(
+        "/auth/device/reauthenticate",
+        json={"session_id": bob_session_id, "password": "correct-horse-12"},
+    )
+    assert restored.status_code == 200
+    assert restored.json()["current_account"]["username"] == "Bob"
+    assert alice.get("/auth/session").json()["account"]["username"] == "Bob"
+
+
+def test_device_logout_current_falls_back_and_logout_all_clears_every_local_session() -> None:
+    app = create_app()
+    alice = TestClient(app)
+    bob_creator = TestClient(app)
+    _register(alice, username="Alice", qq_email="111111@qq.com")
+    _register(bob_creator, username="Bob", qq_email="222222@qq.com")
+    added = alice.post(
+        "/auth/device/accounts/add",
+        json={"identifier": "Bob", "password": "correct-horse-12"},
+    )
+    bob_session_id = added.json()["current_session_id"]
+
+    logged_out = alice.post("/auth/device/logout")
+    assert logged_out.status_code == 200
+    assert logged_out.json()["current_account"]["username"] == "Alice"
+    assert alice.get("/auth/session").json()["account"]["username"] == "Alice"
+    assert app.state.identity_service.get_session(bob_session_id).revoked_at is not None
+
+    all_out = alice.post("/auth/device/logout-all")
+    assert all_out.status_code == 204
+    assert alice.get("/auth/session").status_code == 401
+
+
+def test_device_logout_all_revokes_current_session_with_invalid_device_cookie() -> None:
+    app = create_app()
+    client = TestClient(app)
+    _register(client, username="Alice", qq_email="111111@qq.com")
+    session_id = client.get("/auth/session").json()["session"]["id"]
+    client.cookies.set("bridges_device", "forged-device-token")
+
+    response = client.post("/auth/device/logout-all")
+
+    assert response.status_code == 204
+    assert app.state.identity_service.get_session(session_id).revoked_at is not None

@@ -223,6 +223,62 @@ class SessionResponse(BaseModel):
     subject: SubjectContext = Field(description="Resolved subject context.")
 
 
+class DeviceAccountStatus(StrEnum):
+    """Whether a same-device account can switch without a password."""
+
+    ACTIVE = "active"
+    REAUTH_REQUIRED = "reauth_required"
+
+
+class DeviceAccountProjection(BaseModel):
+    """Safe account summary shown by the same-device account switcher."""
+
+    session_id: str = Field(description="Opaque device-scoped session handle.")
+    username: str = Field(description="Public account username.")
+    masked_qq_email: str = Field(description="QQ mailbox with its local part masked.")
+    avatar_choice: AvatarChoice = Field(description="Owner-selected static avatar.")
+    has_uploaded_avatar: bool = Field(description="Whether the account owns an uploaded avatar.")
+    status: DeviceAccountStatus = Field(description="Whether password confirmation is needed.")
+    is_current: bool = Field(description="Whether this is the active account in the browser.")
+
+
+class DeviceAccountsResponse(BaseModel):
+    """Account switcher state for the current authenticated device."""
+
+    accounts: list[DeviceAccountProjection] = Field(
+        description="Accounts registered on this device."
+    )
+    current_account: Account | None = Field(
+        default=None, description="Full projection for the newly active account, if any."
+    )
+    current_session_id: str | None = Field(
+        default=None, description="Opaque handle for the active account session."
+    )
+
+
+class DeviceLogoutResponse(BaseModel):
+    """Safe landing projection after logging out the current account."""
+
+    current_account: Account | None = Field(
+        default=None, description="Fallback account activated on this device, if any."
+    )
+    current_session_id: str | None = Field(
+        default=None, description="Opaque handle for the fallback session, if any."
+    )
+
+
+class DeviceSwitchRequest(BaseModel):
+    """Request to activate an account session already registered on this device."""
+
+    session_id: str = Field(description="Opaque session handle returned by the device list.")
+
+
+class DeviceReauthenticationRequest(DeviceSwitchRequest):
+    """Request to restore a stale device account with its own password."""
+
+    password: SecretStr = Field(description="Password belonging to the target account.")
+
+
 class AuthError(BaseModel):
     """Uniform authentication error response.
 
