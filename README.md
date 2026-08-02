@@ -10,25 +10,46 @@
 
 ## 参赛/评委部署（推荐）
 
-以下步骤适用于 Windows、Linux 和 macOS。Windows PowerShell 用户请先打开
-`agent` 环境；Linux/macOS 用户将 `conda activate agent` 替换为自己的 Python 3.11
-环境激活命令即可。
+以下步骤适用于 Windows、Linux 和 macOS。支持**源码 Conda**、**源码 `.venv`**
+两种环境路径，两者安装与启动行为完全一致；高级用户还可使用 Docker/Podman
+容器路径（见下文）。项目**不提供 Windows 原生安装包**，也没有自更新器或
+系统常驻服务。
 
 ### 1. 安装运行环境
 
-在项目根目录执行：
+**源码 Conda 路径**（Windows PowerShell 用户请先打开 `agent` 环境；
+Linux/macOS 用户将 `conda activate agent` 替换为自己的 Python 3.11 环境
+激活命令即可）：
 
 ```bash
 conda env create -f environment.yml   # 已存在 agent 环境时跳过
 conda activate agent
+python -m pip install --upgrade pip
 pip install -e ".[dev]"
 cd apps/web
 npm install
-cd ..
+npm run build
+cd ../..
 ```
 
-项目需要 Python 3.11 及 Node.js 20 或更高版本。后续启动命令都应在项目根目录
-执行，否则相对路径 SQLite 数据库可能无法被正确读取。
+**源码 `.venv` 路径**（行为与 Conda 一致，不要求安装 Conda）：
+
+```bash
+python -m venv .venv
+# Windows: .venv\Scripts\activate    Linux/macOS: source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+cd apps/web
+npm install
+npm run build
+cd ../..
+```
+
+项目需要 Python 3.11 及 Node.js 20 或更高版本。`npm run build` 会生成 Web
+生产构建产物（`.next/standalone`），`BridGes start` 默认启动构建后的 Web；
+本地开发可改用 `BridGes start --profile development` 启动 Next.js 开发服务器。
+后续启动命令都应在项目根目录执行，否则相对路径 SQLite 数据库可能无法被
+正确读取。
 
 ### 2. 启动
 
@@ -39,6 +60,12 @@ cd ..
 BridGes start
 ```
 
+`BridGes start` 会按顺序完成：校验依赖与数据目录权限 → 获取数据目录单实例锁 →
+执行数据库迁移 → 同步启动 **Web、API、后台执行器与提醒调度器**四个进程 →
+等待健康检查 → 输出本地电脑端访问地址。同一数据目录不能启动第二个实例
+（会提示先停止已有实例）；进程被强制终止后锁自动释放，可安全重新启动，
+已提交数据不会丢失。按 Ctrl+C 会按顺序停止全部子进程并释放锁。
+
 启动后访问：
 
 - Web：<http://127.0.0.1:3000>
@@ -46,11 +73,15 @@ BridGes start
 - API 完整健康信息：<http://127.0.0.1:8000/health>
 
 看到 `ready: "pass"` 才表示 API 的必需配置检查通过，业务请求不会因持久化保护而被拒绝。
+BridGes 是**电脑端产品**：只面向桌面浏览器（Windows、Linux、macOS）使用，
+不承诺手机、平板或移动浏览器访问，也没有移动适配。
 
-配置持久化数据库后，项目根目录会生成 `bridges.db`、`bridges.db-wal`
+配置持久化数据库后，数据目录会生成 `bridges.db`、`bridges.db-wal`
 和 `bridges.db-shm` 文件；这些文件是本地运行数据，不需要手工创建。
 持久化数据库必须同时配置 `BRIDGES_SECRET_KEY`（或文件引用），用于保护
-本地状态加密。
+本地状态加密。后台执行器与提醒调度器也可以在需要时单独启动：
+`BridGes worker`（周期性清理待删除对象与孤立文件）与 `BridGes scheduler`
+（提醒调度；提醒功能由后续版本交付）。
 
 联网模型能力（Qwen 文本、结构化输出、OCR、视觉、ASR、TTS 等）需要
 `BRIDGES_QWEN_API_KEY`；未配置时使用离线桩能力，`BridGes doctor` 会给出
@@ -69,14 +100,35 @@ docker compose -f infra/compose/docker-compose.yml up --build
 podman-compose -f infra/compose/docker-compose.yml up --build
 ```
 
-API 数据库会保存在 Compose 命名卷 `bridges-data` 中，容器重建不会丢失。
-Web 容器会等待 API 的 `/health/ready` 通过后再启动。如果 API 一直不健康，
-优先检查 `BridGes doctor` 输出与密钥配置，以及是否误用了 `BRIDGES_SECRET_KEY_FILE`
-的宿主机路径（容器内应改用直接的 `BRIDGES_SECRET_KEY`，或自行挂载密钥文件）。
-Compose 会将容器内的 `BRIDGES_DATABASE_URL` 固定为挂载卷中的
+Compose 由同一源码构建 **API、Web、后台执行器与提醒调度器**四个服务，它们
+共享同一 `bridges-data` 命名卷：数据库（`bridges.db`）、加密对象库
+（`objects/`）与加密凭据（`secret.key`）都保存在该卷中，后续交付的本地索引
+文件同样写入同一数据目录——数据、对象、索引与加密凭据在 Docker 与 Podman
+下具有一致的卷语义，容器重建不会丢失。Web 容器会等待 API 的
+`/health/ready` 通过后再启动；worker 与 scheduler 使用与 API 相同的入口脚本
+完成密钥自举。如果 API 一直不健康，优先检查 `BridGes doctor` 输出与密钥配置，
+以及是否误用了 `BRIDGES_SECRET_KEY_FILE` 的宿主机路径（容器内应改用直接的
+`BRIDGES_SECRET_KEY`，或自行挂载密钥文件）。Compose 会将容器内的
+`BRIDGES_DATABASE_URL` 固定为挂载卷中的
 `sqlite:////var/lib/bridges/bridges.db`。
 
+**Podman 支持范围**：Podman 使用同一份 Compose 配置，不维护第二套运行配置。
+受支持的完整命令为 `podman-compose up --build`、`podman-compose down` 与
+`podman-compose logs`。若本机 podman-compose 版本不支持 `depends_on` 的
+`condition: service_healthy` 方言（老版本常见限制），可改用
+`podman-compose up --no-deps web` 后按依赖顺序手动启动，或在 Linux 上直接
+使用 `docker compose`；源码路径（`BridGes start`）不受该方言影响。
+
 ## 其他启动方式
+
+统一 CLI 分进程：
+
+```bash
+BridGes api          # API 进程，http://127.0.0.1:8000
+BridGes web          # Web 进程（默认生产构建；--dev 用开发服务器）
+BridGes worker       # 后台执行器（清理待删除对象与孤立文件）
+BridGes scheduler    # 提醒调度器（提醒功能由后续版本交付）
+```
 
 手动分进程：
 
@@ -143,8 +195,11 @@ cd apps/web && npm run typecheck
 
 ## 生产运行合同
 
-- 生产支持手动分进程、统一 CLI、Docker、Podman 四种路径。
-- 四种路径读取同一配置 Schema 和密钥引用规则。
-- 任何路径都不要求用户创建 `.env`。
+- 部署范围**仅限**：源码 Conda 环境、源码 `.venv` 环境、Docker/Podman
+  Compose。不提供 Windows 原生安装包、自更新器或系统常驻服务。
+- 统一 CLI（`BridGes start`）同步启动 Web、API、后台执行器与提醒调度器；
+  手动分进程与容器路径提供同一组进程。
+- 所有路径读取同一配置 Schema 和密钥引用规则，均不要求用户创建 `.env`。
 - 生产镜像使用标准 Python / Node.js，不检测或要求 Conda。
 - `environment.yml` 仅用于本地开发。
+- Web 只承诺电脑端使用，不承诺手机、平板或移动浏览器访问。

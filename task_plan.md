@@ -1,50 +1,64 @@
-# Task Plan — Issue 05：建立干净的 bridges.db 与账户隔离加密对象库
+# Task Plan — Issue 06：交付源码与容器统一运行合同
 
 状态：进行中（2026-08-02）
 
 ## 目标
 
-实现 `.scratch/bridges-improvement/issues/05-build-clean-sqlite-and-object-storage.md` 的全部
-验收标准：版本化事务迁移的 `bridges.db`、不可变内部账户 ID 归属、加密对象库、双账户端到端
-隔离测试、可观察可重试的清理状态、旧数据库只读保留、中文运维错误。
+实现 `.scratch/bridges-improvement/issues/06-deliver-unified-source-and-container-runtime.md`
+的全部验收标准：`BridGes start` 同步启动构建后的 Web、API、后台执行器与提醒调度器；
+校验依赖与目录权限、获取数据目录单实例锁、执行迁移、等待健康检查、输出本地电脑端
+访问地址；关键服务失败非零退出并显示可操作中文错误；Ctrl+C 按顺序停止并释放锁；
+重复启动被拒、异常终止可安全恢复；Docker/Podman 卷语义一致；两条路径均不要求
+`.env`；文档只承诺源码 Conda、`.venv` 与 Docker/Podman，无 Windows 安装包与手机承诺。
 
 ## 任务清单
 
-1. [x] 新建 `src/bridges/storage/database.py`：BridgesDatabase（PRAGMA 外键/WAL/FULL、
-   版本化事务迁移 schema_meta、transaction() 上下文管理器、中文错误无绝对路径）
-   → 验证：17 个存储测试覆盖首次创建/重复启动幂等/版本回退/损坏中文报错
-2. [x] 新建 `src/bridges/storage/object_store.py`：EncryptedFileObjectStore（内容哈希路径、
-   Fernet 落盘加密、哈希校验、损坏中文报错）
-   → 验证：单测覆盖密文落盘、明文不可见、损坏检测、哈希去重
-3. [x] 新建 `src/bridges/storage/repository.py`：BridgesObjectRepository（accounts 表、
-   objects 表外键、按 account_id 授权、删除标记 pending_cleanup 可重试、孤儿文件
-   检测清理）
-   → 验证：双账户 E2E 测试（创建/读取/重启/猜 ID/删除/派生清理/不串号）
-4. [x] 接线：`create_app` 配置数据库时初始化 bridges.db 并挂接对象仓库；CLI `migrate`
-   实际执行事务迁移（保留 "migrate:"/"environment:" 输出契约）
-   → 验证：test_cli_contract / test_runtime_smoke / test_persistence_api 不回归（全套 1021 通过）
-5. [x] 测试文件 `tests/storage/`（test_database_migration.py / test_encrypted_object_store.py
-   / test_account_object_isolation.py），测试名含 sqlite/migration/object/isolation 关键词
-   → 验证：pytest -k "sqlite or migration or object or isolation" 111 个通过
-6. [x] 旧数据库只读保留验证（数据目录放 science_companion.db，初始化后字节不变、不扫描）
-   → 验证：test_legacy_database_preserved_readonly_and_never_scanned_on_migration 通过
-7. [x] 全量回归：pytest 全套、ruff check、mypy src
-   → 验证：1022 passed（基线 1004 + 18 新增）；mypy src 0 错误；
-   ruff 新增文件 0 错误（仓库既有 258 个预存错误与本票无关，为环境 ruff 版本漂移）
-8. [x] /code-review 代码审查 → 修复发现的 bug → 复跑验证
-   → 验证：修复 5 项（共享内容误删/原始 sqlite 错误外泄/delete 返回旧行/
-   Fernet 派生重复/死代码），复跑全绿
-9. [x] 更新 issue 05 的 Acceptance criteria 勾选状态 + Comments，提交 git
-   → 验证：git log 提交信息包含工作总结与 bug 修改总结
+1. [x] 新建 `src/bridges/runtime/`：`lock.py`（跨平台数据目录单实例锁：POSIX flock /
+   Windows msvcrt，OS 建议锁进程退出自动释放，中文错误）、`executor.py`（真实后台
+   执行器：周期性清理 pending_cleanup 与孤立文件队列）、`scheduler.py`（提醒调度器：
+   监督循环 + 到期任务分发接缝，未配置数据库时待机不崩溃）
+   → 验证：单测覆盖锁轮转/重复启动拒绝/进程死亡自动释放、worker 单轮真实清理、
+   scheduler 心跳（mypy/ruff 通过）
+2. [x] CLI `src/bridges/cli/main.py`：`worker` 真实实现（替换 "not implemented" 桩）、
+   新增 `scheduler` 命令；`start`/`serve` 改为监督编排：校验依赖与目录权限 → 单实例锁 →
+   迁移 → 启动 api/web/worker/scheduler 四个子进程 → 等待健康检查 → 输出电脑端访问
+   地址 → 任一失败非零退出并报中文错误 → Ctrl+C/SIGBREAK/SIGTERM 按顺序停止并释放锁
+   → 验证：`BridGes start --help`；开发与生产 profile 全流程冒烟（空临时数据目录 +
+   空闲端口 + 构建产物）通过：启动、迁移、重复启动拒绝、优雅停止（退出码 0）、
+   停止后再次启动成功
+3. [x] `infra/compose/docker-compose.yml`：新增 worker 与 scheduler 服务（同一 API 镜像、
+   同一 bridges-data 卷、同一入口密钥自举、依赖 API 健康、SIGTERM 优雅停止）
+   → 验证：compose YAML 解析通过；无 docker 环境时用 python yaml 校验（4 服务均解析）
+4. [x] 文档：`README.md` 补充 `.venv` 旅程、前端构建步骤、四进程说明、单实例锁说明、
+   仅支持源码 Conda/`.venv`/Docker/Podman 且无 Windows 安装包的范围声明、电脑端
+   承诺；`infra/manual/README.md` 同步更新
+   → 验证：文档与实现一致，无 Windows 安装包/手机访问暗示
+5. [x] 测试 `tests/runtime/test_runtime_contract.py`（11 个测试全过，含全流程冒烟：
+   启动/迁移/健康检查/重复启动拒绝/优雅停止/再次启动，13.96s）+ 更新
+   `tests/integration/test_cli_contract.py` 的 serve 帮助文本断言
+   → 验证：pytest -k "cli or startup or health or runtime" 全部通过
+6. [x] 全量回归：pytest 全套、ruff、mypy src、npm typecheck、npm build
+   → 验证：1035 passed（基线 1022 + 13 新增），mypy 0 错误，ruff 新代码 0 错误
+   （仓库 253 个预存错误为既有 ruff 版本漂移，与本票无关），npm typecheck 通过，
+   npm build 产出 .next/standalone（.next 已 gitignore）
+7. [x] 冒烟旅程：空临时数据目录分别执行 Conda（agent 环境）与 `.venv` 旅程，验证
+   启动、健康检查、重复启动拒绝和 Ctrl+C/停止后的再次启动
+   → 验证：两环境各 11/11 通过（runtime 契约测试含全流程冒烟）
+8. [x] /code-review 代码审查（Standards+Spec 双轴）→ 修复发现的 bug → 复跑验证
+   → 验证：修复 8 项（见提交信息），1035 全绿、mypy 0 错误、venv 复跑 11/11
+9. [x] 更新 issue 06 的 Acceptance criteria 勾选状态 + Comments + 状态，提交 git
+   → 验证：提交信息包含工作总结与 bug 修改总结
 
 ## 状态
 
-已完成（2026-08-02）：1022 passed，issue 05 标记 ready-for-human 等待人工验收。
+已完成（2026-08-02）：1035 passed，issue 06 标记 ready-for-human 等待人工验收。
 
 ## 验收命令
 
 ```powershell
-conda run -n agent python -m pytest -k "sqlite or migration or object or isolation"
-conda run -n agent python -m ruff check .
-conda run -n agent python -m mypy src
+conda run -n agent python -m pytest -k "cli or startup or health or runtime"
+conda run -n agent BridGes start --help
+npm --prefix apps/web run typecheck
+npm --prefix apps/web run build
+docker compose config   # 本机无 docker，改用 python yaml 解析校验
 ```

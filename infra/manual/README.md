@@ -63,12 +63,24 @@ npm run dev
 
 ```bash
 BridGes start
-# 或生产模式
-BridGes start --profile production
+# 本地开发（Next.js 开发服务器，需先 npm install）
+BridGes start --profile development
 ```
 
-`start` 会以独立子进程启动 API 与 Web，收到 `Ctrl+C` 后先 `SIGTERM`、超时后再 `SIGKILL`。
-`serve` 是历史同实现别名，与 `start` 指向同一实现。
+`start` 默认以生产 profile 同步启动构建后的 **Web、API、后台执行器与提醒
+调度器**四个进程。启动前会校验依赖与数据目录权限、获取数据目录单实例锁、
+执行数据库迁移，然后等待 API `/health/ready` 与 Web 就绪并输出本地电脑端
+访问地址。任一关键服务失败时整体非零退出并显示可操作中文错误；收到
+`Ctrl+C`（Windows 还支持 `Ctrl+Break`，容器内为 `SIGTERM`）后按顺序停止
+子进程并释放锁。同一数据目录不能重复启动第二个实例；进程异常终止后锁自动
+释放，可安全恢复。`serve` 是历史同实现别名，与 `start` 指向同一实现。
+
+后台进程也可以单独运行：
+
+```bash
+BridGes worker       # 后台执行器：周期性清理待删除对象与孤立文件
+BridGes scheduler    # 提醒调度器：提醒功能由后续版本交付，当前周期心跳
+```
 
 ## 诊断、迁移与健康检查
 
@@ -84,7 +96,11 @@ curl http://127.0.0.1:8000/health/degraded
 
 ## 生产合同说明
 
+- 部署范围仅限源码 Conda 环境、源码 `.venv` 环境与 Docker/Podman Compose；
+  不提供 Windows 原生安装包、自更新器或系统常驻服务。
 - 生产镜像使用标准 Python / Node.js，不依赖 Conda `agent`。
 - `environment.yml` 仅用于本地开发环境声明。
-- Web、API 和 worker 在不同载体中均保持独立进程边界；统一 CLI 只是监管入口。
+- Web、API、后台执行器和提醒调度器在不同载体中均保持独立进程边界；统一
+  CLI 只是监管入口，容器路径由 Compose 编排同一组进程。
+- Web 只承诺电脑端使用，不承诺手机、平板或移动浏览器访问。
 - `science-companion` 是迁移期兼容入口，与 `BridGes` 指向同一实现，由退出 Issue 删除。

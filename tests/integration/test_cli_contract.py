@@ -68,4 +68,4 @@ def test_web_help_exits_successfully() -> None:
 def test_serve_help_exits_successfully() -> None:
     result = run_cli("serve", "--help")
     assert result.returncode == 0
-    assert "Start Web and API" in result.stdout
+    assert "Start Web, API, background executor and reminder scheduler" in result.stdout

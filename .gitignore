@@ -36,3 +36,6 @@ Thumbs.db
 
 # Local build outputs
 *.log
+
+# Virtual env
+.venv/

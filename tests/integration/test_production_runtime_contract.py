@@ -7,8 +7,6 @@ CLI commands.
 
 from pathlib import Path
 
-import pytest
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PRODUCTION_ARTIFACTS = [
@@ -34,7 +32,7 @@ def test_compose_uses_unified_config_env_prefix() -> None:
 
 def test_compose_api_service_uses_bridges_api() -> None:
     text = COMPOSE_FILE.read_text(encoding="utf-8")
-    assert "apps/api/Dockerfile" in text, "API service must build from the production API Dockerfile"
+    assert "apps/api/Dockerfile" in text, "API service must build from the API Dockerfile"
 
 
 def test_compose_web_service_uses_standalone_node_runtime() -> None:
@@ -53,6 +51,28 @@ def test_compose_api_healthcheck_uses_ready_probe() -> None:
 
 def test_compose_services_have_graceful_stop_signal() -> None:
     text = COMPOSE_FILE.read_text(encoding="utf-8")
-    assert text.count("stop_signal: SIGTERM") >= 2, (
-        "Both api and web services must declare SIGTERM for graceful shutdown"
+    assert text.count("stop_signal: SIGTERM") >= 4, (
+        "All services must declare SIGTERM for graceful shutdown"
+    )
+
+
+def test_compose_includes_background_executor_and_scheduler() -> None:
+    """容器路径必须与源码路径一样启动后台执行器与提醒调度器（ADR-0013）。"""
+    text = COMPOSE_FILE.read_text(encoding="utf-8")
+    assert 'command: ["BridGes", "worker"]' in text, (
+        "Compose must run the background executor service"
+    )
+    assert 'command: ["BridGes", "scheduler"]' in text, (
+        "Compose must run the reminder scheduler service"
+    )
+
+
+def test_compose_background_services_share_data_volume() -> None:
+    """worker/scheduler 必须与 API 共享同一数据卷与数据库地址（AC3 卷语义一致）。"""
+    text = COMPOSE_FILE.read_text(encoding="utf-8")
+    assert text.count("bridges-data:/var/lib/bridges") >= 3, (
+        "api, worker and scheduler must mount the same bridges-data volume"
+    )
+    assert text.count("sqlite:////var/lib/bridges/bridges.db") >= 3, (
+        "api, worker and scheduler must use the same database URL"
     )

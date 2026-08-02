@@ -43,6 +43,38 @@ services:
         condition: service_healthy
     stop_signal: SIGTERM
 
+  # 后台执行器与提醒调度器与 API 使用同一镜像与入口：共享 bridges-data 卷、
+  # 同一密钥自举与数据库地址，保证数据、对象与加密凭据语义与 API 完全一致。
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      - BRIDGES_ENVIRONMENT=production
+      - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+    volumes:
+      - bridges-data:/var/lib/bridges
+    depends_on:
+      api:
+        condition: service_healthy
+    stop_signal: SIGTERM
+    command: ["BridGes", "worker"]
+
+  scheduler:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      - BRIDGES_ENVIRONMENT=production
+      - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+    volumes:
+      - bridges-data:/var/lib/bridges
+    depends_on:
+      api:
+        condition: service_healthy
+    stop_signal: SIGTERM
+    command: ["BridGes", "scheduler"]
+
 # Podman-compatible: podman-compose -f infra/compose/docker-compose.yml up
 # Production images use standard Python and Node.js runtimes.
 # 容器部署不要求宿主机创建 `.env`：全部运行配置由上方 Compose 环境变量注入，
