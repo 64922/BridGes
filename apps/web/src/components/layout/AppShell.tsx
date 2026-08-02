@@ -116,7 +116,7 @@ export function AppShell({ children, mode = "account", projectId }: AppShellProp
                 whiteSpace: "nowrap",
               }}
             >
-              {user?.email || "未登录"}
+              {user?.username || "未登录"}
             </span>
             <VisuallyHidden>，当前账户</VisuallyHidden>
           </span>

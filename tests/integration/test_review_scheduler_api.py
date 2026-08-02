@@ -20,7 +20,7 @@ def authenticated_client(
     registered_user: Any,
 ) -> TestClient:
     """Return a client authenticated as a freshly registered user."""
-    registered_user(client, "review-user@example.com", "correct-horse-12")
+    registered_user(client, "review-user", "100401@qq.com", "correct-horse-12")
     return client
 
 
@@ -342,7 +342,7 @@ class TestReviewTaskIsolationAPI:
         task_id = schedule_resp.json()["task_ids"][0]
 
         other_client = TestClient(authenticated_client.app)
-        registered_user(other_client, "other-review@example.com", "correct-horse-12")
+        registered_user(other_client, "other-review", "100402@qq.com", "correct-horse-12")
 
         get_resp = other_client.get(f"/learning/review-tasks/{task_id}")
         assert get_resp.status_code == 404

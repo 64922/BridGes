@@ -21,7 +21,7 @@ def maintainer(
 ) -> tuple[TestClient, dict[str, Any]]:
     maintainer_client = TestClient(client.app)
     account = registered_user(
-        maintainer_client, "wb-maintainer@example.com", "correct-horse-12"
+        maintainer_client, "wb-maintainer", "300001@qq.com", "correct-horse-12"
     )
     return maintainer_client, cast(dict[str, Any], account["account"])
 
@@ -32,7 +32,7 @@ def reviewer(
 ) -> tuple[TestClient, dict[str, Any]]:
     reviewer_client = TestClient(client.app)
     account = registered_user(
-        reviewer_client, "wb-reviewer@example.com", "correct-horse-12"
+        reviewer_client, "wb-reviewer", "300002@qq.com", "correct-horse-12"
     )
     return reviewer_client, cast(dict[str, Any], account["account"])
 
@@ -43,7 +43,7 @@ def releaser(
 ) -> tuple[TestClient, dict[str, Any]]:
     releaser_client = TestClient(client.app)
     account = registered_user(
-        releaser_client, "wb-releaser@example.com", "correct-horse-12"
+        releaser_client, "wb-releaser", "300003@qq.com", "correct-horse-12"
     )
     return releaser_client, cast(dict[str, Any], account["account"])
 
@@ -274,7 +274,7 @@ class TestWorkbenchLifecycle:
     ) -> None:
         """普通用户不进入本工作台：非参与者查看治理记录被拒绝。"""
         outsider_client = TestClient(client.app)
-        registered_user(outsider_client, "wb-outsider@example.com", "correct-horse-12")
+        registered_user(outsider_client, "wb-outsider", "300004@qq.com", "correct-horse-12")
         _register_pack(maintainer)
         response = outsider_client.get(
             f"/domain-packs/workbench/{PACK_ID}/{PACK_VERSION}"

@@ -27,13 +27,13 @@ def client() -> TestClient:
     return TestClient(app)
 
 
-def _register(client: TestClient, email: str = "a11y-user@example.com") -> str:
+def _register(client: TestClient, username: str = "a11y-user") -> str:
     response = client.post(
         "/auth/register",
         json={
-            "email": email,
+            "username": username,
+            "qq_email": "110001@qq.com",
             "password": "correct-horse-battery-staple",
-            "agreed_to_terms": True,
         },
     )
     assert response.status_code == 201, response.text

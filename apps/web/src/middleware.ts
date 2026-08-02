@@ -48,9 +48,10 @@ export function middleware(request: NextRequest): NextResponse {
   }
 
   if (isPublicPath(pathname)) {
-    // Authenticated users don't need to see login/register pages.
+    // Authenticated users don't need to see login/register pages: they go
+    // straight to the new-chat home at "/".
     if (hasSession && (pathname === "/login" || pathname === "/register")) {
-      return NextResponse.redirect(new URL("/account", request.url));
+      return NextResponse.redirect(new URL("/", request.url));
     }
     return NextResponse.next();
   }

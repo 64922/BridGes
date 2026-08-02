@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { signUp } from "./helpers/auth";
+import { signUp, uniqueCredentials } from "./helpers/auth";
 import { createProject } from "./helpers/projects";
 
 test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () => {
@@ -24,22 +24,26 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
   });
 
   test("仅通过键盘即可从公共入口进入账户主壳并触发路由公告", async ({ page }) => {
-    const email = `t002-keyboard-${Date.now()}@example.com`;
+    const id = Date.now();
     await page.goto("/register");
-    await page.getByLabel("邮箱").fill(email);
-    await page.getByLabel("密码", { exact: true }).fill("correct-horse-12");
-    await page.getByLabel("确认密码").fill("correct-horse-12");
-    await page.getByLabel("我已阅读并同意服务条款和隐私政策").check();
+    await page.getByLabel("用户名").fill(`t002-keyboard-${id}`);
+    await page.getByLabel("QQ 邮箱").fill(`2${id}@qq.com`);
+    await page.getByLabel("密码").fill("correct-horse-12");
     await page.getByRole("button", { name: "注册" }).press("Enter");
+    await page.waitForURL("/");
+    // 注册成功落在新聊天首页，再进入账户主壳。
+    await page.getByRole("button", { name: "进入账户主壳" }).first().click();
     await page.waitForURL("/account");
     await expect(page.getByRole("heading", { name: /欢迎回来/ })).toBeVisible();
     await expect(page.getByTestId("route-announcer")).toContainText("/account");
   });
 
   test("账户主壳高亮当前页并在主导航中提供项目入口", async ({ page }) => {
-    const email = `t002-nav-${Date.now()}@example.com`;
-    await signUp(page, email, "correct-horse-12");
+    const creds = uniqueCredentials("t002-nav");
+    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
+    // 注册后落在新聊天首页，先进入账户主壳。
+    await page.goto("/account");
     const companionLink = page.getByRole("link", { name: "全局科学伙伴" });
     await expect(companionLink).toHaveAttribute("aria-current", "page");
     await page.getByRole("link", { name: "科学项目空间" }).click();
@@ -48,8 +52,8 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
   });
 
   test("项目主壳显示项目头部、任务舞台、工作台标签和上下文检查器", async ({ page }) => {
-    const email = `t002-project-${Date.now()}@example.com`;
-    await signUp(page, email, "correct-horse-12");
+    const creds = uniqueCredentials("t002-project");
+    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
     const projectName = `T002 示例项目 ${Date.now()}`;
     await createProject(page, projectName);
@@ -65,8 +69,8 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
   });
 
   test("工作台标签切换路由并刷新当前页高亮", async ({ page }) => {
-    const email = `t002-tabs-${Date.now()}@example.com`;
-    await signUp(page, email, "correct-horse-12");
+    const creds = uniqueCredentials("t002-tabs");
+    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
     const projectName = `T002 标签项目 ${Date.now()}`;
     const projectId = await createProject(page, projectName);
@@ -79,8 +83,8 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
 
   test("减少动画模式下 CSS 过渡时长归零", async ({ page, browserName }) => {
     test.skip(browserName !== "chromium", "Reduced-motion emulation is verified on Chromium.");
-    const email = `t002-motion-${Date.now()}@example.com`;
-    await signUp(page, email, "correct-horse-12");
+    const creds = uniqueCredentials("t002-motion");
+    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
     const projectName = `T002 动画项目 ${Date.now()}`;
     await createProject(page, projectName);
@@ -97,8 +101,8 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
   });
 
   test("200% 文本缩放下关键操作仍然可见且无横向溢出", async ({ page }) => {
-    const email = `t002-zoom-${Date.now()}@example.com`;
-    await signUp(page, email, "correct-horse-12");
+    const creds = uniqueCredentials("t002-zoom");
+    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
     const projectName = `T002 缩放项目 ${Date.now()}`;
     await createProject(page, projectName);

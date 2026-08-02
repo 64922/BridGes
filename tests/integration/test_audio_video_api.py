@@ -29,14 +29,14 @@ def client() -> TestClient:
 
 
 def _register(client: TestClient) -> str:
-    email = "av-user@example.com"
+    username = "av-user"
     password = "correct-horse-battery-staple"
     response = client.post(
         "/auth/register",
         json={
-            "email": email,
+            "username": username,
+            "qq_email": "120001@qq.com",
             "password": password,
-            "agreed_to_terms": True,
         },
     )
     assert response.status_code == 201, response.text

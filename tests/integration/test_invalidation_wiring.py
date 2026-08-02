@@ -19,10 +19,12 @@ from bridges.contracts.projects import ObjectDomain, ObjectRef
 from bridges.contracts.workflows import WorkOrder
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201, response.text
     return cast(dict[str, Any], response.json())
@@ -59,7 +61,9 @@ def test_app_wires_invalidation_service_to_workflow_and_vault(
     client: TestClient,
 ) -> None:
     alice_client = TestClient(client.app)
-    registered = _register(alice_client, "alice-invalidation@example.com", "correct-horse-12")
+    registered = _register(
+        alice_client, "alice-invalidation", "100011@qq.com", "correct-horse-12"
+    )
     account_id = cast(str, registered["account"]["id"])
     project_id = _create_project(alice_client, "失效测试项目")
     object_id = _create_vault_object(alice_client, account_id, b"object to invalidate")

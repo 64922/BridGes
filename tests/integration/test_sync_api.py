@@ -16,9 +16,9 @@ def _register(client: TestClient) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
         json={
-            "email": "sync-api@example.com",
+            "username": "sync-api",
+            "qq_email": "110001@qq.com",
             "password": "correct-horse-12",
-            "agreed_to_terms": True,
         },
     )
     assert response.status_code == 201

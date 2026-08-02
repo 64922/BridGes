@@ -22,19 +22,21 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201, response.text
     return cast(dict[str, Any], response.json())
 
 
-def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _login(client: TestClient, identifier: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        json={"identifier": identifier, "password": password},
     )
     assert response.status_code == 200, response.text
     return cast(dict[str, Any], response.json())
@@ -64,7 +66,7 @@ def _create_shared_project(client: TestClient, name: str) -> str:
 
 class TestSharedProjectLifecycle:
     def test_create_and_list_shared_project(self, client: TestClient) -> None:
-        _register(client, "shared-owner@example.com", "correct-horse-12")
+        _register(client, "shared-owner", "200001@qq.com", "correct-horse-12")
         project_id = _create_shared_project(client, "共享科研项目")
 
         response = client.get("/sharing/projects")
@@ -77,11 +79,11 @@ class TestSharedProjectLifecycle:
         self, client: TestClient
     ) -> None:
         alice_client = TestClient(client.app)
-        _register(alice_client, "alice-shared@example.com", "correct-horse-12")
+        _register(alice_client, "alice-shared", "200002@qq.com", "correct-horse-12")
         project_id = _create_shared_project(alice_client, "Alice 共享项目")
 
         bob_client = TestClient(client.app)
-        _register(bob_client, "bob-shared@example.com", "correct-horse-12")
+        _register(bob_client, "bob-shared", "200003@qq.com", "correct-horse-12")
 
         response = bob_client.get(f"/sharing/projects/{project_id}")
         assert response.status_code == 404
@@ -91,7 +93,7 @@ class TestSharePreviewAndExecute:
     def test_preview_shows_independence_and_excluded_fields(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "share-preview@example.com", "correct-horse-12")
+        registered = _register(client, "share-preview", "200004@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         project_id = _create_shared_project(client, "预览测试项目")
         obj = _create_vault_object(client, account_id, b"Draft notes")
@@ -120,11 +122,11 @@ class TestSharePreviewAndExecute:
 
     def test_execute_share_creates_copy_and_grant(self, client: TestClient) -> None:
         alice_client = TestClient(client.app)
-        alice = _register(alice_client, "alice-share@example.com", "correct-horse-12")
+        alice = _register(alice_client, "alice-share", "200005@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-share@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-share", "200006@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         project_id = _create_shared_project(alice_client, "协作写作项目")
@@ -156,11 +158,11 @@ class TestSharedObjectAccess:
         self, client: TestClient
     ) -> None:
         alice_client = TestClient(client.app)
-        alice = _register(alice_client, "alice-copy@example.com", "correct-horse-12")
+        alice = _register(alice_client, "alice-copy", "200007@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-copy@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-copy", "200008@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         project_id = _create_shared_project(alice_client, "副本访问项目")
@@ -199,11 +201,11 @@ class TestSharedObjectAccess:
         self, client: TestClient
     ) -> None:
         alice_client = TestClient(client.app)
-        alice = _register(alice_client, "alice-revoke@example.com", "correct-horse-12")
+        alice = _register(alice_client, "alice-revoke", "200009@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-revoke@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-revoke", "200010@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         project_id = _create_shared_project(alice_client, "撤销授权项目")
@@ -238,11 +240,11 @@ class TestSharedObjectAccess:
         self, client: TestClient
     ) -> None:
         alice_client = TestClient(client.app)
-        alice = _register(alice_client, "alice-source@example.com", "correct-horse-12")
+        alice = _register(alice_client, "alice-source", "200011@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-source@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-source", "200012@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         project_id = _create_shared_project(alice_client, "不挂载源对象项目")
@@ -274,11 +276,11 @@ class TestInviteTokens:
         self, client: TestClient
     ) -> None:
         alice_client = TestClient(client.app)
-        _register(alice_client, "alice-invite@example.com", "correct-horse-12")
+        _register(alice_client, "alice-invite", "200013@qq.com", "correct-horse-12")
         project_id = _create_shared_project(alice_client, "邀请测试项目")
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-invite@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-invite", "200014@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         response = alice_client.post(
@@ -315,15 +317,15 @@ class TestInviteTokens:
 
     def test_invite_wrong_recipient_is_rejected(self, client: TestClient) -> None:
         alice_client = TestClient(client.app)
-        _register(alice_client, "alice-invite-wrong@example.com", "correct-horse-12")
+        _register(alice_client, "alice-invite-wrong", "200015@qq.com", "correct-horse-12")
         project_id = _create_shared_project(alice_client, "绑定身份测试项目")
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-invite-wrong@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-invite-wrong", "200016@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         eve_client = TestClient(client.app)
-        _register(eve_client, "eve-invite-wrong@example.com", "correct-horse-12")
+        _register(eve_client, "eve-invite-wrong", "200017@qq.com", "correct-horse-12")
 
         token_response = alice_client.post(
             f"/sharing/projects/{project_id}/invites",
@@ -345,11 +347,11 @@ class TestInviteTokens:
 class TestRoleBaselineEnforcement:
     def test_viewer_cannot_receive_edit_grant(self, client: TestClient) -> None:
         alice_client = TestClient(client.app)
-        alice = _register(alice_client, "alice-role@example.com", "correct-horse-12")
+        alice = _register(alice_client, "alice-role", "200018@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
 
         bob_client = TestClient(client.app)
-        bob = _register(bob_client, "bob-role@example.com", "correct-horse-12")
+        bob = _register(bob_client, "bob-role", "200019@qq.com", "correct-horse-12")
         bob_id = bob["account"]["id"]
 
         project_id = _create_shared_project(alice_client, "角色基线项目")

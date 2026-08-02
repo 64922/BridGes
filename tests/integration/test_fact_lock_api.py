@@ -24,10 +24,12 @@ from bridges.contracts.science import (
 )
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201, response.text
     return cast(dict[str, Any], response.json())
@@ -66,7 +68,7 @@ def client() -> TestClient:
 
 class TestFactLockAPI:
     def test_fact_locks_endpoint_returns_locks(self, client: TestClient) -> None:
-        _register(client, "alice-locks@example.com", "correct-horse-12")
+        _register(client, "alice-locks", "200001@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Lock Project")
         _upload_text(
             client,
@@ -93,7 +95,7 @@ class TestFactLockAPI:
     def test_validate_endpoint_returns_verified_for_supported_evidence(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-verify@example.com", "correct-horse-12")
+        _register(client, "alice-verify", "200002@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Verify Project")
         _upload_text(
             client,
@@ -118,7 +120,7 @@ class TestFactLockAPI:
     def test_validate_endpoint_returns_metadata_only_for_empty_retrieval(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-empty@example.com", "correct-horse-12")
+        _register(client, "alice-empty", "200003@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Empty Verify Project")
         _upload_text(client, project_id, "Neuroscience content.")
 
@@ -142,7 +144,7 @@ class TestFactLockAPI:
     def test_scientific_quality_gate_endpoint_blocks_after_source_version_change(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-scigate@example.com", "correct-horse-12")
+        _register(client, "alice-scigate", "200004@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Scientific Gate Project")
         run = _upload_text(client, project_id, "Original claim.")
         source_id = run["source_id"]
@@ -190,7 +192,7 @@ class TestFactLockAPI:
         alice_client = TestClient(client.app)
         bob_client = TestClient(client.app)
 
-        _register(alice_client, "alice-private-validate@example.com", "correct-horse-12")
+        _register(alice_client, "alice-private-validate", "200005@qq.com", "correct-horse-12")
         alice_project = _create_project(alice_client, "Alice Validate Project")
         _upload_text(alice_client, alice_project, "Alice private claim.")
         graph_id = alice_client.post(
@@ -198,14 +200,14 @@ class TestFactLockAPI:
             json={"query": "Alice private claim", "top_k": 3},
         ).json()["graph"]["graph_id"]
 
-        _register(bob_client, "bob-no-validate@example.com", "correct-horse-12")
+        _register(bob_client, "bob-no-validate", "200006@qq.com", "correct-horse-12")
         response = bob_client.get(f"/science/claim-graphs/{graph_id}/validate")
         assert response.status_code == 404
 
     def test_claim_graph_result_includes_validation_report(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-report@example.com", "correct-horse-12")
+        _register(client, "alice-report", "200007@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Report Project")
         _upload_text(client, project_id, "Photosynthesis converts light energy.")
 

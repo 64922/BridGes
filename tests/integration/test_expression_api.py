@@ -47,7 +47,7 @@ def expression_client(
     create_project_for_user: Any,
 ) -> tuple[TestClient, str, str]:
     """Authenticated client with a project and a source-derived claim graph."""
-    user = registered_user(client, "alice-expression@example.com", "correct-horse-12")
+    user = registered_user(client, "alice-expression", "100010@qq.com", "correct-horse-12")
     account_id = user["account"]["id"]
     project_id = create_project_for_user(client, "表达测试项目")
 

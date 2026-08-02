@@ -8,7 +8,7 @@ API preserves scope isolation and integrates with the invalidation foundation.
 from __future__ import annotations
 
 import base64
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from fastapi.testclient import TestClient
@@ -30,14 +30,15 @@ def client() -> TestClient:
 
 
 def _register(client: TestClient) -> str:
-    email = "media-user@example.com"
+    username = "media-user"
+    qq_email = "300001@qq.com"
     password = "correct-horse-battery-staple"
     response = client.post(
         "/auth/register",
         json={
-            "email": email,
+            "username": username,
+            "qq_email": qq_email,
             "password": password,
-            "agreed_to_terms": True,
         },
     )
     assert response.status_code == 201, response.text

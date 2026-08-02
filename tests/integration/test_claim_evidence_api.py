@@ -26,10 +26,12 @@ from bridges.contracts.science import (
 )
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201, response.text
     return cast(dict[str, Any], response.json())
@@ -70,7 +72,7 @@ class TestClaimGraphAPI:
     def test_generate_project_claim_graph_returns_locatable_claims(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-claims@example.com", "correct-horse-12")
+        _register(client, "alice-claims", "130001@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Claim Project")
         _upload_text(
             client,
@@ -114,7 +116,7 @@ class TestClaimGraphAPI:
         assert citation["verification_status"] == CitationVerificationStatus.VERIFIED.value
 
     def test_get_claim_graph_by_id(self, client: TestClient) -> None:
-        _register(client, "bob-claims@example.com", "correct-horse-12")
+        _register(client, "bob-claims", "130002@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Get Claim Project")
         _upload_text(client, project_id, "Claim content.")
 
@@ -132,7 +134,9 @@ class TestClaimGraphAPI:
         alice_client = TestClient(client.app)
         bob_client = TestClient(client.app)
 
-        _register(alice_client, "alice-private-claims@example.com", "correct-horse-12")
+        _register(
+            alice_client, "alice-private-claims", "130003@qq.com", "correct-horse-12"
+        )
         alice_project = _create_project(alice_client, "Alice Claim Project")
         _upload_text(alice_client, alice_project, "Alice private claim.")
         graph_id = alice_client.post(
@@ -140,14 +144,14 @@ class TestClaimGraphAPI:
             json={"query": "Alice private claim", "top_k": 3},
         ).json()["graph"]["graph_id"]
 
-        _register(bob_client, "bob-no-claims@example.com", "correct-horse-12")
+        _register(bob_client, "bob-no-claims", "130004@qq.com", "correct-horse-12")
         response = bob_client.get(f"/science/claim-graphs/{graph_id}")
         assert response.status_code == 404
 
     def test_publish_gate_api_blocks_after_source_version_change(
         self, client: TestClient
     ) -> None:
-        _register(client, "version-gate@example.com", "correct-horse-12")
+        _register(client, "version-gate", "130005@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Version Gate Project")
         run = _upload_text(client, project_id, "Original claim.")
         source_id = run["source_id"]
@@ -184,7 +188,7 @@ class TestClaimGraphAPI:
         assert PublishGateCheck.SOURCE_CURRENT_VERSION.value in gate["failed_checks"]
 
     def test_empty_retrieval_marks_graph_metadata_only(self, client: TestClient) -> None:
-        _register(client, "empty-claims@example.com", "correct-horse-12")
+        _register(client, "empty-claims", "130006@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Empty Claim Project")
         _upload_text(client, project_id, "Neuroscience content.")
 

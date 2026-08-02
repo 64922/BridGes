@@ -1152,17 +1152,17 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         return {"account_id": subject.account_id, "session_id": subject.session_id}
 
     @app.get("/_test/recovery-token", response_model=dict[str, Any])
-    async def test_recovery_token(email: str) -> dict[str, Any]:
+    async def test_recovery_token(qq_email: str) -> dict[str, Any]:
         """Test-only endpoint to retrieve a recovery token without email delivery.
 
         This endpoint is prefixed with `/_test/` and is only safe because the
-        T003 identity service is in-memory. It must not be exposed in production.
+        identity service is local. It must not be exposed in production.
         """
         from bridges.identity import IdentityError
 
         service: IdentityService = app.state.identity_service
         try:
-            token = service.test_create_recovery_token(email)
+            token = service.test_create_recovery_token(qq_email)
         except IdentityError as exc:
             return {"error": str(exc)}
         return {"token": token}

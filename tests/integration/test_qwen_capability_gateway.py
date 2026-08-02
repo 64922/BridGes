@@ -10,24 +10,22 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 
-from bridges.ai.adapters import AdapterResult, CapabilityAdapter, RegionError
+from bridges.ai.adapters import AdapterResult, RegionError
 from bridges.api.main import create_app
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
-    ModelCallStatus,
 )
 from bridges.contracts.workflows import WorkflowRunStatus
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(client: TestClient, username: str, qq_email: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return response.json()  # type: ignore[no-any-return]
@@ -57,7 +55,7 @@ def _submit_work_order(client: TestClient, project_id: str) -> dict[str, Any]:
 
 def test_successful_qwen_task_records_model_run_locks() -> None:
     client = TestClient(create_app())
-    _register(client, "qwen-success@example.com", "correct-horse-12")
+    _register(client, "qwen-success", "110001@qq.com", "correct-horse-12")
     project_id = _create_project(client, "Qwen 能力项目")
 
     draft = _submit_work_order(client, project_id)
@@ -91,11 +89,10 @@ def test_successful_qwen_task_records_model_run_locks() -> None:
 
 def test_unregistered_capability_blocks_run_via_api() -> None:
     client = TestClient(create_app())
-    _register(client, "qwen-unregistered@example.com", "correct-horse-12")
+    _register(client, "qwen-unregistered", "110002@qq.com", "correct-horse-12")
     project_id = _create_project(client, "未注册能力项目")
 
     workflow_service = client.app.state.workflow_service  # type: ignore[attr-defined]
-    from bridges.contracts.workflows import WorkflowRunStatus
 
     workflow_service.register_workflow(
         name="unknown_cap_task",
@@ -141,7 +138,7 @@ def test_unregistered_capability_blocks_run_via_api() -> None:
 
 def test_region_error_blocks_run_without_cross_region_fallback() -> None:
     client = TestClient(create_app())
-    _register(client, "qwen-region@example.com", "correct-horse-12")
+    _register(client, "qwen-region", "110003@qq.com", "correct-horse-12")
     project_id = _create_project(client, "区域错误项目")
 
     registry = client.app.state.capability_registry  # type: ignore[attr-defined]
@@ -163,12 +160,13 @@ def test_region_error_blocks_run_without_cross_region_fallback() -> None:
     )
 
     class _RegionErrorAdapter:
-        def call(self, capability: CapabilityRecord, run_context: Any, payload: dict[str, Any]) -> AdapterResult:
+        def call(
+            self, capability: CapabilityRecord, run_context: Any, payload: dict[str, Any]
+        ) -> AdapterResult:
             raise RegionError("cn-beijing unavailable")
 
     gateway.register_adapter("region_locked_model", "1", _RegionErrorAdapter())
 
-    from bridges.contracts.workflows import WorkflowRunStatus
 
     workflow_service.register_workflow(
         name="region_task",

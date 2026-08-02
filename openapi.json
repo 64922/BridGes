@@ -169,7 +169,7 @@
           "authentication"
         ],
         "summary": "Recover",
-        "description": "Request a credential recovery flow.\n\nThe response is identical whether the email is registered or not, to prevent\naccount enumeration.",
+        "description": "Request a credential recovery flow.\n\nThe response is identical whether the QQ mailbox is registered or not, to\nprevent account enumeration.",
         "operationId": "recover_auth_recover_post",
         "requestBody": {
           "content": {
@@ -16729,16 +16729,16 @@
     "/_test/recovery-token": {
       "get": {
         "summary": "Test Recovery Token",
-        "description": "Test-only endpoint to retrieve a recovery token without email delivery.\n\nThis endpoint is prefixed with `/_test/` and is only safe because the\nT003 identity service is in-memory. It must not be exposed in production.",
+        "description": "Test-only endpoint to retrieve a recovery token without email delivery.\n\nThis endpoint is prefixed with `/_test/` and is only safe because the\nidentity service is local. It must not be exposed in production.",
         "operationId": "test_recovery_token__test_recovery_token_get",
         "parameters": [
           {
-            "name": "email",
+            "name": "qq_email",
             "in": "query",
             "required": true,
             "schema": {
               "type": "string",
-              "title": "Email"
+              "title": "Qq Email"
             }
           }
         ],
@@ -17118,13 +17118,17 @@
           "id": {
             "type": "string",
             "title": "Id",
-            "description": "Stable account identifier (UUIDv7/ULID)."
+            "description": "Stable opaque account identifier."
           },
-          "email": {
+          "username": {
             "type": "string",
-            "format": "email",
-            "title": "Email",
-            "description": "Verified email address."
+            "title": "Username",
+            "description": "Public, mutable username. Unique after case-insensitive normalization."
+          },
+          "qq_email": {
+            "type": "string",
+            "title": "Qq Email",
+            "description": "Unique QQ mailbox (digits-only QQ number plus @qq.com)."
           },
           "created_at": {
             "type": "string",
@@ -17142,7 +17146,8 @@
         "type": "object",
         "required": [
           "id",
-          "email",
+          "username",
+          "qq_email",
           "created_at",
           "updated_at"
         ],
@@ -17151,11 +17156,18 @@
       },
       "AccountRegistration": {
         "properties": {
-          "email": {
+          "username": {
             "type": "string",
-            "format": "email",
-            "title": "Email",
-            "description": "Email address to register."
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Username",
+            "description": "Desired public username."
+          },
+          "qq_email": {
+            "type": "string",
+            "minLength": 1,
+            "title": "Qq Email",
+            "description": "QQ mailbox in the form <digits>@qq.com."
           },
           "password": {
             "type": "string",
@@ -17164,21 +17176,16 @@
             "title": "Password",
             "description": "Account password.",
             "writeOnly": true
-          },
-          "agreed_to_terms": {
-            "type": "boolean",
-            "title": "Agreed To Terms",
-            "description": "User has agreed to terms and privacy policy."
           }
         },
         "type": "object",
         "required": [
-          "email",
-          "password",
-          "agreed_to_terms"
+          "username",
+          "qq_email",
+          "password"
         ],
         "title": "AccountRegistration",
-        "description": "Request to create a new account."
+        "description": "Request to create a new account.\n\nFormat validation beyond shape (QQ mailbox pattern, username rules,\npassword length) is enforced by the identity service so that error\nmessages stay uniform and non-leaking."
       },
       "AdvanceStageRequest": {
         "properties": {
@@ -17508,7 +17515,7 @@
           "message"
         ],
         "title": "AuthError",
-        "description": "Uniform authentication error response.\n\nErrors intentionally share the same shape to avoid leaking whether an email\nis registered, whether a password is wrong, or whether a token exists."
+        "description": "Uniform authentication error response.\n\nErrors intentionally share the same shape to avoid leaking whether an\nidentifier is registered, whether a password is wrong, or whether a token\nexists."
       },
       "AuthMethod": {
         "type": "string",
@@ -17530,21 +17537,15 @@
           "session": {
             "$ref": "#/components/schemas/Session",
             "description": "Newly created session."
-          },
-          "session_token": {
-            "type": "string",
-            "title": "Session Token",
-            "description": "Opaque session token (one-time exposure)."
           }
         },
         "type": "object",
         "required": [
           "account",
-          "session",
-          "session_token"
+          "session"
         ],
         "title": "AuthResponse",
-        "description": "Response to a successful authentication operation.\n\nThe session_token is delivered only once; callers must store it according to\ntheir client type (browser cookie managed by the API, native secure storage)."
+        "description": "Response to a successful authentication operation.\n\nThe session token is deliberately absent: browsers receive it exclusively\nthrough the secure HttpOnly session cookie, never through JSON, URLs, or\nclient-readable storage."
       },
       "AuthorResponsibilityStatement": {
         "properties": {
@@ -25812,11 +25813,11 @@
       },
       "LoginCredential": {
         "properties": {
-          "email": {
+          "identifier": {
             "type": "string",
-            "format": "email",
-            "title": "Email",
-            "description": "Registered email address."
+            "minLength": 1,
+            "title": "Identifier",
+            "description": "Current username or QQ mailbox of the account."
           },
           "password": {
             "type": "string",
@@ -25828,11 +25829,11 @@
         },
         "type": "object",
         "required": [
-          "email",
+          "identifier",
           "password"
         ],
         "title": "LoginCredential",
-        "description": "Request to authenticate with email and password."
+        "description": "Request to authenticate with the current username or QQ mailbox."
       },
       "MediaAssetKind": {
         "type": "string",
@@ -29764,19 +29765,19 @@
       },
       "RecoveryRequest": {
         "properties": {
-          "email": {
+          "qq_email": {
             "type": "string",
-            "format": "email",
-            "title": "Email",
-            "description": "Email address to recover."
+            "minLength": 1,
+            "title": "Qq Email",
+            "description": "QQ mailbox to recover."
           }
         },
         "type": "object",
         "required": [
-          "email"
+          "qq_email"
         ],
         "title": "RecoveryRequest",
-        "description": "Request a credential recovery flow.\n\nThe response is intentionally uniform whether the email is registered or not,\nto prevent account enumeration."
+        "description": "Request a credential recovery flow.\n\nThe response is intentionally uniform whether the QQ mailbox is registered\nor not, to prevent account enumeration."
       },
       "RecoveryReset": {
         "properties": {
@@ -32632,7 +32633,7 @@
           "expires_at"
         ],
         "title": "Session",
-        "description": "Public session projection.\n\nThe opaque session token is only exposed on creation (login/register/recovery).\nSubsequent requests use the HttpOnly cookie."
+        "description": "Public session projection.\n\nThe opaque session token is never part of any JSON contract; it is only\ntransported through the secure HttpOnly session cookie."
       },
       "SessionResponse": {
         "properties": {

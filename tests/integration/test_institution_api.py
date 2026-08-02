@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 @pytest.fixture
 def admin_client(client: TestClient, registered_user: Any) -> TestClient:
     """Authenticated client for the institution admin."""
-    registered_user(client, "admin@institution.example.com", "correct-horse-12")
+    registered_user(client, "admin-institution", "200001@qq.com", "correct-horse-12")
     return client
 
 
@@ -28,7 +28,7 @@ def member_client(
     """Authenticated client for an institution member and their account."""
     member_client = TestClient(client.app)
     result = registered_user(
-        member_client, "member@institution.example.com", "correct-horse-12"
+        member_client, "member-institution", "200002@qq.com", "correct-horse-12"
     )
     return member_client, cast(dict[str, Any], result["account"])
 

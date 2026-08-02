@@ -1,5 +1,5 @@
 """Identity and session domain module."""
 
-from .service import IdentityError, IdentityService
+from .service import AuthResult, IdentityError, IdentityService
 
-__all__ = ["IdentityError", "IdentityService"]
+__all__ = ["AuthResult", "IdentityError", "IdentityService"]

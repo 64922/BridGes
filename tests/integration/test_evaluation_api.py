@@ -21,10 +21,12 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
@@ -70,7 +72,7 @@ def _submit_and_complete_run(client: TestClient, project_id: str) -> str:
 
 
 def test_create_evaluation_run_from_completed_task(client: TestClient) -> None:
-    _register(client, "eval-create@example.com", "correct-horse-12")
+    _register(client, "eval-create", "140001@qq.com", "correct-horse-12")
     project_id = _create_project(client, "评测项目")
     run_id = _submit_and_complete_run(client, project_id)
 
@@ -102,7 +104,7 @@ def test_create_evaluation_run_from_completed_task(client: TestClient) -> None:
 
 
 def test_evaluation_replay_and_compare(client: TestClient) -> None:
-    _register(client, "eval-replay@example.com", "correct-horse-12")
+    _register(client, "eval-replay", "140002@qq.com", "correct-horse-12")
     project_id = _create_project(client, "重放项目")
     run_id = _submit_and_complete_run(client, project_id)
 
@@ -166,7 +168,7 @@ def test_evaluation_replay_and_compare(client: TestClient) -> None:
 
 
 def test_evaluation_logs_do_not_expose_private_body(client: TestClient) -> None:
-    _register(client, "eval-privacy@example.com", "correct-horse-12")
+    _register(client, "eval-privacy", "140003@qq.com", "correct-horse-12")
     project_id = _create_project(client, "隐私项目")
     run_id = _submit_and_complete_run(client, project_id)
 
@@ -197,10 +199,10 @@ def test_evaluation_logs_do_not_expose_private_body(client: TestClient) -> None:
 
 def test_cross_account_evaluation_access_is_rejected(client: TestClient) -> None:
     alice_client = TestClient(client.app)
-    _register(alice_client, "alice-eval@example.com", "correct-horse-12")
+    _register(alice_client, "alice-eval", "140004@qq.com", "correct-horse-12")
 
     bob_client = TestClient(client.app)
-    _register(bob_client, "bob-eval@example.com", "correct-horse-12")
+    _register(bob_client, "bob-eval", "140005@qq.com", "correct-horse-12")
     bob_project = _create_project(bob_client, "Bob 评测项目")
     bob_run_id = _submit_and_complete_run(bob_client, bob_project)
 
@@ -234,7 +236,7 @@ def test_cross_account_evaluation_access_is_rejected(client: TestClient) -> None
 
 
 def test_evaluation_create_rejects_nonexistent_run(client: TestClient) -> None:
-    _register(client, "eval-missing-run@example.com", "correct-horse-12")
+    _register(client, "eval-missing-run", "140006@qq.com", "correct-horse-12")
     project_id = _create_project(client, "缺失运行项目")
 
     response = client.post(
@@ -248,7 +250,7 @@ def test_evaluation_create_rejects_nonexistent_run(client: TestClient) -> None:
 
 
 def test_evaluation_create_rejects_project_mismatch(client: TestClient) -> None:
-    _register(client, "eval-mismatch@example.com", "correct-horse-12")
+    _register(client, "eval-mismatch", "140007@qq.com", "correct-horse-12")
     project_id = _create_project(client, "匹配项目")
     run_id = _submit_and_complete_run(client, project_id)
 

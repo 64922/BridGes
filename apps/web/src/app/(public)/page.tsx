@@ -1,21 +1,27 @@
 import { cookies } from "next/headers";
 
+import { NewChatHome } from "@/components/bridges/NewChatHome";
 import { ButtonLink } from "@/components/design-system/ButtonLink";
 import HealthPanel from "@/components/HealthPanel";
 
 export const metadata = {
-  title: "BridGes — 公共入口",
+  title: "BridGes — 新聊天",
 };
 
 /**
- * Public entry point.
+ * Entry point.
  *
- * Unauthenticated users can view the public product description, system health
- * status, and access authentication flows. Authenticated users are offered a
- * direct link to their account shell. No private project data is shown.
+ * Authenticated users land on the new-chat home (the post-login default);
+ * unauthenticated users see the public product description, system health
+ * status, and access to the authentication flows. No private project data is
+ * shown to anonymous visitors.
  */
 export default function PublicEntryPage() {
   const hasSession = Boolean(cookies().get("bridges_session")?.value);
+
+  if (hasSession) {
+    return <NewChatHome />;
+  }
 
   return (
     <div
@@ -74,20 +80,12 @@ export default function PublicEntryPage() {
                 marginTop: "var(--space-6)",
               }}
             >
-              {hasSession ? (
-                <ButtonLink href="/account" size="lg" ariaLabel="进入账户主壳">
-                  进入账户主壳
-                </ButtonLink>
-              ) : (
-                <>
-                  <ButtonLink href="/login" size="lg" ariaLabel="登录">
-                    登录
-                  </ButtonLink>
-                  <ButtonLink href="/register" variant="secondary" size="lg" ariaLabel="注册">
-                    注册
-                  </ButtonLink>
-                </>
-              )}
+              <ButtonLink href="/login" size="lg" ariaLabel="登录">
+                登录
+              </ButtonLink>
+              <ButtonLink href="/register" variant="secondary" size="lg" ariaLabel="注册">
+                注册
+              </ButtonLink>
             </div>
           </section>
 

@@ -16,7 +16,7 @@ def authenticated_client(
     registered_user: Any,
 ) -> TestClient:
     """Return a client authenticated as a freshly registered user."""
-    registered_user(client, "teaching-user@example.com", "correct-horse-12")
+    registered_user(client, "teaching-user", "100201@qq.com", "correct-horse-12")
     return client
 
 
@@ -187,6 +187,6 @@ class TestIsolationAPI:
         lesson_id = lesson_resp.json()["lesson_id"]
 
         other_client = TestClient(authenticated_client.app)
-        registered_user(other_client, "other-teaching@example.com", "correct-horse-12")
+        registered_user(other_client, "other-teaching", "100202@qq.com", "correct-horse-12")
         get_resp = other_client.get(f"/learning/lessons/{lesson_id}")
         assert get_resp.status_code == 404

@@ -20,7 +20,7 @@ def authenticated_client(
     registered_user: Any,
 ) -> TestClient:
     """Return a client authenticated as a freshly registered user."""
-    registered_user(client, "pathway-user@example.com", "correct-horse-12")
+    registered_user(client, "pathway-user", "110001@qq.com", "correct-horse-12")
     return client
 
 
@@ -241,7 +241,7 @@ class TestIsolationAPI:
         mission_id = _create_mission(authenticated_client)
 
         other_client = TestClient(authenticated_client.app)
-        registered_user(other_client, "other-pathway@example.com", "correct-horse-12")
+        registered_user(other_client, "other-pathway", "110002@qq.com", "correct-horse-12")
 
         get_resp = other_client.get(f"/learning/missions/{mission_id}/learning-path")
         assert get_resp.status_code == 404

@@ -3,15 +3,38 @@
 These models define the public surface of account registration, authentication,
 session management, and credential recovery. They intentionally avoid exposing
 internal hashes or storage details.
+
+BridGes accounts are keyed by a stable internal ID (ADR-0003). The username and
+the QQ mailbox are login identifiers only; they must never be used as data
+ownership keys. The QQ mailbox is restricted to a digits-only QQ number plus
+the literal ``@qq.com`` domain (ADR-0017).
 """
 
+import re
 from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, EmailStr, Field, SecretStr
+from pydantic import BaseModel, Field, SecretStr
 
 from bridges.contracts.institution import MembershipContext
+
+#: Strict QQ mailbox shape: digits-only local part, literal ``qq.com`` domain.
+QQ_EMAIL_PATTERN = re.compile(r"^\d+@qq\.com$")
+
+#: Usernames must not contain ``@`` so the login identifier field can
+#: unambiguously route between username and QQ mailbox lookup.
+USERNAME_PATTERN = re.compile(r"^[^@\s]{1,32}$")
+
+
+def normalize_username(username: str) -> str:
+    """Return the canonical, case-insensitive comparison form of a username."""
+    return username.strip().casefold()
+
+
+def normalize_qq_email(qq_email: str) -> str:
+    """Return the canonical comparison form of a QQ mailbox address."""
+    return qq_email.strip().lower()
 
 
 class AuthMethod(str, Enum):
@@ -26,40 +49,51 @@ class AuthMethod(str, Enum):
 class Account(BaseModel):
     """Public account projection."""
 
-    id: str = Field(description="Stable account identifier (UUIDv7/ULID).")
-    email: EmailStr = Field(description="Verified email address.")
+    id: str = Field(description="Stable opaque account identifier.")
+    username: str = Field(
+        description="Public, mutable username. Unique after case-insensitive normalization."
+    )
+    qq_email: str = Field(
+        description="Unique QQ mailbox (digits-only QQ number plus @qq.com)."
+    )
     created_at: datetime = Field(description="Account creation timestamp.")
     updated_at: datetime = Field(description="Last account update timestamp.")
 
 
 class AccountRegistration(BaseModel):
-    """Request to create a new account."""
+    """Request to create a new account.
 
-    email: EmailStr = Field(description="Email address to register.")
+    Format validation beyond shape (QQ mailbox pattern, username rules,
+    password length) is enforced by the identity service so that error
+    messages stay uniform and non-leaking.
+    """
+
+    username: str = Field(description="Desired public username.", min_length=1, max_length=32)
+    qq_email: str = Field(description="QQ mailbox in the form <digits>@qq.com.", min_length=1)
     password: SecretStr = Field(
         description="Account password.",
         min_length=12,
     )
-    agreed_to_terms: bool = Field(
-        description="User has agreed to terms and privacy policy.",
-    )
 
 
 class LoginCredential(BaseModel):
-    """Request to authenticate with email and password."""
+    """Request to authenticate with the current username or QQ mailbox."""
 
-    email: EmailStr = Field(description="Registered email address.")
+    identifier: str = Field(
+        description="Current username or QQ mailbox of the account.",
+        min_length=1,
+    )
     password: SecretStr = Field(description="Account password.")
 
 
 class RecoveryRequest(BaseModel):
     """Request a credential recovery flow.
 
-    The response is intentionally uniform whether the email is registered or not,
-    to prevent account enumeration.
+    The response is intentionally uniform whether the QQ mailbox is registered
+    or not, to prevent account enumeration.
     """
 
-    email: EmailStr = Field(description="Email address to recover.")
+    qq_email: str = Field(description="QQ mailbox to recover.", min_length=1)
 
 
 class RecoveryReset(BaseModel):
@@ -75,8 +109,8 @@ class RecoveryReset(BaseModel):
 class Session(BaseModel):
     """Public session projection.
 
-    The opaque session token is only exposed on creation (login/register/recovery).
-    Subsequent requests use the HttpOnly cookie.
+    The opaque session token is never part of any JSON contract; it is only
+    transported through the secure HttpOnly session cookie.
     """
 
     id: str = Field(description="Stable session identifier.")
@@ -114,13 +148,13 @@ class SubjectContext(BaseModel):
 class AuthResponse(BaseModel):
     """Response to a successful authentication operation.
 
-    The session_token is delivered only once; callers must store it according to
-    their client type (browser cookie managed by the API, native secure storage).
+    The session token is deliberately absent: browsers receive it exclusively
+    through the secure HttpOnly session cookie, never through JSON, URLs, or
+    client-readable storage.
     """
 
     account: Account = Field(description="Authenticated account.")
     session: Session = Field(description="Newly created session.")
-    session_token: str = Field(description="Opaque session token (one-time exposure).")
 
 
 class SessionResponse(BaseModel):
@@ -134,8 +168,9 @@ class SessionResponse(BaseModel):
 class AuthError(BaseModel):
     """Uniform authentication error response.
 
-    Errors intentionally share the same shape to avoid leaking whether an email
-    is registered, whether a password is wrong, or whether a token exists.
+    Errors intentionally share the same shape to avoid leaking whether an
+    identifier is registered, whether a password is wrong, or whether a token
+    exists.
     """
 
     error: str = Field(description="Stable error code.")

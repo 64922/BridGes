@@ -21,19 +21,21 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
 
 
-def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _login(client: TestClient, identifier: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        json={"identifier": identifier, "password": password},
     )
     assert response.status_code == 200
     return cast(dict[str, Any], response.json())
@@ -108,7 +110,7 @@ class TestObservationAPI:
     def test_create_observation_returns_traceable_fields(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-obs@example.com", "correct-horse-12")
+        registered = _register(client, "profile-obs", "200001@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
 
         body = _create_observation(client, account_id)
@@ -125,7 +127,7 @@ class TestObservationAPI:
     def test_transient_emotion_observation_is_discarded(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-emotion@example.com", "correct-horse-12")
+        registered = _register(client, "profile-emotion", "200002@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
 
         response = client.post(
@@ -155,7 +157,7 @@ class TestCandidateAPI:
     def test_propose_candidate_requires_matching_owner(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-cand@example.com", "correct-horse-12")
+        registered = _register(client, "profile-cand", "200003@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
 
@@ -174,7 +176,7 @@ class TestCandidateAPI:
     def test_candidate_lists_decision_and_rationale(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-list@example.com", "correct-horse-12")
+        registered = _register(client, "profile-list", "200004@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         candidate = _propose_candidate(client, account_id, obs["observation_id"])
@@ -197,7 +199,7 @@ class TestMemorySliceAPI:
     def test_unconfirmed_candidate_is_not_included_in_slice(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-slice@example.com", "correct-horse-12")
+        registered = _register(client, "profile-slice", "200005@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         candidate = _propose_candidate(client, account_id, obs["observation_id"])
@@ -215,7 +217,7 @@ class TestMemorySliceAPI:
     def test_accepted_assertion_is_included_in_slice(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-slice2@example.com", "correct-horse-12")
+        registered = _register(client, "profile-slice2", "200006@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         candidate = _propose_candidate(client, account_id, obs["observation_id"])
@@ -241,14 +243,14 @@ class TestCrossAccountIsolation:
     def test_cross_account_profile_access_is_denied(
         self, client: TestClient
     ) -> None:
-        alice = _register(client, "alice-profile@example.com", "correct-horse-12")
+        alice = _register(client, "alice-profile", "200007@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
         obs = _create_observation(client, alice_id)
         candidate = _propose_candidate(client, alice_id, obs["observation_id"])
 
         client.cookies.clear()
-        _register(client, "bob-profile@example.com", "correct-horse-12")
-        _login(client, "bob-profile@example.com", "correct-horse-12")
+        _register(client, "bob-profile", "200008@qq.com", "correct-horse-12")
+        _login(client, "bob-profile", "correct-horse-12")
 
         response = client.get(f"/profiles/observations/{obs['observation_id']}")
         assert response.status_code == 404
@@ -267,7 +269,7 @@ class TestMemorySliceInspector:
     def test_inspector_shows_used_unused_and_rejected_items(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-inspector@example.com", "correct-horse-12")
+        registered = _register(client, "profile-inspector", "200009@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         candidate = _propose_candidate(client, account_id, obs["observation_id"])
@@ -297,7 +299,7 @@ class TestMemorySliceInspector:
     def test_model_access_check_passes_for_bound_slice(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-access@example.com", "correct-horse-12")
+        registered = _register(client, "profile-access", "200010@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         candidate = _propose_candidate(client, account_id, obs["observation_id"])
@@ -325,7 +327,7 @@ class TestMemorySliceInspector:
     def test_model_access_check_fails_for_wrong_run(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "profile-wrong-run@example.com", "correct-horse-12")
+        registered = _register(client, "profile-wrong-run", "200011@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         candidate = _propose_candidate(client, account_id, obs["observation_id"])

@@ -95,6 +95,23 @@ def _auth_error(status_code: int, error: str, message: str) -> HTTPException:
     )
 
 
+_IDENTITY_ERROR_STATUS = {
+    "validation": status.HTTP_400_BAD_REQUEST,
+    "conflict": status.HTTP_409_CONFLICT,
+    "credentials": status.HTTP_401_UNAUTHORIZED,
+    "session": status.HTTP_401_UNAUTHORIZED,
+}
+
+
+def _identity_error(exc: IdentityError, error: str) -> HTTPException:
+    """Map a domain error to a uniform HTTP error without message parsing."""
+    return _auth_error(
+        _IDENTITY_ERROR_STATUS.get(exc.code, status.HTTP_400_BAD_REQUEST),
+        error,
+        str(exc),
+    )
+
+
 async def require_subject(
     request: Request,
     service: IdentityServiceDep,
@@ -181,17 +198,12 @@ async def register(
     try:
         result = service.register(registration)
     except IdentityError as exc:
-        # Duplicate email or missing terms; do not distinguish duplicate email.
-        raise _auth_error(
-            status.HTTP_409_CONFLICT,
-            "registration_failed",
-            str(exc),
-        ) from exc
+        raise _identity_error(exc, "registration_failed") from exc
 
     _set_session_cookie(
         response, result.session_token, secure=request.url.scheme == "https"
     )
-    return result
+    return result.public_response()
 
 
 @router.post(
@@ -215,17 +227,13 @@ async def login(
     try:
         result = service.authenticate(credentials)
     except IdentityError as exc:
-        # Uniform error for unknown email or wrong password.
-        raise _auth_error(
-            status.HTTP_401_UNAUTHORIZED,
-            "invalid_credentials",
-            str(exc),
-        ) from exc
+        # Uniform error for unknown identifier or wrong password.
+        raise _identity_error(exc, "invalid_credentials") from exc
 
     _set_session_cookie(
         response, result.session_token, secure=request.url.scheme == "https"
     )
-    return result
+    return result.public_response()
 
 
 @router.post(
@@ -255,8 +263,8 @@ async def recover(
 ) -> dict[str, str]:
     """Request a credential recovery flow.
 
-    The response is identical whether the email is registered or not, to prevent
-    account enumeration.
+    The response is identical whether the QQ mailbox is registered or not, to
+    prevent account enumeration.
     """
     service.request_recovery(request)
     return {"status": "accepted"}
@@ -284,16 +292,12 @@ async def recover_reset(
     try:
         result = service.reset_password_with_recovery(reset)
     except IdentityError as exc:
-        raise _auth_error(
-            status.HTTP_401_UNAUTHORIZED,
-            "invalid_recovery",
-            str(exc),
-        ) from exc
+        raise _identity_error(exc, "invalid_recovery") from exc
 
     _set_session_cookie(
         response, result.session_token, secure=request.url.scheme == "https"
     )
-    return result
+    return result.public_response()
 
 
 @router.get(

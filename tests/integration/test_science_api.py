@@ -15,8 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bridges.api.main import create_app
-from bridges.contracts.identity import AuthMethod, SubjectContext
-from bridges.contracts.invalidation import InvalidationEventType, InvalidationState
+from bridges.contracts.invalidation import InvalidationState
 from bridges.contracts.projects import ObjectDomain, ObjectRef
 from bridges.contracts.science import (
     GateResult,
@@ -28,10 +27,10 @@ from bridges.contracts.science import (
 )
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(client: TestClient, username: str, qq_email: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201, response.text
     return cast(dict[str, Any], response.json())
@@ -97,7 +96,7 @@ class TestProjectSourceUpload:
     def test_upload_text_source_to_project(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-science@example.com", "correct-horse-12")
+        _register(client, "alice-science", "200001@qq.com", "correct-horse-12")
         project_id = _create_project(client, "科学来源项目")
 
         text = "# 摘要\n\n本研究提出了一种方法。\n\n# 方法\n\n详细步骤如下。"
@@ -118,7 +117,7 @@ class TestProjectSourceUpload:
     def test_upload_pdf_source_to_project(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "bob-science@example.com", "correct-horse-12")
+        registered = _register(client, "bob-science", "200002@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         project_id = _create_project(client, "PDF 项目")
 
@@ -146,7 +145,7 @@ class TestProjectSourceUpload:
     def test_upload_without_license_cannot_enter_evidence(
         self, client: TestClient
     ) -> None:
-        _register(client, "license-wait@example.com", "correct-horse-12")
+        _register(client, "license-wait", "200003@qq.com", "correct-horse-12")
         project_id = _create_project(client, "License Wait")
 
         run = _upload_text(
@@ -162,7 +161,7 @@ class TestProjectSourceUpload:
     def test_malicious_text_is_quarantined(
         self, client: TestClient
     ) -> None:
-        _register(client, "quarantine@example.com", "correct-horse-12")
+        _register(client, "quarantine", "200004@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Quarantine Project")
 
         run = _upload_text(
@@ -182,7 +181,7 @@ class TestSourceVersioning:
     def test_correct_chunk_creates_new_version(
         self, client: TestClient
     ) -> None:
-        _register(client, "version-user@example.com", "correct-horse-12")
+        _register(client, "version-user", "200005@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Version Project")
 
         run = _upload_text(client, project_id, "Alpha\n\nBeta")
@@ -217,7 +216,7 @@ class TestSourceVersioning:
     def test_old_version_remains_addressable(
         self, client: TestClient
     ) -> None:
-        _register(client, "old-version@example.com", "correct-horse-12")
+        _register(client, "old-version", "200006@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Old Version Project")
 
         run = _upload_text(client, project_id, "Original")
@@ -253,12 +252,12 @@ class TestSourceIsolation:
         alice_client = TestClient(client.app)
         bob_client = TestClient(client.app)
 
-        _register(alice_client, "alice-source@example.com", "correct-horse-12")
+        _register(alice_client, "alice-source", "200007@qq.com", "correct-horse-12")
         alice_project = _create_project(alice_client, "Alice Source Project")
         run = _upload_text(alice_client, alice_project, "Alice private source")
         source_id = run["source_id"]
 
-        _register(bob_client, "bob-source@example.com", "correct-horse-12")
+        _register(bob_client, "bob-source", "200008@qq.com", "correct-horse-12")
         response = bob_client.get(f"/science/sources/{source_id}")
         assert response.status_code == 404
 
@@ -272,11 +271,11 @@ class TestSourceIsolation:
         alice_client = TestClient(client.app)
         bob_client = TestClient(client.app)
 
-        _register(alice_client, "alice-list@example.com", "correct-horse-12")
+        _register(alice_client, "alice-list", "200009@qq.com", "correct-horse-12")
         alice_project = _create_project(alice_client, "Shared Name Project")
         _upload_text(alice_client, alice_project, "same name source")
 
-        _register(bob_client, "bob-list@example.com", "correct-horse-12")
+        _register(bob_client, "bob-list", "200010@qq.com", "correct-horse-12")
         bob_project = _create_project(bob_client, "Shared Name Project")
         _upload_text(bob_client, bob_project, "same name source")
 
@@ -296,7 +295,7 @@ class TestSourceInvalidation:
     def test_revoked_source_blocks_new_reads_and_propagates(
         self, client: TestClient
     ) -> None:
-        _register(client, "revoke-source@example.com", "correct-horse-12")
+        _register(client, "revoke-source", "200011@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Revoke Source Project")
         run = _upload_text(client, project_id, "To be revoked")
         source_id = run["source_id"]
@@ -306,7 +305,7 @@ class TestSourceInvalidation:
         assert revoke_response.status_code == 200
 
         # Build the impact plan using the invalidation event recorded by the route.
-        app_state: Any = getattr(client.app, "state")
+        app_state: Any = client.app.state
         invalidation_service = app_state.invalidation_service
         object_ref = ObjectRef(
             domain=ObjectDomain.SHARED_PROJECT,
@@ -336,7 +335,7 @@ class TestHybridSearchAPI:
     def test_project_search_returns_lexical_and_vector_candidates(
         self, client: TestClient
     ) -> None:
-        _register(client, "search-user@example.com", "correct-horse-12")
+        _register(client, "search-user", "200012@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Search Project")
         _upload_text(
             client,
@@ -367,7 +366,7 @@ class TestHybridSearchAPI:
     def test_project_search_excludes_revoked_source(
         self, client: TestClient
     ) -> None:
-        _register(client, "search-revoke@example.com", "correct-horse-12")
+        _register(client, "search-revoke", "200013@qq.com", "correct-horse-12")
         project_id = _create_project(client, "Search Revoke Project")
         run = _upload_text(client, project_id, "Revoked source about black holes.")
         source_id = run["source_id"]
@@ -389,11 +388,11 @@ class TestHybridSearchAPI:
         alice_client = TestClient(client.app)
         bob_client = TestClient(client.app)
 
-        _register(alice_client, "alice-search@example.com", "correct-horse-12")
+        _register(alice_client, "alice-search", "200014@qq.com", "correct-horse-12")
         alice_project = _create_project(alice_client, "Alice Search Project")
         _upload_text(alice_client, alice_project, "Alice private CRISPR notes.")
 
-        _register(bob_client, "bob-search@example.com", "correct-horse-12")
+        _register(bob_client, "bob-search", "200015@qq.com", "correct-horse-12")
         bob_project = _create_project(bob_client, "Bob Search Project")
         _upload_text(bob_client, bob_project, "Bob public CRISPR notes.")
 

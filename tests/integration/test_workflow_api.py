@@ -19,10 +19,12 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
@@ -66,7 +68,7 @@ def test_submit_work_order_requires_authentication(client: TestClient) -> None:
 
 
 def test_submit_work_order_rejects_unknown_project(client: TestClient) -> None:
-    _register(client, "wo-unknown-project@example.com", "correct-horse-12")
+    _register(client, "wo-unknown-project", "200001@qq.com", "correct-horse-12")
     response = client.post(
         "/projects/missing-project/work-orders",
         json={
@@ -82,7 +84,7 @@ def test_submit_work_order_rejects_unknown_project(client: TestClient) -> None:
 
 
 def test_submit_work_order_rejects_project_mismatch(client: TestClient) -> None:
-    _register(client, "wo-mismatch@example.com", "correct-horse-12")
+    _register(client, "wo-mismatch", "200002@qq.com", "correct-horse-12")
     project_id = _create_project(client, "匹配项目")
     response = client.post(
         f"/projects/{project_id}/work-orders",
@@ -99,7 +101,7 @@ def test_submit_work_order_rejects_project_mismatch(client: TestClient) -> None:
 
 
 def test_work_order_lifecycle_through_api(client: TestClient) -> None:
-    _register(client, "wo-lifecycle@example.com", "correct-horse-12")
+    _register(client, "wo-lifecycle", "200003@qq.com", "correct-horse-12")
     project_id = _create_project(client, "生命周期项目")
 
     draft = _submit_work_order(client, project_id)
@@ -149,7 +151,7 @@ def test_work_order_lifecycle_through_api(client: TestClient) -> None:
 
 
 def test_cancel_run_through_api(client: TestClient) -> None:
-    _register(client, "wo-cancel@example.com", "correct-horse-12")
+    _register(client, "wo-cancel", "200004@qq.com", "correct-horse-12")
     project_id = _create_project(client, "取消项目")
     draft = _submit_work_order(client, project_id)
     run_id = draft["run_id"]
@@ -180,10 +182,10 @@ def test_cross_account_run_access_is_rejected(client: TestClient) -> None:
     # T007: use separate browser sessions so account-switch cleanup does not
     # revoke Alice's session while Bob is being registered.
     alice_client = TestClient(client.app)
-    _register(alice_client, "alice-run@example.com", "correct-horse-12")
+    _register(alice_client, "alice-run", "200005@qq.com", "correct-horse-12")
 
     bob_client = TestClient(client.app)
-    _register(bob_client, "bob-run@example.com", "correct-horse-12")
+    _register(bob_client, "bob-run", "200006@qq.com", "correct-horse-12")
     bob_project = _create_project(bob_client, "Bob 项目")
     bob_draft = _submit_work_order(bob_client, bob_project)
     run_id = bob_draft["run_id"]
@@ -194,7 +196,7 @@ def test_cross_account_run_access_is_rejected(client: TestClient) -> None:
 
 
 def test_human_todo_flow_through_api(client: TestClient) -> None:
-    _register(client, "wo-todo@example.com", "correct-horse-12")
+    _register(client, "wo-todo", "200009@qq.com", "correct-horse-12")
     project_id = _create_project(client, "人工门项目")
 
     # Register a gated workflow for this test via the service attached to the app.
@@ -294,7 +296,7 @@ class TestMemorySliceBoundToRun:
     def test_run_confirmation_compiles_memory_slice(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "wo-slice@example.com", "correct-horse-12")
+        registered = _register(client, "wo-slice", "200007@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         self._create_assertion(client, account_id)
         project_id = _create_project(client, "切片项目")
@@ -324,7 +326,7 @@ class TestMemorySliceBoundToRun:
     def test_run_cancellation_invalidates_memory_slice(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "wo-slice-cancel@example.com", "correct-horse-12")
+        registered = _register(client, "wo-slice-cancel", "200008@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         self._create_assertion(client, account_id)
         project_id = _create_project(client, "取消切片项目")

@@ -15,9 +15,9 @@ def test_recreated_app_reads_identity_and_project_from_sqlite(tmp_path: Path) ->
     registered = first_client.post(
         "/auth/register",
         json={
-            "email": "recreated-app@example.com",
+            "username": "recreated-app",
+            "qq_email": "200001@qq.com",
             "password": "correct-horse-12",
-            "agreed_to_terms": True,
         },
     )
     assert registered.status_code == 201
@@ -30,7 +30,7 @@ def test_recreated_app_reads_identity_and_project_from_sqlite(tmp_path: Path) ->
     second_client = TestClient(second_app)
     login = second_client.post(
         "/auth/login",
-        json={"email": "recreated-app@example.com", "password": "correct-horse-12"},
+        json={"identifier": "recreated-app", "password": "correct-horse-12"},
     )
     assert login.status_code == 200
     assert login.json()["account"]["id"] == account_id

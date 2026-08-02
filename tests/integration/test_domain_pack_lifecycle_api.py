@@ -21,7 +21,7 @@ def maintainer(
 ) -> tuple[TestClient, dict[str, Any]]:
     test_client = TestClient(client.app)
     account = registered_user(
-        test_client, "lfc-maintainer@example.com", "correct-horse-12"
+        test_client, "lfc-maintainer", "200001@qq.com", "correct-horse-12"
     )
     return test_client, cast(dict[str, Any], account["account"])
 
@@ -32,7 +32,7 @@ def reviewer(
 ) -> tuple[TestClient, dict[str, Any]]:
     test_client = TestClient(client.app)
     account = registered_user(
-        test_client, "lfc-reviewer@example.com", "correct-horse-12"
+        test_client, "lfc-reviewer", "200002@qq.com", "correct-horse-12"
     )
     return test_client, cast(dict[str, Any], account["account"])
 
@@ -43,7 +43,7 @@ def releaser(
 ) -> tuple[TestClient, dict[str, Any]]:
     test_client = TestClient(client.app)
     account = registered_user(
-        test_client, "lfc-releaser@example.com", "correct-horse-12"
+        test_client, "lfc-releaser", "200003@qq.com", "correct-horse-12"
     )
     return test_client, cast(dict[str, Any], account["account"])
 
@@ -54,7 +54,7 @@ def secadmin(
 ) -> tuple[TestClient, dict[str, Any]]:
     test_client = TestClient(client.app)
     account = registered_user(
-        test_client, "lfc-secadmin@example.com", "correct-horse-12"
+        test_client, "lfc-secadmin", "200004@qq.com", "correct-horse-12"
     )
     return test_client, cast(dict[str, Any], account["account"])
 
@@ -356,7 +356,7 @@ class TestPackInvalidationLifecycle:
 
         # 安全管理员缺少二次认证时被拒绝。
         secadmin_client = TestClient(client.app)
-        registered_user(secadmin_client, "lfc-secadmin-2@example.com", "correct-horse-12")
+        registered_user(secadmin_client, "lfc-secadmin-2", "200005@qq.com", "correct-horse-12")
         response = secadmin_client.post("/domain-packs/security-admins")
         assert response.status_code == 204, response.text
         response = secadmin_client.post(
@@ -447,7 +447,7 @@ class TestPackInvalidationLifecycle:
 
         outsider_client = TestClient(client.app)
         registered_user(
-            outsider_client, "lfc-outsider@example.com", "correct-horse-12"
+            outsider_client, "lfc-outsider", "200006@qq.com", "correct-horse-12"
         )
         response = outsider_client.get(f"/domain-packs/invalidations/{event_id}")
         assert response.status_code == 403, response.text

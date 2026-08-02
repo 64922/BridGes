@@ -37,8 +37,15 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
 async function parseAuthError(res: Response): Promise<string> {
   try {
-    const body: { detail?: AuthError } = await res.json();
-    return body.detail?.message || `请求失败（${res.status}）`;
+    const body: { detail?: AuthError | unknown } = await res.json();
+    if (body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)) {
+      const message = (body.detail as AuthError).message;
+      if (typeof message === "string" && message) {
+        return message;
+      }
+    }
+    // 422 请求体验证错误等非 AuthError 形态，统一折叠为可展示的中文消息。
+    return `请求失败（${res.status}）`;
   } catch {
     return `请求失败（${res.status}）`;
   }
@@ -66,12 +73,12 @@ export async function fetchSession(): Promise<SessionResponse> {
   return res.json();
 }
 
-export async function login(email: string, password: string): Promise<AuthResponse> {
+export async function login(identifier: string, password: string): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ identifier, password }),
   });
   if (!res.ok) {
     throw new Error(await parseAuthError(res));
@@ -80,15 +87,15 @@ export async function login(email: string, password: string): Promise<AuthRespon
 }
 
 export async function register(
-  email: string,
-  password: string,
-  agreedToTerms: boolean
+  username: string,
+  qqEmail: string,
+  password: string
 ): Promise<AuthResponse> {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ email, password, agreed_to_terms: agreedToTerms }),
+    body: JSON.stringify({ username, qq_email: qqEmail, password }),
   });
   if (!res.ok) {
     throw new Error(await parseAuthError(res));

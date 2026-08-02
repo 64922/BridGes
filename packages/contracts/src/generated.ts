@@ -77,8 +77,8 @@ export interface paths {
          * Recover
          * @description Request a credential recovery flow.
          *
-         *     The response is identical whether the email is registered or not, to prevent
-         *     account enumeration.
+         *     The response is identical whether the QQ mailbox is registered or not, to
+         *     prevent account enumeration.
          */
         post: operations["recover_auth_recover_post"];
         delete?: never;
@@ -3842,7 +3842,7 @@ export interface paths {
          * @description Test-only endpoint to retrieve a recovery token without email delivery.
          *
          *     This endpoint is prefixed with `/_test/` and is only safe because the
-         *     T003 identity service is in-memory. It must not be exposed in production.
+         *     identity service is local. It must not be exposed in production.
          */
         get: operations["test_recovery_token__test_recovery_token_get"];
         put?: never;
@@ -4053,15 +4053,19 @@ export interface components {
         Account: {
             /**
              * Id
-             * @description Stable account identifier (UUIDv7/ULID).
+             * @description Stable opaque account identifier.
              */
             id: string;
             /**
-             * Email
-             * Format: email
-             * @description Verified email address.
+             * Username
+             * @description Public, mutable username. Unique after case-insensitive normalization.
              */
-            email: string;
+            username: string;
+            /**
+             * Qq Email
+             * @description Unique QQ mailbox (digits-only QQ number plus @qq.com).
+             */
+            qq_email: string;
             /**
              * Created At
              * Format: date-time
@@ -4078,25 +4082,28 @@ export interface components {
         /**
          * AccountRegistration
          * @description Request to create a new account.
+         *
+         *     Format validation beyond shape (QQ mailbox pattern, username rules,
+         *     password length) is enforced by the identity service so that error
+         *     messages stay uniform and non-leaking.
          */
         AccountRegistration: {
             /**
-             * Email
-             * Format: email
-             * @description Email address to register.
+             * Username
+             * @description Desired public username.
              */
-            email: string;
+            username: string;
+            /**
+             * Qq Email
+             * @description QQ mailbox in the form <digits>@qq.com.
+             */
+            qq_email: string;
             /**
              * Password
              * Format: password
              * @description Account password.
              */
             password: string;
-            /**
-             * Agreed To Terms
-             * @description User has agreed to terms and privacy policy.
-             */
-            agreed_to_terms: boolean;
         };
         /**
          * AdvanceStageRequest
@@ -4289,8 +4296,9 @@ export interface components {
          * AuthError
          * @description Uniform authentication error response.
          *
-         *     Errors intentionally share the same shape to avoid leaking whether an email
-         *     is registered, whether a password is wrong, or whether a token exists.
+         *     Errors intentionally share the same shape to avoid leaking whether an
+         *     identifier is registered, whether a password is wrong, or whether a token
+         *     exists.
          */
         AuthError: {
             /**
@@ -4321,19 +4329,15 @@ export interface components {
          * AuthResponse
          * @description Response to a successful authentication operation.
          *
-         *     The session_token is delivered only once; callers must store it according to
-         *     their client type (browser cookie managed by the API, native secure storage).
+         *     The session token is deliberately absent: browsers receive it exclusively
+         *     through the secure HttpOnly session cookie, never through JSON, URLs, or
+         *     client-readable storage.
          */
         AuthResponse: {
             /** @description Authenticated account. */
             account: components["schemas"]["Account"];
             /** @description Newly created session. */
             session: components["schemas"]["Session"];
-            /**
-             * Session Token
-             * @description Opaque session token (one-time exposure).
-             */
-            session_token: string;
         };
         /**
          * AuthorResponsibilityStatement
@@ -9455,15 +9459,14 @@ export interface components {
         LifecycleStatus: "active" | "corrected" | "expression_of_concern" | "retracted" | "withdrawn" | "superseded" | "unknown";
         /**
          * LoginCredential
-         * @description Request to authenticate with email and password.
+         * @description Request to authenticate with the current username or QQ mailbox.
          */
         LoginCredential: {
             /**
-             * Email
-             * Format: email
-             * @description Registered email address.
+             * Identifier
+             * @description Current username or QQ mailbox of the account.
              */
-            email: string;
+            identifier: string;
             /**
              * Password
              * Format: password
@@ -11840,16 +11843,15 @@ export interface components {
          * RecoveryRequest
          * @description Request a credential recovery flow.
          *
-         *     The response is intentionally uniform whether the email is registered or not,
-         *     to prevent account enumeration.
+         *     The response is intentionally uniform whether the QQ mailbox is registered
+         *     or not, to prevent account enumeration.
          */
         RecoveryRequest: {
             /**
-             * Email
-             * Format: email
-             * @description Email address to recover.
+             * Qq Email
+             * @description QQ mailbox to recover.
              */
-            email: string;
+            qq_email: string;
         };
         /**
          * RecoveryReset
@@ -13575,8 +13577,8 @@ export interface components {
          * Session
          * @description Public session projection.
          *
-         *     The opaque session token is only exposed on creation (login/register/recovery).
-         *     Subsequent requests use the HttpOnly cookie.
+         *     The opaque session token is never part of any JSON contract; it is only
+         *     transported through the secure HttpOnly session cookie.
          */
         Session: {
             /**
@@ -26924,7 +26926,7 @@ export interface operations {
     test_recovery_token__test_recovery_token_get: {
         parameters: {
             query: {
-                email: string;
+                qq_email: string;
             };
             header?: never;
             path?: never;

@@ -18,17 +18,19 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
 
 
 def test_create_project_returns_owned_projection(client: TestClient) -> None:
-    _register(client, "project-create@example.com", "correct-horse-12")
+    _register(client, "project-create", "200001@qq.com", "correct-horse-12")
 
     response = client.post(
         "/projects",
@@ -50,7 +52,7 @@ def test_list_projects_requires_authentication(client: TestClient) -> None:
 
 
 def test_project_lifecycle_through_api(client: TestClient) -> None:
-    _register(client, "project-lifecycle@example.com", "correct-horse-12")
+    _register(client, "project-lifecycle", "200002@qq.com", "correct-horse-12")
 
     create_response = client.post("/projects", json={"name": "生命周期项目"})
     assert create_response.status_code == 201
@@ -89,10 +91,10 @@ def test_cross_account_project_access_is_rejected(client: TestClient) -> None:
     # cross-account tests must use separate browser sessions (TestClient instances)
     # to keep both subjects authenticated at the same time.
     alice_client = TestClient(client.app)
-    _register(alice_client, "alice-project@example.com", "correct-horse-12")
+    _register(alice_client, "alice-project", "200003@qq.com", "correct-horse-12")
 
     bob_client = TestClient(client.app)
-    _register(bob_client, "bob-project@example.com", "correct-horse-12")
+    _register(bob_client, "bob-project", "200004@qq.com", "correct-horse-12")
     create_response = bob_client.post("/projects", json={"name": "Bob 私有项目"})
     bob_project_id = create_response.json()["id"]
 
@@ -107,6 +109,6 @@ def test_unauthenticated_deep_link_is_rejected(client: TestClient) -> None:
 
 
 def test_update_unknown_project_returns_not_found(client: TestClient) -> None:
-    _register(client, "project-update-404@example.com", "correct-horse-12")
+    _register(client, "project-update-404", "200005@qq.com", "correct-horse-12")
     response = client.patch("/projects/missing-id", json={"name": "新名称"})
     assert response.status_code == 404

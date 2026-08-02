@@ -24,19 +24,21 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201, response.text
     return cast(dict[str, Any], response.json())
 
 
-def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _login(client: TestClient, identifier: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        json={"identifier": identifier, "password": password},
     )
     assert response.status_code == 200, response.text
     return cast(dict[str, Any], response.json())
@@ -166,7 +168,9 @@ class TestCrossAccountAccessIsRejected:
 
 class TestBackgroundTaskScopeValidation:
     def test_task_missing_subject_is_rejected(self, client: TestClient) -> None:
-        _register(client, "task-missing-subject@example.com", "correct-horse-12")
+        _register(
+            client, "task-missing-subject", "200001@qq.com", "correct-horse-12"
+        )
         response = client.post(
             "/scope/validate-task",
             json={
@@ -183,7 +187,7 @@ class TestBackgroundTaskScopeValidation:
 
     def test_task_missing_object_domain_is_rejected(self, client: TestClient) -> None:
         registered = _register(
-            client, "task-missing-domain@example.com", "correct-horse-12"
+            client, "task-missing-domain", "200002@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         response = client.post(
@@ -207,7 +211,7 @@ class TestBackgroundTaskScopeValidation:
         self, client: TestClient
     ) -> None:
         registered = _register(
-            client, "task-missing-authz@example.com", "correct-horse-12"
+            client, "task-missing-authz", "200003@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         response = client.post(
@@ -229,7 +233,7 @@ class TestBackgroundTaskScopeValidation:
 
     def test_task_missing_key_epoch_is_rejected(self, client: TestClient) -> None:
         registered = _register(
-            client, "task-missing-epoch@example.com", "correct-horse-12"
+            client, "task-missing-epoch", "200004@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         response = client.post(
@@ -251,7 +255,7 @@ class TestBackgroundTaskScopeValidation:
 
     def test_valid_task_returns_scope_envelope(self, client: TestClient) -> None:
         registered = _register(
-            client, "task-valid@example.com", "correct-horse-12"
+            client, "task-valid", "200005@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         response = client.post(
@@ -276,7 +280,7 @@ class TestBackgroundTaskScopeValidation:
         assert body["scope_envelope"]["account_id"] == account_id
 
     def test_task_subject_mismatch_is_rejected(self, client: TestClient) -> None:
-        _register(client, "task-owner@example.com", "correct-horse-12")
+        _register(client, "task-owner", "200006@qq.com", "correct-horse-12")
         response = client.post(
             "/scope/validate-task",
             json={
@@ -300,13 +304,13 @@ class TestAccountSwitchCleanup:
     def test_login_revokes_prior_session_and_clears_cache(
         self, client: TestClient
     ) -> None:
-        alice = _register(client, "alice-switch@example.com", "correct-horse-12")
+        _register(client, "alice-switch", "200007@qq.com", "correct-horse-12")
         alice_session = client.get("/auth/session")
         assert alice_session.status_code == 200
 
         response = client.post(
             "/auth/login",
-            json={"email": "alice-switch@example.com", "password": "correct-horse-12"},
+            json={"identifier": "alice-switch", "password": "correct-horse-12"},
         )
         assert response.status_code == 200
         # T007: login must clear cached state from the prior session.
@@ -316,7 +320,7 @@ class TestAccountSwitchCleanup:
         self, client: TestClient
     ) -> None:
         alice_client = TestClient(client.app)
-        _register(alice_client, "alice-no-leak@example.com", "correct-horse-12")
+        _register(alice_client, "alice-no-leak", "200008@qq.com", "correct-horse-12")
         alice_project = alice_client.post(
             "/projects", json={"name": "Alice 不泄漏项目"}
         ).json()["id"]
@@ -324,7 +328,7 @@ class TestAccountSwitchCleanup:
         # Switch to Bob using a separate browser session; cross-account deep
         # links must not expose Alice's project.
         bob_client = TestClient(client.app)
-        _register(bob_client, "bob-no-leak@example.com", "correct-horse-12")
+        _register(bob_client, "bob-no-leak", "200009@qq.com", "correct-horse-12")
 
         # Alice's project must not appear in Bob's list.
         bob_projects = bob_client.get("/projects").json()["active"]
@@ -337,7 +341,7 @@ class TestAccountSwitchCleanup:
 class TestScopeContextEndpoint:
     def test_scope_context_returns_rls_summary(self, client: TestClient) -> None:
         registered = _register(
-            client, "scope-context@example.com", "correct-horse-12"
+            client, "scope-context", "200010@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
 

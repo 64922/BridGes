@@ -21,19 +21,21 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
 
 
-def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _login(client: TestClient, identifier: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        json={"identifier": identifier, "password": password},
     )
     assert response.status_code == 200
     return cast(dict[str, Any], response.json())
@@ -50,7 +52,7 @@ class TestDevicePairingAPI:
     def test_pair_device_creates_certificate_and_runtime(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "pair@example.com", "correct-horse-12")
+        registered = _register(client, "pair", "200001@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
 
         response = client.post(
@@ -70,14 +72,14 @@ class TestDevicePairingAPI:
     def test_list_devices_only_shows_own_devices(
         self, client: TestClient
     ) -> None:
-        _register(client, "alice-pair@example.com", "correct-horse-12")
+        _register(client, "alice-pair", "200002@qq.com", "correct-horse-12")
         client.post(
             "/vault/devices/pair",
             json={"device_name": "Alice laptop"},
         )
 
         client.cookies.clear()
-        _login(client, "alice-pair@example.com", "correct-horse-12")
+        _login(client, "alice-pair", "correct-horse-12")
         response = client.get("/vault/devices")
         assert response.status_code == 200
         devices = response.json()
@@ -86,14 +88,14 @@ class TestDevicePairingAPI:
 
         # Bob sees none of Alice's devices.
         client.cookies.clear()
-        _register(client, "bob-pair@example.com", "correct-horse-12")
-        _login(client, "bob-pair@example.com", "correct-horse-12")
+        _register(client, "bob-pair", "200003@qq.com", "correct-horse-12")
+        _login(client, "bob-pair", "correct-horse-12")
         response = client.get("/vault/devices")
         assert response.status_code == 200
         assert response.json() == []
 
     def test_revoke_device_marks_it_revoked(self, client: TestClient) -> None:
-        _register(client, "revoke@example.com", "correct-horse-12")
+        _register(client, "revoke", "200004@qq.com", "correct-horse-12")
         pair_response = client.post(
             "/vault/devices/pair",
             json={"device_name": "To revoke"},
@@ -113,7 +115,7 @@ class TestEncryptedLocalObjectAPI:
     def test_create_device_local_object_is_encrypted(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "local@example.com", "correct-horse-12")
+        registered = _register(client, "local", "200005@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         pair_response = client.post(
             "/vault/devices/pair",
@@ -155,7 +157,7 @@ class TestEncryptedLocalObjectAPI:
     def test_device_local_without_pairing_is_rejected(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "unpaired@example.com", "correct-horse-12")
+        registered = _register(client, "unpaired", "200006@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
 
         response = client.post(
@@ -173,7 +175,7 @@ class TestEncryptedLocalObjectAPI:
     def test_task_capsule_excludes_full_content(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "capsule-local@example.com", "correct-horse-12")
+        registered = _register(client, "capsule-local", "200007@qq.com", "correct-horse-12")
         account_id = registered["account"]["id"]
         pair_response = client.post(
             "/vault/devices/pair",

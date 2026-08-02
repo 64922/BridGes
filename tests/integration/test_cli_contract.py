@@ -21,6 +21,10 @@ def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Complet
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        # The child writes UTF-8; decode explicitly instead of relying on the
+        # locale default (GBK on Chinese Windows), which raises UnicodeDecodeError.
+        encoding="utf-8",
+        errors="replace",
         env=merged,
         check=False,
     )

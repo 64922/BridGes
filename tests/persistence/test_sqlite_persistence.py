@@ -3,6 +3,8 @@
 import sqlite3
 from pathlib import Path
 
+from pydantic import SecretStr
+
 from bridges.contracts.identity import AccountRegistration, LoginCredential
 from bridges.contracts.projects import ProjectCreateRequest
 from bridges.identity import IdentityService
@@ -17,9 +19,9 @@ def test_identity_and_projects_survive_service_reconstruction(tmp_path: Path) ->
     first_identity = IdentityService(state_store=store)
     registered = first_identity.register(
         AccountRegistration(
-            email="durable@example.com",
-            password="correct-horse-12",
-            agreed_to_terms=True,
+            username="durable",
+            qq_email="100001@qq.com",
+            password=SecretStr("correct-horse-12"),
         )
     )
     first_projects = ProjectService(state_store=store)
@@ -32,7 +34,7 @@ def test_identity_and_projects_survive_service_reconstruction(tmp_path: Path) ->
         state_store=SqliteStateStore(tmp_path / "bridges.db")
     )
     authenticated = second_identity.authenticate(
-        LoginCredential(email="durable@example.com", password="correct-horse-12")
+        LoginCredential(identifier="durable", password=SecretStr("correct-horse-12"))
     )
     second_projects = ProjectService(
         state_store=SqliteStateStore(tmp_path / "bridges.db")

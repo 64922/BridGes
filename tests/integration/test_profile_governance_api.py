@@ -22,10 +22,12 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
@@ -89,7 +91,9 @@ class TestAssertionGovernanceAPI:
     def test_freeze_assertion_excludes_it_from_new_slices(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "freeze-api@example.com", "correct-horse-12")
+        registered = _register(
+            client, "freeze-api", "200001@qq.com", "correct-horse-12"
+        )
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         _propose_and_accept(client, account_id, obs["observation_id"])
@@ -113,7 +117,9 @@ class TestAssertionGovernanceAPI:
     def test_modify_assertion_changes_slice_contents(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "modify-api@example.com", "correct-horse-12")
+        registered = _register(
+            client, "modify-api", "200002@qq.com", "correct-horse-12"
+        )
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         _propose_and_accept(client, account_id, obs["observation_id"])
@@ -138,7 +144,9 @@ class TestAssertionGovernanceAPI:
     def test_rollback_assertion_restores_previous_value(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "rollback-api@example.com", "correct-horse-12")
+        registered = _register(
+            client, "rollback-api", "200003@qq.com", "correct-horse-12"
+        )
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         _propose_and_accept(client, account_id, obs["observation_id"])
@@ -168,7 +176,9 @@ class TestAssertionGovernanceAPI:
     def test_delete_assertion_blocks_new_recall_and_revokes_slices(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "delete-api@example.com", "correct-horse-12")
+        registered = _register(
+            client, "delete-api", "200004@qq.com", "correct-horse-12"
+        )
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         _propose_and_accept(client, account_id, obs["observation_id"])
@@ -194,7 +204,9 @@ class TestAssertionGovernanceAPI:
     def test_export_redacts_deleted_assertion_value(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "export-api@example.com", "correct-horse-12")
+        registered = _register(
+            client, "export-api", "200005@qq.com", "correct-horse-12"
+        )
         account_id = registered["account"]["id"]
         obs = _create_observation(client, account_id)
         _propose_and_accept(client, account_id, obs["observation_id"])
@@ -216,14 +228,14 @@ class TestGovernanceIsolationAPI:
     def test_cross_account_assertion_governance_is_denied(
         self, client: TestClient
     ) -> None:
-        alice = _register(client, "alice-gov@example.com", "correct-horse-12")
+        alice = _register(client, "alice-gov", "200006@qq.com", "correct-horse-12")
         alice_id = alice["account"]["id"]
         obs = _create_observation(client, alice_id)
         _propose_and_accept(client, alice_id, obs["observation_id"])
         assertion_id = client.get("/profiles/assertions").json()[0]["assertion_id"]
 
         client.cookies.clear()
-        _register(client, "bob-gov@example.com", "correct-horse-12")
+        _register(client, "bob-gov", "200007@qq.com", "correct-horse-12")
 
         response = client.post(
             f"/profiles/assertions/{assertion_id}/freeze",

@@ -96,7 +96,7 @@ export default function AccountPageClient() {
               marginTop: "var(--space-2)",
             }}
           >
-            欢迎回来，{user?.email || "用户"}
+            欢迎回来，{user?.username || "用户"}
           </h1>
           <p style={{ color: "var(--color-text-secondary)", marginTop: "var(--space-2)", maxWidth: "60ch" }}>
             今天的下一步：继续整理项目的证据，或创建一个新的科学项目空间。

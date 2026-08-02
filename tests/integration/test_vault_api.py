@@ -20,10 +20,12 @@ def client() -> TestClient:
     return TestClient(create_app())
 
 
-def _register(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _register(
+    client: TestClient, username: str, qq_email: str, password: str
+) -> dict[str, Any]:
     response = client.post(
         "/auth/register",
-        json={"email": email, "password": password, "agreed_to_terms": True},
+        json={"username": username, "qq_email": qq_email, "password": password},
     )
     assert response.status_code == 201
     return cast(dict[str, Any], response.json())
@@ -50,10 +52,10 @@ def _create_vault_object(
     return cast(dict[str, Any], response.json())
 
 
-def _login(client: TestClient, email: str, password: str) -> dict[str, Any]:
+def _login(client: TestClient, identifier: str, password: str) -> dict[str, Any]:
     response = client.post(
         "/auth/login",
-        json={"email": email, "password": password},
+        json={"identifier": identifier, "password": password},
     )
     assert response.status_code == 200
     return cast(dict[str, Any], response.json())
@@ -85,7 +87,9 @@ class TestVaultObjectCreationAndProjection:
     def test_create_vault_object_returns_owned_projection(
         self, client: TestClient
     ) -> None:
-        registered = _register(client, "vault-create@example.com", "correct-horse-12")
+        registered = _register(
+            client, "vault-create", "200001@qq.com", "correct-horse-12"
+        )
         account_id = registered["account"]["id"]
         device_id = _pair_device(client)
 
@@ -108,7 +112,7 @@ class TestVaultObjectCreationAndProjection:
         self, client: TestClient
     ) -> None:
         registered = _register(
-            client, "vault-projection@example.com", "correct-horse-12"
+            client, "vault-projection", "200002@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         content = b"Sensitive personal material"
@@ -127,17 +131,21 @@ class TestVaultObjectCreationAndProjection:
     def test_list_objects_includes_only_own_objects(
         self, client: TestClient
     ) -> None:
-        alice = _register(client, "alice-vault@example.com", "correct-horse-12")
+        alice = _register(
+            client, "alice-vault", "200003@qq.com", "correct-horse-12"
+        )
         alice_id = alice["account"]["id"]
         _create_vault_object(client, alice_id, b"Alice material", "server_replica")
 
-        bob = _register(client, "bob-vault@example.com", "correct-horse-12")
+        bob = _register(
+            client, "bob-vault", "200004@qq.com", "correct-horse-12"
+        )
         bob_id = bob["account"]["id"]
         _create_vault_object(client, bob_id, b"Bob material", "server_replica")
 
         # Re-authenticate as Alice.
         client.cookies.clear()
-        _login(client, "alice-vault@example.com", "correct-horse-12")
+        _login(client, "alice-vault", "correct-horse-12")
         response = client.get("/vault/objects")
         assert response.status_code == 200
         items = response.json()
@@ -150,7 +158,7 @@ class TestTaskCapsuleAPI:
         self, client: TestClient
     ) -> None:
         registered = _register(
-            client, "vault-capsule@example.com", "correct-horse-12"
+            client, "vault-capsule", "200005@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         obj = _create_vault_object(
@@ -182,7 +190,7 @@ class TestTaskCapsuleAPI:
 
     def test_revoke_capsule_makes_it_revoked(self, client: TestClient) -> None:
         registered = _register(
-            client, "vault-revoke@example.com", "correct-horse-12"
+            client, "vault-revoke", "200006@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         obj = _create_vault_object(client, account_id, b"Material", "server_replica")
@@ -208,7 +216,7 @@ class TestDeviceUnavailableAPI:
         self, client: TestClient
     ) -> None:
         registered = _register(
-            client, "vault-device@example.com", "correct-horse-12"
+            client, "vault-device", "200007@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
 
@@ -247,7 +255,7 @@ class TestShareAsProjectCopy:
         self, client: TestClient
     ) -> None:
         registered = _register(
-            client, "vault-share@example.com", "correct-horse-12"
+            client, "vault-share", "200008@qq.com", "correct-horse-12"
         )
         account_id = registered["account"]["id"]
         obj = _create_vault_object(client, account_id, b"Draft", "server_replica")

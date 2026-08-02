@@ -62,6 +62,7 @@ def _run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.Comple
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=merged,
         check=False,
     )
@@ -137,6 +138,7 @@ def test_legacy_compat_module_runs_same_implementation() -> None:
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=_clean_env(),
         check=False,
     )

@@ -17,7 +17,9 @@ from bridges.api.main import create_app
 
 
 class _RegisteredUser(Protocol):
-    def __call__(self, client: TestClient, email: str, password: str) -> dict[str, Any]:
+    def __call__(
+        self, client: TestClient, username: str, qq_email: str, password: str
+    ) -> dict[str, Any]:
         ...
 
 
@@ -83,10 +85,12 @@ def client() -> TestClient:
 def registered_user() -> _RegisteredUser:
     """Factory fixture that registers and returns a user dict plus a client."""
 
-    def _make(client: TestClient, email: str, password: str) -> dict[str, Any]:
+    def _make(
+        client: TestClient, username: str, qq_email: str, password: str
+    ) -> dict[str, Any]:
         response = client.post(
             "/auth/register",
-            json={"email": email, "password": password, "agreed_to_terms": True},
+            json={"username": username, "qq_email": qq_email, "password": password},
         )
         assert response.status_code == 201, response.text
         return cast(dict[str, Any], response.json())
@@ -237,10 +241,8 @@ def two_user_isolation_fixture(
     alice_client = TestClient(client.app)
     bob_client = TestClient(client.app)
 
-    alice = registered_user(
-        alice_client, "alice-isolation@example.com", "correct-horse-12"
-    )
-    bob = registered_user(bob_client, "bob-isolation@example.com", "correct-horse-12")
+    alice = registered_user(alice_client, "alice-isolation", "100001@qq.com", "correct-horse-12")
+    bob = registered_user(bob_client, "bob-isolation", "100002@qq.com", "correct-horse-12")
 
     alice_account = cast(dict[str, Any], alice["account"])
     bob_account = cast(dict[str, Any], bob["account"])
