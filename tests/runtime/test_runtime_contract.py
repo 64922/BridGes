@@ -54,11 +54,17 @@ def _free_port() -> int:
 
 
 def _clean_env(tmp: Path | None = None) -> dict[str, str]:
-    """构造显式子进程环境：剔除 BRIDGES_* 与 Conda 变量，强制 UTF-8 输出。"""
+    """构造显式子进程环境：剔除 BRIDGES_* 与迁移期旧 SCIENCE_COMPANION_*
+    前缀变量及 Conda 变量，强制 UTF-8 输出。
+
+    旧前缀仍被 config 兼容接受（新前缀优先），若不剔除，开发机残留的
+    SCIENCE_COMPANION_* 真实凭据会进入子进程——与 test_runtime_smoke 的
+    隔离语义保持一致。
+    """
     merged = {
         key: value
         for key, value in os.environ.items()
-        if not key.startswith("BRIDGES_")
+        if not key.startswith(("BRIDGES_", "SCIENCE_COMPANION_"))
         and key not in {"CONDA_PREFIX", "CONDA_DEFAULT_ENV", "CONDA_SHLVL"}
     }
     merged["PYTHONIOENCODING"] = "utf-8"

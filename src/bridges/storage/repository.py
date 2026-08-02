@@ -213,13 +213,21 @@ class BridgesObjectRepository:
             content_hash = str(row["content_hash"])
             if self._file_references(content_hash) > 1:
                 # 文件仍被其他记录引用，物理删除会破坏他人的对象；只移除本行。
-                with contextlib.suppress(
-                    StorageError, sqlite3.Error
-                ), self._database.transaction():
-                    self._database.connection.execute(
-                        "DELETE FROM objects WHERE object_id = ?",
-                        (object_id,),
+                # 行删除失败不得静默计成功：进入可观察、可重试的失败记录。
+                try:
+                    with self._database.transaction():
+                        self._database.connection.execute(
+                            "DELETE FROM objects WHERE object_id = ?",
+                            (object_id,),
+                        )
+                except (StorageError, sqlite3.Error) as exc:
+                    reason = (
+                        str(exc)
+                        if isinstance(exc, StorageError)
+                        else "对象清理失败，请检查数据目录。"
                     )
+                    self._record_cleanup_failure(object_id, reason)
+                    continue
                 cleaned += 1
                 continue
             try:

@@ -188,6 +188,62 @@ def test_two_accounts_shared_content_delete_keeps_other_account_readable(
     assert repository.find_orphans() == []
 
 
+def test_shared_reference_row_delete_failure_is_observable_and_retryable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """共享引用分支：行删除失败不得静默计成功，必须进入可观察、可重试状态。"""
+    repository = _build(tmp_path)
+    alice = repository.register_account("alice-shared-fail@example.com")
+    bob = repository.register_account("bob-shared-fail@example.com")
+    shared = b"shared bytes for row-delete failure"
+    alice_object = repository.create_object(alice, "共享.txt", shared)
+    bob_object = repository.create_object(bob, "共享.txt", shared)
+    assert alice_object.content_hash == bob_object.content_hash
+
+    # 直接构造一条与鲍勃共享内容哈希的待清理记录（delete_object 会立即
+    # 尝试清理，因此不走该方法，手动 INSERT 保证行删除失败路径可测）。
+    with sqlite3.connect(tmp_path / "bridges.db") as connection:
+        connection.execute(
+            "INSERT INTO objects(object_id, account_id, content_hash,"
+            " original_filename, content_length, status, created_at, updated_at)"
+            " VALUES ('obj-row-delete-fail', ?, ?, 'f.txt', 5,"
+            " 'pending_cleanup', '2026-01-01T00:00:00Z', '2026-01-01T00:00:00Z')",
+            (alice, alice_object.content_hash),
+        )
+
+    class _FailingConnection:
+        """代理真实连接：仅 DELETE FROM objects 语句抛 OperationalError。"""
+
+        def __init__(self, real: sqlite3.Connection) -> None:
+            self._real = real
+
+        def execute(self, sql: str, *args: object) -> object:
+            if "DELETE FROM objects" in sql:
+                raise sqlite3.OperationalError("模拟行删除失败")
+            return self._real.execute(sql, *args)
+
+    proxy = _FailingConnection(repository._database.connection)
+    monkeypatch.setattr(
+        BridgesDatabase, "connection", property(lambda self: proxy)
+    )
+    cleaned = repository.run_pending_cleanups()
+    monkeypatch.undo()
+
+    assert cleaned == 0  # 失败不得计为成功
+    pending = repository.list_pending_cleanups()
+    assert len(pending) == 1
+    assert pending[0].cleanup_retry_count >= 1
+    assert "清理失败" in (pending[0].last_cleanup_error or "")
+
+    # 恢复后重试成功：仅移除本行，物理文件仍被鲍勃引用。
+    assert repository.run_pending_cleanups() == 1
+    object_file = (
+        tmp_path / "objects" / bob_object.content_hash[:2] / bob_object.content_hash
+    )
+    assert object_file.exists()
+    assert repository.get_content(bob, bob_object.object_id) == shared
+
+
 def test_object_creation_requires_registered_account(tmp_path: Path) -> None:
     repository = _build(tmp_path)
     with pytest.raises(StorageError) as exc_info:
