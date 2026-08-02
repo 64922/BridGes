@@ -25,6 +25,37 @@
   padding: var(--space-2) var(--space-4);
 }
 
+.accountFooter {
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-border);
+}
+
+.accountStatus {
+  min-height: var(--target-size);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+}
+
+.accountSkeleton {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: 0 0 2.25rem;
+  border-radius: var(--radius-full);
+  background: var(--color-border);
+  animation: account-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes account-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .closeButton {
   display: none;
 }

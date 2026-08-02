@@ -324,6 +324,7 @@ export function ListTemplate() {
                 {
                   label: "重命名",
                   icon: "humanize",
+                  returnFocus: false,
                   onSelect: () => {
                     setEditingItem(item);
                     setRenameValue(item.title);

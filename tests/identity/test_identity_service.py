@@ -7,17 +7,44 @@ invalid attempts receive uniform, non-leaking errors; recovery revokes prior
 sessions.
 """
 
+import base64
+import zlib
+from datetime import timedelta
+from pathlib import Path
+
 import pytest
 from pydantic import SecretStr, ValidationError
 
 from bridges.contracts.identity import (
+    AccountProfileUpdate,
     AccountRegistration,
     AuthMethod,
+    AvatarChoice,
     LoginCredential,
     RecoveryRequest,
     RecoveryReset,
 )
 from bridges.identity import IdentityError, IdentityService
+from bridges.persistence import SqliteStateStore
+from bridges.storage import (
+    BridgesDatabase,
+    BridgesObjectRepository,
+    EncryptedFileObjectStore,
+)
+
+_PNG_1X1 = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+)
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    checksum = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return len(data).to_bytes(4, "big") + chunk_type + data + checksum.to_bytes(4, "big")
+
+
+def _apng_from_fixture() -> bytes:
+    # Insert the APNG animation-control chunk immediately after IHDR.
+    return _PNG_1X1[:33] + _png_chunk(b"acTL", b"\x00\x00\x00\x01\x00\x00\x00\x00") + _PNG_1X1[33:]
 
 
 @pytest.fixture
@@ -188,6 +215,134 @@ def test_change_username_allows_own_name_in_different_case(
     assert updated.username == "bridgeuser"
     result = service.authenticate(_credentials(identifier="BRIDGEUSER"))
     assert result.account.id == registered.account.id
+
+
+def test_update_profile_keeps_stable_identity_and_changes_avatar_choice(
+    service: IdentityService,
+) -> None:
+    registered = service.register(_registration(username="BridgeUser"))
+
+    updated = service.update_profile(
+        registered.account.id,
+        AccountProfileUpdate(username="新桥桥", avatar_choice=AvatarChoice.KNOWLEDGE),
+    )
+
+    assert updated.id == registered.account.id
+    assert updated.qq_email == registered.account.qq_email
+    assert updated.username == "新桥桥"
+    assert updated.avatar_choice == AvatarChoice.KNOWLEDGE
+    assert updated.has_uploaded_avatar is False
+
+
+def test_avatar_upload_validates_detected_type_size_and_account_ownership(
+    service: IdentityService,
+) -> None:
+    registered = service.register(_registration())
+
+    with pytest.raises(IdentityError, match="类型"):
+        service.store_avatar(registered.account.id, _PNG_1X1, "image/jpeg")
+    with pytest.raises(IdentityError, match="2 MiB"):
+        service.store_avatar(
+            registered.account.id,
+            _PNG_1X1 + b"x" * (2 * 1024 * 1024),
+            "image/png",
+        )
+    with pytest.raises(IdentityError, match="访问权限"):
+        service.store_avatar("guessed-account-id", _PNG_1X1, "image/png")
+
+    updated = service.store_avatar(
+        registered.account.id,
+        _PNG_1X1,
+        "image/png",
+    )
+    avatar = service.get_avatar(registered.account.id)
+
+    assert updated.id == registered.account.id
+    assert updated.qq_email == registered.account.qq_email
+    assert updated.avatar_choice == AvatarChoice.UPLOADED
+    assert updated.has_uploaded_avatar is True
+    assert avatar.content == _PNG_1X1
+    assert avatar.media_type == "image/png"
+
+
+@pytest.mark.parametrize(
+    "content, media_type",
+    [
+        (_apng_from_fixture(), "image/png"),
+        (_PNG_1X1[:-1] + bytes([_PNG_1X1[-1] ^ 1]), "image/png"),
+        (b"\xff\xd8\xff\xc0\x00\x08\x08\x00\x01\x00\x01\x01\xff\xd9", "image/jpeg"),
+    ],
+)
+def test_avatar_upload_rejects_animation_and_malformed_images(
+    service: IdentityService,
+    content: bytes,
+    media_type: str,
+) -> None:
+    registered = service.register(_registration())
+
+    with pytest.raises(IdentityError, match="静态"):
+        service.store_avatar(registered.account.id, content, media_type)
+
+
+def test_avatar_bytes_use_the_encrypted_account_object_repository(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "bridges.db"
+    encryption_key = "avatar-object-test-key"
+    state_store = SqliteStateStore(database_path, encryption_key=encryption_key)
+    repository = BridgesObjectRepository(
+        BridgesDatabase(database_path),
+        EncryptedFileObjectStore(tmp_path / "object-data", encryption_key),
+    )
+    first = IdentityService(state_store=state_store, object_repository=repository)
+    registered = first.register(_registration())
+    first.store_avatar(registered.account.id, _PNG_1X1, "image/png")
+
+    avatar_state = state_store.load("identity")["avatars"][registered.account.id]
+    assert set(avatar_state) == {"media_type", "object_id"}
+    stored_object = repository.list_objects(registered.account.id)[0]
+    encrypted_path = (
+        tmp_path
+        / "object-data"
+        / "objects"
+        / stored_object.content_hash[:2]
+        / stored_object.content_hash
+    )
+    assert _PNG_1X1 not in encrypted_path.read_bytes()
+
+    reloaded = IdentityService(
+        state_store=SqliteStateStore(database_path, encryption_key=encryption_key),
+        object_repository=BridgesObjectRepository(
+            BridgesDatabase(database_path),
+            EncryptedFileObjectStore(tmp_path / "object-data", encryption_key),
+        ),
+    )
+    assert reloaded.get_avatar(registered.account.id).content == _PNG_1X1
+
+
+def test_sensitive_settings_require_recent_password_reauthentication(
+    service: IdentityService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    registered = service.register(_registration())
+
+    assert service.requires_recent_auth(registered.session.id) is False
+    initial_now = service._now()
+    monkeypatch.setattr(service, "_now", lambda: initial_now + timedelta(minutes=6))
+    assert service.requires_recent_auth(registered.session.id) is True
+
+    with pytest.raises(IdentityError, match="密码不正确"):
+        service.reauthenticate(
+            registered.account.id,
+            registered.session.id,
+            "wrong-password-12",
+        )
+    service.reauthenticate(
+        registered.account.id,
+        registered.session.id,
+        "correct-horse-12",
+    )
+    assert service.requires_recent_auth(registered.session.id) is False
 
 
 def test_resolve_session_returns_subject(service: IdentityService) -> None:

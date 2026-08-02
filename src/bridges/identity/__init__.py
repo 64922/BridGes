@@ -1,5 +1,11 @@
 """Identity and session domain module."""
 
-from .service import AuthResult, IdentityError, IdentityService
+from .service import MAX_AVATAR_BYTES, AuthResult, AvatarContent, IdentityError, IdentityService
 
-__all__ = ["AuthResult", "IdentityError", "IdentityService"]
+__all__ = [
+    "MAX_AVATAR_BYTES",
+    "AuthResult",
+    "AvatarContent",
+    "IdentityError",
+    "IdentityService",
+]

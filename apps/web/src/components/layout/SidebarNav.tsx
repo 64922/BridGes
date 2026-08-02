@@ -1,8 +1,10 @@
 "use client";
 
+import { AccountMenu } from "@/components/account/AccountMenu";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { NavLink } from "@/components/design-system/NavLink";
+import { useAuth } from "@/context/AuthContext";
 
 import styles from "./SidebarNav.module.css";
 
@@ -19,6 +21,7 @@ interface NavGroup {
 }
 
 export function SidebarNav({ mode, projectId, open, onClose }: SidebarNavProps) {
+  const { user, authState, refreshSession } = useAuth();
   const projectPrefix = projectId ? `/projects/${projectId}` : "";
 
   const accountGroups: NavGroup[] = [
@@ -102,6 +105,35 @@ export function SidebarNav({ mode, projectId, open, onClose }: SidebarNavProps) 
             </ul>
           </section>
         ))}
+
+        <div className={styles.accountFooter}>
+          {authState === "authenticated" && user ? (
+            <AccountMenu user={user} onNavigate={onClose} />
+          ) : authState === "loading" ? (
+            <div className={styles.accountStatus} role="status" aria-live="polite">
+              <span className={styles.accountSkeleton} aria-hidden="true" />
+              <span>正在读取账户…</span>
+            </div>
+          ) : authState === "error" ? (
+            <div className={styles.accountStatus}>
+              <span>账户信息读取失败</span>
+              <Button variant="ghost" size="sm" onClick={() => void refreshSession()}>
+                重试
+              </Button>
+            </div>
+          ) : (
+            <div className={styles.accountStatus}>
+              <span>需要重新登录</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => window.location.replace("/login")}
+              >
+                去登录
+              </Button>
+            </div>
+          )}
+        </div>
       </nav>
     </>
   );

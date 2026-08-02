@@ -27,6 +27,12 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PREFIXES.some((prefix) => pathname.startsWith(prefix));
 }
 
+function privateResponse(): NextResponse {
+  const response = NextResponse.next();
+  response.headers.set("Cache-Control", "private, no-store");
+  return response;
+}
+
 /**
  * Server-side authentication guard for authenticated routes.
  *
@@ -53,7 +59,7 @@ export function middleware(request: NextRequest): NextResponse {
     if (hasSession && (pathname === "/login" || pathname === "/register")) {
       return NextResponse.redirect(new URL("/", request.url));
     }
-    return NextResponse.next();
+    return hasSession ? privateResponse() : NextResponse.next();
   }
 
   if (!hasSession) {
@@ -62,7 +68,7 @@ export function middleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  return privateResponse();
 }
 
 export const config = {

@@ -71,15 +71,39 @@ class BridgesObjectRepository:
         """注册一个账户并返回不可变内部账户 ID；邮箱重复报中文错误。"""
         account_id = _new_id()
         try:
+            self.ensure_account(account_id, email)
+        except StorageError as exc:
+            raise StorageError("该邮箱已注册。") from exc
+        return account_id
+
+    def ensure_account(self, account_id: str, email: str) -> None:
+        """Ensure storage knows the identity domain's stable account ID.
+
+        Identity owns account IDs. The object repository mirrors that immutable
+        ownership key so uploaded media never acquires a second account identity.
+        Repeated calls are idempotent and a conflicting ID/email pair is rejected.
+        """
+        normalized_email = email.strip().lower()
+        existing = self._database.connection.execute(
+            "SELECT account_id, email FROM accounts WHERE account_id = ? OR email = ?",
+            (account_id, normalized_email),
+        ).fetchone()
+        if existing is not None:
+            if (
+                str(existing["account_id"]) == account_id
+                and str(existing["email"]) == normalized_email
+            ):
+                return
+            raise StorageError("账户身份与对象库归属不一致。")
+        try:
             with self._database.transaction():
                 self._database.connection.execute(
                     "INSERT INTO accounts(account_id, email, created_at)"
                     " VALUES (?, ?, ?)",
-                    (account_id, email.strip().lower(), _now()),
+                    (account_id, normalized_email, _now()),
                 )
         except sqlite3.IntegrityError as exc:
-            raise StorageError("该邮箱已注册。") from exc
-        return account_id
+            raise StorageError("账户身份与对象库归属不一致。") from exc
 
     def _require_account(self, account_id: str) -> None:
         row = self._database.connection.execute(

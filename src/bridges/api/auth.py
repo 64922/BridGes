@@ -12,17 +12,22 @@ from typing import TYPE_CHECKING, Annotated
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 
 from bridges.contracts.identity import (
+    Account,
+    AccountProfileUpdate,
     AccountRegistration,
     AuthError,
     AuthResponse,
+    KeySettingsProjection,
+    KeySettingsStatus,
     LoginCredential,
+    ReauthenticationRequest,
     RecoveryRequest,
     RecoveryReset,
     SessionResponse,
     SubjectContext,
 )
 from bridges.contracts.institution import MembershipContext
-from bridges.identity import IdentityError, IdentityService
+from bridges.identity import MAX_AVATAR_BYTES, IdentityError, IdentityService
 from bridges.scope import ScopeEnforcer
 
 if TYPE_CHECKING:
@@ -70,6 +75,12 @@ def _clear_site_data(response: Response) -> None:
     response.headers["Clear-Site-Data"] = '"cache"'
 
 
+def _clear_account_site_data(response: Response) -> None:
+    """Clear cached account views without deleting device-wide origin storage."""
+    response.headers["Clear-Site-Data"] = '"cache"'
+    response.headers["Cache-Control"] = "no-store"
+
+
 def _revoke_existing_session_if_present(
     service: IdentityService,
     request: Request,
@@ -88,11 +99,28 @@ def _revoke_existing_session_if_present(
     service.revoke_session(resolved.subject.session_id)
 
 
-def _auth_error(status_code: int, error: str, message: str) -> HTTPException:
+def _auth_error(
+    status_code: int,
+    error: str,
+    message: str,
+    *,
+    headers: dict[str, str] | None = None,
+) -> HTTPException:
     return HTTPException(
         status_code=status_code,
         detail=AuthError(error=error, message=message).model_dump(),
+        headers=headers,
     )
+
+
+def _expired_session_headers() -> dict[str, str]:
+    """Clear the exact session cookie on a 401 response without a JS race."""
+    response = Response()
+    _clear_session_cookie(response)
+    return {
+        "Set-Cookie": response.headers["set-cookie"],
+        "Cache-Control": "no-store",
+    }
 
 
 _IDENTITY_ERROR_STATUS = {
@@ -100,6 +128,7 @@ _IDENTITY_ERROR_STATUS = {
     "conflict": status.HTTP_409_CONFLICT,
     "credentials": status.HTTP_401_UNAUTHORIZED,
     "session": status.HTTP_401_UNAUTHORIZED,
+    "too_large": status.HTTP_413_CONTENT_TOO_LARGE,
 }
 
 
@@ -137,6 +166,7 @@ async def require_subject(
             status.HTTP_401_UNAUTHORIZED,
             "unauthenticated",
             str(exc),
+            headers=_expired_session_headers(),
         ) from exc
 
     subject = resolved.subject
@@ -241,13 +271,190 @@ async def login(
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def logout(
+    request: Request,
     response: Response,
+    service: IdentityServiceDep,
+) -> None:
+    """Revoke any resolvable session and always clear the browser cookie."""
+    _revoke_existing_session_if_present(service, request)
+    _clear_session_cookie(response)
+    _clear_account_site_data(response)
+
+
+@router.get(
+    "/profile",
+    response_model=Account,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": AuthError}},
+)
+async def get_profile(
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> Account:
+    """Return only the current account's mutable profile projection."""
+    account = service.get_account(subject.account_id)
+    if account is None:
+        raise _auth_error(
+            status.HTTP_401_UNAUTHORIZED,
+            "unauthenticated",
+            "会话已失效。",
+        )
+    return account
+
+
+@router.patch(
+    "/profile",
+    response_model=Account,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": AuthError},
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_409_CONFLICT: {"model": AuthError},
+    },
+)
+async def update_profile(
+    update: AccountProfileUpdate,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> Account:
+    """Update username/avatar choice for the authenticated owner only."""
+    try:
+        return service.update_profile(subject.account_id, update)
+    except IdentityError as exc:
+        raise _identity_error(exc, "profile_update_failed") from exc
+
+
+@router.put(
+    "/profile/avatar",
+    response_model=Account,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {"model": AuthError},
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"model": AuthError},
+    },
+)
+async def upload_avatar(
+    request: Request,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> Account:
+    """Store a validated current-account avatar without exposing host paths."""
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            if int(declared_length) > MAX_AVATAR_BYTES:
+                raise _auth_error(
+                    status.HTTP_413_CONTENT_TOO_LARGE,
+                    "avatar_too_large",
+                    "头像不能超过 2 MiB。",
+                )
+        except ValueError as exc:
+            raise _auth_error(
+                status.HTTP_400_BAD_REQUEST,
+                "avatar_upload_failed",
+                "头像请求大小无效，请重新选择文件。",
+            ) from exc
+
+    content = bytearray()
+    async for chunk in request.stream():
+        content.extend(chunk)
+        if len(content) > MAX_AVATAR_BYTES:
+            raise _auth_error(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "avatar_too_large",
+                "头像不能超过 2 MiB。",
+            )
+
+    try:
+        return service.store_avatar(
+            subject.account_id,
+            bytes(content),
+            request.headers.get("content-type", ""),
+        )
+    except IdentityError as exc:
+        raise _identity_error(exc, "avatar_upload_failed") from exc
+
+
+@router.get(
+    "/profile/avatar",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_404_NOT_FOUND: {"model": AuthError},
+    },
+)
+async def get_avatar(
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """Read the current owner's avatar through the authorized API seam."""
+    try:
+        avatar = service.get_avatar(subject.account_id)
+    except IdentityError as exc:
+        raise _auth_error(
+            status.HTTP_404_NOT_FOUND,
+            "avatar_not_found",
+            str(exc),
+        ) from exc
+    return Response(
+        content=avatar.content,
+        media_type=avatar.media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+@router.post(
+    "/reauthenticate",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+    },
+)
+async def reauthenticate(
+    confirmation: ReauthenticationRequest,
     service: IdentityServiceDep,
     subject: SubjectDep,
 ) -> None:
-    """Revoke the current session and clear the cookie."""
-    service.revoke_session(subject.session_id)
-    _clear_session_cookie(response)
+    """Confirm the current password before sensitive settings access."""
+    try:
+        service.reauthenticate(
+            subject.account_id,
+            subject.session_id,
+            confirmation.password.get_secret_value(),
+        )
+    except IdentityError as exc:
+        raise _identity_error(exc, "reauthentication_failed") from exc
+
+
+@router.get(
+    "/key-settings",
+    response_model=KeySettingsProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_403_FORBIDDEN: {"model": AuthError},
+    },
+)
+async def get_key_settings(
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> KeySettingsProjection:
+    """Return the truthful pre-Issue-10 key state after recent reauthentication."""
+    try:
+        needs_reauthentication = service.requires_recent_auth(subject.session_id)
+    except IdentityError as exc:
+        raise _identity_error(exc, "unauthenticated") from exc
+    if needs_reauthentication:
+        raise _auth_error(
+            status.HTTP_403_FORBIDDEN,
+            "reauth_required",
+            "此页面包含敏感设置，请重新输入当前账户密码。",
+        )
+    return KeySettingsProjection(
+        status=KeySettingsStatus.UNCONFIGURED,
+        configured=False,
+        message="尚未配置百炼密钥。",
+        next_step="完成密钥接入后，可在本页录入并验证；现在请勿在聊天中粘贴密钥。",
+    )
 
 
 @router.post(

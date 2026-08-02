@@ -15,8 +15,10 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import zlib
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Protocol
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -25,9 +27,11 @@ from bridges.contracts.identity import (
     QQ_EMAIL_PATTERN,
     USERNAME_PATTERN,
     Account,
+    AccountProfileUpdate,
     AccountRegistration,
     AuthMethod,
     AuthResponse,
+    AvatarChoice,
     LoginCredential,
     RecoveryRequest,
     RecoveryReset,
@@ -38,6 +42,7 @@ from bridges.contracts.identity import (
     normalize_username,
 )
 from bridges.persistence import StateStore
+from bridges.storage.errors import StorageError
 
 _PASSWORD_HASHER = PasswordHasher(
     time_cost=3,
@@ -50,6 +55,8 @@ _PASSWORD_HASHER = PasswordHasher(
 # Conservative session lifetime; the cookie contract mirrors this value.
 _SESSION_TTL = timedelta(hours=8)
 _RECOVERY_TTL = timedelta(minutes=30)
+_RECENT_AUTH_TTL = timedelta(minutes=5)
+MAX_AVATAR_BYTES = 2 * 1024 * 1024
 
 
 class IdentityError(Exception):
@@ -95,6 +102,40 @@ class _StoredSession:
     session: Session
     token_hash: str
     auth_method: AuthMethod
+    reauthenticated_at: datetime
+
+
+@dataclass(frozen=True)
+class AvatarContent:
+    """Authorized avatar bytes returned without a host filesystem path."""
+
+    content: bytes
+    media_type: str
+
+
+@dataclass
+class _StoredAvatar:
+    object_id: str
+    media_type: str
+
+
+class _StoredObjectRef(Protocol):
+    @property
+    def object_id(self) -> str: ...
+
+
+class AccountObjectRepository(Protocol):
+    """Minimal account-owned object seam required by the identity domain."""
+
+    def ensure_account(self, account_id: str, email: str) -> None: ...
+
+    def create_object(
+        self, account_id: str, original_filename: str, content: bytes
+    ) -> _StoredObjectRef: ...
+
+    def get_content(self, account_id: str, object_id: str) -> bytes: ...
+
+    def delete_object(self, account_id: str, object_id: str) -> _StoredObjectRef: ...
 
 
 @dataclass
@@ -111,13 +152,20 @@ class IdentityService:
     later relational implementation can swap in without changing callers.
     """
 
-    def __init__(self, state_store: StateStore | None = None) -> None:
+    def __init__(
+        self,
+        state_store: StateStore | None = None,
+        object_repository: AccountObjectRepository | None = None,
+    ) -> None:
         self._accounts: dict[str, _StoredAccount] = {}
         self._sessions: dict[str, _StoredSession] = {}
         self._username_to_account: dict[str, str] = {}
         self._qq_email_to_account: dict[str, str] = {}
+        self._avatars: dict[str, _StoredAvatar] = {}
+        self._memory_avatar_content: dict[str, bytes] = {}
         self._recovery_states: dict[str, _RecoveryState] = {}
         self._state_store = state_store
+        self._object_repository = object_repository
         self._load_state()
 
     def _load_state(self) -> None:
@@ -136,6 +184,12 @@ class IdentityService:
                 session=Session.model_validate(value["session"]),
                 token_hash=str(value["token_hash"]),
                 auth_method=AuthMethod(value["auth_method"]),
+                reauthenticated_at=datetime.fromisoformat(
+                    value.get(
+                        "reauthenticated_at",
+                        value["session"]["created_at"],
+                    )
+                ),
             )
             for session_id, value in state.get("sessions", {}).items()
         }
@@ -146,6 +200,13 @@ class IdentityService:
         self._qq_email_to_account = {
             str(qq_email): str(account_id)
             for qq_email, account_id in state.get("qq_email_to_account", {}).items()
+        }
+        self._avatars = {
+            account_id: _StoredAvatar(
+                object_id=str(value["object_id"]),
+                media_type=str(value["media_type"]),
+            )
+            for account_id, value in state.get("avatars", {}).items()
         }
         self._recovery_states = {
             account_id: _RecoveryState(
@@ -174,11 +235,19 @@ class IdentityService:
                         "session": stored.session.model_dump(mode="json"),
                         "token_hash": stored.token_hash,
                         "auth_method": stored.auth_method.value,
+                        "reauthenticated_at": stored.reauthenticated_at.isoformat(),
                     }
                     for session_id, stored in self._sessions.items()
                 },
                 "username_to_account": self._username_to_account,
                 "qq_email_to_account": self._qq_email_to_account,
+                "avatars": {
+                    account_id: {
+                        "object_id": avatar.object_id,
+                        "media_type": avatar.media_type,
+                    }
+                    for account_id, avatar in self._avatars.items()
+                },
                 "recovery_states": {
                     account_id: {
                         "account_id": state.account_id,
@@ -296,8 +365,17 @@ class IdentityService:
         stored = self._accounts.get(account_id)
         if stored is None:
             raise IdentityError("账户不存在。")
+        self._apply_username_update(stored, new_username)
+        stored.account.updated_at = self._now()
+        self._persist()
+        return stored.account
 
+    def _apply_username_update(
+        self, stored: _StoredAccount, new_username: str
+    ) -> None:
+        """Validate and update the single username index without persisting."""
         username = self._validate_username(new_username)
+        account_id = stored.account.id
         normalized = normalize_username(username)
         existing_owner = self._username_to_account.get(normalized)
         if existing_owner is not None and existing_owner != account_id:
@@ -307,9 +385,237 @@ class IdentityService:
         self._username_to_account.pop(old_normalized, None)
         self._username_to_account[normalized] = account_id
         stored.account.username = username
+
+    def update_profile(
+        self,
+        account_id: str,
+        request: AccountProfileUpdate,
+    ) -> Account:
+        """Update owner-scoped profile fields without changing account ownership."""
+        stored = self._accounts.get(account_id)
+        if stored is None:
+            raise IdentityError("账户不存在或没有访问权限。")
+
+        if (
+            request.avatar_choice == AvatarChoice.UPLOADED
+            and account_id not in self._avatars
+        ):
+            raise IdentityError("尚未上传可用头像，请先选择图片。")
+
+        self._apply_username_update(stored, request.username)
+        if request.avatar_choice is not None:
+            stored.account.avatar_choice = request.avatar_choice
         stored.account.updated_at = self._now()
         self._persist()
         return stored.account
+
+    def store_avatar(
+        self,
+        account_id: str,
+        content: bytes,
+        declared_media_type: str,
+    ) -> Account:
+        """Validate and store a static avatar owned by ``account_id``."""
+        stored = self._accounts.get(account_id)
+        if stored is None:
+            raise IdentityError("账户不存在或没有访问权限。")
+        if not content:
+            raise IdentityError("头像文件为空，请重新选择。")
+        if len(content) > MAX_AVATAR_BYTES:
+            raise IdentityError("头像不能超过 2 MiB。", code="too_large")
+
+        detected_media_type = self._detect_avatar_media_type(content)
+        normalized_declared_type = declared_media_type.split(";", 1)[0].strip().lower()
+        if detected_media_type is None or normalized_declared_type != detected_media_type:
+            raise IdentityError("头像真实类型与声明类型不一致，仅支持静态 PNG 或 JPEG。")
+
+        old_avatar = self._avatars.get(account_id)
+        object_id = self._create_avatar_object(stored.account, content, detected_media_type)
+        self._avatars[account_id] = _StoredAvatar(
+            object_id=object_id, media_type=detected_media_type
+        )
+        now = self._now()
+        stored.account.avatar_choice = AvatarChoice.UPLOADED
+        stored.account.has_uploaded_avatar = True
+        stored.account.avatar_updated_at = now
+        stored.account.updated_at = now
+        self._persist()
+        if old_avatar is not None and old_avatar.object_id != object_id:
+            self._delete_avatar_object(account_id, old_avatar.object_id)
+        return stored.account
+
+    def get_avatar(self, account_id: str) -> AvatarContent:
+        """Return avatar bytes only when they belong to the authorized account."""
+        if account_id not in self._accounts:
+            raise IdentityError("头像不存在或没有访问权限。")
+        avatar = self._avatars.get(account_id)
+        if avatar is None:
+            raise IdentityError("头像不存在或没有访问权限。")
+        try:
+            if self._object_repository is not None:
+                content = self._object_repository.get_content(account_id, avatar.object_id)
+            else:
+                content = self._memory_avatar_content[avatar.object_id]
+        except (KeyError, StorageError) as exc:
+            raise IdentityError("头像不存在或没有访问权限。") from exc
+        return AvatarContent(content=content, media_type=avatar.media_type)
+
+    def _create_avatar_object(
+        self, account: Account, content: bytes, media_type: str
+    ) -> str:
+        extension = "png" if media_type == "image/png" else "jpg"
+        if self._object_repository is None:
+            object_id = secrets.token_urlsafe(16)
+            self._memory_avatar_content[object_id] = content
+            return object_id
+        try:
+            self._object_repository.ensure_account(account.id, account.qq_email)
+            stored = self._object_repository.create_object(
+                account.id, f"avatar.{extension}", content
+            )
+        except StorageError as exc:
+            raise IdentityError("头像保存失败，请稍后重试。") from exc
+        return stored.object_id
+
+    def _delete_avatar_object(self, account_id: str, object_id: str) -> None:
+        if self._object_repository is None:
+            self._memory_avatar_content.pop(object_id, None)
+            return
+        try:
+            self._object_repository.delete_object(account_id, object_id)
+        except StorageError as exc:
+            raise IdentityError("新头像已保存，但旧头像清理失败，请稍后重试。") from exc
+
+    @staticmethod
+    def _detect_avatar_media_type(content: bytes) -> str | None:
+        """Fully decode a bounded, structurally valid static PNG/JPEG."""
+        png_signature = b"\x89PNG\r\n\x1a\n"
+        if content.startswith(png_signature) and len(content) >= 45:
+            offset = len(png_signature)
+            width = height = 0
+            first_chunk = True
+            valid_static_png = False
+            while offset + 12 <= len(content):
+                chunk_length = int.from_bytes(content[offset : offset + 4], "big")
+                chunk_end = offset + 12 + chunk_length
+                if chunk_end > len(content):
+                    break
+                chunk_type = content[offset + 4 : offset + 8]
+                chunk_data = content[offset + 8 : offset + 8 + chunk_length]
+                expected_crc = int.from_bytes(content[chunk_end - 4 : chunk_end], "big")
+                actual_crc = zlib.crc32(chunk_type + chunk_data) & 0xFFFFFFFF
+                if expected_crc != actual_crc:
+                    break
+                if first_chunk:
+                    if chunk_type != b"IHDR" or chunk_length != 13:
+                        break
+                    width = int.from_bytes(chunk_data[0:4], "big")
+                    height = int.from_bytes(chunk_data[4:8], "big")
+                    first_chunk = False
+                if chunk_type == b"acTL":
+                    break
+                if chunk_type == b"IEND":
+                    valid_static_png = chunk_length == 0 and chunk_end == len(content)
+                    break
+                offset = chunk_end
+            if (
+                valid_static_png
+                and 0 < width <= 4096
+                and 0 < height <= 4096
+                and IdentityService._image_decodes(content, "png")
+            ):
+                return "image/png"
+
+        if content.startswith(b"\xff\xd8\xff") and content.endswith(b"\xff\xd9"):
+            index = 2
+            sof_markers = {
+                0xC0,
+                0xC1,
+                0xC2,
+                0xC3,
+                0xC5,
+                0xC6,
+                0xC7,
+                0xC9,
+                0xCA,
+                0xCB,
+                0xCD,
+                0xCE,
+                0xCF,
+            }
+            while index + 4 <= len(content):
+                if content[index] != 0xFF:
+                    index += 1
+                    continue
+                while index < len(content) and content[index] == 0xFF:
+                    index += 1
+                if index >= len(content):
+                    break
+                marker = content[index]
+                index += 1
+                if marker in {0x01, 0xD8, 0xD9} or 0xD0 <= marker <= 0xD7:
+                    continue
+                if index + 2 > len(content):
+                    break
+                segment_length = int.from_bytes(content[index : index + 2], "big")
+                if segment_length < 2 or index + segment_length > len(content):
+                    break
+                if marker in sof_markers and segment_length >= 8:
+                    height = int.from_bytes(content[index + 3 : index + 5], "big")
+                    width = int.from_bytes(content[index + 5 : index + 7], "big")
+                    if (
+                        0 < width <= 4096
+                        and 0 < height <= 4096
+                        and IdentityService._image_decodes(content, "jpeg")
+                    ):
+                        return "image/jpeg"
+                    return None
+                index += segment_length
+        return None
+
+    @staticmethod
+    def _image_decodes(content: bytes, file_type: str) -> bool:
+        """Force the registered image decoder to parse pixel data."""
+        try:
+            import fitz  # type: ignore[import-untyped]  # PyMuPDF
+
+            with fitz.open(stream=content, filetype=file_type) as document:
+                if document.page_count != 1:
+                    return False
+                page = document.load_page(0)
+                pixmap = page.get_pixmap(matrix=fitz.Matrix(0.05, 0.05), alpha=False)
+                return int(pixmap.width) > 0 and int(pixmap.height) > 0
+        except Exception:
+            # Decoder exceptions vary by malformed container; none are safe to
+            # expose, and every one means the upload is not a valid static image.
+            return False
+
+    def reauthenticate(
+        self,
+        account_id: str,
+        session_id: str,
+        password: str,
+    ) -> None:
+        """Confirm the current account password for sensitive settings."""
+        account = self._accounts.get(account_id)
+        session = self._sessions.get(session_id)
+        if account is None or session is None or session.session.account_id != account_id:
+            raise IdentityError("会话已失效。", code="session")
+        try:
+            _PASSWORD_HASHER.verify(account.password_hash, password)
+        except VerifyMismatchError:
+            raise IdentityError("当前账户密码不正确。", code="credentials") from None
+        if _PASSWORD_HASHER.check_needs_rehash(account.password_hash):
+            account.password_hash = _PASSWORD_HASHER.hash(password)
+        session.reauthenticated_at = self._now()
+        self._persist()
+
+    def requires_recent_auth(self, session_id: str) -> bool:
+        """Return whether the session must confirm its password again."""
+        stored = self._sessions.get(session_id)
+        if stored is None or stored.session.revoked_at is not None:
+            raise IdentityError("会话已失效。", code="session")
+        return self._now() - stored.reauthenticated_at > _RECENT_AUTH_TTL
 
     def _create_session(self, account: Account, method: AuthMethod) -> AuthResult:
         now = self._now()
@@ -325,6 +631,7 @@ class IdentityService:
             session=session,
             token_hash=self._hash_token(token),
             auth_method=method,
+            reauthenticated_at=now,
         )
         return AuthResult(account=account, session=session, session_token=token)
 

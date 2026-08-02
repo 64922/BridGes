@@ -2,10 +2,9 @@
 
 import { useRouter } from "next/navigation";
 
-import { BrandLogo } from "@/components/bridges/BrandLogo";
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { Button } from "@/components/design-system/Button";
-import { LoadingStatus } from "@/components/design-system/LoadingStatus";
+import { AppShell } from "@/components/layout/AppShell";
+import { MainContent } from "@/components/layout/MainContent";
 import { useAuth } from "@/context/AuthContext";
 
 /**
@@ -17,68 +16,22 @@ import { useAuth } from "@/context/AuthContext";
  */
 export function NewChatHome() {
   const router = useRouter();
-  const { user, isAuthenticated, isLoading, logout } = useAuth();
-
-  const handleLogout = async () => {
-    await logout();
-    router.push("/login?from=logout");
-  };
+  const { user } = useAuth();
 
   return (
-    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          gap: "var(--space-4)",
-          padding: "var(--space-4) var(--space-6)",
-          borderBottom: "1px solid var(--color-border)",
-          backgroundColor: "var(--color-surface)",
-        }}
-      >
-        <BrandLogo variant="horizontal" width={132} />
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          {user && (
-            <span style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
-              {user.username}
-            </span>
-          )}
-          <Button variant="ghost" size="sm" onClick={() => router.push("/account")} aria-label="进入账户主壳">
-            账户主壳
-          </Button>
-          <Button variant="secondary" size="sm" onClick={handleLogout} aria-label="退出登录">
-            退出
-          </Button>
-        </div>
-      </header>
-
-      <main
-        id="main-content"
-        tabIndex={-1}
-        data-testid="main-content"
-        style={{ flex: 1, display: "flex", flexDirection: "column", justifyContent: "center" }}
-      >
-        {isLoading ? (
-          <LoadingStatus message="正在恢复会话…" />
-        ) : isAuthenticated ? (
+    <AppShell mode="account" showSkipLink={false}>
+      <MainContent>
+        <div style={{ minHeight: "calc(100vh - var(--topbar-height))", display: "grid", placeItems: "center" }}>
           <StateBlock
             kind="empty"
             title="新聊天"
             description={`${user?.username ?? ""}，这里是你与 BridGes 对话的起点。对话能力正在按迭代计划逐步开放，当前可以前往账户主壳管理项目与设置。`}
             actionLabel="进入账户主壳"
+            actionHref="/account"
             onAction={() => router.push("/account")}
           />
-        ) : (
-          <StateBlock
-            kind="permission"
-            title="会话已失效"
-            description="你的登录状态已过期或被撤销，请重新登录。"
-            actionLabel="重新登录"
-            onAction={() => router.push("/login")}
-          />
-        )}
-      </main>
-    </div>
+        </div>
+      </MainContent>
+    </AppShell>
   );
 }

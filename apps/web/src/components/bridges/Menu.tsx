@@ -9,6 +9,7 @@ export interface MenuItem {
   icon?: IconName;
   onSelect?: () => void;
   danger?: boolean;
+  returnFocus?: boolean;
 }
 
 interface MenuProps {
@@ -37,7 +38,7 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
     setOpen(false);
     setActiveIndex(-1);
     if (returnFocus) {
-      triggerRef.current?.focus();
+      window.requestAnimationFrame(() => triggerRef.current?.focus());
     }
   };
 
@@ -46,7 +47,7 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (!menuRef.current?.contains(target) && !triggerRef.current?.contains(target)) {
-        close(false);
+        close(true);
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -149,6 +150,7 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
             borderRadius: "var(--radius-lg)",
             boxShadow: "var(--shadow-lg)",
             padding: "var(--space-1)",
+            overflow: "hidden",
           }}
         >
           {items.map((item) => (
@@ -159,7 +161,7 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
               tabIndex={-1}
               onClick={() => {
                 item.onSelect?.();
-                close(true);
+                close(item.returnFocus !== false);
               }}
               style={{
                 display: "flex",
@@ -175,6 +177,8 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
                 fontSize: "var(--text-sm)",
                 textAlign: "left",
                 cursor: "pointer",
+                transition:
+                  "background-color var(--motion-duration-fast) var(--motion-easing)",
               }}
             >
               {item.icon && <Icon name={item.icon} size={18} aria-hidden />}

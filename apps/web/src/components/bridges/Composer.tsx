@@ -304,6 +304,7 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
               label: tool.label,
               icon: tool.icon,
               onSelect: () => insertToolPrefix(tool.prefix),
+              returnFocus: false,
             })),
           ]}
         />

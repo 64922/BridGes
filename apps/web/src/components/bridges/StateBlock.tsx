@@ -8,6 +8,7 @@ interface StateBlockProps {
   title: string;
   description?: string;
   actionLabel?: string;
+  actionHref?: string;
   onAction?: () => void;
 }
 
@@ -26,7 +27,7 @@ const kindConfig: Record<StateKind, { icon: IconName; color: string }> = {
  * 所有状态都有图标 + 中文文字说明，不只靠颜色表达；
  * 加载用 role="status"、错误用 role="alert" 向辅助技术播报。
  */
-export function StateBlock({ kind, title, description, actionLabel, onAction }: StateBlockProps) {
+export function StateBlock({ kind, title, description, actionLabel, actionHref, onAction }: StateBlockProps) {
   const config = kindConfig[kind];
   const role = kind === "error" ? "alert" : kind === "loading" || kind === "success" || kind === "recovery" ? "status" : undefined;
 
@@ -63,11 +64,28 @@ export function StateBlock({ kind, title, description, actionLabel, onAction }: 
           {description}
         </p>
       )}
-      {actionLabel && onAction && (
+      {actionLabel && actionHref ? (
+        <form
+          action={actionHref}
+          method="get"
+          onSubmit={
+            onAction
+              ? (event) => {
+                  event.preventDefault();
+                  onAction();
+                }
+              : undefined
+          }
+        >
+          <Button type="submit" variant="secondary" size="sm" aria-label={actionLabel}>
+            {actionLabel}
+          </Button>
+        </form>
+      ) : actionLabel && onAction ? (
         <Button variant="secondary" size="sm" onClick={onAction} aria-label={actionLabel}>
           {actionLabel}
         </Button>
-      )}
+      ) : null}
     </div>
   );
 }

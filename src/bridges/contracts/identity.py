@@ -12,7 +12,7 @@ the literal ``@qq.com`` domain (ADR-0017).
 
 import re
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, Field, SecretStr
@@ -37,13 +37,23 @@ def normalize_qq_email(qq_email: str) -> str:
     return qq_email.strip().lower()
 
 
-class AuthMethod(str, Enum):
+class AuthMethod(StrEnum):
     """How the current subject authenticated."""
 
     PASSWORD = "password"
     RECOVERY = "recovery"
     OIDC = "oidc"
     SERVICE = "service"
+
+
+class AvatarChoice(StrEnum):
+    """Static account avatar selected by the account owner."""
+
+    INITIALS = "initials"
+    BRIDGE = "bridge"
+    KNOWLEDGE = "knowledge"
+    CONSTELLATION = "constellation"
+    UPLOADED = "uploaded"
 
 
 class Account(BaseModel):
@@ -55,6 +65,18 @@ class Account(BaseModel):
     )
     qq_email: str = Field(
         description="Unique QQ mailbox (digits-only QQ number plus @qq.com)."
+    )
+    avatar_choice: AvatarChoice = Field(
+        default=AvatarChoice.INITIALS,
+        description="Owner-selected static avatar or an authorized uploaded image.",
+    )
+    has_uploaded_avatar: bool = Field(
+        default=False,
+        description="Whether the account owns an uploaded avatar object.",
+    )
+    avatar_updated_at: datetime | None = Field(
+        default=None,
+        description="Last avatar update timestamp, used only for cache invalidation.",
     )
     created_at: datetime = Field(description="Account creation timestamp.")
     updated_at: datetime = Field(description="Last account update timestamp.")
@@ -84,6 +106,42 @@ class LoginCredential(BaseModel):
         min_length=1,
     )
     password: SecretStr = Field(description="Account password.")
+
+
+class AccountProfileUpdate(BaseModel):
+    """Owner-scoped mutable profile fields.
+
+    The stable account ID and QQ mailbox are deliberately absent so callers
+    cannot move account ownership by submitting editable display fields.
+    """
+
+    username: str = Field(description="Desired public username.", min_length=1, max_length=32)
+    avatar_choice: AvatarChoice | None = Field(
+        default=None,
+        description="Optional static avatar choice; uploaded requires an owned upload.",
+    )
+
+
+class ReauthenticationRequest(BaseModel):
+    """Password confirmation for sensitive account settings."""
+
+    password: SecretStr = Field(description="Current account password.")
+
+
+class KeySettingsStatus(StrEnum):
+    """Truthful model-key configuration state."""
+
+    UNCONFIGURED = "unconfigured"
+    CONFIGURED = "configured"
+
+
+class KeySettingsProjection(BaseModel):
+    """Protected model-key settings summary without secret material."""
+
+    status: KeySettingsStatus = Field(description="Current configuration status.")
+    configured: bool = Field(description="Whether a usable key is configured.")
+    message: str = Field(description="Human-readable status.")
+    next_step: str = Field(description="Safe, actionable next step.")
 
 
 class RecoveryRequest(BaseModel):

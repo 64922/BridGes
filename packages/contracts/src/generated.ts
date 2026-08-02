@@ -55,9 +55,97 @@ export interface paths {
         put?: never;
         /**
          * Logout
-         * @description Revoke the current session and clear the cookie.
+         * @description Revoke any resolvable session and always clear the browser cookie.
          */
         post: operations["logout_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile
+         * @description Return only the current account's mutable profile projection.
+         */
+        get: operations["get_profile_auth_profile_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Profile
+         * @description Update username/avatar choice for the authenticated owner only.
+         */
+        patch: operations["update_profile_auth_profile_patch"];
+        trace?: never;
+    };
+    "/auth/profile/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Avatar
+         * @description Read the current owner's avatar through the authorized API seam.
+         */
+        get: operations["get_avatar_auth_profile_avatar_get"];
+        /**
+         * Upload Avatar
+         * @description Store a validated current-account avatar without exposing host paths.
+         */
+        put: operations["upload_avatar_auth_profile_avatar_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/reauthenticate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reauthenticate
+         * @description Confirm the current password before sensitive settings access.
+         */
+        post: operations["reauthenticate_auth_reauthenticate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/key-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Key Settings
+         * @description Return the truthful pre-Issue-10 key state after recent reauthentication.
+         */
+        get: operations["get_key_settings_auth_key_settings_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -4067,6 +4155,22 @@ export interface components {
              */
             qq_email: string;
             /**
+             * @description Owner-selected static avatar or an authorized uploaded image.
+             * @default initials
+             */
+            avatar_choice: components["schemas"]["AvatarChoice"];
+            /**
+             * Has Uploaded Avatar
+             * @description Whether the account owns an uploaded avatar object.
+             * @default false
+             */
+            has_uploaded_avatar: boolean;
+            /**
+             * Avatar Updated At
+             * @description Last avatar update timestamp, used only for cache invalidation.
+             */
+            avatar_updated_at?: string | null;
+            /**
              * Created At
              * Format: date-time
              * @description Account creation timestamp.
@@ -4078,6 +4182,22 @@ export interface components {
              * @description Last account update timestamp.
              */
             updated_at: string;
+        };
+        /**
+         * AccountProfileUpdate
+         * @description Owner-scoped mutable profile fields.
+         *
+         *     The stable account ID and QQ mailbox are deliberately absent so callers
+         *     cannot move account ownership by submitting editable display fields.
+         */
+        AccountProfileUpdate: {
+            /**
+             * Username
+             * @description Desired public username.
+             */
+            username: string;
+            /** @description Optional static avatar choice; uploaded requires an owned upload. */
+            avatar_choice?: components["schemas"]["AvatarChoice"] | null;
         };
         /**
          * AccountRegistration
@@ -4388,6 +4508,12 @@ export interface components {
              */
             confirmed_by?: string | null;
         };
+        /**
+         * AvatarChoice
+         * @description Static account avatar selected by the account owner.
+         * @enum {string}
+         */
+        AvatarChoice: "initials" | "bridge" | "knowledge" | "constellation" | "uploaded";
         /**
          * BackgroundTaskEnvelope
          * @description Required context for every background task.
@@ -8722,6 +8848,35 @@ export interface components {
             revoked_at?: string | null;
         };
         /**
+         * KeySettingsProjection
+         * @description Protected model-key settings summary without secret material.
+         */
+        KeySettingsProjection: {
+            /** @description Current configuration status. */
+            status: components["schemas"]["KeySettingsStatus"];
+            /**
+             * Configured
+             * @description Whether a usable key is configured.
+             */
+            configured: boolean;
+            /**
+             * Message
+             * @description Human-readable status.
+             */
+            message: string;
+            /**
+             * Next Step
+             * @description Safe, actionable next step.
+             */
+            next_step: string;
+        };
+        /**
+         * KeySettingsStatus
+         * @description Truthful model-key configuration state.
+         * @enum {string}
+         */
+        KeySettingsStatus: "unconfigured" | "configured";
+        /**
          * KeyboardAccessPath
          * @description 一个核心媒体任务的完整键盘操作路径。
          */
@@ -11838,6 +11993,18 @@ export interface components {
             verified_at: string;
             /** Valid Until */
             valid_until?: string | null;
+        };
+        /**
+         * ReauthenticationRequest
+         * @description Password confirmation for sensitive account settings.
+         */
+        ReauthenticationRequest: {
+            /**
+             * Password
+             * Format: password
+             * @description Current account password.
+             */
+            password: string;
         };
         /**
          * RecoveryRequest
@@ -16351,9 +16518,7 @@ export interface operations {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -16363,6 +16528,297 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_profile_auth_profile_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_profile_auth_profile_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountProfileUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_avatar_auth_profile_avatar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    upload_avatar_auth_profile_avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    reauthenticate_auth_reauthenticate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReauthenticationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_key_settings_auth_key_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KeySettingsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
             };
             /** @description Validation Error */
             422: {

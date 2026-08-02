@@ -126,8 +126,23 @@
           "authentication"
         ],
         "summary": "Logout",
-        "description": "Revoke the current session and clear the cookie.",
+        "description": "Revoke any resolvable session and always clear the browser cookie.",
         "operationId": "logout_auth_logout_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          }
+        }
+      }
+    },
+    "/auth/profile": {
+      "get": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Get Profile",
+        "description": "Return only the current account's mutable profile projection.",
+        "operationId": "get_profile_auth_profile_get",
         "parameters": [
           {
             "name": "bridges_session",
@@ -147,8 +162,392 @@
           }
         ],
         "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Update Profile",
+        "description": "Update username/avatar choice for the authenticated owner only.",
+        "operationId": "update_profile_auth_profile_patch",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AccountProfileUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/profile/avatar": {
+      "put": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Upload Avatar",
+        "description": "Store a validated current-account avatar without exposing host paths.",
+        "operationId": "upload_avatar_auth_profile_avatar_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Get Avatar",
+        "description": "Read the current owner's avatar through the authorized API seam.",
+        "operationId": "get_avatar_auth_profile_avatar_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/reauthenticate": {
+      "post": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Reauthenticate",
+        "description": "Confirm the current password before sensitive settings access.",
+        "operationId": "reauthenticate_auth_reauthenticate_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReauthenticationRequest"
+              }
+            }
+          }
+        },
+        "responses": {
           "204": {
             "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/key-settings": {
+      "get": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Get Key Settings",
+        "description": "Return the truthful pre-Issue-10 key state after recent reauthentication.",
+        "operationId": "get_key_settings_auth_key_settings_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/KeySettingsProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
           },
           "422": {
             "description": "Validation Error",
@@ -17130,6 +17529,30 @@
             "title": "Qq Email",
             "description": "Unique QQ mailbox (digits-only QQ number plus @qq.com)."
           },
+          "avatar_choice": {
+            "$ref": "#/components/schemas/AvatarChoice",
+            "description": "Owner-selected static avatar or an authorized uploaded image.",
+            "default": "initials"
+          },
+          "has_uploaded_avatar": {
+            "type": "boolean",
+            "title": "Has Uploaded Avatar",
+            "description": "Whether the account owns an uploaded avatar object.",
+            "default": false
+          },
+          "avatar_updated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Updated At",
+            "description": "Last avatar update timestamp, used only for cache invalidation."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -17153,6 +17576,34 @@
         ],
         "title": "Account",
         "description": "Public account projection."
+      },
+      "AccountProfileUpdate": {
+        "properties": {
+          "username": {
+            "type": "string",
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Username",
+            "description": "Desired public username."
+          },
+          "avatar_choice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AvatarChoice"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional static avatar choice; uploaded requires an owned upload."
+          }
+        },
+        "type": "object",
+        "required": [
+          "username"
+        ],
+        "title": "AccountProfileUpdate",
+        "description": "Owner-scoped mutable profile fields.\n\nThe stable account ID and QQ mailbox are deliberately absent so callers\ncannot move account ownership by submitting editable display fields."
       },
       "AccountRegistration": {
         "properties": {
@@ -17615,6 +18066,18 @@
         ],
         "title": "AuthorResponsibilityStatement",
         "description": "Author responsibility declaration attached to paper-assist drafts (T027).\n\nThe statement records that the AI tool is an assistant, not an author, and\nthat the human author remains responsible for data accuracy, citation\nintegrity, disclosure and final submission decisions."
+      },
+      "AvatarChoice": {
+        "type": "string",
+        "enum": [
+          "initials",
+          "bridge",
+          "knowledge",
+          "constellation",
+          "uploaded"
+        ],
+        "title": "AvatarChoice",
+        "description": "Static account avatar selected by the account owner."
       },
       "BackgroundTaskEnvelope": {
         "properties": {
@@ -24695,6 +25158,47 @@
         "title": "KeyEpoch",
         "description": "A key epoch under which device-local objects are encrypted.\n\nRevoking a device creates a new key epoch so that old device keys can no\nlonger unwrap newly created capsules or decrypt fresh content."
       },
+      "KeySettingsProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/KeySettingsStatus",
+            "description": "Current configuration status."
+          },
+          "configured": {
+            "type": "boolean",
+            "title": "Configured",
+            "description": "Whether a usable key is configured."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable status."
+          },
+          "next_step": {
+            "type": "string",
+            "title": "Next Step",
+            "description": "Safe, actionable next step."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "configured",
+          "message",
+          "next_step"
+        ],
+        "title": "KeySettingsProjection",
+        "description": "Protected model-key settings summary without secret material."
+      },
+      "KeySettingsStatus": {
+        "type": "string",
+        "enum": [
+          "unconfigured",
+          "configured"
+        ],
+        "title": "KeySettingsStatus",
+        "description": "Truthful model-key configuration state."
+      },
       "KeyboardAccessPath": {
         "properties": {
           "path_id": {
@@ -29762,6 +30266,23 @@
         ],
         "title": "QualificationRecord",
         "description": "可核验资质：类型、核验者、有效期和适用范围。"
+      },
+      "ReauthenticationRequest": {
+        "properties": {
+          "password": {
+            "type": "string",
+            "format": "password",
+            "title": "Password",
+            "description": "Current account password.",
+            "writeOnly": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "password"
+        ],
+        "title": "ReauthenticationRequest",
+        "description": "Password confirmation for sensitive account settings."
       },
       "RecoveryRequest": {
         "properties": {

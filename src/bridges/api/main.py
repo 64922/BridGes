@@ -613,7 +613,10 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     # T003: use the durable state port when configured; tests can omit it and
     # retain isolated in-memory services.
-    app.state.identity_service = IdentityService(state_store=state_store)
+    app.state.identity_service = IdentityService(
+        state_store=state_store,
+        object_repository=app.state.object_repository,
+    )
 
     # T004: project ownership is durable whenever the configured state store is.
     app.state.project_service = ProjectService(

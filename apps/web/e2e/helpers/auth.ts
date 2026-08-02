@@ -38,6 +38,7 @@ export async function signIn(page: Page, identifier: string, password: string): 
 }
 
 export async function signOut(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "退出登录" }).click();
+  await page.getByRole("button", { name: /账户菜单：/ }).click();
+  await page.getByRole("menuitem", { name: "退出登录" }).click();
   await page.waitForURL(/\/login/);
 }

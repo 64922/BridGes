@@ -8,6 +8,9 @@ export type Account = components["schemas"]["Account"];
 export type AuthResponse = components["schemas"]["AuthResponse"];
 export type SessionResponse = components["schemas"]["SessionResponse"];
 export type AuthError = components["schemas"]["AuthError"];
+export type AvatarChoice = components["schemas"]["AvatarChoice"];
+export type AccountProfileUpdate = components["schemas"]["AccountProfileUpdate"];
+export type KeySettingsProjection = components["schemas"]["KeySettingsProjection"];
 export type Project = components["schemas"]["Project"];
 export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
 export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
@@ -35,19 +38,31 @@ export type DomainPackError = { error?: string; message?: string };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
-async function parseAuthError(res: Response): Promise<string> {
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function parseAuthError(res: Response): Promise<ApiError> {
   try {
     const body: { detail?: AuthError | unknown } = await res.json();
     if (body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)) {
-      const message = (body.detail as AuthError).message;
+      const detail = body.detail as AuthError;
+      const message = detail.message;
       if (typeof message === "string" && message) {
-        return message;
+        return new ApiError(message, res.status, detail.error);
       }
     }
     // 422 请求体验证错误等非 AuthError 形态，统一折叠为可展示的中文消息。
-    return `请求失败（${res.status}）`;
+    return new ApiError(`请求失败（${res.status}）`, res.status);
   } catch {
-    return `请求失败（${res.status}）`;
+    return new ApiError(`请求失败（${res.status}）`, res.status);
   }
 }
 
@@ -68,7 +83,7 @@ export async function fetchSession(): Promise<SessionResponse> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
   }
   return res.json();
 }
@@ -81,7 +96,7 @@ export async function login(identifier: string, password: string): Promise<AuthR
     body: JSON.stringify({ identifier, password }),
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
   }
   return res.json();
 }
@@ -98,7 +113,7 @@ export async function register(
     body: JSON.stringify({ username, qq_email: qqEmail, password }),
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
   }
   return res.json();
 }
@@ -109,7 +124,56 @@ export async function logout(): Promise<void> {
     credentials: "same-origin",
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
+  }
+}
+
+export async function updateProfile(update: AccountProfileUpdate): Promise<Account> {
+  const res = await fetch(`${API_BASE}/auth/profile`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(update),
+  });
+  if (!res.ok) {
+    throw await parseAuthError(res);
+  }
+  return res.json();
+}
+
+export async function uploadAvatar(file: File): Promise<Account> {
+  const res = await fetch(`${API_BASE}/auth/profile/avatar`, {
+    method: "PUT",
+    headers: { "Content-Type": file.type },
+    credentials: "same-origin",
+    body: file,
+  });
+  if (!res.ok) {
+    throw await parseAuthError(res);
+  }
+  return res.json();
+}
+
+export async function fetchKeySettings(): Promise<KeySettingsProjection> {
+  const res = await fetch(`${API_BASE}/auth/key-settings`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    throw await parseAuthError(res);
+  }
+  return res.json();
+}
+
+export async function reauthenticate(password: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/reauthenticate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ password }),
+  });
+  if (!res.ok) {
+    throw await parseAuthError(res);
   }
 }
 
@@ -121,7 +185,7 @@ export async function createProject(request: ProjectCreateRequest): Promise<Proj
     body: JSON.stringify(request),
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
   }
   return res.json();
 }
@@ -132,7 +196,7 @@ export async function listProjects(): Promise<ProjectListProjection> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
   }
   return res.json();
 }
@@ -143,7 +207,7 @@ export async function getProject(projectId: string): Promise<Project> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw new Error(await parseAuthError(res));
+    throw await parseAuthError(res);
   }
   return res.json();
 }
