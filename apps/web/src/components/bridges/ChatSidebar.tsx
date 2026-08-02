@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
-import { Icon } from "@/components/design-system/Icon";
+import { Icon, type IconName } from "@/components/design-system/Icon";
 import { VisuallyHidden } from "@/components/design-system/VisuallyHidden";
 import { BrandLogo } from "./BrandLogo";
 import { Menu } from "./Menu";
@@ -16,8 +16,25 @@ export interface RecentConversation {
   mode: "日常陪伴" | "学习";
 }
 
+interface SidebarModule {
+  key: string;
+  label: string;
+  icon: IconName;
+  href: string;
+}
+
+/** 侧边栏功能模块（与 1.txt 的侧边栏模块清单一一对应） */
+export const SIDEBAR_MODULES: SidebarModule[] = [
+  { key: "knowledge", label: "本地知识库", icon: "knowledgeBase", href: "/templates/list?section=knowledge" },
+  { key: "projects", label: "学习项目", icon: "learningProject", href: "/templates/list?section=projects" },
+  { key: "tasks", label: "任务安排", icon: "tasks", href: "/templates/list?section=tasks" },
+  { key: "plugins", label: "插件", icon: "plugins", href: "/templates/list?section=plugins" },
+  { key: "profile", label: "用户画像", icon: "profile", href: "/templates/list?section=profile" },
+];
+
 interface ChatSidebarProps {
   activeConversation?: string;
+  activeModule?: string;
   recents: RecentConversation[];
   accountName: string;
   collapsed: boolean;
@@ -28,11 +45,15 @@ interface ChatSidebarProps {
  * ChatGPT 桌面结构启发的可折叠侧栏（布局借鉴见
  * docs/design/0001-chatgpt-desktop-baseline-2026-08-02.md）。
  *
+ * 自上而下：Logo 与折叠按钮、新聊天、搜索对话、功能模块
+ * （本地知识库 / 学习项目 / 任务安排 / 插件 / 用户画像）、最近对话、
+ * 底部账户菜单（切换账号 / 密钥设置 / 个人资料 / 退出登录）。
  * 折叠后为仅图标的窄轨，全部控件保持键盘可达；
  * Logo 点击 / 键盘激活进入新聊天（NAV-01）。
  */
 export function ChatSidebar({
   activeConversation,
+  activeModule,
   recents,
   accountName,
   collapsed,
@@ -46,6 +67,21 @@ export function ChatSidebar({
     if (!keyword) return recents;
     return recents.filter((item) => item.title.includes(keyword));
   }, [query, recents]);
+
+  const moduleLinkStyle = (active: boolean): React.CSSProperties => ({
+    display: "flex",
+    alignItems: "center",
+    justifyContent: collapsed ? "center" : "flex-start",
+    gap: "var(--space-2)",
+    minHeight: "var(--target-size)",
+    padding: collapsed ? 0 : "var(--space-2) var(--space-3)",
+    borderRadius: "var(--radius-md)",
+    color: active ? "var(--color-accent-primary)" : "var(--color-text-secondary)",
+    backgroundColor: active ? "var(--color-accent-primary-soft)" : "transparent",
+    fontSize: "var(--text-sm)",
+    fontWeight: active ? 600 : 400,
+    textDecoration: "none",
+  });
 
   return (
     <nav
@@ -173,6 +209,26 @@ export function ChatSidebar({
         </div>
       )}
 
+      <ul
+        role="list"
+        aria-label="功能模块"
+        style={{ display: "flex", flexDirection: "column", gap: "2px" }}
+      >
+        {SIDEBAR_MODULES.map((module) => (
+          <li key={module.key}>
+            <Link
+              href={module.href}
+              aria-label={module.label}
+              aria-current={activeModule === module.key ? "page" : undefined}
+              style={moduleLinkStyle(activeModule === module.key)}
+            >
+              <Icon name={module.icon} size={18} aria-hidden />
+              {!collapsed && module.label}
+            </Link>
+          </li>
+        ))}
+      </ul>
+
       {!collapsed && (
         <section
           aria-label="最近对话"
@@ -282,9 +338,10 @@ export function ChatSidebar({
             </>
           }
           items={[
-            { label: "个人设置", icon: "profile", onSelect: () => router.push("/templates/settings") },
-            { label: "设置", icon: "settings", onSelect: () => router.push("/templates/settings") },
-            { label: "退出登录", icon: "close", danger: true, onSelect: () => router.push("/templates/login") },
+            { label: "切换账号", icon: "account", onSelect: () => router.push("/templates/login?from=switch") },
+            { label: "密钥设置", icon: "settings", onSelect: () => router.push("/templates/settings?section=key") },
+            { label: "个人资料", icon: "profile", onSelect: () => router.push("/templates/settings?section=profile") },
+            { label: "退出登录", icon: "close", danger: true, onSelect: () => router.push("/templates/login?from=logout") },
           ]}
         />
       </div>

@@ -10,7 +10,7 @@ export const metadata = {
 const TEMPLATES = [
   { href: "/templates/login", label: "登录", description: "账户登录表单与错误、提交中、会话失效状态" },
   { href: "/templates/register", label: "注册", description: "新账户注册表单、字段校验与条款确认" },
-  { href: "/templates/chat", label: "聊天内容", description: "消息流、思考摘要、消息操作、输入区与建议卡" },
+  { href: "/templates/chat", label: "聊天内容", description: "消息流、思考摘要、消息操作、输入区、模式切换与功能推荐" },
   { href: "/templates/list", label: "列表", description: "最近对话与各模块列表、搜索过滤、条目操作" },
   { href: "/templates/detail", label: "详情", description: "能力结果详情：依据、引用、元数据与操作" },
   { href: "/templates/settings", label: "设置", description: "分区设置卡片、主题切换与危险操作对话框" },
@@ -42,7 +42,9 @@ export default function TemplatesIndexPage() {
           <p style={{ color: "var(--color-text-secondary)", maxWidth: "64ch" }}>
             以 ChatGPT 电脑端信息架构为交互基线（见 docs/design/0001），采用 Claude-inspired
             的温暖、克制、高可读性美术语言。所有品牌图形、图标与组件外观均为 BridGes 原创。
-            每类模板内置正常、加载中、空、错误与未登录五种状态，可通过页面顶部的状态切换器检查。
+            每类模板内置正常、加载中、空、错误、未登录、成功与恢复状态；状态由系统行为自动转换
+            （打开对话→加载→正常、失败→重试→恢复、保存→成功），页面上不提供状态切换按钮，
+            开发验收可通过 URL 参数 <code>?state=loading|empty|error|permission|success|recovery</code> 直接检查指定状态。
           </p>
         </header>
 

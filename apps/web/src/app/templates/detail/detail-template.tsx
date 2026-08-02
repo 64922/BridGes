@@ -4,8 +4,8 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { StateSwitcher, type TemplateState } from "@/components/bridges/StateSwitcher";
 import { TemplateShell } from "@/components/bridges/TemplateShell";
+import { useTemplateState } from "@/components/bridges/use-template-state";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { StatusBadge } from "@/components/design-system/StatusBadge";
@@ -38,7 +38,7 @@ export function DetailTemplate() {
   const section = searchParams.get("section") ?? "knowledge";
   const id = searchParams.get("id") ?? "doc1";
 
-  const [state, setState] = useState<TemplateState>("normal");
+  const [state, setState] = useTemplateState("normal");
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const [checkedSections, setCheckedSections] = useState<number | null>(null);
   const [reading, setReading] = useState(false);
@@ -317,7 +317,7 @@ export function DetailTemplate() {
   };
 
   return (
-    <TemplateShell>
+    <TemplateShell activeModule={section}>
       <div
         style={{
           width: "100%",
@@ -329,9 +329,6 @@ export function DetailTemplate() {
           gap: "var(--space-4)",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "flex-end" }}>
-          <StateSwitcher value={state} onChange={setState} />
-        </div>
         {renderBody()}
       </div>
     </TemplateShell>

@@ -5,9 +5,10 @@ import { useEffect, useRef, useState } from "react";
 
 import { Composer } from "@/components/bridges/Composer";
 import { MessageList, type ChatMessage } from "@/components/bridges/MessageList";
+import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { StateSwitcher, type TemplateState } from "@/components/bridges/StateSwitcher";
 import { TemplateShell, DEMO_RECENTS } from "@/components/bridges/TemplateShell";
+import { useTemplateState } from "@/components/bridges/use-template-state";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
@@ -268,12 +269,69 @@ const DEMO_MESSAGES: ChatMessage[] = [
   },
 ];
 
+/* ---------- 空白新对话：轮播名言 + 居中输入区 + 功能推荐 ---------- */
+
+/** 5 条关于学习的简短名人名言（聊天框顶部可变文字，每 8 秒轮换一条） */
+const LEARNING_QUOTES: { text: string; source: string }[] = [
+  { text: "学而不思则罔，思而不学则殆。", source: "孔子" },
+  { text: "知之者不如好之者，好之者不如乐之者。", source: "孔子" },
+  { text: "读书破万卷，下笔如有神。", source: "杜甫" },
+  { text: "吾生也有涯，而知也无涯。", source: "庄子" },
+  { text: "少壮不努力，老大徒伤悲。", source: "汉乐府《长歌行》" },
+];
+
+const QUOTE_ROTATE_MS = 8000;
+
+function RotatingQuote() {
+  const [index, setIndex] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(
+      () => setIndex((current) => (current + 1) % LEARNING_QUOTES.length),
+      QUOTE_ROTATE_MS,
+    );
+    return () => window.clearInterval(timer);
+  }, []);
+  const quote = LEARNING_QUOTES[index];
+  return (
+    <p
+      data-testid="empty-quote"
+      data-quote-index={index}
+      style={{
+        fontSize: "var(--text-2xl)",
+        textAlign: "center",
+        fontFamily: "var(--font-serif)",
+        fontWeight: 600,
+        color: "var(--color-text-primary)",
+      }}
+    >
+      {quote.text}
+      <span
+        style={{
+          display: "block",
+          marginTop: "var(--space-2)",
+          fontSize: "var(--text-sm)",
+          fontFamily: "var(--font-sans)",
+          fontWeight: 400,
+          color: "var(--color-text-tertiary)",
+        }}
+      >
+        —— {quote.source}
+      </span>
+    </p>
+  );
+}
+
+/** 对话框下方的功能推荐（内容对应 1.txt：论文搜索 / 文章人味化 / 生涯规划助手） */
 const SUGGESTIONS: { icon: IconName; label: string; prompt: string }[] = [
   { icon: "paperSearch", label: "论文搜索", prompt: "帮我在 arXiv 上找近一年量子纠错的综述论文" },
   { icon: "humanize", label: "文章人味化", prompt: "帮我把这段课程论文摘要改得更自然" },
-  { icon: "career", label: "生涯规划", prompt: "帮我排一下研究生三年的学习优先级" },
-  { icon: "knowledgeBase", label: "本地知识库", prompt: "我的知识库里有哪些关于拉格朗日力学的笔记？" },
+  { icon: "career", label: "生涯规划助手", prompt: "帮我排一下研究生三年的学习优先级" },
 ];
+
+const MODE_LABEL: Record<ChatMode, string> = {
+  companion: "日常陪伴",
+  study: "学习模式",
+};
 
 /* ---------- 页面 ---------- */
 
@@ -281,17 +339,60 @@ const SUGGESTIONS: { icon: IconName; label: string; prompt: string }[] = [
  * 聊天内容页桌面模板。
  *
  * 复用可折叠侧栏、消息流、消息操作行、思考摘要与输入区；
- * 状态：正常 / 加载中 / 空（建议卡空白态）/ 错误 / 未登录。
+ * 顶部提供「日常陪伴 / 学习模式」切换（按对话持久化，见 ADR-0022）。
+ * 新聊天为空白态：轮播学习名言 + 居中输入区 + 输入区下方功能推荐；
+ * 打开对话后输入区沉底。页面状态由系统行为自动转换
+ * （打开对话→加载→正常、发送失败→重试），不提供可见的状态切换按钮；
+ * 开发验收可用 `?state=` 参数直接落在指定状态。
  */
 export function ChatTemplate() {
   const searchParams = useSearchParams();
   const conversationId = searchParams.get("conversation") ?? undefined;
+  const stateForced = searchParams.get("state") !== null;
   const active = DEMO_RECENTS.find((item) => item.id === conversationId);
 
-  const [state, setState] = useState<TemplateState>("normal");
-  const [messages, setMessages] = useState<ChatMessage[]>(DEMO_MESSAGES);
+  // 新聊天（无 conversation 参数）落在空白态；打开对话先加载再进入正常内容。
+  const [state, setState] = useTemplateState(conversationId ? "loading" : "empty");
+  const [messages, setMessages] = useState<ChatMessage[]>(conversationId ? DEMO_MESSAGES : []);
   const [generating, setGenerating] = useState(false);
   const timerRef = useRef<number | null>(null);
+
+  // 对话模式：每个对话持久化一个当前模式，新对话默认日常陪伴（ADR-0022）。
+  const modeStorageKey = `bridges-template-chat-mode:${conversationId ?? "new"}`;
+  const [mode, setMode] = useState<ChatMode>(
+    active?.mode === "学习" ? "study" : "companion",
+  );
+  useEffect(() => {
+    const stored = window.localStorage.getItem(modeStorageKey);
+    if (stored === "companion" || stored === "study") {
+      setMode(stored);
+    } else {
+      setMode(active?.mode === "学习" ? "study" : "companion");
+    }
+  }, [modeStorageKey, active]);
+
+  // 侧栏在同页内切换会话时同步内容：打开对话→加载→正常；回到新聊天→空白态。
+  useEffect(() => {
+    if (stateForced) return;
+    if (conversationId) {
+      setMessages(DEMO_MESSAGES);
+      setState("loading");
+    } else {
+      setMessages([]);
+      setState("empty");
+    }
+  }, [conversationId, stateForced, setState]);
+  const changeMode = (next: ChatMode) => {
+    setMode(next);
+    window.localStorage.setItem(modeStorageKey, next);
+  };
+
+  // 打开对话时的真实加载过程：加载完成自动进入正常内容（?state= 强制状态时除外）。
+  useEffect(() => {
+    if (stateForced || state !== "loading") return;
+    const timer = window.setTimeout(() => setState("normal"), 600);
+    return () => window.clearTimeout(timer);
+  }, [state, stateForced, setState]);
 
   useEffect(
     () => () => {
@@ -325,10 +426,10 @@ export function ChatTemplate() {
             ? {
                 ...item,
                 status: "done" as const,
-                plainText: `已收到你的问题「${text}」。这是由本地开发模板生成的确定性回答，用于验证流式消息交互。`,
+                plainText: `已收到你的问题「${text}」。这是${MODE_LABEL[mode]}下由本地开发模板生成的确定性回答，用于验证流式消息交互。`,
                 content: (
                   <p style={{ overflowWrap: "break-word" }}>
-                    已收到你的问题「{text}」。这是由本地开发模板生成的确定性回答，用于验证流式消息交互。
+                    已收到你的问题「{text}」。这是{MODE_LABEL[mode]}下由本地开发模板生成的确定性回答，用于验证流式消息交互。
                   </p>
                 ),
               }
@@ -376,6 +477,18 @@ export function ChatTemplate() {
     );
   };
 
+  const footerNote = (
+    <p
+      style={{
+        textAlign: "center",
+        fontSize: "var(--text-xs)",
+        color: "var(--color-text-tertiary)",
+      }}
+    >
+      BridGes 的回答会标注依据与来源；重要内容请核对引用。
+    </p>
+  );
+
   const renderBody = () => {
     if (state === "loading") {
       return <StateBlock kind="loading" title="正在加载对话…" description="正在从本地数据库恢复这条对话的消息记录。" />;
@@ -402,64 +515,6 @@ export function ChatTemplate() {
             window.location.href = "/templates/login";
           }}
         />
-      );
-    }
-    if (state === "empty") {
-      return (
-        <div
-          data-testid="state-empty"
-          style={{
-            flex: 1,
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "var(--space-6)",
-            padding: "var(--space-6)",
-          }}
-        >
-          <h1 style={{ fontSize: "var(--text-2xl)", textAlign: "center" }}>
-            今天想解决什么科学问题？
-          </h1>
-          <ul
-            role="list"
-            aria-label="建议入口"
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
-              gap: "var(--space-3)",
-              width: "100%",
-              maxWidth: "var(--chat-column-width)",
-            }}
-          >
-            {SUGGESTIONS.map((item) => (
-              <li key={item.label}>
-                <button
-                  type="button"
-                  onClick={() => handleSend(item.prompt)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-2)",
-                    width: "100%",
-                    minHeight: "var(--target-size)",
-                    padding: "var(--space-3) var(--space-4)",
-                    border: "1px solid var(--color-border)",
-                    borderRadius: "var(--radius-lg)",
-                    backgroundColor: "var(--color-surface)",
-                    color: "var(--color-text-secondary)",
-                    fontSize: "var(--text-sm)",
-                    textAlign: "left",
-                    cursor: "pointer",
-                  }}
-                >
-                  <Icon name={item.icon} size={18} aria-hidden />
-                  {item.label}
-                </button>
-              </li>
-            ))}
-          </ul>
-        </div>
       );
     }
     if (state === "success") {
@@ -525,61 +580,126 @@ export function ChatTemplate() {
           >
             {active ? active.title : "新聊天"}
           </h1>
-          <StateSwitcher value={state} onChange={setState} />
+          <ModeToggle value={mode} onChange={changeMode} />
         </div>
 
-        <div
-          data-testid="chat-scroll-region"
-          style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}
-        >
-          {renderBody()}
-        </div>
-
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "var(--chat-column-width)",
-            margin: "0 auto",
-            padding: "var(--space-3) var(--space-6) var(--space-4)",
-            flexShrink: 0,
-          }}
-        >
-          {composerAvailable ? (
-            <Composer onSend={handleSend} generating={generating} onStop={handleStop} />
-          ) : (
-            <p
-              role="status"
-              data-testid="composer-unavailable"
+        {state === "empty" ? (
+          <div
+            data-testid="chat-scroll-region"
+            style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}
+          >
+            <div
+              data-testid="state-empty"
               style={{
-                padding: "var(--space-3)",
-                border: "1px solid var(--color-border)",
-                borderRadius: "var(--radius-lg)",
-                backgroundColor: "var(--color-bg-secondary)",
-                color: "var(--color-text-secondary)",
-                textAlign: "center",
-                fontSize: "var(--text-sm)",
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "var(--space-5)",
+                padding: "var(--space-6)",
               }}
             >
-              {state === "loading"
-                ? "对话恢复完成后即可继续输入。"
-                : state === "error"
-                  ? "请先重试恢复对话，再继续输入。"
-                  : state === "permission"
-                    ? "登录后才能发送消息或选择附件。"
-                    : "返回正常对话后即可继续输入。"}
-            </p>
-          )}
-          <p
-            style={{
-              marginTop: "var(--space-2)",
-              textAlign: "center",
-              fontSize: "var(--text-xs)",
-              color: "var(--color-text-tertiary)",
-            }}
-          >
-            BridGes 的回答会标注依据与来源；重要内容请核对引用。
-          </p>
-        </div>
+              <div
+                style={{
+                  width: "100%",
+                  maxWidth: "var(--chat-column-width)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-4)",
+                }}
+              >
+                <RotatingQuote />
+                <Composer onSend={handleSend} generating={generating} onStop={handleStop} />
+                <ul
+                  role="list"
+                  aria-label="功能推荐"
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    justifyContent: "center",
+                    gap: "var(--space-2)",
+                  }}
+                >
+                  {SUGGESTIONS.map((item) => (
+                    <li key={item.label}>
+                      <button
+                        type="button"
+                        onClick={() => handleSend(item.prompt)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "var(--space-2)",
+                          minHeight: "var(--target-size)",
+                          padding: "var(--space-2) var(--space-4)",
+                          border: "1px solid var(--color-border)",
+                          borderRadius: "var(--radius-full)",
+                          backgroundColor: "var(--color-surface)",
+                          color: "var(--color-text-secondary)",
+                          fontSize: "var(--text-sm)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <Icon name={item.icon} size={18} aria-hidden />
+                        {item.label}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {footerNote}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div
+              data-testid="chat-scroll-region"
+              style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column" }}
+            >
+              {renderBody()}
+            </div>
+
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "var(--chat-column-width)",
+                margin: "0 auto",
+                padding: "var(--space-3) var(--space-6) var(--space-4)",
+                flexShrink: 0,
+                display: "flex",
+                flexDirection: "column",
+                gap: "var(--space-2)",
+              }}
+            >
+              {composerAvailable ? (
+                <Composer onSend={handleSend} generating={generating} onStop={handleStop} />
+              ) : (
+                <p
+                  role="status"
+                  data-testid="composer-unavailable"
+                  style={{
+                    padding: "var(--space-3)",
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-lg)",
+                    backgroundColor: "var(--color-bg-secondary)",
+                    color: "var(--color-text-secondary)",
+                    textAlign: "center",
+                    fontSize: "var(--text-sm)",
+                  }}
+                >
+                  {state === "loading"
+                    ? "对话恢复完成后即可继续输入。"
+                    : state === "error"
+                      ? "请先重试恢复对话，再继续输入。"
+                      : state === "permission"
+                        ? "登录后才能发送消息或选择附件。"
+                        : "返回正常对话后即可继续输入。"}
+                </p>
+              )}
+              {footerNote}
+            </div>
+          </>
+        )}
       </div>
     </TemplateShell>
   );

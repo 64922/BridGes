@@ -1,11 +1,12 @@
 "use client";
 
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
 import { BrandLogo } from "@/components/bridges/BrandLogo";
 import { FormField } from "@/components/bridges/FormField";
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { StateSwitcher, type TemplateState } from "@/components/bridges/StateSwitcher";
+import { useTemplateState } from "@/components/bridges/use-template-state";
 import { Button } from "@/components/design-system/Button";
 import { ErrorSummary } from "@/components/design-system/ErrorSummary";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
@@ -13,19 +14,24 @@ import { LoadingStatus } from "@/components/design-system/LoadingStatus";
 /**
  * 登录页桌面模板。
  *
+ * 登录标识接受用户名或 QQ 邮箱（见 ADR-0003），加密码即可登录。
  * 状态：正常（可真实填写与校验）/ 提交中 / 空（初始未填写）/ 错误（登录失败摘要）/
  * 未登录（会话失效提示）。真实认证流程由 Issue 07 接入。
+ * 页面状态由系统行为自动转换；开发验收可用 `?state=` 参数落在指定状态。
  */
 export function LoginTemplate() {
-  const [state, setState] = useState<TemplateState>("normal");
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const from = searchParams.get("from");
+
+  const [state, setState] = useTemplateState("normal");
+  const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const errors: Record<string, string> = {};
-    if (!email.trim()) errors.email = "请输入 QQ 邮箱地址。";
+    if (!identifier.trim()) errors.identifier = "请输入用户名或 QQ 邮箱。";
     if (!password.trim()) errors.password = "请输入密码。";
     setFieldErrors(errors);
     const firstInvalid = Object.keys(errors)[0];
@@ -51,14 +57,6 @@ export function LoginTemplate() {
         padding: "var(--space-6)",
       }}
     >
-      <StateSwitcher
-        value={state}
-        onChange={(next) => {
-          setState(next);
-          setFieldErrors({});
-        }}
-      />
-
       <div className="sc-card" style={{ width: "100%", maxWidth: "24rem" }}>
         <div style={{ marginBottom: "var(--space-4)" }}>
           <BrandLogo variant="horizontal" width={150} />
@@ -67,6 +65,39 @@ export function LoginTemplate() {
         <p style={{ color: "var(--color-text-secondary)", marginBottom: "var(--space-6)" }}>
           连接你与知识之桥。账户是画像、对话与学习项目的归属边界。
         </p>
+
+        {from === "switch" && (
+          <div
+            role="status"
+            style={{
+              padding: "var(--space-3)",
+              marginBottom: "var(--space-4)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-border)",
+              backgroundColor: "var(--color-bg-secondary)",
+              color: "var(--color-text-secondary)",
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            切换账号：登录本设备上的另一个 BridGes 账户，当前账户的本地数据仍会保留。
+          </div>
+        )}
+        {from === "logout" && (
+          <div
+            role="status"
+            style={{
+              padding: "var(--space-3)",
+              marginBottom: "var(--space-4)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-status-success)",
+              backgroundColor: "var(--color-status-success-bg)",
+              color: "var(--color-status-success)",
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            你已退出登录。本机保存的画像与对话仍属于你的账户，重新登录后恢复。
+          </div>
+        )}
 
         {state === "permission" && (
           <div
@@ -90,7 +121,7 @@ export function LoginTemplate() {
 
         {state === "error" && (
           <>
-            <ErrorSummary errors={["邮箱或密码不正确，请检查后重试。"]} />
+            <ErrorSummary errors={["用户名/邮箱或密码不正确，请检查后重试。"]} />
             <Button variant="secondary" size="sm" onClick={() => setState("recovery")}>
               恢复登录表单
             </Button>
@@ -123,16 +154,15 @@ export function LoginTemplate() {
             style={{ border: "none", display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
           >
             <FormField
-              id="email"
-              label="QQ 邮箱"
-              type="email"
-              autoComplete="email"
+              id="identifier"
+              label="用户名或 QQ 邮箱"
+              autoComplete="username"
               required
-              value={email}
-              onChange={setEmail}
-              error={fieldErrors.email}
-              hint={state === "empty" ? "表单尚未填写：请输入注册时使用的 QQ 邮箱。" : undefined}
-              placeholder="例如 123456@qq.com"
+              value={identifier}
+              onChange={setIdentifier}
+              error={fieldErrors.identifier}
+              hint={state === "empty" ? "表单尚未填写：请输入注册时使用的用户名或 QQ 邮箱。" : undefined}
+              placeholder="例如 桥桥 或 123456@qq.com"
             />
             <FormField
               id="password"

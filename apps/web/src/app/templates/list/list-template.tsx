@@ -8,8 +8,8 @@ import { Dialog } from "@/components/bridges/Dialog";
 import { FormField } from "@/components/bridges/FormField";
 import { Menu } from "@/components/bridges/Menu";
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { StateSwitcher, type TemplateState } from "@/components/bridges/StateSwitcher";
 import { TemplateShell, DEMO_RECENTS } from "@/components/bridges/TemplateShell";
+import { useTemplateState } from "@/components/bridges/use-template-state";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { Button } from "@/components/design-system/Button";
 import { StatusBadge } from "@/components/design-system/StatusBadge";
@@ -158,7 +158,7 @@ export function ListTemplate() {
   const sectionKey = searchParams.get("section") ?? "conversations";
   const section = SECTIONS.find((item) => item.key === sectionKey) ?? SECTIONS[0];
 
-  const [state, setState] = useState<TemplateState>("normal");
+  const [state, setState] = useTemplateState("normal");
   const [query, setQuery] = useState("");
   const [items, setItems] = useState(section.items);
   const [editingItem, setEditingItem] = useState<ListItem | null>(null);
@@ -348,7 +348,7 @@ export function ListTemplate() {
   };
 
   return (
-    <TemplateShell>
+    <TemplateShell activeModule={section.key}>
       <div
         style={{
           width: "100%",
@@ -360,22 +360,11 @@ export function ListTemplate() {
           gap: "var(--space-4)",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            alignItems: "flex-start",
-            justifyContent: "space-between",
-            gap: "var(--space-3)",
-            flexWrap: "wrap",
-          }}
-        >
-          <div>
-            <h1 style={{ fontSize: "var(--text-2xl)" }}>{section.title}</h1>
-            <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
-              {section.description}
-            </p>
-          </div>
-          <StateSwitcher value={state} onChange={setState} />
+        <div>
+          <h1 style={{ fontSize: "var(--text-2xl)" }}>{section.title}</h1>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+            {section.description}
+          </p>
         </div>
 
         <div>

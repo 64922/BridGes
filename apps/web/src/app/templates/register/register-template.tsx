@@ -5,7 +5,7 @@ import { useState } from "react";
 import { BrandLogo } from "@/components/bridges/BrandLogo";
 import { FormField } from "@/components/bridges/FormField";
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { StateSwitcher, type TemplateState } from "@/components/bridges/StateSwitcher";
+import { useTemplateState } from "@/components/bridges/use-template-state";
 import { Button } from "@/components/design-system/Button";
 import { ErrorSummary } from "@/components/design-system/ErrorSummary";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
@@ -17,7 +17,7 @@ import { LoadingStatus } from "@/components/design-system/LoadingStatus";
  * 密码与确认密码。状态：正常 / 提交中 / 空 / 错误 / 未登录 / 成功 / 恢复。
  */
 export function RegisterTemplate() {
-  const [state, setState] = useState<TemplateState>("normal");
+  const [state, setState] = useTemplateState("normal");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -55,14 +55,6 @@ export function RegisterTemplate() {
         padding: "var(--space-6)",
       }}
     >
-      <StateSwitcher
-        value={state}
-        onChange={(next) => {
-          setState(next);
-          setFieldErrors({});
-        }}
-      />
-
       <div className="sc-card" style={{ width: "100%", maxWidth: "26rem" }}>
         <div style={{ marginBottom: "var(--space-4)" }}>
           <BrandLogo variant="horizontal" width={150} />

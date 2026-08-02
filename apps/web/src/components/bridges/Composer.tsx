@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
+import { Menu } from "./Menu";
 
 interface ComposerProps {
   onSend: (text: string) => void;
@@ -32,12 +33,21 @@ interface SpeechRecognitionLike {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
+/** 「+」菜单中的功能入口：论文搜索 / 文章人味化 / 生涯规划助手 */
+const TOOL_PROMPTS = [
+  { label: "论文搜索", icon: "paperSearch", prefix: "论文搜索：" },
+  { label: "文章人味化", icon: "humanize", prefix: "文章人味化：" },
+  { label: "生涯规划助手", icon: "career", prefix: "生涯规划助手：" },
+] as const;
+
 /**
  * 对话输入区。
  *
  * 键位约定（与行为基线一致）：Enter 发送、Shift+Enter 换行；
- * 空输入时发送按钮禁用并说明原因；生成中发送键变为「停止」；
- * 文件与图片按钮打开真实的本地文件选择器，模板仅保存文件名，不读取文件内容。
+ * 空输入时发送按钮禁用并说明原因；生成中发送键变为「停止」。
+ * 左侧「+」按钮弹出功能菜单：上传文件/图片（真实的本地文件选择器，
+ * 模板仅保存文件名，不读取文件内容）、论文搜索、文章人味化、生涯规划助手；
+ * 听写按钮位于输入区右侧、发送按钮左边。
  */
 export function Composer({ onSend, generating = false, onStop }: ComposerProps) {
   const [text, setText] = useState("");
@@ -46,7 +56,6 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
   const [dictationError, setDictationError] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const canSend = text.trim().length > 0 || attachments.length > 0;
@@ -73,6 +82,17 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
     if (!files) return;
     const names = Array.from(files, (file) => file.name);
     setAttachments((current) => Array.from(new Set([...current, ...names])));
+  };
+
+  const insertToolPrefix = (prefix: string) => {
+    setText((current) => (current.startsWith(prefix) ? current : `${prefix}${current}`));
+    requestAnimationFrame(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+      autoGrow();
+    });
   };
 
   const stopDictation = () => {
@@ -264,36 +284,42 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
           }}
           style={{ display: "none" }}
         />
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          tabIndex={-1}
-          aria-hidden="true"
-          data-testid="composer-image-input"
-          onChange={(event) => {
-            addSelectedFiles(event.target.files);
-            event.target.value = "";
+        <Menu
+          ariaLabel="更多功能"
+          openUp
+          trigger={<Icon name="plus" size={20} aria-hidden />}
+          triggerStyle={{
+            width: "var(--target-size)",
+            padding: 0,
+            justifyContent: "center",
+            border: "1px solid var(--color-border)",
           }}
-          style={{ display: "none" }}
+          items={[
+            {
+              label: "上传文件/图片",
+              icon: "uploadFile",
+              onSelect: () => fileInputRef.current?.click(),
+            },
+            ...TOOL_PROMPTS.map((tool) => ({
+              label: tool.label,
+              icon: tool.icon,
+              onSelect: () => insertToolPrefix(tool.prefix),
+            })),
+          ]}
         />
-        <button
-          type="button"
-          aria-label="上传文件"
-          onClick={() => fileInputRef.current?.click()}
-          style={iconButtonStyle}
-        >
-          <Icon name="uploadFile" size={20} aria-hidden />
-        </button>
-        <button
-          type="button"
-          aria-label="上传图片"
-          onClick={() => imageInputRef.current?.click()}
-          style={iconButtonStyle}
-        >
-          <Icon name="uploadImage" size={20} aria-hidden />
-        </button>
+
+        <span style={{ flex: 1 }} />
+
+        {dictating && (
+          <span role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-accent-primary)" }}>
+            听写中，请开始说话…
+          </span>
+        )}
+        {dictationError && (
+          <span role="alert" style={{ fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
+            {dictationError}
+          </span>
+        )}
         <button
           type="button"
           aria-label={dictating ? "停止听写" : "开始听写"}
@@ -306,18 +332,6 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
         >
           <Icon name="dictation" size={20} aria-hidden />
         </button>
-        {dictating && (
-          <span role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-accent-primary)" }}>
-            听写中，请开始说话…
-          </span>
-        )}
-        {dictationError && (
-          <span role="alert" style={{ fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-            {dictationError}
-          </span>
-        )}
-
-        <span style={{ flex: 1 }} />
 
         {generating ? (
           <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
