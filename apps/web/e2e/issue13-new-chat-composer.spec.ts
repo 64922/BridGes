@@ -26,14 +26,16 @@ const FIVE_QUOTES = [
 
 function sseStream(messageId: string, userMessageId: string, delta: string, done: boolean) {
   const started = `event: started\ndata: ${JSON.stringify({
+    kind: "started",
     conversation_id: "mock-1",
     user_message_id: userMessageId,
     message_id: messageId,
     attempt_number: 1,
   })}\n\n`;
-  const deltaEvent = `event: delta\ndata: ${JSON.stringify({ message_id: messageId, delta })}\n\n`;
+  const deltaEvent = `event: delta\ndata: ${JSON.stringify({ kind: "delta", message_id: messageId, delta })}\n\n`;
   if (!done) return `${started}${deltaEvent}`;
   const doneEvent = `event: done\ndata: ${JSON.stringify({
+    kind: "done",
     message_id: messageId,
     message: {
       message_id: messageId,

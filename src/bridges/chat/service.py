@@ -9,15 +9,15 @@ error / stopped）、用户级重试（每次重试新建助手尝试，历史�
 from __future__ import annotations
 
 import secrets
-import threading
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol
 
 from bridges.ai import ModelGateway
-from bridges.ai.streaming import StreamEvent
+from bridges.ai.adapters import StreamEvent
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
+from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
     ConversationRepository,
     MessageRecord,
@@ -45,18 +45,56 @@ CHAT_CAPABILITY_VERSION = "1"
 CHAT_MODE = ChatMode.COMPANION
 
 
+class OrchestrationStep(Protocol):
+    """模式编排中的一步（Issue 14 声明的代码级编排 seam）。
+
+    每步向用户披露一条可公开进度（``describe``），并在后续 Issue 接入
+    真实行为（教学证据充足性门、自动联网检索、理解检查、测验）时扩展
+    ``run`` 钩子；当前全部步骤为声明式，行为零变化。
+    """
+
+    @property
+    def name(self) -> str: ...
+
+    def describe(self) -> str: ...
+
+
+class DeclarativeStep:
+    """声明式编排步骤：当前只提供可披露进度，不产生行为。
+
+    后续 Issue 引入真实能力时，用带 ``run`` 的步骤替换对应声明项，
+    或在此类上扩展可选钩子；生成主路径与思考摘要无需改写。
+    """
+
+    def __init__(self, name: str, description: str) -> None:
+        self._name = name
+        self._description = description
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def describe(self) -> str:
+        return self._description
+
+
 class ModeContract:
     """对话模式的回答策略合同（Issue 14，AC-05/AC-04 的代码级编排接口）。
 
-    每种模式一份合同，是后续能力接入的单一 seam：新增编排能力（画像、
-    材料检索、教学规划、理解检查、测验）时，在学习模式合同上扩展钩子，
-    不重写生成主路径。
+    每种模式一份合同，是后续能力接入的单一 seam：编排能力（画像、材料
+    检索、教学规划、理解检查、测验）作为合同声明的步骤接入，不重写生成
+    主路径；思考摘要的初始步骤从 ``steps`` 派生，合同是唯一来源。
     """
 
-    def __init__(self, system_prompt: str, initial_thinking: list[str]) -> None:
+    def __init__(
+        self,
+        system_prompt: str,
+        steps: tuple[OrchestrationStep, ...],
+    ) -> None:
         self.system_prompt = system_prompt
-        #: 生成开始即展示的可公开初始步骤（流式期间随生命周期追加结论）
-        self.initial_thinking = initial_thinking
+        #: 合同声明的编排步骤（按执行顺序）；生成开始即全部披露为
+        #: 可公开进度，生命周期只在其后追加质量检查结论。
+        self.steps = steps
 
 
 #: 两种模式的角色合同（不包含隐藏指令或原始思维链，只定义回答策略）。
@@ -76,10 +114,10 @@ _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
             "表达要简洁、真诚、不居高临下。涉及健康、心理等话题时，如实说明你能帮助的"
             "范围，需要专业意见时建议咨询专业人士。"
         ),
-        initial_thinking=[
-            "理解你的问题与当前语境",
-            "组织并生成回答",
-        ],
+        steps=(
+            DeclarativeStep("context", "理解你的问题与当前语境"),
+            DeclarativeStep("answer", "组织并生成回答"),
+        ),
     ),
     ChatMode.STUDY: ModeContract(
         system_prompt=(
@@ -94,10 +132,12 @@ _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
             "后续的画像、材料检索、教学规划、理解检查与测验功能会逐步接入本合同；"
             "尚未接入的功能不得伪造结果。"
         ),
-        initial_thinking=[
-            "按学习目标分析你的问题与已有知识",
-            "组织循序渐进的教学回答",
-        ],
+        # 编排步骤与提示词合同一致；后续教学证据充足性门、自动联网检索、
+        # 理解检查与测验作为带 run 的步骤接入（Issue 23+），替换声明项即可。
+        steps=(
+            DeclarativeStep("teaching_objective", "按学习目标分析你的问题与已有知识"),
+            DeclarativeStep("teaching_explain", "组织循序渐进的教学回答"),
+        ),
     ),
 }
 
@@ -107,9 +147,6 @@ def _contract(mode: ChatMode) -> ModeContract:
 
 #: 由首条用户消息推导对话标题的最大长度。
 _TITLE_MAX = 24
-
-#: 进行中的生成在注册表中活跃超过该时长仍未被收敛时，视为僵死可清理。
-_STALE_STREAMING_TTL_SECONDS = 60.0
 
 #: 生成失败/断流时向用户展示的中文说明（稳定错误码 → 可操作提示）。
 STREAM_INTERRUPTED_MESSAGE = "连接中断，已保留已接收内容，可点击重试。"
@@ -171,9 +208,8 @@ class ChatService:
         self._repo = repository
         self._gateway = gateway
         self._attachments = attachment_service
-        #: 进行中生成的停止信号（message_id → 事件与生成启动时刻）。
-        self._stops: dict[str, tuple[threading.Event, float]] = {}
-        self._stops_guard = threading.Lock()
+        #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
+        self._lifecycle = GenerationLifecycle()
 
     # ------------------------------------------------------------------
     # 对话
@@ -356,7 +392,7 @@ class ChatService:
         now = datetime.now(UTC)
         for message in messages:
             if message.status == ChatMessageStatus.STREAMING:
-                if self._is_active_generation(message.message_id, now):
+                if self._lifecycle.is_active(message.message_id):
                     # 生成仍在进行：读取不打断流
                     continue
                 stale_thinking = _failed_thinking(
@@ -477,8 +513,8 @@ class ChatService:
             self._repo.insert_message(user_message)
             self._repo.insert_message(assistant_message)
         self._repo.touch_conversation(account_id, conversation_id, now)
-        # 预注册停止事件：生成一经创建即视为"活跃"，读取收敛不会误伤
-        self._register_stop(assistant_message.message_id)
+        # 预注册停止信号：生成一经创建即视为"活跃"，读取收敛不会误伤
+        self._lifecycle.register(assistant_message.message_id)
 
         if not record.title:
             title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
@@ -513,15 +549,12 @@ class ChatService:
         ):
             return
 
-        # 复用 start/retry 阶段预注册的停止事件（保证注册表在 start 即
+        # 复用 start/retry 阶段预注册的停止信号（保证注册表在 start 即
         # 生效，读取陈旧收敛不会误伤进行中的流）；缺失时补注册。
-        with self._stops_guard:
-            entry = self._stops.get(assistant_message_id)
-            if entry is not None:
-                stop_event, _ = entry
-            else:
-                stop_event = threading.Event()
-                self._stops[assistant_message_id] = (stop_event, time.monotonic())
+        entry = self._lifecycle.signal_and_started(assistant_message_id)
+        stop_event = (
+            entry[0] if entry is not None else self._lifecycle.register(assistant_message_id)
+        )
         content = ""
         started = time.monotonic()
         conversation = self._repo.get_conversation(account_id, conversation_id)
@@ -560,7 +593,7 @@ class ChatService:
                     self._repo.update_message_content(
                         account_id, assistant_message_id, content, datetime.now(UTC)
                     )
-                    self._touch_stop(assistant_message_id)
+                    self._lifecycle.touch(assistant_message_id)
                     yield event
                 elif event.kind == "error":
                     self._persist_lock(account_id, event.lock)
@@ -635,7 +668,7 @@ class ChatService:
             )
             return
         finally:
-            self._unregister_stop(assistant_message_id)
+            self._lifecycle.unregister(assistant_message_id)
 
     def stop_generation(
         self, account_id: str, conversation_id: str, message_id: str
@@ -649,12 +682,9 @@ class ChatService:
         if message.status != ChatMessageStatus.STREAMING:
             return self._project_message(message)
 
-        stop_event: threading.Event | None = None
-        started: float | None = None
-        with self._stops_guard:
-            entry = self._stops.get(message_id)
-            if entry is not None:
-                stop_event, started = entry
+        entry = self._lifecycle.signal_and_started(message_id)
+        stop_event = entry[0] if entry is not None else None
+        started = entry[1] if entry is not None else None
         if stop_event is not None:
             stop_event.set()
         now = datetime.now(UTC)
@@ -680,7 +710,7 @@ class ChatService:
             now=now,
             thinking=_stopped_thinking(message.thinking or _initial_thinking(CHAT_MODE)),
         )
-        self._unregister_stop(message_id)
+        self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
         if finalized is None:
             raise ChatDomainError(
@@ -750,7 +780,7 @@ class ChatService:
         )
         self._repo.insert_message(new_attempt)
         self._repo.touch_conversation(account_id, conversation_id, now)
-        self._register_stop(new_attempt.message_id)
+        self._lifecycle.register(new_attempt.message_id)
         return (
             self._project_message(owner),
             self._project_message(new_attempt),
@@ -764,37 +794,6 @@ class ChatService:
         if message is None:
             return None
         return self._project_message(message)
-
-    def _register_stop(self, message_id: str) -> None:
-        """预注册一条生成的停止信号（生成一经创建即视为活跃）。"""
-        with self._stops_guard:
-            if message_id not in self._stops:
-                self._stops[message_id] = (threading.Event(), time.monotonic())
-
-    def _touch_stop(self, message_id: str) -> None:
-        """刷新活跃时间戳：每个增量产出都续期，避免长时间流被误判僵死。"""
-        with self._stops_guard:
-            entry = self._stops.get(message_id)
-            if entry is not None:
-                self._stops[message_id] = (entry[0], time.monotonic())
-
-    def _unregister_stop(self, message_id: str) -> None:
-        with self._stops_guard:
-            self._stops.pop(message_id, None)
-
-    def _is_active_generation(self, message_id: str, now: datetime) -> bool:
-        """消息是否处于"进行中"的生成（读取陈旧收敛时用于豁免活跃流）。
-
-        注册表中存在且未超过 TTL 视为活跃；进程重启后注册表为空，遗留的
-        streaming 消息一律收敛。``now`` 仅用于保持调用方语义，TTL 判定
-        使用单调时钟。
-        """
-        del now
-        with self._stops_guard:
-            entry = self._stops.get(message_id)
-            if entry is None:
-                return False
-            return time.monotonic() - entry[1] < _STALE_STREAMING_TTL_SECONDS
 
     # ------------------------------------------------------------------
     # 内部
@@ -1001,11 +1000,12 @@ def _attempt_group(
 def _initial_thinking(mode: ChatMode) -> dict[str, list[str]]:
     """生成开始时的初始摘要（前端据此自动展开思考区域）。
 
-    初始即含该模式的完整编排步骤（来自合同）；生命周期只在其后追加
-    质量检查结论，杜绝「首 delta 才补第二步」的时序缺口。
+    初始即含该模式的完整编排步骤（来自合同的 ``steps``，合同是唯一
+    来源）；生命周期只在其后追加质量检查结论，杜绝「首 delta 才补
+    第二步」的时序缺口。
     """
     return {
-        "steps": list(_contract(mode).initial_thinking),
+        "steps": [step.describe() for step in _contract(mode).steps],
         "evidence": [],
         "tools": [],
         "quality": [],

@@ -5,15 +5,13 @@ All dependencies are logical; concrete infrastructure checks are added as they
 are implemented in later tickets.
 """
 
-from typing import Callable
+from collections.abc import Callable
 
 from pydantic import ValidationError
 
 from bridges import __version__
 from bridges.config import get_settings
 from bridges.contracts.health import DependencyHealth, HealthProjection, HealthStatus
-from bridges.contracts.observability import SLIMetricKind, SLISeverity
-
 
 REQUIRED_DEPENDENCIES = ["configuration"]
 OPTIONAL_DEPENDENCIES: list[str] = ["observability"]
@@ -38,25 +36,17 @@ def _probe_configuration() -> DependencyHealth:
 
 
 def _probe_observability() -> DependencyHealth:
-    """T010: verify the observability contract modules are importable and sane."""
+    """T010: verify the observability contract modules are importable.
+
+    只做无副作用的轻量检查（实例化 + 一次空查询），不注册一次性
+    SLI/SLO——那是冒烟测试伪装成健康检查，每次就绪探针都会产生
+    立即丢弃的垃圾对象。
+    """
     try:
         from bridges.observability.service import ObservabilityService
 
         service = ObservabilityService()
-        sli = service.register_sli(
-            workload_name="health_probe",
-            metric_kind=SLIMetricKind.AVAILABILITY,
-            description="Health probe availability check",
-            unit="ratio",
-            window="1m",
-            owner="platform",
-        )
-        service.register_slo(
-            sli_id=sli.sli_id,
-            target=0.99,
-            alert_threshold=0.95,
-            severity=SLISeverity.HIGH,
-        )
+        service.list_audit_events()
     except Exception as exc:  # noqa: BLE001
         return DependencyHealth(
             name="observability",
@@ -68,7 +58,7 @@ def _probe_observability() -> DependencyHealth:
         name="observability",
         status=HealthStatus.PASS,
         required=False,
-        message="Observability contract loaded and SLI/SLO registration works",
+        message="Observability contract loaded",
     )
 
 

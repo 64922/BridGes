@@ -17,7 +17,7 @@ import pytest
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import AdapterError, AuthError, RateLimitError
 from bridges.ai.capability_registry import CapabilityRegistry
-from bridges.ai.streaming import StreamChunk
+from bridges.ai.adapters import StreamChunk
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import (
     STREAM_INTERRUPTED_MESSAGE,

@@ -38,6 +38,7 @@ from bridges.contracts.workflows import (
     WorkflowRunStatus,
 )
 from bridges.observability.service import ObservabilityService
+from bridges.observability.sli_registry import SLIRegistry
 from bridges.observability.telemetry_context import TelemetryCorrelationScope
 from bridges.workflows import WorkflowService
 
@@ -233,8 +234,9 @@ def test_observability_payload_does_not_contain_private_body() -> None:
 
 
 def test_new_workload_can_register_sli() -> None:
-    observability = ObservabilityService()
-    sli = observability.register_sli(
+    """SLI/SLO 注册直接由 SLIRegistry 承担（门面瘦身后不再转发）。"""
+    registry = SLIRegistry()
+    sli = registry.register_sli(
         workload_name="future_ingestion",
         metric_kind=SLIMetricKind.CORRECTNESS,
         description="Claim correctness rate for ingestion pipeline",
@@ -243,7 +245,7 @@ def test_new_workload_can_register_sli() -> None:
         owner="data-platform",
         runbook_url="https://runbooks.example/ingestion-correctness",
     )
-    slo = observability.register_slo(
+    slo = registry.register_slo(
         sli_id=sli.sli_id,
         target=0.98,
         alert_threshold=0.90,
@@ -254,6 +256,6 @@ def test_new_workload_can_register_sli() -> None:
     assert slo.alert_threshold == 0.90
     assert slo.severity == SLISeverity.HIGH
 
-    slis = observability.list_slis(workload_name="future_ingestion")
+    slis = registry.list_slis(workload_name="future_ingestion")
     assert len(slis) == 1
     assert slis[0].owner == "data-platform"

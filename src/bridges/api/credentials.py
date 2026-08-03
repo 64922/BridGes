@@ -7,7 +7,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -45,7 +45,28 @@ def _error(http_status: int, code: str, message: str) -> HTTPException:
     )
 
 
-def _require_recent_auth(identity_service: Any, session_id: str) -> None:
+class RecentAuthService(Protocol):
+    """敏感操作路由需要的近期认证判定（IdentityService 的窄接口）。"""
+
+    def requires_recent_auth(self, session_id: str) -> bool: ...
+
+
+def _get_identity_service(request: Request) -> RecentAuthService:
+    service: RecentAuthService | None = getattr(
+        request.app.state, "identity_service", None
+    )
+    if service is None:
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "identity_unavailable",
+            "身份服务未启用，当前实例拒绝敏感设置操作。",
+        )
+    return service
+
+
+def _require_recent_auth(
+    identity_service: RecentAuthService, session_id: str
+) -> None:
     """强制当前账户近期密码确认（敏感设置门）。"""
     try:
         needs_reauthentication = identity_service.requires_recent_auth(session_id)
@@ -61,8 +82,12 @@ def _require_recent_auth(identity_service: Any, session_id: str) -> None:
         )
 
 
-def _get_identity_service(request: Request) -> Any:
-    return getattr(request.app.state, "identity_service", None)
+def _require_recent_auth_dependency(request: Request, subject: SubjectDep) -> None:
+    """FastAPI dependency：敏感路由声明即门控（统一入口，删除逐路由内联）。"""
+    _require_recent_auth(_get_identity_service(request), subject.session_id)
+
+
+RecentAuthRequired = Annotated[None, Depends(_require_recent_auth_dependency)]
 
 
 @router.get(
@@ -75,12 +100,11 @@ def _get_identity_service(request: Request) -> Any:
     },
 )
 async def get_key_settings(
-    request: Request,
+    _recent_auth: RecentAuthRequired,
     service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> KeySettingsProjection:
     """返回当前账户密钥配置与固定能力探测状态（不含秘密正文）。"""
-    _require_recent_auth(_get_identity_service(request), subject.session_id)
     try:
         return service.get_projection(subject.account_id)
     except CredentialStoreError as exc:
@@ -99,13 +123,12 @@ async def get_key_settings(
     },
 )
 async def save_key_settings(
-    request: Request,
+    _recent_auth: RecentAuthRequired,
     body: KeySaveRequest,
     service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> KeySettingsProjection:
     """保存或替换当前账户百炼 Key，并触发固定能力真实探测。"""
-    _require_recent_auth(_get_identity_service(request), subject.session_id)
     try:
         return service.save(
             subject.account_id, body.key, session_id=subject.session_id
@@ -126,12 +149,11 @@ async def save_key_settings(
     },
 )
 async def delete_key_settings(
-    request: Request,
+    _recent_auth: RecentAuthRequired,
     service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> KeySettingsProjection:
     """删除当前账户百炼 Key 并复位探测状态。"""
-    _require_recent_auth(_get_identity_service(request), subject.session_id)
     try:
         return service.delete(subject.account_id, session_id=subject.session_id)
     except CredentialStoreError as exc:
@@ -150,12 +172,11 @@ async def delete_key_settings(
     },
 )
 async def probe_all_capabilities(
-    request: Request,
+    _recent_auth: RecentAuthRequired,
     service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> KeySettingsProjection:
     """对固定能力矩阵重新执行全量真实探测。"""
-    _require_recent_auth(_get_identity_service(request), subject.session_id)
     try:
         service.schedule_probes(subject.account_id, session_id=subject.session_id)
         return service.get_projection(subject.account_id)
@@ -177,12 +198,11 @@ async def probe_all_capabilities(
 )
 async def retry_capability_probe(
     capability_id: str,
-    request: Request,
+    _recent_auth: RecentAuthRequired,
     service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> KeySettingsProjection:
     """对单项能力执行同模型重试（无备用模型、无隐藏降级）。"""
-    _require_recent_auth(_get_identity_service(request), subject.session_id)
     try:
         service.schedule_retry(
             subject.account_id, capability_id, session_id=subject.session_id

@@ -86,7 +86,7 @@ class ConversationRepository:
         updated_at = created_at
         try:
             with self._db.transaction():
-                self._db.connection.execute(
+                self._db.scoped(account_id).execute(
                     "INSERT INTO conversations"
                     "(conversation_id, account_id, title, mode, pinned, project_id,"
                     " created_at, updated_at)"
@@ -109,7 +109,7 @@ class ConversationRepository:
     def get_conversation(
         self, account_id: str, conversation_id: str
     ) -> ConversationRecord | None:
-        row = self._db.connection.execute(
+        row = self._db.scoped(account_id).execute(
             "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
             " created_at, updated_at"
             " FROM conversations WHERE conversation_id = ? AND account_id = ?",
@@ -120,7 +120,7 @@ class ConversationRepository:
         return self._conversation_from_row(row)
 
     def list_conversations(self, account_id: str) -> list[ConversationRecord]:
-        rows = self._db.connection.execute(
+        rows = self._db.scoped(account_id).execute(
             "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
             " created_at, updated_at FROM conversations WHERE account_id = ?"
             " ORDER BY pinned DESC, updated_at DESC, created_at DESC, conversation_id",
@@ -145,7 +145,7 @@ class ConversationRepository:
         self, account_id: str, conversation_id: str, title: str, updated_at: datetime
     ) -> None:
         with self._db.transaction():
-            self._db.connection.execute(
+            self._db.scoped(account_id).execute(
                 "UPDATE conversations SET title = ?, updated_at = ?"
                 " WHERE conversation_id = ? AND account_id = ?",
                 (title, _iso(updated_at), conversation_id, account_id),
@@ -175,7 +175,7 @@ class ConversationRepository:
         values.append(_iso(updated_at))
         values.extend([conversation_id, account_id])
         with self._db.transaction():
-            cursor = self._db.connection.execute(
+            cursor = self._db.scoped(account_id).execute(
                 "UPDATE conversations SET "
                 + ", ".join(assignments)
                 + " WHERE conversation_id = ? AND account_id = ?",
@@ -186,15 +186,15 @@ class ConversationRepository:
     def delete_conversation(self, account_id: str, conversation_id: str) -> int:
         """删除会话及其消息/模式事件；跨账户目标返回 0。"""
         with self._db.transaction():
-            self._db.connection.execute(
+            self._db.scoped(account_id).execute(
                 "DELETE FROM mode_events WHERE conversation_id = ? AND account_id = ?",
                 (conversation_id, account_id),
             )
-            self._db.connection.execute(
+            self._db.scoped(account_id).execute(
                 "DELETE FROM messages WHERE conversation_id = ? AND account_id = ?",
                 (conversation_id, account_id),
             )
-            cursor = self._db.connection.execute(
+            cursor = self._db.scoped(account_id).execute(
                 "DELETE FROM conversations WHERE conversation_id = ? AND account_id = ?",
                 (conversation_id, account_id),
             )
@@ -204,7 +204,7 @@ class ConversationRepository:
         self, account_id: str, conversation_id: str, updated_at: datetime
     ) -> None:
         with self._db.transaction():
-            self._db.connection.execute(
+            self._db.scoped(account_id).execute(
                 "UPDATE conversations SET updated_at = ?"
                 " WHERE conversation_id = ? AND account_id = ?",
                 (_iso(updated_at), conversation_id, account_id),
@@ -215,7 +215,7 @@ class ConversationRepository:
     ) -> None:
         """更新对话当前模式并刷新活动时间；切换只影响后续消息。"""
         with self._db.transaction():
-            self._db.connection.execute(
+            self._db.scoped(account_id).execute(
                 "UPDATE conversations SET mode = ?, updated_at = ?"
                 " WHERE conversation_id = ? AND account_id = ?",
                 (mode, _iso(updated_at), conversation_id, account_id),
@@ -236,7 +236,7 @@ class ConversationRepository:
         """写入一条可见模式切换事件（按 created_at 与消息同序渲染）。"""
         try:
             with self._db.transaction():
-                self._db.connection.execute(
+                self._db.scoped(account_id).execute(
                     "INSERT INTO mode_events"
                     "(event_id, conversation_id, account_id, from_mode, to_mode,"
                     " created_at) VALUES (?, ?, ?, ?, ?, ?)",
@@ -257,7 +257,7 @@ class ConversationRepository:
     def list_mode_events(
         self, account_id: str, conversation_id: str
     ) -> list[ModeEventRecord]:
-        rows = self._db.connection.execute(
+        rows = self._db.scoped(account_id).execute(
             "SELECT event_id, conversation_id, account_id, from_mode, to_mode,"
             " created_at FROM mode_events WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, event_id",
@@ -280,7 +280,7 @@ class ConversationRepository:
     def insert_message(self, record: MessageRecord) -> None:
         try:
             with self._db.transaction():
-                self._db.connection.execute(
+                self._db.scoped(record.account_id).execute(
                     "INSERT INTO messages"
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
@@ -319,7 +319,7 @@ class ConversationRepository:
         try:
             with self._db.transaction():
                 for record in (user_record, assistant_record):
-                    self._db.connection.execute(
+                    self._db.scoped(user_record.account_id).execute(
                         "INSERT INTO messages"
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
@@ -344,7 +344,7 @@ class ConversationRepository:
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
-                rows = self._db.connection.execute(
+                rows = self._db.scoped(user_record.account_id).execute(
                     "SELECT object_id FROM chat_attachments"
                     " WHERE account_id = ? AND conversation_id = ?"
                     " AND message_id IS NULL AND status = 'uploaded'"
@@ -359,7 +359,7 @@ class ConversationRepository:
                     raise StorageError("附件不存在或没有访问权限。")
                 now = _iso(user_record.updated_at)
                 for object_id in attachment_ids:
-                    self._db.connection.execute(
+                    self._db.scoped(user_record.account_id).execute(
                         "UPDATE chat_attachments SET message_id = ?, status = 'bound',"
                         " updated_at = ? WHERE object_id = ? AND account_id = ?"
                         " AND conversation_id = ? AND message_id IS NULL",
@@ -377,7 +377,7 @@ class ConversationRepository:
             raise StorageError("保存消息与附件失败，请稍后重试。") from exc
 
     def list_messages(self, account_id: str, conversation_id: str) -> list[MessageRecord]:
-        rows = self._db.connection.execute(
+        rows = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at"
@@ -389,7 +389,7 @@ class ConversationRepository:
         return [self._message_from_row(row) for row in rows]
 
     def get_message(self, account_id: str, message_id: str) -> MessageRecord | None:
-        row = self._db.connection.execute(
+        row = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at"
@@ -405,7 +405,7 @@ class ConversationRepository:
     ) -> int:
         """流式增量落库；仅当消息仍处于 streaming 状态时生效，返回影响行数。"""
         with self._db.transaction():
-            cursor = self._db.connection.execute(
+            cursor = self._db.scoped(account_id).execute(
                 "UPDATE messages SET content = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (content, _iso(updated_at), message_id, account_id),
@@ -421,7 +421,7 @@ class ConversationRepository:
     ) -> int:
         """流式更新可公开思考摘要；仅当消息仍处于 streaming 状态时生效。"""
         with self._db.transaction():
-            cursor = self._db.connection.execute(
+            cursor = self._db.scoped(account_id).execute(
                 "UPDATE messages SET thinking = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(thinking), _iso(updated_at), message_id, account_id),
@@ -448,7 +448,7 @@ class ConversationRepository:
         """
         with self._db.transaction():
             if thinking is None:
-                cursor = self._db.connection.execute(
+                cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET status = ?, error_code = ?,"
                     " error_message = ?, duration_ms = ?, model_id = ?,"
                     " run_lock_id = ?, updated_at = ?"
@@ -466,7 +466,7 @@ class ConversationRepository:
                     ),
                 )
             else:
-                cursor = self._db.connection.execute(
+                cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET status = ?, error_code = ?,"
                     " error_message = ?, duration_ms = ?, model_id = ?,"
                     " run_lock_id = ?, updated_at = ?, thinking = ?"
@@ -487,7 +487,7 @@ class ConversationRepository:
             return cursor.rowcount
 
     def message_count(self, account_id: str, conversation_id: str) -> int:
-        row = self._db.connection.execute(
+        row = self._db.scoped(account_id).execute(
             "SELECT COUNT(*) AS n FROM messages WHERE conversation_id = ? AND account_id = ?",
             (conversation_id, account_id),
         ).fetchone()
@@ -498,7 +498,7 @@ class ConversationRepository:
     def insert_run_lock(self, account_id: str, lock: ModelRunLock) -> None:
         """持久化不可变模型运行锁，绑定稳定账户 ID。"""
         with self._db.transaction():
-            self._db.connection.execute(
+            self._db.scoped(account_id).execute(
                 "INSERT INTO model_run_locks"
                 "(lock_id, account_id, capability_name, capability_version,"
                 " actual_model_id, region, status, error_code, error_message,"

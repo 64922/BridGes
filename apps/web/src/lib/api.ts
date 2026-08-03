@@ -23,6 +23,12 @@ export type ChatConversationProjection = components["schemas"]["ChatConversation
 export type ChatConversationSummary = components["schemas"]["ChatConversationSummary"];
 export type ChatConversationListProjection = components["schemas"]["ChatConversationListProjection"];
 export type ChatStopResponse = components["schemas"]["ChatStopResponse"];
+export type ChatStreamEvent = components["schemas"]["ChatStreamEvent"];
+export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
+export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
+export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
+export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
+export type ChatStreamDoneData = components["schemas"]["ChatStreamDoneData"];
 export type ChatMode = components["schemas"]["ChatMode"];
 export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
 export type ChatModeSwitchResponse = components["schemas"]["ChatModeSwitchResponse"];
@@ -50,7 +56,6 @@ export type RevocationEvent = components["schemas"]["RevocationEvent"];
 export type RevalidationReport = components["schemas"]["RevalidationReport"];
 export type PackRollbackRecord = components["schemas"]["PackRollbackRecord"];
 export type PackRollbackStatus = components["schemas"]["PackRollbackStatus"];
-export type DomainPackError = { error?: string; message?: string };
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -71,21 +76,48 @@ export class ApiError extends Error {
   }
 }
 
-async function parseAuthError(res: Response): Promise<ApiError> {
+function errorFromDetail(status: number, detail: unknown): ApiError {
+  // detail 形状统一折叠：AuthError {error, message}、纯 {message}、
+  // 字符串或校验错误数组 → ApiError（含稳定错误码）。
+  if (typeof detail === "string" && detail) {
+    return new ApiError(detail, status);
+  }
+  if (detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const body = detail as { message?: unknown; error?: unknown };
+    const message =
+      typeof body.message === "string" && body.message
+        ? body.message
+        : `请求失败（${status}）`;
+    return new ApiError(message, status, typeof body.error === "string" ? body.error : undefined);
+  }
+  return new ApiError(`请求失败（${status}）`, status);
+}
+
+/** 统一错误解析：认证、领域包与附件路由共用同一语义（单一实现）。 */
+async function parseApiError(res: Response): Promise<ApiError> {
   try {
-    const body: { detail?: AuthError | unknown } = await res.json();
-    if (body.detail && typeof body.detail === "object" && !Array.isArray(body.detail)) {
-      const detail = body.detail as AuthError;
-      const message = detail.message;
-      if (typeof message === "string" && message) {
-        return new ApiError(message, res.status, detail.error);
-      }
+    const body: unknown = await res.json();
+    if (body && typeof body === "object" && "detail" in body) {
+      return errorFromDetail(res.status, (body as { detail?: unknown }).detail);
     }
-    // 422 请求体验证错误等非 AuthError 形态，统一折叠为可展示的中文消息。
-    return new ApiError(`请求失败（${res.status}）`, res.status);
+    return errorFromDetail(res.status, body);
   } catch {
     return new ApiError(`请求失败（${res.status}）`, res.status);
   }
+}
+
+/**
+ * 会话相关错误统一分类（各组件共用，删除逐处自写的 reauth/401 判断）：
+ * - ``reauth``：敏感操作需近期密码确认（403 reauth_required）；
+ * - ``session``：会话过期（401）；
+ * - ``other``：其余错误（保留原错误处理）。
+ */
+export function classifyApiError(error: unknown): "reauth" | "session" | "other" {
+  if (error instanceof ApiError) {
+    if (error.code === "reauth_required") return "reauth";
+    if (error.status === 401) return "session";
+  }
+  return "other";
 }
 
 export async function fetchHealthSummary(options?: { signal?: AbortSignal }): Promise<HealthProjection> {
@@ -105,7 +137,7 @@ export async function fetchSession(): Promise<SessionResponse> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -118,7 +150,7 @@ export async function login(identifier: string, password: string): Promise<AuthR
     body: JSON.stringify({ identifier, password }),
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -128,7 +160,7 @@ export async function listDeviceAccounts(): Promise<DeviceAccountsResponse> {
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -146,7 +178,7 @@ export async function addDeviceAccount(
     credentials: "same-origin",
     body: JSON.stringify({ identifier, password }),
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -163,7 +195,7 @@ export async function switchDeviceAccount(
     credentials: "same-origin",
     body: JSON.stringify({ session_id: sessionId }),
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -181,7 +213,7 @@ export async function reauthenticateDeviceAccount(
     credentials: "same-origin",
     body: JSON.stringify({ session_id: sessionId, password }),
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -193,7 +225,7 @@ export async function logoutCurrentDeviceAccount(
     headers: deviceOperationHeaders(operationId),
     credentials: "same-origin",
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -203,7 +235,7 @@ export async function logoutAllDeviceAccounts(operationId?: number): Promise<voi
     headers: deviceOperationHeaders(operationId),
     credentials: "same-origin",
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function register(
@@ -218,7 +250,7 @@ export async function register(
     body: JSON.stringify({ username, qq_email: qqEmail, password }),
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -229,7 +261,7 @@ export async function logout(): Promise<void> {
     credentials: "same-origin",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
 }
 
@@ -241,7 +273,7 @@ export async function updateProfile(update: AccountProfileUpdate): Promise<Accou
     body: JSON.stringify(update),
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -254,7 +286,7 @@ export async function uploadAvatar(file: File): Promise<Account> {
     body: file,
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -265,7 +297,7 @@ export async function fetchKeySettings(): Promise<KeySettingsProjection> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -278,7 +310,7 @@ export async function saveKeySettings(key: string): Promise<KeySettingsProjectio
     body: JSON.stringify({ key }),
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -289,7 +321,7 @@ export async function deleteKeySettings(): Promise<KeySettingsProjection> {
     credentials: "same-origin",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -302,7 +334,7 @@ export async function retryCapabilityProbe(
     { method: "POST", credentials: "same-origin" }
   );
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -313,7 +345,7 @@ export async function probeAllCapabilities(): Promise<KeySettingsProjection> {
     credentials: "same-origin",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -326,7 +358,7 @@ export async function reauthenticate(password: string): Promise<void> {
     body: JSON.stringify({ password }),
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
 }
 
@@ -338,7 +370,7 @@ export async function createProject(request: ProjectCreateRequest): Promise<Proj
     body: JSON.stringify(request),
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -349,7 +381,7 @@ export async function listProjects(): Promise<ProjectListProjection> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
@@ -360,37 +392,18 @@ export async function getProject(projectId: string): Promise<Project> {
     cache: "no-store",
   });
   if (!res.ok) {
-    throw await parseAuthError(res);
+    throw await parseApiError(res);
   }
   return res.json();
 }
 
-async function parseDomainPackError(res: Response): Promise<DomainPackError> {
-  try {
-    const body: { detail?: unknown } = await res.json();
-    // 领域包路由返回 {error, message} 对象；认证中间件（401）返回字符串、
-    // 校验错误（422）返回数组，统一折叠为可展示的消息。
-    if (typeof body.detail === "string" || Array.isArray(body.detail)) {
-      return { message: body.detail as string };
-    }
-    if (body.detail && typeof body.detail === "object") {
-      const detail = body.detail as { message?: unknown };
-      if (typeof detail.message === "string" && detail.message) {
-        return { message: detail.message };
-      }
-    }
-    return { message: `请求失败（${res.status}）` };
-  } catch {
-    return { message: `请求失败（${res.status}）` };
-  }
-}
 
 export async function listWorkbenchPacks(): Promise<WorkbenchPackRecord[]> {
   const res = await fetch(`${API_BASE}/domain-packs/workbench`, {
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -404,7 +417,7 @@ export async function registerWorkbenchPack(
     credentials: "same-origin",
     body: JSON.stringify({ pack_id: packId, version }),
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -416,7 +429,7 @@ export async function getWorkbenchRecord(
     `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}`,
     { credentials: "same-origin", cache: "no-store" }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -428,7 +441,7 @@ export async function getSemanticDiff(
     `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/semantic-diff`,
     { credentials: "same-origin", cache: "no-store" }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -446,7 +459,7 @@ export async function submitContentSignature(
       body: JSON.stringify({ opinion, conclusion: "approve" }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -464,7 +477,7 @@ export async function assignReviewer(
       body: JSON.stringify({ person_id: personId }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -482,7 +495,7 @@ export async function assignReleaser(
       body: JSON.stringify({ person_id: personId }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -503,7 +516,7 @@ export async function submitIndependentSignature(
       body: JSON.stringify({ opinion, conclusion }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -515,7 +528,7 @@ export async function prepareGrayRelease(
     `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/gray-release`,
     { method: "POST", credentials: "same-origin" }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -527,7 +540,7 @@ export async function releasePack(
     `${API_BASE}/domain-packs/workbench/${encodeURIComponent(packId)}/${encodeURIComponent(version)}/release`,
     { method: "POST", credentials: "same-origin" }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -545,7 +558,7 @@ export async function declareConflictOfInterest(
       body: JSON.stringify({ disclosures }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -571,7 +584,7 @@ export async function addConflictDisclosure(
       body: JSON.stringify(input),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -596,7 +609,7 @@ export async function registerSecurityAdmin(): Promise<void> {
     method: "POST",
     credentials: "same-origin",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function fetchSecurityAdminStatus(): Promise<{ is_security_admin: boolean }> {
@@ -604,7 +617,7 @@ export async function fetchSecurityAdminStatus(): Promise<{ is_security_admin: b
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -614,7 +627,7 @@ export async function listInvalidations(packId?: string): Promise<PackInvalidati
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -623,7 +636,7 @@ export async function getInvalidation(eventId: string): Promise<PackInvalidation
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -640,7 +653,7 @@ export async function recordInvalidation(input: {
     credentials: "same-origin",
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -658,7 +671,7 @@ export async function advanceInvalidation(
       body: JSON.stringify({ to_stage: toStage, note }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -670,7 +683,7 @@ export async function resolveImpact(eventId: string): Promise<PackImpactSet> {
       credentials: "same-origin",
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -682,7 +695,7 @@ export async function getImpactSet(eventId: string): Promise<PackImpactSet> {
       cache: "no-store",
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -701,7 +714,7 @@ export async function reportRevalidated(
       body: JSON.stringify({ area, ref_ids: refIds, failed }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -715,7 +728,7 @@ export async function getRevalidationReport(
       cache: "no-store",
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -732,7 +745,7 @@ export async function emergencyRevoke(input: {
     credentials: "same-origin",
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -741,7 +754,7 @@ export async function listRevocations(): Promise<RevocationEvent[]> {
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -756,7 +769,7 @@ export async function proposeRollback(input: {
     credentials: "same-origin",
     body: JSON.stringify(input),
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -765,7 +778,7 @@ export async function listRollbacks(): Promise<PackRollbackRecord[]> {
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -784,7 +797,7 @@ export async function confirmRollback(
       body: JSON.stringify({ role, conclusion, opinion }),
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -796,7 +809,7 @@ export async function executeRollback(rollbackId: string): Promise<PackRollbackR
       credentials: "same-origin",
     }
   );
-  if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -804,27 +817,19 @@ export async function executeRollback(rollbackId: string): Promise<PackRollbackR
 // Issue 11：持久化流式聊天
 // ---------------------------------------------------------------------------
 
-export type ChatStreamEvent =
-  | {
-      event: "started";
-      data: {
-        message_id: string;
-        user_message_id: string;
-        attempt_number: number;
-        thinking?: ChatThinkingSummary | null;
-      };
-    }
-  | { event: "delta"; data: { message_id: string; delta: string } }
-  | {
-      event: "error";
-      data: {
-        message_id: string;
-        error: { code: string; message: string; retryable: boolean };
-        thinking?: ChatThinkingSummary | null;
-        duration_ms?: number | null;
-      };
-    }
-  | { event: "done"; data: { message_id: string; message: ChatMessageProjection | null } };
+/**
+ * 判别式类型守卫：从事件载荷的 kind 字段收窄流事件类型。
+ * 事件名枚举与载荷形状均来自 OpenAPI 契约（ChatStreamEvent），
+ * 不再与后端生成器手写镜像。
+ */
+export function isChatStreamEventOf<K extends ChatStreamEvent["data"]["kind"]>(
+  event: ChatStreamEvent,
+  kind: K
+): event is ChatStreamEvent & {
+  data: Extract<ChatStreamEvent["data"], { kind: K }>;
+} {
+  return event.data.kind === kind;
+}
 
 /**
  * 消费一次 SSE 流式响应，把每个事件回调给调用方。
@@ -870,7 +875,7 @@ export async function listChatConversations(): Promise<ChatConversationListProje
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -885,7 +890,7 @@ export async function createChatConversation(
     credentials: "same-origin",
     body: JSON.stringify({ title: title ?? null, mode, project_id: projectId ?? null }),
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -899,7 +904,7 @@ export async function updateChatConversation(
     credentials: "same-origin",
     body: JSON.stringify(update),
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -908,7 +913,7 @@ export async function deleteChatConversation(conversationId: string): Promise<vo
     method: "DELETE",
     credentials: "same-origin",
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
 }
 
 /** 切换对话模式（日常陪伴/学习模式）；返回切换后的对话与本次可见事件。 */
@@ -925,7 +930,7 @@ export async function switchChatMode(
       body: JSON.stringify({ mode }),
     }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
@@ -936,22 +941,16 @@ export async function getChatConversation(
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 
 function attachmentApiError(status: number, body: unknown): ApiError {
+  // XHR 路径复用统一错误折叠语义（detail 或顶层 {message} 均可解析）
   if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (detail && typeof detail === "object" && "message" in detail) {
-      const message = (detail as { message?: unknown }).message;
-      const code = (detail as { error?: unknown }).error;
-      if (typeof message === "string" && message) {
-        return new ApiError(message, status, typeof code === "string" ? code : undefined);
-      }
-    }
+    return errorFromDetail(status, (body as { detail?: unknown }).detail);
   }
-  return new ApiError(`附件请求失败（${status}）`, status);
+  return errorFromDetail(status, body);
 }
 
 /** 原始字节上传：服务端负责内容嗅探，XHR 只用于提供可靠的上传进度与取消。 */
@@ -1020,7 +1019,7 @@ export async function cancelChatAttachment(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}`,
     { method: "DELETE", credentials: "same-origin" }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function cancelChatAttachmentUpload(
@@ -1031,7 +1030,7 @@ export async function cancelChatAttachmentUpload(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/by-upload/${encodeURIComponent(uploadId)}`,
     { method: "DELETE", credentials: "same-origin" }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function deleteChatMessageAttachment(
@@ -1043,7 +1042,7 @@ export async function deleteChatMessageAttachment(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(objectId)}`,
     { method: "DELETE", credentials: "same-origin" }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function downloadChatAttachment(
@@ -1055,7 +1054,7 @@ export async function downloadChatAttachment(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/download`,
     { credentials: "same-origin" }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -1083,7 +1082,7 @@ export async function streamChatMessage(
     body: JSON.stringify({ content, attachment_ids: attachmentIds }),
     signal,
   });
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   await readSseStream(res, onEvent);
 }
 
@@ -1098,7 +1097,7 @@ export async function retryChatMessage(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/retry`,
     { method: "POST", credentials: "same-origin", signal }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   await readSseStream(res, onEvent);
 }
 
@@ -1110,7 +1109,7 @@ export async function stopChatMessage(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/stop`,
     { method: "POST", credentials: "same-origin" }
   );
-  if (!res.ok) throw await parseAuthError(res);
+  if (!res.ok) throw await parseApiError(res);
   return res.json();
 }
 

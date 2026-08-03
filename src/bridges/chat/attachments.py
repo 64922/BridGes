@@ -116,7 +116,7 @@ class ChatAttachmentService:
         if len(upload_key) > 120 or not re.fullmatch(r"[A-Za-z0-9._~-]+", upload_key):
             raise ChatAttachmentError("invalid_upload_id", "上传标识无效，请重新选择文件。")
 
-        existing = self._find_by_upload_id(upload_key)
+        existing = self._find_by_upload_id(account_id, upload_key)
         if existing is not None:
             if (
                 existing.account_id != account_id
@@ -131,7 +131,7 @@ class ChatAttachmentService:
                 )
             return existing.projection(), False
 
-        cancelled = self._database.connection.execute(
+        cancelled = self._database.scoped(account_id).execute(
             "SELECT 1 FROM chat_attachment_cancellations"
             " WHERE account_id = ? AND conversation_id = ? AND upload_id = ?",
             (account_id, conversation_id, upload_key),
@@ -159,7 +159,7 @@ class ChatAttachmentService:
         now = datetime.now(UTC).isoformat()
         try:
             with self._database.transaction():
-                cancelled = self._database.connection.execute(
+                cancelled = self._database.scoped(account_id).execute(
                     "SELECT 1 FROM chat_attachment_cancellations"
                     " WHERE account_id = ? AND conversation_id = ? AND upload_id = ?",
                     (account_id, conversation_id, upload_key),
@@ -168,7 +168,7 @@ class ChatAttachmentService:
                     raise ChatAttachmentError(
                         "upload_cancelled", "该上传已取消，请重新选择文件。", 409
                     )
-                self._database.connection.execute(
+                self._database.scoped(account_id).execute(
                     "INSERT INTO chat_attachments"
                     "(object_id, account_id, conversation_id, message_id, upload_id,"
                     " media_type, status, created_at, updated_at)"
@@ -200,7 +200,7 @@ class ChatAttachmentService:
     def get(
         self, account_id: str, conversation_id: str, object_id: str
     ) -> ChatAttachmentRecord | None:
-        row = self._database.connection.execute(
+        row = self._database.scoped(account_id).execute(
             "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
             " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
             " o.original_filename, o.content_length, o.content_hash"
@@ -214,7 +214,7 @@ class ChatAttachmentService:
     def list_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ChatAttachmentRecord]:
-        rows = self._database.connection.execute(
+        rows = self._database.scoped(account_id).execute(
             "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
             " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
             " o.original_filename, o.content_length, o.content_hash"
@@ -236,7 +236,7 @@ class ChatAttachmentService:
         if not unique_ids:
             return
         placeholders = ",".join("?" for _ in unique_ids)
-        rows = self._database.connection.execute(
+        rows = self._database.scoped(account_id).execute(
             "SELECT object_id FROM chat_attachments"
             " WHERE account_id = ? AND conversation_id = ?"
             " AND message_id IS NULL AND status = 'uploaded'"
@@ -264,7 +264,7 @@ class ChatAttachmentService:
             *((message_id,) if message_id is not None else ()),
         )
         with self._database.transaction():
-            row = self._database.connection.execute(
+            row = self._database.scoped(account_id).execute(
                 "SELECT object_id FROM chat_attachments"
                 " WHERE account_id = ? AND conversation_id = ? AND object_id = ?"
                 f" AND {condition}",
@@ -272,13 +272,13 @@ class ChatAttachmentService:
             ).fetchone()
             if row is None:
                 raise ChatAttachmentError("attachment_not_found", "附件不存在或没有访问权限。", 404)
-            self._database.connection.execute(
+            self._database.scoped(account_id).execute(
                 "DELETE FROM chat_attachments"
                 " WHERE account_id = ? AND conversation_id = ? AND object_id = ?"
                 f" AND {condition}",
                 params,
             )
-            self._database.connection.execute(
+            self._database.scoped(account_id).execute(
                 "UPDATE objects SET status = 'pending_cleanup', updated_at = ?"
                 " WHERE object_id = ? AND account_id = ? AND status = 'active'",
                 (datetime.now(UTC).isoformat(), object_id, account_id),
@@ -292,7 +292,7 @@ class ChatAttachmentService:
         now = datetime.now(UTC).isoformat()
         object_id: str | None = None
         with self._database.transaction():
-            record = self._find_by_upload_id(upload_id)
+            record = self._find_by_upload_id(account_id, upload_id)
             if record is not None:
                 if (
                     record.account_id != account_id
@@ -306,16 +306,17 @@ class ChatAttachmentService:
                         "attachment_already_bound", "附件已关联消息，不能按上传任务取消。", 409
                     )
                 object_id = record.object_id
-            self._database.connection.execute(
+            self._database.scoped(account_id).execute(
                 "INSERT OR IGNORE INTO chat_attachment_cancellations"
                 " (account_id, conversation_id, upload_id, created_at) VALUES (?, ?, ?, ?)",
                 (account_id, conversation_id, upload_id, now),
             )
             if object_id is not None:
-                self._database.connection.execute(
-                    "DELETE FROM chat_attachments WHERE object_id = ?", (object_id,)
+                self._database.scoped(account_id).execute(
+                    "DELETE FROM chat_attachments WHERE object_id = ? AND account_id = ?",
+                    (object_id, account_id),
                 )
-                self._database.connection.execute(
+                self._database.scoped(account_id).execute(
                     "UPDATE objects SET status = ?, updated_at = ?"
                     " WHERE object_id = ? AND account_id = ? AND status = 'active'",
                     (OBJECT_STATUS_PENDING_CLEANUP, now, object_id, account_id),
@@ -324,26 +325,26 @@ class ChatAttachmentService:
 
     def delete_for_conversation(self, account_id: str, conversation_id: str) -> None:
         with self._database.transaction():
-            rows = self._database.connection.execute(
+            rows = self._database.scoped(account_id).execute(
                 "SELECT object_id FROM chat_attachments"
                 " WHERE account_id = ? AND conversation_id = ?",
                 (account_id, conversation_id),
             ).fetchall()
             # 一并清理本会话的取消标记：避免会话删除后残留无主记录
             # （否则随取消次数无限积累）。
-            self._database.connection.execute(
+            self._database.scoped(account_id).execute(
                 "DELETE FROM chat_attachment_cancellations"
                 " WHERE account_id = ? AND conversation_id = ?",
                 (account_id, conversation_id),
             )
             if rows:
                 now = datetime.now(UTC).isoformat()
-                self._database.connection.execute(
+                self._database.scoped(account_id).execute(
                     "DELETE FROM chat_attachments WHERE account_id = ? AND conversation_id = ?",
                     (account_id, conversation_id),
                 )
                 for row in rows:
-                    self._database.connection.execute(
+                    self._database.scoped(account_id).execute(
                         "UPDATE objects SET status = ?, updated_at = ?"
                         " WHERE object_id = ? AND account_id = ?",
                         (OBJECT_STATUS_PENDING_CLEANUP, now, str(row["object_id"]), account_id),
@@ -365,28 +366,30 @@ class ChatAttachmentService:
         return record, content
 
     def _require_conversation(self, account_id: str, conversation_id: str) -> None:
-        row = self._database.connection.execute(
+        row = self._database.scoped(account_id).execute(
             "SELECT 1 FROM conversations WHERE conversation_id = ? AND account_id = ?",
             (conversation_id, account_id),
         ).fetchone()
         if row is None:
             raise ChatAttachmentError("conversation_not_found", "对话不存在或没有访问权限。", 404)
 
-    def _find_by_upload_id(self, upload_id: str) -> ChatAttachmentRecord | None:
-        row = self._database.connection.execute(
+    def _find_by_upload_id(
+        self, account_id: str, upload_id: str
+    ) -> ChatAttachmentRecord | None:
+        row = self._database.scoped(account_id).execute(
             "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
             " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
             " o.original_filename, o.content_length, o.content_hash"
             " FROM chat_attachments a JOIN objects o ON o.object_id = a.object_id"
-            " WHERE a.upload_id = ? AND o.status = 'active'",
-            (upload_id,),
+            " WHERE a.upload_id = ? AND a.account_id = ? AND o.status = 'active'",
+            (upload_id, account_id),
         ).fetchone()
         return self._row_to_record(row) if row is not None else None
 
     def _find_unbound_duplicate(
         self, account_id: str, conversation_id: str, filename: str, content_hash: str
     ) -> ChatAttachmentRecord | None:
-        row = self._database.connection.execute(
+        row = self._database.scoped(account_id).execute(
             "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
             " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
             " o.original_filename, o.content_length, o.content_hash"

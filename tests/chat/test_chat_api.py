@@ -22,7 +22,7 @@ from pydantic import SecretStr
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import AdapterError, RateLimitError
 from bridges.ai.capability_registry import CapabilityRegistry
-from bridges.ai.streaming import StreamChunk
+from bridges.ai.adapters import StreamChunk
 from bridges.api.main import create_app
 from bridges.config import get_settings
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord

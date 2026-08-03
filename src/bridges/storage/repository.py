@@ -102,7 +102,7 @@ class BridgesObjectRepository:
             raise StorageError("账户身份与对象库归属不一致。") from exc
 
     def _require_account(self, account_id: str) -> None:
-        row = self._database.connection.execute(
+        row = self._database.scoped(account_id).execute(
             "SELECT account_id FROM accounts WHERE account_id = ?",
             (account_id,),
         ).fetchone()
@@ -132,7 +132,7 @@ class BridgesObjectRepository:
         now = _now()
         try:
             with self._database.transaction():
-                self._database.connection.execute(
+                self._database.scoped(account_id).execute(
                     "INSERT INTO objects(object_id, account_id, content_hash,"
                     " original_filename, media_type, content_length, status,"
                     " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -176,7 +176,7 @@ class BridgesObjectRepository:
 
     def list_objects(self, account_id: str) -> list[StoredObject]:
         """列出账户下的全部活跃对象。"""
-        rows = self._database.connection.execute(
+        rows = self._database.scoped(account_id).execute(
             "SELECT * FROM objects WHERE account_id = ? AND status = ?"
             " ORDER BY created_at",
             (account_id, OBJECT_STATUS_ACTIVE),
@@ -192,7 +192,7 @@ class BridgesObjectRepository:
         self._select_row(account_id, object_id)  # 授权检查：跨账户一律拒绝
         try:
             with self._database.transaction():
-                self._database.connection.execute(
+                self._database.scoped(account_id).execute(
                     "UPDATE objects SET status = ?, updated_at = ?"
                     " WHERE object_id = ? AND account_id = ?",
                     (OBJECT_STATUS_PENDING_CLEANUP, _now(), object_id, account_id),
@@ -201,7 +201,7 @@ class BridgesObjectRepository:
             raise StorageError(
                 "对象删除标记写入失败，请检查数据目录。"
             ) from exc
-        pending = self._database.connection.execute(
+        pending = self._database.scoped(account_id).execute(
             "SELECT * FROM objects WHERE object_id = ? AND account_id = ?",
             (object_id, account_id),
         ).fetchone()
@@ -315,7 +315,7 @@ class BridgesObjectRepository:
         return int(row["count"])
 
     def _select_row(self, account_id: str, object_id: str) -> sqlite3.Row:
-        row = self._database.connection.execute(
+        row = self._database.scoped(account_id).execute(
             "SELECT * FROM objects WHERE object_id = ? AND account_id = ?",
             (object_id, account_id),
         ).fetchone()

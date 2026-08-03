@@ -2,7 +2,12 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError, listDeviceAccounts, type DeviceAccountProjection } from "@/lib/api";
+import {
+  ApiError,
+  classifyApiError,
+  listDeviceAccounts,
+  type DeviceAccountProjection,
+} from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/design-system/Button";
 import { Dialog } from "@/components/bridges/Dialog";
@@ -58,14 +63,6 @@ function errorMessage(error: unknown): string {
   return "暂时无法完成操作，请检查连接后重试。";
 }
 
-function isSessionExpired(error: unknown): error is ApiError {
-  return (
-    error instanceof ApiError &&
-    error.status === 401 &&
-    (error.code === "unauthenticated" || error.code === "session")
-  );
-}
-
 export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
   const {
     addAccount,
@@ -95,7 +92,7 @@ export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
       }
     } catch (cause) {
       if (currentLoad === loadId.current) {
-        if (isSessionExpired(cause)) {
+        if (classifyApiError(cause) === "session") {
           onClose();
           void refreshSession();
           return;
@@ -148,7 +145,7 @@ export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
         setSelected(account);
         setPassword("");
         setMode("reauth");
-      } else if (isSessionExpired(cause)) {
+      } else if (classifyApiError(cause) === "session") {
         onClose();
         void refreshSession();
       } else {
@@ -171,7 +168,7 @@ export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
       const applied = await addAccount(identifier.trim(), password);
       if (applied) onClose();
     } catch (cause) {
-      if (isSessionExpired(cause)) {
+      if (classifyApiError(cause) === "session") {
         onClose();
         void refreshSession();
       } else {
@@ -194,7 +191,7 @@ export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
       const applied = await reauthenticateAccount(selected.session_id, password);
       if (applied) onClose();
     } catch (cause) {
-      if (isSessionExpired(cause)) {
+      if (classifyApiError(cause) === "session") {
         onClose();
         void refreshSession();
       } else {
@@ -215,7 +212,7 @@ export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
         window.location.replace("/login?from=device-logout");
       }
     } catch (cause) {
-      if (isSessionExpired(cause)) {
+      if (classifyApiError(cause) === "session") {
         onClose();
         void refreshSession();
       } else {
@@ -234,7 +231,7 @@ export function AccountSwitcher({ open, onClose }: AccountSwitcherProps) {
       onClose();
       window.location.replace("/login?from=device-logout");
     } catch (cause) {
-      if (isSessionExpired(cause)) {
+      if (classifyApiError(cause) === "session") {
         onClose();
         void refreshSession();
       } else {

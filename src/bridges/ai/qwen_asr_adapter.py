@@ -17,7 +17,7 @@ from bridges.ai.adapters import (
     AdapterResult,
     CapabilityAdapter,
 )
-from bridges.ai.qwen_client import QwenApiClient
+from bridges.ai.qwen_client import QwenApiClient, choice_text, first_choice
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
 
@@ -127,7 +127,7 @@ class QwenAsrAdapter(CapabilityAdapter):
         }
 
         response_body = self._client.chat_completions(request_body)
-        content = self._first_choice_content(response_body)
+        content = choice_text(first_choice(response_body))
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,
             output={
@@ -171,20 +171,3 @@ class QwenAsrAdapter(CapabilityAdapter):
                 retryable=False,
             )
 
-    @staticmethod
-    def _first_choice_content(response_body: dict[str, Any]) -> str:
-        choices = response_body.get("choices")
-        if not choices or not isinstance(choices, list):
-            raise AdapterError(
-                code="empty_response",
-                message="Qwen ASR response contained no choices.",
-                retryable=False,
-            )
-        choice = choices[0]
-        if not isinstance(choice, dict):
-            raise AdapterError(
-                code="empty_response",
-                message="Qwen ASR response contained no choices.",
-                retryable=False,
-            )
-        return str(choice.get("message", {}).get("content", ""))

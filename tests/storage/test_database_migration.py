@@ -172,3 +172,86 @@ def test_app_first_startup_creates_versioned_sqlite_database(
     second = create_app()
     assert second.state.persistence_error is None
     assert second.state.bridges_database is not None
+
+
+# ---------------------------------------------------------------------------
+# 候选 4：账户作用域查询面（ScopedConnection）——隔离从约定升级为执行层强制
+# ---------------------------------------------------------------------------
+
+
+def test_scoped_connection_rejects_select_without_account_filter(
+    tmp_path: Path,
+) -> None:
+    """SELECT 不带 WHERE account_id 过滤时，作用域查询直接拒绝执行。"""
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+
+    with pytest.raises(StorageError):
+        database.scoped("acc-a").execute(
+            "SELECT object_id FROM objects WHERE status = 'active'"
+        )
+    with pytest.raises(StorageError):
+        database.scoped("acc-a").execute("SELECT * FROM conversations")
+
+
+def test_scoped_connection_rejects_update_and_delete_without_account_where(
+    tmp_path: Path,
+) -> None:
+    """UPDATE/DELETE 的 WHERE 不含 account_id 时拒绝执行（含兜底清理类语句）。"""
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+
+    with pytest.raises(StorageError):
+        database.scoped("acc-a").execute(
+            "DELETE FROM conversations WHERE conversation_id = ?", ("c-1",)
+        )
+    with pytest.raises(StorageError):
+        database.scoped("acc-a").execute(
+            "UPDATE objects SET status = 'active' WHERE object_id = ?", ("o-1",)
+        )
+
+
+def test_scoped_connection_rejects_insert_without_account_column(
+    tmp_path: Path,
+) -> None:
+    """INSERT 的列清单缺少 account_id 时拒绝执行，禁止写入无归属记录。"""
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+
+    with pytest.raises(StorageError):
+        database.scoped("acc-a").execute(
+            "INSERT INTO conversations(conversation_id, title)"
+            " VALUES (?, ?)",
+            ("c-1", "无归属对话"),
+        )
+
+
+def test_scoped_connection_allows_account_bound_sql(
+    tmp_path: Path,
+) -> None:
+    """合规的作用域 SQL 正常执行，并只操作作用域账户的数据。"""
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    database.scoped("acc-a").execute(
+        "INSERT INTO conversations(conversation_id, account_id, title,"
+        " created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        ("c-1", "acc-a", "A 的对话", "2026-01-01T00:00:00", "2026-01-01T00:00:00"),
+    )
+    database.scoped("acc-b").execute(
+        "INSERT INTO conversations(conversation_id, account_id, title,"
+        " created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+        ("c-2", "acc-b", "B 的对话", "2026-01-01T00:00:00", "2026-01-01T00:00:00"),
+    )
+
+    # 作用域 A 查不到 B 的记录
+    rows = database.scoped("acc-a").execute(
+        "SELECT conversation_id FROM conversations WHERE account_id = ?",
+        ("acc-a",),
+    ).fetchall()
+    assert [str(row["conversation_id"]) for row in rows] == ["c-1"]
+    rows = database.scoped("acc-a").execute(
+        "SELECT conversation_id FROM conversations"
+        " WHERE conversation_id = ? AND account_id = ?",
+        ("c-2", "acc-a"),
+    ).fetchall()
+    assert rows == []

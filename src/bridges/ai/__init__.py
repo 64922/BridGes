@@ -7,6 +7,8 @@ from bridges.ai.adapters import (
     CapabilityAdapter,
     RateLimitError,
     RegionError,
+    StreamChunk,
+    StreamEvent,
     StubQwenAdapter,
     TransientError,
 )
@@ -17,7 +19,6 @@ from bridges.ai.qwen_asr_adapter import QwenAsrAdapter
 from bridges.ai.qwen_client import CassetteStore, QwenApiClient
 from bridges.ai.qwen_tts_adapter import QwenTtsAdapter
 from bridges.ai.qwen_vision_adapters import QwenOcrAdapter, QwenVisionAdapter
-from bridges.ai.streaming import StreamChunk, StreamEvent
 
 __all__ = [
     "AdapterError",

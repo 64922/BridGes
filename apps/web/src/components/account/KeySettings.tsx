@@ -13,6 +13,7 @@ import { LoadingStatus } from "@/components/design-system/LoadingStatus";
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
+  classifyApiError,
   deleteKeySettings,
   fetchKeySettings,
   probeAllCapabilities,
@@ -79,11 +80,12 @@ export function KeySettings() {
     try {
       applySettings(await fetchKeySettings());
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === "reauth_required") {
+      const kind = classifyApiError(cause);
+      if (kind === "reauth") {
         setPageState("reauth");
         return;
       }
-      if (cause instanceof ApiError && cause.status === 401) {
+      if (kind === "session") {
         await refreshSession();
         return;
       }
@@ -130,16 +132,15 @@ export function KeySettings() {
           }
         })
         .catch((cause) => {
-          if (cause instanceof ApiError && cause.code === "reauth_required") {
+          const kind = classifyApiError(cause);
+          if (kind === "reauth" || kind === "session") {
             window.clearInterval(timer);
             pollStarted.current = false;
-            setPageState("reauth");
-            return;
-          }
-          if (cause instanceof ApiError && cause.status === 401) {
-            window.clearInterval(timer);
-            pollStarted.current = false;
-            void refreshSession();
+            if (kind === "reauth") {
+              setPageState("reauth");
+            } else {
+              void refreshSession();
+            }
           }
         });
     }, POLL_INTERVAL_MS);
@@ -198,11 +199,12 @@ export function KeySettings() {
       applySettings(next);
       setNotice("Key 已保存，正在用非用户数据逐项真实探测固定能力。");
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === "reauth_required") {
+      const kind = classifyApiError(cause);
+      if (kind === "reauth") {
         setPageState("reauth");
         return;
       }
-      if (cause instanceof ApiError && cause.status === 401) {
+      if (kind === "session") {
         await refreshSession();
         return;
       }
@@ -224,11 +226,12 @@ export function KeySettings() {
       applySettings(next);
       setNotice("Key 已删除，能力探测状态已复位。");
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === "reauth_required") {
+      const kind = classifyApiError(cause);
+      if (kind === "reauth") {
         setPageState("reauth");
         return;
       }
-      if (cause instanceof ApiError && cause.status === 401) {
+      if (kind === "session") {
         await refreshSession();
         return;
       }
@@ -245,11 +248,12 @@ export function KeySettings() {
     try {
       applySettings(await retryCapabilityProbe(capabilityId));
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === "reauth_required") {
+      const kind = classifyApiError(cause);
+      if (kind === "reauth") {
         setPageState("reauth");
         return;
       }
-      if (cause instanceof ApiError && cause.status === 401) {
+      if (kind === "session") {
         await refreshSession();
         return;
       }
@@ -264,11 +268,12 @@ export function KeySettings() {
     try {
       applySettings(await probeAllCapabilities());
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === "reauth_required") {
+      const kind = classifyApiError(cause);
+      if (kind === "reauth") {
         setPageState("reauth");
         return;
       }
-      if (cause instanceof ApiError && cause.status === 401) {
+      if (kind === "session") {
         await refreshSession();
         return;
       }

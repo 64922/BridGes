@@ -11,11 +11,12 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated
 from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse, StreamingResponse
+from pydantic import BaseModel
 
 from bridges.api.auth import SubjectDep
 from bridges.chat.attachments import (
@@ -41,6 +42,14 @@ from bridges.contracts.chat import (
     ChatModeSwitchRequest,
     ChatModeSwitchResponse,
     ChatStopResponse,
+    ChatStreamDeltaData,
+    ChatStreamDoneData,
+    ChatStreamErrorData,
+    ChatStreamErrorDetail,
+    ChatStreamEvent,
+    ChatStreamEventKind,
+    ChatStreamStartedData,
+    ChatThinkingSummary,
 )
 from bridges.contracts.credentials import ProbeStatus
 from bridges.contracts.projects import ObjectDomain
@@ -195,16 +204,17 @@ def _chat_run_context(account_id: str, conversation_id: str, run_id: str) -> Run
     )
 
 
-def _sse(event: str, data: dict[str, Any]) -> str:
-    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+def _sse(event: ChatStreamEventKind, data: BaseModel) -> str:
+    payload = json.dumps(data.model_dump(mode="json"), ensure_ascii=False)
+    return f"event: {event.value}\ndata: {payload}\n\n"
 
 
 def _stream_response(
-    events: Iterator[tuple[str, dict[str, Any]]],
+    events: Iterator[ChatStreamEvent],
 ) -> StreamingResponse:
     def generate() -> Iterator[str]:
-        for event, data in events:
-            yield _sse(event, data)
+        for stream_event in events:
+            yield _sse(stream_event.event, stream_event.data)
 
     return StreamingResponse(
         generate(),
@@ -216,6 +226,29 @@ def _stream_response(
     )
 
 
+def _stream_error_event(
+    message_id: str,
+    *,
+    code: str,
+    message: str,
+    retryable: bool,
+    thinking: ChatThinkingSummary | None,
+    duration_ms: int | None,
+) -> ChatStreamEvent:
+    """构造 error 终态事件（成功/停止/失败共用的补发路径）。"""
+    return ChatStreamEvent(
+        event=ChatStreamEventKind.ERROR,
+        data=ChatStreamErrorData(
+            message_id=message_id,
+            error=ChatStreamErrorDetail(
+                code=code, message=message, retryable=retryable
+            ),
+            thinking=thinking,
+            duration_ms=duration_ms,
+        ),
+    )
+
+
 def _generation_events(
     service: ChatService,
     subject: SubjectDep,
@@ -223,27 +256,24 @@ def _generation_events(
     user_message: ChatMessageProjection,
     assistant_message: ChatMessageProjection,
     run_context: RunContextEnvelope,
-) -> Iterator[tuple[str, dict[str, Any]]]:
+) -> Iterator[ChatStreamEvent]:
     """发送/重试共用的 SSE 事件序列：started → delta* → done | error。
 
     若消息在生成器启动前已被并发收敛（停止/断流/TTL 收敛抢先），生成器
     不会产出任何事件——此时读取消息当前状态补发诚实的终态事件，保证
-    started 之后必有 done/error，绝不悬挂。
+    started 之后必有 done/error，绝不悬挂。所有事件载荷由契约模型
+    （ChatStreamEvent）构造，是前端类型生成的唯一来源。
     """
-    yield (
-        "started",
-        {
-            "conversation_id": conversation_id,
-            "user_message_id": user_message.message_id,
-            "message_id": assistant_message.message_id,
-            "attempt_number": assistant_message.attempt_number,
+    yield ChatStreamEvent(
+        event=ChatStreamEventKind.STARTED,
+        data=ChatStreamStartedData(
+            conversation_id=conversation_id,
+            user_message_id=user_message.message_id,
+            message_id=assistant_message.message_id,
+            attempt_number=assistant_message.attempt_number,
             # 初始思考摘要：前端据此自动展开思考区域（不暴露原始思维链）
-            "thinking": (
-                assistant_message.thinking.model_dump(mode="json")
-                if assistant_message.thinking is not None
-                else None
-            ),
-        },
+            thinking=assistant_message.thinking,
+        ),
     )
     terminated = False
     for event in service.stream_generation(
@@ -256,40 +286,40 @@ def _generation_events(
         until_user_message_id=user_message.message_id,
     ):
         if event.kind == "delta":
-            yield "delta", {
-                "message_id": assistant_message.message_id,
-                "delta": event.delta,
-            }
+            yield ChatStreamEvent(
+                event=ChatStreamEventKind.DELTA,
+                data=ChatStreamDeltaData(
+                    message_id=assistant_message.message_id,
+                    delta=event.delta,
+                ),
+            )
         elif event.kind == "error":
             terminated = True
             final = service.message_projection(
                 subject.account_id, assistant_message.message_id
             )
-            yield "error", {
-                "message_id": assistant_message.message_id,
-                "error": {
-                    "code": event.error_code,
-                    "message": user_facing_error(event.error_code, event.error_message),
-                    "retryable": error_is_retryable(event.error_code),
-                },
+            yield _stream_error_event(
+                assistant_message.message_id,
+                code=event.error_code or "generation_failed",
+                message=user_facing_error(event.error_code, event.error_message),
+                retryable=error_is_retryable(event.error_code),
                 # 失败/停止/断流时保留已完成思考摘要与真实耗时
-                "thinking": (
-                    final.thinking.model_dump(mode="json")
-                    if final is not None and final.thinking is not None
-                    else None
-                ),
-                "duration_ms": final.duration_ms if final is not None else None,
-            }
+                thinking=final.thinking if final is not None else None,
+                duration_ms=final.duration_ms if final is not None else None,
+            )
             return
         elif event.kind == "done":
             terminated = True
             final = service.message_projection(
                 subject.account_id, assistant_message.message_id
             )
-            yield "done", {
-                "message_id": assistant_message.message_id,
-                "message": final.model_dump(mode="json") if final is not None else None,
-            }
+            yield ChatStreamEvent(
+                event=ChatStreamEventKind.DONE,
+                data=ChatStreamDoneData(
+                    message_id=assistant_message.message_id,
+                    message=final,
+                ),
+            )
             return
     if terminated:
         return
@@ -298,39 +328,34 @@ def _generation_events(
     if final is None:
         return
     if final.status.value == "done":
-        yield "done", {
-            "message_id": assistant_message.message_id,
-            "message": final.model_dump(mode="json"),
-        }
+        yield ChatStreamEvent(
+            event=ChatStreamEventKind.DONE,
+            data=ChatStreamDoneData(
+                message_id=assistant_message.message_id,
+                message=final,
+            ),
+        )
         return
     if final.status.value == "stopped":
-        yield "error", {
-            "message_id": assistant_message.message_id,
-            "error": {"code": "stopped", "message": "生成已停止。", "retryable": True},
+        yield _stream_error_event(
+            assistant_message.message_id,
+            code="stopped",
+            message="生成已停止。",
+            retryable=True,
             # 与 error 事件载荷一致：补发终态也携带思考摘要与真实耗时，
             # 前端停止后的 error 态渲染不依赖重新加载的间隙。
-            "thinking": (
-                final.thinking.model_dump(mode="json")
-                if final.thinking is not None
-                else None
-            ),
-            "duration_ms": final.duration_ms,
-        }
+            thinking=final.thinking,
+            duration_ms=final.duration_ms,
+        )
         return
-    yield "error", {
-        "message_id": assistant_message.message_id,
-        "error": {
-            "code": final.error_code,
-            "message": final.error_message or "生成失败，请稍后重试。",
-            "retryable": error_is_retryable(final.error_code),
-        },
-        "thinking": (
-            final.thinking.model_dump(mode="json")
-            if final.thinking is not None
-            else None
-        ),
-        "duration_ms": final.duration_ms,
-    }
+    yield _stream_error_event(
+        assistant_message.message_id,
+        code=final.error_code or "generation_failed",
+        message=final.error_message or "生成失败，请稍后重试。",
+        retryable=error_is_retryable(final.error_code),
+        thinking=final.thinking,
+        duration_ms=final.duration_ms,
+    )
 
 
 @router.get(
@@ -671,6 +696,15 @@ def cancel_attachment(
 @router.post(
     "/conversations/{conversation_id}/messages",
     responses={
+        status.HTTP_200_OK: {
+            "model": ChatStreamEvent,
+            "content": {
+                "text/event-stream": {
+                    "schema": {"$ref": "#/components/schemas/ChatStreamEvent"}
+                }
+            },
+            "description": "SSE 事件流：started → delta* → done | error（载荷由契约模型定义）",
+        },
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
         status.HTTP_409_CONFLICT: {"model": ChatError},
@@ -742,6 +776,15 @@ def stop_message(
 @router.post(
     "/conversations/{conversation_id}/messages/{message_id}/retry",
     responses={
+        status.HTTP_200_OK: {
+            "model": ChatStreamEvent,
+            "content": {
+                "text/event-stream": {
+                    "schema": {"$ref": "#/components/schemas/ChatStreamEvent"}
+                }
+            },
+            "description": "SSE 事件流：started → delta* → done | error（载荷由契约模型定义）",
+        },
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
         status.HTTP_409_CONFLICT: {"model": ChatError},

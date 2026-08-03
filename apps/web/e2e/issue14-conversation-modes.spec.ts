@@ -88,6 +88,7 @@ function sseBody({
   assistantMessageId?: string;
 } = {}) {
   const started = sseBlock("started", {
+    kind: "started",
     conversation_id: "mock-1",
     user_message_id: userMessageId,
     message_id: assistantMessageId,
@@ -95,12 +96,14 @@ function sseBody({
     thinking: makeThinking(["理解你的问题与当前语境", "组织并生成回答"]),
   });
   const deltaEvent = sseBlock("delta", {
+    kind: "delta",
     message_id: assistantMessageId,
     delta: "这是替身生成的回答。",
   });
   if (hang) return `${started}${deltaEvent}`;
   if (fail) {
     return `${started}${deltaEvent}${sseBlock("error", {
+      kind: "error",
       message_id: assistantMessageId,
       error: {
         code: "stream_interrupted",
@@ -112,6 +115,7 @@ function sseBody({
     })}`;
   }
   return `${started}${deltaEvent}${sseBlock("done", {
+    kind: "done",
     message_id: assistantMessageId,
     message: {
       message_id: assistantMessageId,

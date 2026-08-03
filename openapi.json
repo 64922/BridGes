@@ -2335,10 +2335,17 @@
         },
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SSE 事件流：started → delta* → done | error（载荷由契约模型定义）",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamEvent"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamEvent"
+                }
               }
             }
           },
@@ -2539,10 +2546,17 @@
         ],
         "responses": {
           "200": {
-            "description": "Successful Response",
+            "description": "SSE 事件流：started → delta* → done | error（载荷由契约模型定义）",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamEvent"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamEvent"
+                }
               }
             }
           },
@@ -21631,6 +21645,244 @@
         ],
         "title": "ChatStopResponse",
         "description": "停止生成的结果投影。"
+      },
+      "ChatStreamDeltaData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "delta",
+            "title": "Kind",
+            "default": "delta"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "delta": {
+            "type": "string",
+            "title": "Delta",
+            "description": "增量正文片段。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "delta"
+        ],
+        "title": "ChatStreamDeltaData",
+        "description": "delta 事件载荷：一段增量正文。"
+      },
+      "ChatStreamDoneData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "done",
+            "title": "Kind",
+            "default": "done"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "message": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatMessageProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "终态消息投影。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id"
+        ],
+        "title": "ChatStreamDoneData",
+        "description": "done 事件载荷：完整消息投影（权威终态）。"
+      },
+      "ChatStreamErrorData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "error",
+            "title": "Kind",
+            "default": "error"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "error": {
+            "$ref": "#/components/schemas/ChatStreamErrorDetail",
+            "description": "错误分类。"
+          },
+          "thinking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatThinkingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败/停止时保留的已完成思考摘要。"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "本次生成耗时（毫秒）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "error"
+        ],
+        "title": "ChatStreamErrorData",
+        "description": "error 事件载荷：保留已接收正文、思考摘要与真实耗时。"
+      },
+      "ChatStreamErrorDetail": {
+        "properties": {
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "稳定错误码。"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "可操作的中文提示。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "是否可重试。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "ChatStreamErrorDetail",
+        "description": "error 事件的错误分类：稳定码 + 可操作中文说明 + 是否可重试。"
+      },
+      "ChatStreamEvent": {
+        "properties": {
+          "event": {
+            "$ref": "#/components/schemas/ChatStreamEventKind",
+            "description": "事件名（SSE 帧头）。"
+          },
+          "data": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ChatStreamStartedData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamDeltaData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamErrorData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamDoneData"
+              }
+            ],
+            "title": "Data",
+            "description": "事件载荷。",
+            "discriminator": {
+              "propertyName": "kind",
+              "mapping": {
+                "delta": "#/components/schemas/ChatStreamDeltaData",
+                "done": "#/components/schemas/ChatStreamDoneData",
+                "error": "#/components/schemas/ChatStreamErrorData",
+                "started": "#/components/schemas/ChatStreamStartedData"
+              }
+            }
+          }
+        },
+        "type": "object",
+        "required": [
+          "event",
+          "data"
+        ],
+        "title": "ChatStreamEvent",
+        "description": "一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。\n\n``data`` 以 ``kind`` 判别式联合建模，保证前端可从载荷判别事件类型，\n与帧头事件名保持一致；载荷形状由契约单一来源定义，不再由生成器\n手写字典与前端类型互相镜像。"
+      },
+      "ChatStreamEventKind": {
+        "type": "string",
+        "enum": [
+          "started",
+          "delta",
+          "error",
+          "done"
+        ],
+        "title": "ChatStreamEventKind",
+        "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"
+      },
+      "ChatStreamStartedData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "started",
+            "title": "Kind",
+            "default": "started"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "对话标识。"
+          },
+          "user_message_id": {
+            "type": "string",
+            "title": "User Message Id",
+            "description": "本轮用户消息标识。"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number",
+            "description": "助手尝试序号。"
+          },
+          "thinking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatThinkingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "初始可公开思考摘要；前端据此展开思考区域。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "user_message_id",
+          "message_id",
+          "attempt_number"
+        ],
+        "title": "ChatStreamStartedData",
+        "description": "started 事件载荷：消息已落库、生成开始，附带初始思考摘要。"
       },
       "ChatThinkingSummary": {
         "properties": {

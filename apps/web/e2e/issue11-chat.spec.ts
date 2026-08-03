@@ -70,6 +70,7 @@ function mockAssistant(id: string, attempt: number, content: string, status: str
 
 const sseStarted = (messageId: string, attempt: number, userMessageId: string) =>
   `event: started\ndata: ${JSON.stringify({
+    kind: "started",
     conversation_id: "mock-1",
     user_message_id: userMessageId,
     message_id: messageId,
@@ -77,10 +78,10 @@ const sseStarted = (messageId: string, attempt: number, userMessageId: string) =
   })}\n\n`;
 
 const sseDelta = (messageId: string, delta: string) =>
-  `event: delta\ndata: ${JSON.stringify({ message_id: messageId, delta })}\n\n`;
+  `event: delta\ndata: ${JSON.stringify({ kind: "delta", message_id: messageId, delta })}\n\n`;
 
 const sseDone = (message: MockMessage) =>
-  `event: done\ndata: ${JSON.stringify({ message_id: message.message_id, message })}\n\n`;
+  `event: done\ndata: ${JSON.stringify({ kind: "done", message_id: message.message_id, message })}\n\n`;
 
 /**
  * 有状态的聊天 API 替身：发送/停止/重试都会更新会话历史，

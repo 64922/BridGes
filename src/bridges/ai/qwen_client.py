@@ -25,6 +25,34 @@ from bridges.ai.adapters import (
 )
 
 
+def first_choice(response_body: dict[str, Any]) -> dict[str, Any]:
+    """提取并校验 Chat Completions 响应的首个 choice（各适配器共用的协议层规则）。
+
+    空 choices 或非法结构抛 ``AdapterError(empty_response)``；这是供应商
+    协议层行为，各能力适配器共享同一实现，不再各自复制。
+    """
+    choices = response_body.get("choices")
+    if not choices or not isinstance(choices, list):
+        raise AdapterError(
+            code="empty_response",
+            message="Qwen response contained no choices.",
+            retryable=False,
+        )
+    choice = choices[0]
+    if not isinstance(choice, dict):
+        raise AdapterError(
+            code="empty_response",
+            message="Qwen response contained no choices.",
+            retryable=False,
+        )
+    return choice
+
+
+def choice_text(choice: dict[str, Any]) -> str:
+    """提取 choice 的助手文本（``message.content``，兼容 ASR 转录响应）。"""
+    return str(choice.get("message", {}).get("content", ""))
+
+
 class CassetteStore:
     """Simple JSON cassette store for record/playback of Qwen HTTP calls.
 

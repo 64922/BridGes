@@ -19,6 +19,7 @@ import {
   deleteChatMessageAttachment,
   downloadChatAttachment,
   getChatConversation,
+  isChatStreamEventOf,
   retryChatMessage,
   stopChatMessage,
   streamChatMessage,
@@ -128,7 +129,7 @@ export default function ChatConversationPage() {
   const handleStreamEvent = useCallback(
     (kind: ActiveRun["kind"], text: string) =>
       (event: ChatStreamEvent) => {
-        if (event.event === "started") {
+        if (isChatStreamEventOf(event, "started")) {
           // 同步写入 ref：SSE 事件可能在同一块内连续到达（started 后紧跟
           // delta），异步 setState 尚未刷新时 delta 处理器依赖 ref 判断归属
           const run: ActiveRun = {
@@ -153,14 +154,17 @@ export default function ChatConversationPage() {
           }
           setActiveRun(run);
           setAnnouncement("正在生成回答");
-        } else if (event.event === "delta" && activeRunRef.current?.messageId === event.data.message_id) {
+        } else if (
+          isChatStreamEventOf(event, "delta") &&
+          activeRunRef.current?.messageId === event.data.message_id
+        ) {
           activeRunRef.current = {
             ...activeRunRef.current,
             content: activeRunRef.current.content + event.data.delta,
           };
           setActiveRun((run) => (run ? { ...run, content: run.content + event.data.delta } : run));
-        } else if (event.event === "done" || event.event === "error") {
-          if (event.event === "error") {
+        } else if (isChatStreamEventOf(event, "done") || isChatStreamEventOf(event, "error")) {
+          if (isChatStreamEventOf(event, "error")) {
             // 失败/停止/断流：保留已完成正文与思考摘要的 error 态渲染
             // （消费事件载荷，折叠标题「已思考（用时 X 秒）」不依赖重新
             // 加载的间隙）；权威历史加载完成后由 load 收敛清空。

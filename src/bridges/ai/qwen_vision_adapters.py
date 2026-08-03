@@ -17,7 +17,7 @@ from bridges.ai.adapters import (
     AdapterResult,
     CapabilityAdapter,
 )
-from bridges.ai.qwen_client import QwenApiClient
+from bridges.ai.qwen_client import QwenApiClient, first_choice
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
 
@@ -26,25 +26,6 @@ def _data_url_for_image(image_base64: str, mime_type: str | None) -> str:
     """Build a data URL from a base64-encoded image string."""
     declared = (mime_type or "image/png").split(";")[0].strip()
     return f"data:{declared};base64,{image_base64}"
-
-
-def _first_choice(response_body: dict[str, Any]) -> dict[str, Any]:
-    """Return the first choice from a chat-completion response."""
-    choices = response_body.get("choices")
-    if not choices or not isinstance(choices, list):
-        raise AdapterError(
-            code="empty_response",
-            message="Qwen vision response contained no choices.",
-            retryable=False,
-        )
-    choice = choices[0]
-    if not isinstance(choice, dict):
-        raise AdapterError(
-            code="empty_response",
-            message="Qwen vision response contained no choices.",
-            retryable=False,
-        )
-    return choice
 
 
 class QwenOcrAdapter(CapabilityAdapter):
@@ -116,7 +97,7 @@ class QwenOcrAdapter(CapabilityAdapter):
             request_body["ocr_options"] = {"task": task}
 
         response_body = self._client.chat_completions(request_body)
-        choice = _first_choice(response_body)
+        choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,
@@ -186,7 +167,7 @@ class QwenVisionAdapter(CapabilityAdapter):
         }
 
         response_body = self._client.chat_completions(request_body)
-        choice = _first_choice(response_body)
+        choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,

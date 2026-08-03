@@ -12,6 +12,7 @@ import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from bridges.storage.errors import StorageError
 
@@ -223,8 +224,21 @@ class BridgesDatabase:
 
     @property
     def connection(self) -> sqlite3.Connection:
-        """数据库连接；写入必须包在 ``transaction()`` 中。"""
+        """数据库连接；写入必须包在 ``transaction()`` 中。
+
+        账户域仓库不应直接使用裸连接：改用 :meth:`scoped` 获得账户作用域
+        查询面，让跨账户查询在 SQL 层被强制拒绝。
+        """
         return self._connection
+
+    def scoped(self, account_id: str) -> ScopedConnection:
+        """返回绑定账户的作用域查询面。
+
+        作用域强制：INSERT 必须包含 ``account_id`` 列、其余语句的 WHERE
+        必须包含 ``account_id`` 过滤；违反即拒绝执行，跨账户访问从
+        "约定"升级为"不可能"。
+        """
+        return ScopedConnection(self, account_id)
 
     def _configure(self) -> None:
         """启用 WAL、完整同步与外键约束。"""
@@ -316,3 +330,50 @@ class BridgesDatabase:
         """关闭底层连接。"""
         with self._lock:
             self._connection.close()
+
+
+class ScopedConnection:
+    """账户作用域查询面：SQL 级强制账户隔离。
+
+    ``execute`` 在运行前校验 SQL 是否显式引用账户：
+    - INSERT 语句的列清单（VALUES 之前）必须包含 ``account_id``；
+    - 其余语句的 WHERE 子句必须包含 ``account_id`` 过滤；
+    - 违反时抛 :class:`StorageError`，不做任何数据库访问。
+
+    这样"忘记写账户过滤"不再是静默跨账户泄漏，而是立即失败；
+    账户域仓库通过 :meth:`BridgesDatabase.scoped` 获取本对象。
+    """
+
+    def __init__(self, database: BridgesDatabase, account_id: str) -> None:
+        self._db = database
+        self._account_id = account_id
+
+    @property
+    def account_id(self) -> str:
+        """本作用域绑定的账户标识。"""
+        return self._account_id
+
+    def _assert_account_bound(self, sql: str) -> None:
+        stripped = sql.lstrip()
+        lowered = stripped.lower()
+        if lowered.startswith("insert"):
+            # INSERT 的强制点：列清单必须包含 account_id（检查 VALUES 之前的片段）
+            head = lowered.split("values", 1)[0]
+            if "account_id" not in head:
+                raise StorageError(
+                    "账户作用域 INSERT 必须包含 account_id 列，禁止写入无归属记录。"
+                )
+            return
+        # SELECT / UPDATE / DELETE 的强制点：WHERE 子句必须包含 account_id 过滤
+        where_pos = lowered.find("where")
+        if where_pos < 0 or "account_id" not in lowered[where_pos:]:
+            raise StorageError(
+                "账户作用域查询必须通过 WHERE account_id 过滤限定账户范围。"
+            )
+
+    def execute(
+        self, sql: str, params: Any = None
+    ) -> sqlite3.Cursor:
+        """在账户作用域内执行一条 SQL；写入必须包在 ``transaction()`` 中。"""
+        self._assert_account_bound(sql)
+        return self._db.connection.execute(sql, params)

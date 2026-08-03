@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -216,3 +217,78 @@ class ChatStopResponse(BaseModel):
     """停止生成的结果投影。"""
 
     message: ChatMessageProjection = Field(description="停止后的消息状态。")
+
+
+class ChatStreamEventKind(StrEnum):
+    """SSE 流事件类型（Issue 11/14 起稳定的事件名）。"""
+
+    STARTED = "started"
+    DELTA = "delta"
+    ERROR = "error"
+    DONE = "done"
+
+
+class ChatStreamStartedData(BaseModel):
+    """started 事件载荷：消息已落库、生成开始，附带初始思考摘要。"""
+
+    kind: Literal["started"] = "started"
+    conversation_id: str = Field(description="对话标识。")
+    user_message_id: str = Field(description="本轮用户消息标识。")
+    message_id: str = Field(description="助手消息标识。")
+    attempt_number: int = Field(description="助手尝试序号。")
+    thinking: ChatThinkingSummary | None = Field(
+        default=None, description="初始可公开思考摘要；前端据此展开思考区域。"
+    )
+
+
+class ChatStreamDeltaData(BaseModel):
+    """delta 事件载荷：一段增量正文。"""
+
+    kind: Literal["delta"] = "delta"
+    message_id: str = Field(description="助手消息标识。")
+    delta: str = Field(description="增量正文片段。")
+
+
+class ChatStreamErrorDetail(BaseModel):
+    """error 事件的错误分类：稳定码 + 可操作中文说明 + 是否可重试。"""
+
+    code: str = Field(description="稳定错误码。")
+    message: str = Field(description="可操作的中文提示。")
+    retryable: bool = Field(description="是否可重试。")
+
+
+class ChatStreamErrorData(BaseModel):
+    """error 事件载荷：保留已接收正文、思考摘要与真实耗时。"""
+
+    kind: Literal["error"] = "error"
+    message_id: str = Field(description="助手消息标识。")
+    error: ChatStreamErrorDetail = Field(description="错误分类。")
+    thinking: ChatThinkingSummary | None = Field(
+        default=None, description="失败/停止时保留的已完成思考摘要。"
+    )
+    duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
+
+
+class ChatStreamDoneData(BaseModel):
+    """done 事件载荷：完整消息投影（权威终态）。"""
+
+    kind: Literal["done"] = "done"
+    message_id: str = Field(description="助手消息标识。")
+    message: ChatMessageProjection | None = Field(
+        default=None, description="终态消息投影。"
+    )
+
+
+class ChatStreamEvent(BaseModel):
+    """一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
+
+    ``data`` 以 ``kind`` 判别式联合建模，保证前端可从载荷判别事件类型，
+    与帧头事件名保持一致；载荷形状由契约单一来源定义，不再由生成器
+    手写字典与前端类型互相镜像。
+    """
+
+    event: ChatStreamEventKind = Field(description="事件名（SSE 帧头）。")
+    data: Annotated[
+        ChatStreamStartedData | ChatStreamDeltaData | ChatStreamErrorData | ChatStreamDoneData,
+        Field(discriminator="kind", description="事件载荷。"),
+    ] = Field(description="事件载荷。")

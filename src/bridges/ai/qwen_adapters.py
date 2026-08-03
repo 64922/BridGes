@@ -17,29 +17,11 @@ from bridges.ai.adapters import (
     AdapterError,
     AdapterResult,
     CapabilityAdapter,
+    StreamChunk,
 )
-from bridges.ai.qwen_client import QwenApiClient
-from bridges.ai.streaming import StreamChunk
+from bridges.ai.qwen_client import QwenApiClient, first_choice
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
-
-
-def _first_choice(response_body: dict[str, Any]) -> dict[str, Any]:
-    choices = response_body.get("choices")
-    if not choices or not isinstance(choices, list):
-        raise AdapterError(
-            code="empty_response",
-            message="Qwen response contained no choices.",
-            retryable=False,
-        )
-    choice = choices[0]
-    if not isinstance(choice, dict):
-        raise AdapterError(
-            code="empty_response",
-            message="Qwen response contained no choices.",
-            retryable=False,
-        )
-    return choice
 
 
 class QwenTextChatAdapter(CapabilityAdapter):
@@ -68,7 +50,7 @@ class QwenTextChatAdapter(CapabilityAdapter):
         }
 
         response_body = self._client.chat_completions(request_body)
-        choice = _first_choice(response_body)
+        choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         return AdapterResult(
             actual_model_id=response_body.get("model") or capability.model_id,
@@ -163,7 +145,7 @@ class QwenStructuredOutputAdapter(CapabilityAdapter):
         }
 
         response_body = self._client.chat_completions(request_body)
-        choice = _first_choice(response_body)
+        choice = first_choice(response_body)
         content = choice.get("message", {}).get("content", "")
         try:
             parsed = json.loads(content)

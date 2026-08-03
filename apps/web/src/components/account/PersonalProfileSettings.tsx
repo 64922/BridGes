@@ -11,6 +11,7 @@ import { LoadingStatus } from "@/components/design-system/LoadingStatus";
 import { useAuth } from "@/context/AuthContext";
 import {
   ApiError,
+  classifyApiError,
   type AvatarChoice,
   updateProfile,
   uploadAvatar,
@@ -129,8 +130,7 @@ export function PersonalProfileSettings() {
       setSelectedFileName(null);
       setSuccess(true);
     } catch (cause) {
-      if (profileSaved) await refreshSession();
-      if (cause instanceof ApiError && cause.status === 401) {
+      if (profileSaved || classifyApiError(cause) === "session") {
         await refreshSession();
       }
       const message = cause instanceof Error ? cause.message : "保存失败，请稍后重试。";

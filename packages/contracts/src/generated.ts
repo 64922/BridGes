@@ -5708,6 +5708,147 @@ export interface components {
             message: components["schemas"]["ChatMessageProjection"];
         };
         /**
+         * ChatStreamDeltaData
+         * @description delta 事件载荷：一段增量正文。
+         */
+        ChatStreamDeltaData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "delta";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /**
+             * Delta
+             * @description 增量正文片段。
+             */
+            delta: string;
+        };
+        /**
+         * ChatStreamDoneData
+         * @description done 事件载荷：完整消息投影（权威终态）。
+         */
+        ChatStreamDoneData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "done";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 终态消息投影。 */
+            message?: components["schemas"]["ChatMessageProjection"] | null;
+        };
+        /**
+         * ChatStreamErrorData
+         * @description error 事件载荷：保留已接收正文、思考摘要与真实耗时。
+         */
+        ChatStreamErrorData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "error";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 错误分类。 */
+            error: components["schemas"]["ChatStreamErrorDetail"];
+            /** @description 失败/停止时保留的已完成思考摘要。 */
+            thinking?: components["schemas"]["ChatThinkingSummary"] | null;
+            /**
+             * Duration Ms
+             * @description 本次生成耗时（毫秒）。
+             */
+            duration_ms?: number | null;
+        };
+        /**
+         * ChatStreamErrorDetail
+         * @description error 事件的错误分类：稳定码 + 可操作中文说明 + 是否可重试。
+         */
+        ChatStreamErrorDetail: {
+            /**
+             * Code
+             * @description 稳定错误码。
+             */
+            code: string;
+            /**
+             * Message
+             * @description 可操作的中文提示。
+             */
+            message: string;
+            /**
+             * Retryable
+             * @description 是否可重试。
+             */
+            retryable: boolean;
+        };
+        /**
+         * ChatStreamEvent
+         * @description 一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
+         *
+         *     ``data`` 以 ``kind`` 判别式联合建模，保证前端可从载荷判别事件类型，
+         *     与帧头事件名保持一致；载荷形状由契约单一来源定义，不再由生成器
+         *     手写字典与前端类型互相镜像。
+         */
+        ChatStreamEvent: {
+            /** @description 事件名（SSE 帧头）。 */
+            event: components["schemas"]["ChatStreamEventKind"];
+            /**
+             * Data
+             * @description 事件载荷。
+             */
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"];
+        };
+        /**
+         * ChatStreamEventKind
+         * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
+         * @enum {string}
+         */
+        ChatStreamEventKind: "started" | "delta" | "error" | "done";
+        /**
+         * ChatStreamStartedData
+         * @description started 事件载荷：消息已落库、生成开始，附带初始思考摘要。
+         */
+        ChatStreamStartedData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "started";
+            /**
+             * Conversation Id
+             * @description 对话标识。
+             */
+            conversation_id: string;
+            /**
+             * User Message Id
+             * @description 本轮用户消息标识。
+             */
+            user_message_id: string;
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /**
+             * Attempt Number
+             * @description 助手尝试序号。
+             */
+            attempt_number: number;
+            /** @description 初始可公开思考摘要；前端据此展开思考区域。 */
+            thinking?: components["schemas"]["ChatThinkingSummary"] | null;
+        };
+        /**
          * ChatThinkingSummary
          * @description 面向用户的可公开思考摘要（Issue 14）。
          *
@@ -19017,13 +19158,14 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
+            /** @description SSE 事件流：started → delta* → done | error（载荷由契约模型定义） */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ChatStreamEvent"];
+                    "text/event-stream": components["schemas"]["ChatStreamEvent"];
                 };
             };
             /** @description Unauthorized */
@@ -19148,13 +19290,14 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description SSE 事件流：started → delta* → done | error（载荷由契约模型定义） */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ChatStreamEvent"];
+                    "text/event-stream": components["schemas"]["ChatStreamEvent"];
                 };
             };
             /** @description Unauthorized */

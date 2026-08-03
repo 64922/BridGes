@@ -25,10 +25,10 @@ from bridges.ai.adapters import (
     CapabilityAdapter,
     RateLimitError,
     RegionError,
+    StreamEvent,
     TransientError,
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
-from bridges.ai.streaming import StreamEvent
 from bridges.contracts.ai import (
     CapabilityRecord,
     CapabilityStatus,

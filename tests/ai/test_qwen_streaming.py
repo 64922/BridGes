@@ -20,7 +20,7 @@ from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.ai.model_gateway import ModelGatewayError  # noqa: F401 - 保持导入面
 from bridges.ai.qwen_adapters import QwenTextChatAdapter
 from bridges.ai.qwen_client import QwenApiClient
-from bridges.ai.streaming import StreamChunk
+from bridges.ai.adapters import StreamChunk
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
