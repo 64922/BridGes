@@ -340,6 +340,13 @@
     }
   }
 
+  /* Issue 14：思考摘要流式状态的旋转指示（reduced-motion 由全局规则静止） */
+  @keyframes thinking-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
   .bg-spinner {
     display: inline-block;
     width: 1.5rem;

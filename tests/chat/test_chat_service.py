@@ -25,7 +25,7 @@ from bridges.chat.service import (
     ChatService,
 )
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
-from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
+from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus, ChatMode
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.storage.database import BridgesDatabase
@@ -513,7 +513,10 @@ def test_model_history_excludes_failed_and_stopped_attempts(service: ChatService
     )
 
     history = service._model_history("alice", created.conversation_id)
-    assert history == [
+    # 首条为当前对话模式的系统角色合同（Issue 14），失败/停止尝试不进上下文
+    assert history[0]["role"] == "system"
+    assert "日常陪伴" in history[0]["content"]
+    assert history[1:] == [
         {"role": "user", "content": "第一个问题"},
         {"role": "assistant", "content": "正确答案"},
     ]
@@ -555,6 +558,160 @@ def test_restart_recovery_via_same_database_file(tmp_path: Path) -> None:
     roles = [(m.role.value, m.content) for m in restored.messages]
     assert roles == [("user", "在吗"), ("assistant", "重启前回答")]
     assert all(m.status == ChatMessageStatus.DONE for m in restored.messages)
+
+
+# ---------------------------------------------------------------------------
+# Issue 14：对话双模式与思考摘要
+# ---------------------------------------------------------------------------
+
+
+def test_create_conversation_defaults_to_companion_mode(service: ChatService) -> None:
+    created = service.create_conversation("alice")
+    assert created.mode == ChatMode.COMPANION
+    assert created.mode_events == []
+    assert service.list_conversations("alice").conversations[0].mode == ChatMode.COMPANION
+
+
+def test_create_conversation_supports_study_mode(service: ChatService) -> None:
+    created = service.create_conversation("alice", mode=ChatMode.STUDY)
+    assert created.mode == ChatMode.STUDY
+    listing = service.list_conversations("alice").conversations
+    assert listing[0].mode == ChatMode.STUDY
+
+
+def test_switch_mode_writes_visible_event_and_keeps_history(service: ChatService) -> None:
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id, "先问一个陪伴问题")
+    service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="陪伴回答")])
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+
+    projection, event = service.set_conversation_mode(
+        "alice", created.conversation_id, ChatMode.STUDY
+    )
+    assert event is not None
+    assert event.from_mode == ChatMode.COMPANION
+    assert event.to_mode == ChatMode.STUDY
+    assert projection.mode == ChatMode.STUDY
+
+    # 既有消息、回答与引用不被重写
+    assert [(m.role, m.content) for m in projection.messages] == [
+        (ChatMessageRole.USER, "先问一个陪伴问题"),
+        (ChatMessageRole.ASSISTANT, "陪伴回答"),
+    ]
+    # 模式切换事件可见且按时间排序
+    assert [(e.from_mode, e.to_mode) for e in projection.mode_events] == [
+        (ChatMode.COMPANION, ChatMode.STUDY)
+    ]
+
+
+def test_switch_mode_affects_only_later_requests(service: ChatService) -> None:
+    """切换后后续生成使用学习模式角色合同，既有回答保持原样。"""
+    created = service.create_conversation("alice")
+    service.set_conversation_mode("alice", created.conversation_id, ChatMode.STUDY)
+    history = service._model_history("alice", created.conversation_id)
+    assert "学习模式" in history[0]["content"]
+    assert "因材施教" in history[0]["content"]
+
+
+def test_switch_mode_same_mode_is_idempotent(service: ChatService) -> None:
+    created = service.create_conversation("alice")
+    _, event = service.set_conversation_mode(
+        "alice", created.conversation_id, ChatMode.COMPANION
+    )
+    assert event is None
+    assert service.get_conversation("alice", created.conversation_id).mode_events == []
+
+
+def test_switch_mode_unknown_conversation_is_404(service: ChatService) -> None:
+    with pytest.raises(ChatDomainError) as exc_info:
+        service.set_conversation_mode("alice", "missing", ChatMode.STUDY)
+    assert exc_info.value.status_code == 404
+
+
+def test_done_message_carries_public_thinking_summary(service: ChatService) -> None:
+    """思考摘要由结构化进度事件构造：初始步骤 + 生成步骤 + 质量结论。"""
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id, "帮我理解量子纠错")
+    service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="纠错码")])
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None and final.thinking is not None
+    assert final.thinking.steps == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    assert final.thinking.evidence == []
+    assert final.thinking.tools == []
+    assert final.thinking.quality == ["回答已完整生成并保存"]
+    assert final.duration_ms is not None and final.duration_ms >= 1  # 真实生命周期耗时
+
+
+def test_failed_generation_keeps_steps_with_chinese_quality(service: ChatService) -> None:
+    """失败/断流时保留已完成摘要并显示中文状态。"""
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id, "触发失败")
+    service._gateway = _with_chunks(
+        service, connect_error=RateLimitError("slow down")
+    )
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None and final.thinking is not None
+    assert final.thinking.steps == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    assert final.thinking.quality and "限流" in final.thinking.quality[0]
+    assert final.duration_ms is not None and final.duration_ms >= 1
+
+
+def test_stopped_generation_keeps_steps_with_chinese_quality(service: ChatService) -> None:
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id, "触发停止")
+    service._gateway = _with_chunks(
+        service, [StreamChunk(kind="delta", delta="部分内容")], slow=True
+    )
+    generator = service.stream_generation(
+        "alice", created.conversation_id, assistant.message_id, _context()
+    )
+    next(generator)
+    service.stop_generation("alice", created.conversation_id, assistant.message_id)
+    list(generator)
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None and final.thinking is not None
+    assert final.thinking.steps == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    assert final.thinking.quality == ["已停止生成，保留已生成内容。"]
+
+
+def test_study_mode_initial_thinking_mentions_learning_contract(service: ChatService) -> None:
+    created = service.create_conversation("alice", mode=ChatMode.STUDY)
+    _, assistant = _start(service, created.conversation_id, "讲解一个概念")
+    service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="回答")])
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None and final.thinking is not None
+    assert final.thinking.steps[0] == "按学习目标分析你的问题与已有知识"
 
 
 # ---------------------------------------------------------------------------

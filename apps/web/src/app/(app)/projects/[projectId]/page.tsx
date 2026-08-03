@@ -1,4 +1,5 @@
 import { TaskStage } from "@/components/project/TaskStage";
+import { StudyChatEntry } from "@/components/project/StudyChatEntry";
 
 export const metadata = {
   title: "项目总览 — BridGes",
@@ -14,6 +15,8 @@ export default function ProjectOverviewPage() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <TaskStage />
+
+      <StudyChatEntry />
 
       <section className="sc-card" aria-labelledby="mission-title">
         <h2 id="mission-title" className="sc-section-title">

@@ -22,6 +22,10 @@ export type ChatConversationProjection = components["schemas"]["ChatConversation
 export type ChatConversationSummary = components["schemas"]["ChatConversationSummary"];
 export type ChatConversationListProjection = components["schemas"]["ChatConversationListProjection"];
 export type ChatStopResponse = components["schemas"]["ChatStopResponse"];
+export type ChatMode = components["schemas"]["ChatMode"];
+export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
+export type ChatModeSwitchResponse = components["schemas"]["ChatModeSwitchResponse"];
+export type ChatThinkingSummary = components["schemas"]["ChatThinkingSummary"];
 export type Project = components["schemas"]["Project"];
 export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
 export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
@@ -800,11 +804,24 @@ export async function executeRollback(rollbackId: string): Promise<PackRollbackR
 // ---------------------------------------------------------------------------
 
 export type ChatStreamEvent =
-  | { event: "started"; data: { message_id: string; user_message_id: string; attempt_number: number } }
+  | {
+      event: "started";
+      data: {
+        message_id: string;
+        user_message_id: string;
+        attempt_number: number;
+        thinking?: ChatThinkingSummary | null;
+      };
+    }
   | { event: "delta"; data: { message_id: string; delta: string } }
   | {
       event: "error";
-      data: { message_id: string; error: { code: string; message: string; retryable: boolean } };
+      data: {
+        message_id: string;
+        error: { code: string; message: string; retryable: boolean };
+        thinking?: ChatThinkingSummary | null;
+        duration_ms?: number | null;
+      };
     }
   | { event: "done"; data: { message_id: string; message: ChatMessageProjection | null } };
 
@@ -856,13 +873,34 @@ export async function listChatConversations(): Promise<ChatConversationListProje
   return res.json();
 }
 
-export async function createChatConversation(title?: string): Promise<ChatConversationProjection> {
+export async function createChatConversation(
+  title?: string,
+  mode: ChatMode = "companion"
+): Promise<ChatConversationProjection> {
   const res = await fetch(`${API_BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ title: title ?? null }),
+    body: JSON.stringify({ title: title ?? null, mode }),
   });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+/** 切换对话模式（日常陪伴/学习模式）；返回切换后的对话与本次可见事件。 */
+export async function switchChatMode(
+  conversationId: string,
+  mode: ChatMode
+): Promise<ChatModeSwitchResponse> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/mode`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ mode }),
+    }
+  );
   if (!res.ok) throw await parseAuthError(res);
   return res.json();
 }

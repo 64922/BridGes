@@ -1324,7 +1324,7 @@
           "chat"
         ],
         "summary": "Create Conversation",
-        "description": "新建对话；标题可选，缺省由首条消息自动推导。",
+        "description": "新建对话；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。",
         "operationId": "create_conversation_chat_conversations_post",
         "parameters": [
           {
@@ -1374,6 +1374,105 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/mode": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Switch Conversation Mode",
+        "description": "切换对话模式（日常陪伴/学习模式）。\n\n写入可见模式切换事件，只影响切换后的消息；既有消息、回答与引用\n不被重写。相同模式幂等返回当前投影。",
+        "operationId": "switch_conversation_mode_chat_conversations__conversation_id__mode_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatModeSwitchRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatModeSwitchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
           },
           "422": {
             "content": {
@@ -20257,9 +20356,8 @@
             "default": ""
           },
           "mode": {
-            "type": "string",
-            "title": "Mode",
-            "description": "对话模式。",
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "对话当前模式。",
             "default": "companion"
           },
           "created_at": {
@@ -20280,6 +20378,14 @@
             },
             "type": "array",
             "title": "Messages"
+          },
+          "mode_events": {
+            "items": {
+              "$ref": "#/components/schemas/ChatModeEventProjection"
+            },
+            "type": "array",
+            "title": "Mode Events",
+            "description": "按时间排序的可见模式切换事件。"
           }
         },
         "type": "object",
@@ -20289,7 +20395,7 @@
           "updated_at"
         ],
         "title": "ChatConversationProjection",
-        "description": "单个对话的完整投影（含消息历史）。"
+        "description": "单个对话的完整投影（含消息历史与模式切换事件）。"
       },
       "ChatConversationSummary": {
         "properties": {
@@ -20305,9 +20411,8 @@
             "default": ""
           },
           "mode": {
-            "type": "string",
-            "title": "Mode",
-            "description": "对话模式（预留双模式）。",
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "对话当前模式。",
             "default": "companion"
           },
           "message_count": {
@@ -20352,11 +20457,16 @@
             ],
             "title": "Title",
             "description": "可选标题。"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "对话初始模式。",
+            "default": "companion"
           }
         },
         "type": "object",
         "title": "ChatCreateRequest",
-        "description": "新建对话请求；标题可选，缺省由首条消息自动推导。"
+        "description": "新建对话请求；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。"
       },
       "ChatError": {
         "properties": {
@@ -20427,6 +20537,17 @@
             "title": "Content",
             "description": "消息正文；失败/停止时保留已接收部分。",
             "default": ""
+          },
+          "thinking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatThinkingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "可公开的思考摘要；失败/停止/断流时保留已完成部分。"
           },
           "error_code": {
             "anyOf": [
@@ -20533,6 +20654,92 @@
         "title": "ChatMessageStatus",
         "description": "助手消息的生成状态。\n\n- ``streaming``：正在生成（收到停止/断流/完成前都可能离开此状态）；\n- ``done``：完整回答已落库；\n- ``error``：生成失败（含断流），保留已接收正文，可点击重试；\n- ``stopped``：用户主动停止，保留已接收正文。"
       },
+      "ChatMode": {
+        "type": "string",
+        "enum": [
+          "companion",
+          "study"
+        ],
+        "title": "ChatMode",
+        "description": "对话模式（ADR-0022：按对话持久化的双模式）。\n\n- ``companion``：日常陪伴——自然、有分寸的个性化陪伴；\n- ``study``：学习模式——因材施教老师合同，为后续画像、材料检索、\n  教学规划、理解检查与适量测验保留编排接口。"
+      },
+      "ChatModeEventProjection": {
+        "properties": {
+          "event_id": {
+            "type": "string",
+            "title": "Event Id",
+            "description": "稳定事件标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "所属对话标识。"
+          },
+          "from_mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "切换前模式。"
+          },
+          "to_mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "切换后模式。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "切换时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "event_id",
+          "conversation_id",
+          "from_mode",
+          "to_mode",
+          "created_at"
+        ],
+        "title": "ChatModeEventProjection",
+        "description": "可见的模式切换事件（写入消息流，只影响后续消息）。"
+      },
+      "ChatModeSwitchRequest": {
+        "properties": {
+          "mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "目标模式。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mode"
+        ],
+        "title": "ChatModeSwitchRequest",
+        "description": "切换对话模式的请求。切换只影响后续消息，不重写历史回答。"
+      },
+      "ChatModeSwitchResponse": {
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ChatConversationProjection",
+            "description": "切换后的对话投影。"
+          },
+          "event": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatModeEventProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本次写入的可见事件；相同模式幂等切换时为 None。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation"
+        ],
+        "title": "ChatModeSwitchResponse",
+        "description": "模式切换结果：切换后的对话投影与本次可见事件。"
+      },
       "ChatStopResponse": {
         "properties": {
           "message": {
@@ -20546,6 +20753,45 @@
         ],
         "title": "ChatStopResponse",
         "description": "停止生成的结果投影。"
+      },
+      "ChatThinkingSummary": {
+        "properties": {
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "可公开的处理步骤（进行中会增长）。"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence",
+            "description": "回答采用的证据/来源说明（可为空）。"
+          },
+          "tools": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Tools",
+            "description": "工具调用进度说明（可为空）。"
+          },
+          "quality": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Quality",
+            "description": "质量检查结论（完成/失败/停止的中文状态）。"
+          }
+        },
+        "type": "object",
+        "title": "ChatThinkingSummary",
+        "description": "面向用户的可公开思考摘要（Issue 14）。\n\n由结构化进度事件与可披露结果构造，绝不包含原始 Chain-of-Thought、\n系统提示、隐藏指令或逐 token 推理。四类内容均可为空列表。"
       },
       "ChunkCorrection": {
         "properties": {

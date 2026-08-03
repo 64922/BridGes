@@ -354,8 +354,33 @@ export interface paths {
         /**
          * Create Conversation
          * @description 新建对话；标题可选，缺省由首条消息自动推导。
+         *
+         *     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
          */
         post: operations["create_conversation_chat_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Switch Conversation Mode
+         * @description 切换对话模式（日常陪伴/学习模式）。
+         *
+         *     写入可见模式切换事件，只影响切换后的消息；既有消息、回答与引用
+         *     不被重写。相同模式幂等返回当前投影。
+         */
+        post: operations["switch_conversation_mode_chat_conversations__conversation_id__mode_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5186,7 +5211,7 @@ export interface components {
         };
         /**
          * ChatConversationProjection
-         * @description 单个对话的完整投影（含消息历史）。
+         * @description 单个对话的完整投影（含消息历史与模式切换事件）。
          */
         ChatConversationProjection: {
             /**
@@ -5201,11 +5226,10 @@ export interface components {
              */
             title: string;
             /**
-             * Mode
-             * @description 对话模式。
+             * @description 对话当前模式。
              * @default companion
              */
-            mode: string;
+            mode: components["schemas"]["ChatMode"];
             /**
              * Created At
              * Format: date-time
@@ -5220,6 +5244,11 @@ export interface components {
             updated_at: string;
             /** Messages */
             messages?: components["schemas"]["ChatMessageProjection"][];
+            /**
+             * Mode Events
+             * @description 按时间排序的可见模式切换事件。
+             */
+            mode_events?: components["schemas"]["ChatModeEventProjection"][];
         };
         /**
          * ChatConversationSummary
@@ -5238,11 +5267,10 @@ export interface components {
              */
             title: string;
             /**
-             * Mode
-             * @description 对话模式（预留双模式）。
+             * @description 对话当前模式。
              * @default companion
              */
-            mode: string;
+            mode: components["schemas"]["ChatMode"];
             /**
              * Message Count
              * @description 消息条数（含所有尝试）。
@@ -5265,6 +5293,8 @@ export interface components {
         /**
          * ChatCreateRequest
          * @description 新建对话请求；标题可选，缺省由首条消息自动推导。
+         *
+         *     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。
          */
         ChatCreateRequest: {
             /**
@@ -5272,6 +5302,11 @@ export interface components {
              * @description 可选标题。
              */
             title?: string | null;
+            /**
+             * @description 对话初始模式。
+             * @default companion
+             */
+            mode: components["schemas"]["ChatMode"];
         };
         /**
          * ChatError
@@ -5334,6 +5369,8 @@ export interface components {
              * @default
              */
             content: string;
+            /** @description 可公开的思考摘要；失败/停止/断流时保留已完成部分。 */
+            thinking?: components["schemas"]["ChatThinkingSummary"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -5390,12 +5427,95 @@ export interface components {
          */
         ChatMessageStatus: "streaming" | "done" | "error" | "stopped";
         /**
+         * ChatMode
+         * @description 对话模式（ADR-0022：按对话持久化的双模式）。
+         *
+         *     - ``companion``：日常陪伴——自然、有分寸的个性化陪伴；
+         *     - ``study``：学习模式——因材施教老师合同，为后续画像、材料检索、
+         *       教学规划、理解检查与适量测验保留编排接口。
+         * @enum {string}
+         */
+        ChatMode: "companion" | "study";
+        /**
+         * ChatModeEventProjection
+         * @description 可见的模式切换事件（写入消息流，只影响后续消息）。
+         */
+        ChatModeEventProjection: {
+            /**
+             * Event Id
+             * @description 稳定事件标识。
+             */
+            event_id: string;
+            /**
+             * Conversation Id
+             * @description 所属对话标识。
+             */
+            conversation_id: string;
+            /** @description 切换前模式。 */
+            from_mode: components["schemas"]["ChatMode"];
+            /** @description 切换后模式。 */
+            to_mode: components["schemas"]["ChatMode"];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 切换时间。
+             */
+            created_at: string;
+        };
+        /**
+         * ChatModeSwitchRequest
+         * @description 切换对话模式的请求。切换只影响后续消息，不重写历史回答。
+         */
+        ChatModeSwitchRequest: {
+            /** @description 目标模式。 */
+            mode: components["schemas"]["ChatMode"];
+        };
+        /**
+         * ChatModeSwitchResponse
+         * @description 模式切换结果：切换后的对话投影与本次可见事件。
+         */
+        ChatModeSwitchResponse: {
+            /** @description 切换后的对话投影。 */
+            conversation: components["schemas"]["ChatConversationProjection"];
+            /** @description 本次写入的可见事件；相同模式幂等切换时为 None。 */
+            event?: components["schemas"]["ChatModeEventProjection"] | null;
+        };
+        /**
          * ChatStopResponse
          * @description 停止生成的结果投影。
          */
         ChatStopResponse: {
             /** @description 停止后的消息状态。 */
             message: components["schemas"]["ChatMessageProjection"];
+        };
+        /**
+         * ChatThinkingSummary
+         * @description 面向用户的可公开思考摘要（Issue 14）。
+         *
+         *     由结构化进度事件与可披露结果构造，绝不包含原始 Chain-of-Thought、
+         *     系统提示、隐藏指令或逐 token 推理。四类内容均可为空列表。
+         */
+        ChatThinkingSummary: {
+            /**
+             * Steps
+             * @description 可公开的处理步骤（进行中会增长）。
+             */
+            steps?: string[];
+            /**
+             * Evidence
+             * @description 回答采用的证据/来源说明（可为空）。
+             */
+            evidence?: string[];
+            /**
+             * Tools
+             * @description 工具调用进度说明（可为空）。
+             */
+            tools?: string[];
+            /**
+             * Quality
+             * @description 质量检查结论（完成/失败/停止的中文状态）。
+             */
+            quality?: string[];
         };
         /**
          * ChunkCorrection
@@ -18035,6 +18155,70 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    switch_conversation_mode_chat_conversations__conversation_id__mode_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatModeSwitchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatModeSwitchResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

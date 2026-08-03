@@ -27,6 +27,16 @@ class ConversationRecord:
 
 
 @dataclass
+class ModeEventRecord:
+    event_id: str
+    conversation_id: str
+    account_id: str
+    from_mode: str
+    to_mode: str
+    created_at: datetime
+
+
+@dataclass
 class MessageRecord:
     message_id: str
     conversation_id: str
@@ -35,6 +45,7 @@ class MessageRecord:
     attempt_number: int
     status: ChatMessageStatus
     content: str
+    thinking: dict[str, list[str]] | None
     error_code: str | None
     error_message: str | None
     duration_ms: int | None
@@ -147,6 +158,71 @@ class ConversationRepository:
                 (_iso(updated_at), conversation_id, account_id),
             )
 
+    def set_conversation_mode(
+        self, account_id: str, conversation_id: str, mode: str, updated_at: datetime
+    ) -> None:
+        """更新对话当前模式并刷新活动时间；切换只影响后续消息。"""
+        with self._db.transaction():
+            self._db.connection.execute(
+                "UPDATE conversations SET mode = ?, updated_at = ?"
+                " WHERE conversation_id = ? AND account_id = ?",
+                (mode, _iso(updated_at), conversation_id, account_id),
+            )
+
+    # -- mode events --------------------------------------------------------
+
+    def insert_mode_event(
+        self,
+        *,
+        event_id: str,
+        conversation_id: str,
+        account_id: str,
+        from_mode: str,
+        to_mode: str,
+        created_at: datetime,
+    ) -> None:
+        """写入一条可见模式切换事件（按 created_at 与消息同序渲染）。"""
+        try:
+            with self._db.transaction():
+                self._db.connection.execute(
+                    "INSERT INTO mode_events"
+                    "(event_id, conversation_id, account_id, from_mode, to_mode,"
+                    " created_at) VALUES (?, ?, ?, ?, ?, ?)",
+                    (
+                        event_id,
+                        conversation_id,
+                        account_id,
+                        from_mode,
+                        to_mode,
+                        _iso(created_at),
+                    ),
+                )
+        except StorageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError("保存模式切换事件失败，请稍后重试。") from exc
+
+    def list_mode_events(
+        self, account_id: str, conversation_id: str
+    ) -> list[ModeEventRecord]:
+        rows = self._db.connection.execute(
+            "SELECT event_id, conversation_id, account_id, from_mode, to_mode,"
+            " created_at FROM mode_events WHERE conversation_id = ? AND account_id = ?"
+            " ORDER BY created_at, event_id",
+            (conversation_id, account_id),
+        ).fetchall()
+        return [
+            ModeEventRecord(
+                event_id=str(row["event_id"]),
+                conversation_id=str(row["conversation_id"]),
+                account_id=str(row["account_id"]),
+                from_mode=str(row["from_mode"]),
+                to_mode=str(row["to_mode"]),
+                created_at=_parse_iso(str(row["created_at"])),
+            )
+            for row in rows
+        ]
+
     # -- messages ----------------------------------------------------------
 
     def insert_message(self, record: MessageRecord) -> None:
@@ -155,9 +231,9 @@ class ConversationRepository:
                 self._db.connection.execute(
                     "INSERT INTO messages"
                     "(message_id, conversation_id, account_id, role, attempt_number,"
-                    " status, content, error_code, error_message, duration_ms,"
-                    " model_id, run_lock_id, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " status, content, thinking, error_code, error_message,"
+                    " duration_ms, model_id, run_lock_id, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -166,6 +242,7 @@ class ConversationRepository:
                         record.attempt_number,
                         record.status.value,
                         record.content,
+                        _json_dumps(record.thinking) if record.thinking else None,
                         record.error_code,
                         record.error_message,
                         record.duration_ms,
@@ -183,8 +260,8 @@ class ConversationRepository:
     def list_messages(self, account_id: str, conversation_id: str) -> list[MessageRecord]:
         rows = self._db.connection.execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
-            " status, content, error_code, error_message, duration_ms, model_id,"
-            " run_lock_id, created_at, updated_at"
+            " status, content, thinking, error_code, error_message, duration_ms,"
+            " model_id, run_lock_id, created_at, updated_at"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END, message_id",
             (conversation_id, account_id),
@@ -194,8 +271,8 @@ class ConversationRepository:
     def get_message(self, account_id: str, message_id: str) -> MessageRecord | None:
         row = self._db.connection.execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
-            " status, content, error_code, error_message, duration_ms, model_id,"
-            " run_lock_id, created_at, updated_at"
+            " status, content, thinking, error_code, error_message, duration_ms,"
+            " model_id, run_lock_id, created_at, updated_at"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -215,6 +292,22 @@ class ConversationRepository:
             )
             return cursor.rowcount
 
+    def update_message_thinking(
+        self,
+        account_id: str,
+        message_id: str,
+        thinking: dict[str, list[str]],
+        updated_at: datetime,
+    ) -> int:
+        """流式更新可公开思考摘要；仅当消息仍处于 streaming 状态时生效。"""
+        with self._db.transaction():
+            cursor = self._db.connection.execute(
+                "UPDATE messages SET thinking = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(thinking), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
     def finalize_message(
         self,
         account_id: str,
@@ -227,25 +320,50 @@ class ConversationRepository:
         model_id: str | None,
         run_lock_id: str | None,
         updated_at: datetime,
+        thinking: dict[str, list[str]] | None = None,
     ) -> int:
-        """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。"""
+        """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
+
+        ``thinking`` 为 None 时保留消息已有的思考摘要（陈旧收敛等不覆盖场景）。
+        """
         with self._db.transaction():
-            cursor = self._db.connection.execute(
-                "UPDATE messages SET status = ?, error_code = ?, error_message = ?,"
-                " duration_ms = ?, model_id = ?, run_lock_id = ?, updated_at = ?"
-                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
-                (
-                    status.value,
-                    error_code,
-                    error_message,
-                    duration_ms,
-                    model_id,
-                    run_lock_id,
-                    _iso(updated_at),
-                    message_id,
-                    account_id,
-                ),
-            )
+            if thinking is None:
+                cursor = self._db.connection.execute(
+                    "UPDATE messages SET status = ?, error_code = ?,"
+                    " error_message = ?, duration_ms = ?, model_id = ?,"
+                    " run_lock_id = ?, updated_at = ?"
+                    " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                    (
+                        status.value,
+                        error_code,
+                        error_message,
+                        duration_ms,
+                        model_id,
+                        run_lock_id,
+                        _iso(updated_at),
+                        message_id,
+                        account_id,
+                    ),
+                )
+            else:
+                cursor = self._db.connection.execute(
+                    "UPDATE messages SET status = ?, error_code = ?,"
+                    " error_message = ?, duration_ms = ?, model_id = ?,"
+                    " run_lock_id = ?, updated_at = ?, thinking = ?"
+                    " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                    (
+                        status.value,
+                        error_code,
+                        error_message,
+                        duration_ms,
+                        model_id,
+                        run_lock_id,
+                        _iso(updated_at),
+                        _json_dumps(thinking),
+                        message_id,
+                        account_id,
+                    ),
+                )
             return cursor.rowcount
 
     def message_count(self, account_id: str, conversation_id: str) -> int:
@@ -293,6 +411,7 @@ class ConversationRepository:
             attempt_number=int(row["attempt_number"]),
             status=ChatMessageStatus(str(row["status"])),
             content=str(row["content"]),
+            thinking=_json_loads(row["thinking"]),
             error_code=(
                 str(row["error_code"]) if row["error_code"] is not None else None
             ),
@@ -307,6 +426,24 @@ class ConversationRepository:
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
         )
+
+
+def _json_loads(value: Any) -> dict[str, list[str]] | None:
+    if value is None:
+        return None
+    try:
+        import json
+
+        parsed = json.loads(str(value))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    cleaned: dict[str, list[str]] = {}
+    for key, items in parsed.items():
+        if isinstance(items, list) and all(isinstance(item, str) for item in items):
+            cleaned[str(key)] = items
+    return cleaned if cleaned else None
 
 
 def _json_dumps(value: dict[str, Any]) -> str:

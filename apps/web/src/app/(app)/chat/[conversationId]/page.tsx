@@ -7,6 +7,11 @@ import { StateBlock } from "@/components/bridges/StateBlock";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
+import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
+import {
+  type ChatMessage as ChatMessageLike,
+  type ChatThinking,
+} from "@/components/bridges/MessageList";
 import { AppShell } from "@/components/layout/AppShell";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
@@ -15,6 +20,7 @@ import {
   retryChatMessage,
   stopChatMessage,
   streamChatMessage,
+  switchChatMode,
   type ChatConversationProjection,
   type ChatStreamEvent,
 } from "@/lib/api";
@@ -27,6 +33,17 @@ interface ActiveRun {
   messageId: string;
   content: string;
   kind: "send" | "retry";
+  /** 流式中的可公开思考摘要（生成完成折叠后由服务端历史提供） */
+  thinking: ChatThinking | null;
+  /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
+  status: "streaming" | "error";
+  errorText?: string;
+}
+
+/** 真实生命周期耗时（毫秒）→ 折叠标题秒数（与服务端投影换算一致）。 */
+function secondsOf(durationMs: number | null | undefined): number | null {
+  if (durationMs === null || durationMs === undefined) return null;
+  return Math.max(1, Math.round(durationMs / 1000));
 }
 
 /**
@@ -51,8 +68,10 @@ export default function ChatConversationPage() {
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
 
-  const load = useCallback(async () => {
-    setLoadState("loading");
+  const load = useCallback(async (keepContent = false) => {
+    // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
+    // 不闪 loading，避免遮蔽 error 态的思考摘要。
+    if (!keepContent) setLoadState("loading");
     setLoadError("");
     try {
       const projection = await getChatConversation(conversationId);
@@ -61,6 +80,10 @@ export default function ChatConversationPage() {
     } catch (error) {
       setLoadState("error");
       setLoadError(error instanceof Error ? error.message : "对话加载失败。");
+    } finally {
+      // 权威历史接管后收敛 error 态渲染（见 handleStreamEvent error 分支）
+      activeRunRef.current = null;
+      setActiveRun(null);
     }
   }, [conversationId]);
 
@@ -92,7 +115,22 @@ export default function ChatConversationPage() {
         if (event.event === "started") {
           // 同步写入 ref：SSE 事件可能在同一块内连续到达（started 后紧跟
           // delta），异步 setState 尚未刷新时 delta 处理器依赖 ref 判断归属
-          const run = { messageId: event.data.message_id, content: "", kind };
+          const run: ActiveRun = {
+            messageId: event.data.message_id,
+            content: "",
+            kind,
+            status: "streaming",
+            // 初始思考摘要：思考区域自动展开（Issue 14）
+            thinking: event.data.thinking
+              ? {
+                  steps: event.data.thinking.steps ?? [],
+                  evidence: event.data.thinking.evidence ?? [],
+                  tools: event.data.thinking.tools ?? [],
+                  quality: event.data.thinking.quality ?? [],
+                  seconds: null,
+                }
+              : null,
+          };
           activeRunRef.current = run;
           if (kind === "send") {
             setPendingUser({ id: event.data.user_message_id, text });
@@ -106,14 +144,39 @@ export default function ChatConversationPage() {
           };
           setActiveRun((run) => (run ? { ...run, content: run.content + event.data.delta } : run));
         } else if (event.event === "done" || event.event === "error") {
-          // 收敛：清除进行中状态，重新加载服务端权威历史
-          activeRunRef.current = null;
-          setActiveRun(null);
-          setPendingUser(null);
-          setAnnouncement(
-            event.event === "done" ? "回答已生成" : `生成失败：${event.data.error.message}`
-          );
-          void load();
+          if (event.event === "error") {
+            // 失败/停止/断流：保留已完成正文与思考摘要的 error 态渲染
+            // （消费事件载荷，折叠标题「已思考（用时 X 秒）」不依赖重新
+            // 加载的间隙）；权威历史加载完成后由 load 收敛清空。
+            const current = activeRunRef.current;
+            const errorRun: ActiveRun = {
+              messageId: event.data.message_id,
+              content: current?.content ?? "",
+              kind,
+              status: "error",
+              errorText: event.data.error.message,
+              thinking: event.data.thinking
+                ? {
+                    steps: event.data.thinking.steps ?? [],
+                    evidence: event.data.thinking.evidence ?? [],
+                    tools: event.data.thinking.tools ?? [],
+                    quality: event.data.thinking.quality ?? [],
+                    seconds: secondsOf(event.data.duration_ms),
+                  }
+                : null,
+            };
+            activeRunRef.current = errorRun;
+            setActiveRun(errorRun);
+            setAnnouncement(`生成失败：${event.data.error.message}`);
+          } else {
+            // 完成：清除进行中状态，重新加载服务端权威历史
+            activeRunRef.current = null;
+            setActiveRun(null);
+            setPendingUser(null);
+            setAnnouncement("回答已生成");
+          }
+          // 错误走 keepContent 刷新（保留 error 态渲染直至权威历史接管）
+          void load(event.event === "error");
         }
       },
     [load]
@@ -189,47 +252,66 @@ export default function ChatConversationPage() {
     [conversationId, handleStreamEvent, load]
   );
 
-  // 组装渲染消息：服务端历史 + 进行中的乐观消息
-  const baseMessages = conversation ? buildThreadMessages(conversation.messages ?? []) : [];
+  // 模式切换：写入服务端并更新对话投影（只影响后续消息，历史不被重写）。
+  // 可见事件在消息流中渲染并自带 role=status 播报，页面级不再重复播报。
+  const changeMode = useCallback(
+    async (mode: ChatMode) => {
+      if (!conversation || conversation.mode === mode || loadState !== "ready") return;
+      try {
+        const result = await switchChatMode(conversation.conversation_id, mode);
+        setConversation(result.conversation);
+      } catch (error) {
+        setSendError({
+          message: error instanceof Error ? error.message : "切换模式失败，请稍后重试。",
+          code: error instanceof ApiError ? error.code : undefined,
+        });
+      }
+    },
+    [conversation, loadState]
+  );
+
+  // 组装渲染消息：服务端历史 + 进行中的乐观消息 + 错误收敛后的终态渲染
+  const baseMessages = conversation
+    ? buildThreadMessages(conversation.messages ?? [], conversation.mode_events ?? [])
+    : [];
   const threadMessages = [...baseMessages];
-  if (pendingUser && activeRun && activeRun.kind === "send") {
-    threadMessages.push({
-      id: pendingUser.id,
-      role: "user",
-      plainText: pendingUser.text,
-      content: (
-        <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{pendingUser.text}</p>
-      ),
-    });
-    threadMessages.push({
+  if (activeRun) {
+    const isError = activeRun.status === "error";
+    const assistantItem: ChatMessageLike = {
       id: activeRun.messageId,
       role: "assistant",
       plainText: activeRun.content,
+      thinking: activeRun.thinking ?? undefined,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
-          <span className={styles.streamCursor} aria-hidden="true" />
+          {!isError && <span className={styles.streamCursor} aria-hidden="true" />}
         </p>
       ),
-      status: "streaming",
-    });
-  } else if (activeRun && activeRun.kind === "retry" && conversation) {
-    // 重试流：在最新尝试（可能失败）之后追加新的流式尝试
-    threadMessages.push({
-      id: activeRun.messageId,
-      role: "assistant",
-      plainText: activeRun.content,
-      content: (
-        <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
-          {activeRun.content}
-          <span className={styles.streamCursor} aria-hidden="true" />
-        </p>
-      ),
-      status: "streaming",
-    });
+      status: isError ? "error" : "streaming",
+      errorText: isError ? activeRun.errorText : undefined,
+    };
+    if (isError) {
+      // 失败/停止/断流：保留已完成正文与思考摘要，直至权威历史接管
+      threadMessages.push(assistantItem);
+    } else if (pendingUser && activeRun.kind === "send") {
+      threadMessages.push({
+        id: pendingUser.id,
+        role: "user",
+        plainText: pendingUser.text,
+        content: (
+          <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{pendingUser.text}</p>
+        ),
+      });
+      threadMessages.push(assistantItem);
+    } else if (activeRun.kind === "retry") {
+      // 重试流：在最新尝试（可能失败）之后追加新的流式尝试
+      threadMessages.push(assistantItem);
+    }
   }
 
   const generating = activeRun !== null;
+  const currentMode: ChatMode = conversation?.mode ?? "companion";
 
   return (
     <AppShell mode="account">
@@ -262,6 +344,9 @@ export default function ChatConversationPage() {
               )}
               <div className={styles.composerWrap}>
                 <div className={styles.composerInner}>
+                  <div className={styles.modeRow}>
+                    <ModeToggle value={currentMode} onChange={(mode) => void changeMode(mode)} />
+                  </div>
                   <Composer
                     onSend={(text) => void sendMessage(text)}
                     generating={generating}

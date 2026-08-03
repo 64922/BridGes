@@ -30,6 +30,8 @@ from bridges.contracts.chat import (
     ChatError,
     ChatMessageCreateRequest,
     ChatMessageProjection,
+    ChatModeSwitchRequest,
+    ChatModeSwitchResponse,
     ChatStopResponse,
 )
 from bridges.contracts.credentials import ProbeStatus
@@ -191,6 +193,12 @@ def _generation_events(
             "user_message_id": user_message.message_id,
             "message_id": assistant_message.message_id,
             "attempt_number": assistant_message.attempt_number,
+            # 初始思考摘要：前端据此自动展开思考区域（不暴露原始思维链）
+            "thinking": (
+                assistant_message.thinking.model_dump(mode="json")
+                if assistant_message.thinking is not None
+                else None
+            ),
         },
     )
     terminated = False
@@ -207,6 +215,9 @@ def _generation_events(
             }
         elif event.kind == "error":
             terminated = True
+            final = service.message_projection(
+                subject.account_id, assistant_message.message_id
+            )
             yield "error", {
                 "message_id": assistant_message.message_id,
                 "error": {
@@ -214,6 +225,13 @@ def _generation_events(
                     "message": user_facing_error(event.error_code, event.error_message),
                     "retryable": error_is_retryable(event.error_code),
                 },
+                # 失败/停止/断流时保留已完成思考摘要与真实耗时
+                "thinking": (
+                    final.thinking.model_dump(mode="json")
+                    if final is not None and final.thinking is not None
+                    else None
+                ),
+                "duration_ms": final.duration_ms if final is not None else None,
             }
             return
         elif event.kind == "done":
@@ -285,11 +303,46 @@ def create_conversation(
     service: ChatServiceDep,
     subject: SubjectDep,
 ) -> ChatConversationProjection:
-    """新建对话；标题可选，缺省由首条消息自动推导。"""
+    """新建对话；标题可选，缺省由首条消息自动推导。
+
+    ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
+    """
     try:
-        return service.create_conversation(subject.account_id, title=body.title)
+        return service.create_conversation(
+            subject.account_id, title=body.title, mode=body.mode
+        )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+
+
+@router.post(
+    "/conversations/{conversation_id}/mode",
+    response_model=ChatModeSwitchResponse,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def switch_conversation_mode(
+    conversation_id: str,
+    body: ChatModeSwitchRequest,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> ChatModeSwitchResponse:
+    """切换对话模式（日常陪伴/学习模式）。
+
+    写入可见模式切换事件，只影响切换后的消息；既有消息、回答与引用
+    不被重写。相同模式幂等返回当前投影。
+    """
+    try:
+        conversation, event = service.set_conversation_mode(
+            subject.account_id, conversation_id, body.mode
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+    return ChatModeSwitchResponse(conversation=conversation, event=event)
 
 
 @router.get(

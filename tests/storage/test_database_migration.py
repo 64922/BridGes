@@ -30,9 +30,9 @@ def test_first_startup_transactionally_creates_versioned_sqlite_database(
     database = BridgesDatabase(tmp_path / "bridges.db")
     version = database.initialize()
 
-    assert version == 2
+    assert version == 3
     assert (tmp_path / "bridges.db").exists()
-    assert _schema_version(tmp_path / "bridges.db") == 2
+    assert _schema_version(tmp_path / "bridges.db") == 3
     with sqlite3.connect(tmp_path / "bridges.db") as connection:
         tables = {
             str(row[0])
@@ -41,6 +41,13 @@ def test_first_startup_transactionally_creates_versioned_sqlite_database(
             )
         }
     assert {"accounts", "objects", "schema_meta"} <= tables
+    # Issue 14 迁移产物：mode_events 表与 messages.thinking 列真实存在
+    assert "mode_events" in tables
+    columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(messages)")
+    }
+    assert "thinking" in columns
     # foreign_keys 是连接级设置，必须通过数据库自己的连接确认已启用。
     assert int(database.connection.execute("PRAGMA foreign_keys").fetchone()[0]) == 1
 
@@ -58,8 +65,8 @@ def test_repeated_startup_does_not_remigrate_or_corrupt_sqlite_data(
 
     # 重复启动（重新打开数据库）只补齐缺失迁移，不重复执行、不损坏数据。
     second = BridgesDatabase(path)
-    assert second.initialize() == 2
-    assert second.initialize() == 2  # 第三次启动同样幂等
+    assert second.initialize() == 3
+    assert second.initialize() == 3  # 第三次启动同样幂等
     row = second.connection.execute(
         "SELECT account_id FROM accounts WHERE account_id = ?",
         (account_id,),
@@ -157,7 +164,7 @@ def test_app_first_startup_creates_versioned_sqlite_database(
     assert app.state.bridges_database is not None
     assert app.state.object_repository is not None
     assert (tmp_path / "bridges.db").exists()
-    assert _schema_version(tmp_path / "bridges.db") == 2
+    assert _schema_version(tmp_path / "bridges.db") == 3
 
     # 重启（再次启动）不重复迁移、不报错。
     get_settings.cache_clear()

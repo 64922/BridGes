@@ -2,12 +2,16 @@
 
 import { useEffect, useRef } from "react";
 
-import { MessageList, type ChatMessage } from "@/components/bridges/MessageList";
+import {
+  MessageList,
+  type ChatMessage,
+  type ThreadModeEvent,
+} from "@/components/bridges/MessageList";
 
 import styles from "./chat.module.css";
 
 interface ChatThreadProps {
-  messages: ChatMessage[];
+  messages: (ChatMessage | ThreadModeEvent)[];
   onRetry?: (messageId: string) => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;

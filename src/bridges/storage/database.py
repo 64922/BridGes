@@ -16,7 +16,7 @@ from pathlib import Path
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -112,6 +112,31 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         CREATE INDEX idx_messages_account ON messages(account_id)
+        """,
+    ],
+    # Issue 14: 双模式与可折叠思考摘要。messages 增加可公开思考摘要
+    # （JSON 文本，绝不存原始思维链）；mode_events 记录写入消息流的可见
+    # 模式切换事件（与消息同序渲染）。既有行通过 DEFAULT NULL 自然兼容。
+    3: [
+        """
+        ALTER TABLE messages ADD COLUMN thinking TEXT
+        """,
+        """
+        CREATE TABLE mode_events (
+            event_id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            account_id TEXT NOT NULL,
+            from_mode TEXT NOT NULL,
+            to_mode TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_mode_events_conversation_created
+        ON mode_events(conversation_id, created_at)
+        """,
+        """
+        CREATE INDEX idx_mode_events_account ON mode_events(account_id)
         """,
     ],
 }

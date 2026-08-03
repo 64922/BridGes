@@ -169,6 +169,102 @@ def _create_conversation(client: TestClient) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Issue 14：对话双模式
+# ---------------------------------------------------------------------------
+
+
+def test_create_conversation_defaults_companion_and_supports_study(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    _register(client)
+    default = client.post("/chat/conversations", json={})
+    assert default.status_code == 201
+    assert default.json()["mode"] == "companion"
+    assert default.json()["mode_events"] == []
+
+    study = client.post("/chat/conversations", json={"mode": "study"})
+    assert study.status_code == 201
+    assert study.json()["mode"] == "study"
+
+    listing = client.get("/chat/conversations").json()["conversations"]
+    modes = {item["mode"] for item in listing}
+    assert modes == {"companion", "study"}
+
+
+def test_switch_mode_writes_visible_event_and_persists_after_restart(
+    client: TestClient, sqlite_app: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _register(client)
+    conversation_id = _create_conversation(client)
+    switched = client.post(
+        f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
+    )
+    assert switched.status_code == 200
+    body = switched.json()
+    assert body["conversation"]["mode"] == "study"
+    event = body["event"]
+    assert event is not None
+    assert event["from_mode"] == "companion"
+    assert event["to_mode"] == "study"
+
+    # 读取恢复：模式与切换历史完整
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assert history["mode"] == "study"
+    assert [(e["from_mode"], e["to_mode"]) for e in history["mode_events"]] == [
+        ("companion", "study")
+    ]
+
+    # 重启恢复：同一数据库重新打开后模式、切换历史与消息顺序正确
+    get_settings.cache_clear()
+    app2 = create_app()
+    client2 = TestClient(app2)
+    client2.cookies.set("bridges_session", client.cookies.get("bridges_session"))
+    restored = client2.get(f"/chat/conversations/{conversation_id}").json()
+    assert restored["mode"] == "study"
+    assert [(e["from_mode"], e["to_mode"]) for e in restored["mode_events"]] == [
+        ("companion", "study")
+    ]
+
+
+def test_switch_mode_same_mode_is_idempotent_without_event(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    _register(client)
+    conversation_id = _create_conversation(client)
+    first = client.post(
+        f"/chat/conversations/{conversation_id}/mode", json={"mode": "companion"}
+    )
+    assert first.status_code == 200
+    assert first.json()["event"] is None
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assert history["mode_events"] == []
+
+
+def test_second_account_cannot_switch_mode_or_read_mode_events(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    alice = _register(client, "1")
+    _make_capability_ready(sqlite_app, alice["id"])
+    conversation_id = _create_conversation(client)
+    client.post(
+        f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
+    )
+
+    bob_client = TestClient(sqlite_app)
+    _register(bob_client, "2")
+    # Bob 看不到 Alice 的对话，也不能切换其模式（404，不泄漏存在性）
+    assert (
+        bob_client.post(
+            f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
+        ).status_code
+        == 404
+    )
+    assert bob_client.get(f"/chat/conversations/{conversation_id}").status_code == 404
+    bob_list = bob_client.get("/chat/conversations").json()
+    assert bob_list["conversations"] == []
+
+
+# ---------------------------------------------------------------------------
 # 能力预检门
 # ---------------------------------------------------------------------------
 
@@ -562,3 +658,92 @@ def test_chat_unavailable_in_memory_mode() -> None:
     response = TestClient(create_app()).get("/chat/conversations")
     assert response.status_code == 503
     assert response.json()["detail"]["error"] == "chat_unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Issue 14：思考摘要（SSE 事件携带 + 终态保留）
+# ---------------------------------------------------------------------------
+
+
+def test_sse_carries_thinking_in_started_and_done(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    account = _register(client)
+    _make_capability_ready(sqlite_app, account["id"])
+    conversation_id = _create_conversation(client)
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "你好"},
+    )
+    events = _parse_sse(response.text)
+    started = events[0][1]
+    # started 事件携带初始思考摘要（前端据此自动展开）
+    assert started["thinking"] is not None
+    assert started["thinking"]["steps"] == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    assert started["thinking"]["evidence"] == []
+    assert started["thinking"]["tools"] == []
+    done = events[-1]
+    assert done[0] == "done"
+    assert done[1]["message"]["thinking"]["steps"] == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    assert done[1]["message"]["thinking"]["quality"] == ["回答已完整生成并保存"]
+    # 耗时基于真实生成生命周期，非硬编码
+    assert done[1]["message"]["duration_ms"] >= 1
+
+
+def test_error_event_keeps_thinking_and_duration(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    account = _register(client)
+    _make_capability_ready(sqlite_app, account["id"])
+    sqlite_app.state.chat_service._gateway = _gateway_with(
+        _ProgrammableStreamAdapter(connect_error=RateLimitError("slow down"))
+    )
+    conversation_id = _create_conversation(client)
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "你好"},
+    )
+    events = _parse_sse(response.text)
+    error = events[-1]
+    assert error[0] == "error"
+    # 失败保留已完成摘要并显示中文状态
+    assert error[1]["thinking"] is not None
+    assert error[1]["thinking"]["steps"] == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    assert error[1]["thinking"]["quality"] and "限流" in error[1]["thinking"]["quality"][0]
+    assert error[1]["duration_ms"] is not None and error[1]["duration_ms"] >= 1
+
+
+def test_second_account_cannot_read_thinking_summary(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    alice = _register(client, "1")
+    _make_capability_ready(sqlite_app, alice["id"])
+    conversation_id = _create_conversation(client)
+    client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "爱丽丝的学习问题"},
+    )
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assistant_id = history["messages"][1]["message_id"]
+
+    bob_client = TestClient(sqlite_app)
+    bob = _register(bob_client, "2")
+    # Bob 具备完整可用能力，隔离判定不受"未配置 Key"预检门干扰
+    _make_capability_ready(sqlite_app, bob["id"])
+    # Bob 读取 Alice 的对话整体 404：模式、事件与思考摘要都不泄漏
+    assert bob_client.get(f"/chat/conversations/{conversation_id}").status_code == 404
+    assert (
+        bob_client.post(
+            f"/chat/conversations/{conversation_id}/messages/{assistant_id}/retry"
+        ).status_code
+        == 404
+    )

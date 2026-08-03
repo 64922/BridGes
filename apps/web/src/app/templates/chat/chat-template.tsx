@@ -190,6 +190,9 @@ const DEMO_MESSAGES: ChatMessage[] = [
         "从本地知识库检索《经典力学笔记》中关于最小作用量原理的段落",
         "组织「直觉 → 公式 → 可运行代码 → 常见误区」的解释结构",
       ],
+      evidence: ["《经典力学笔记》第三章：最小作用量原理"],
+      tools: [],
+      quality: ["回答已完整生成并保存"],
     },
     content: (
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)", minWidth: 0 }}>

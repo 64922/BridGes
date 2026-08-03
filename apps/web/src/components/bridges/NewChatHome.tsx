@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { Composer } from "@/components/bridges/Composer";
+import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
@@ -30,6 +31,8 @@ export function NewChatHome() {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<{ message: string; code?: string } | null>(null);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
+  // 新聊天默认日常陪伴；用户可切为学习模式后发送（Issue 14，ADR-0022）
+  const [mode, setMode] = useState<ChatMode>("companion");
   // 递增计数器保证每次建议卡点击都触发预填（同毫秒点击不会丢）
   const prefillCounter = useRef(0);
 
@@ -37,7 +40,7 @@ export function NewChatHome() {
     setSending(true);
     setSendError(null);
     try {
-      const conversation = await createChatConversation();
+      const conversation = await createChatConversation(undefined, mode);
       sessionStorage.setItem(chatPromptKey(conversation.conversation_id), text);
       router.push(`/chat/${conversation.conversation_id}`);
     } catch (error) {
@@ -65,6 +68,9 @@ export function NewChatHome() {
                 <h1 className={styles.greetingTitle}>有什么可以帮你的？</h1>
               </div>
               <RotatingQuote />
+              <div className={styles.modeRow}>
+                <ModeToggle value={mode} onChange={setMode} />
+              </div>
               {sendError && (
                 <ChatSendErrorBanner
                   message={sendError.message}

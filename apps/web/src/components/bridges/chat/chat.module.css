@@ -88,6 +88,13 @@
   margin-inline: auto;
 }
 
+/* Issue 14：输入区上方的对话模式切换行（日常陪伴 / 学习模式） */
+.modeRow {
+  display: flex;
+  justify-content: center;
+  margin-bottom: var(--space-3);
+}
+
 /* 流式光标：回答正文后的闪烁竖线 */
 .streamCursor {
   display: inline-block;

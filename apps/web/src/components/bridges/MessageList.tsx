@@ -4,7 +4,31 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import type { ChatMode, ChatModeEventProjection } from "@/lib/api";
 import { BrandLogo } from "./BrandLogo";
+
+/** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
+export interface ThreadModeEvent extends ChatModeEventProjection {
+  kind: "mode-event";
+}
+
+export const MODE_EVENT_LABEL: Record<ChatMode, string> = {
+  companion: "日常陪伴",
+  study: "学习模式",
+};
+
+export interface ChatThinking {
+  /** 可公开的处理步骤（生成中会增长） */
+  steps: string[];
+  /** 回答采用的证据/来源说明（可空） */
+  evidence: string[];
+  /** 工具调用进度说明（可空） */
+  tools: string[];
+  /** 质量检查结论（完成/失败/停止的中文状态，可空） */
+  quality: string[];
+  /** 生成耗时（秒，来自真实生命周期 duration_ms）；流式中为空 */
+  seconds: number | null;
+}
 
 export interface ChatMessage {
   id: string;
@@ -13,7 +37,7 @@ export interface ChatMessage {
   plainText: string;
   /** 富内容（段落、代码块、公式、表格等），由页面组装 */
   content: React.ReactNode;
-  thinking?: { seconds: number; steps: string[] };
+  thinking?: ChatThinking;
   status?: "done" | "streaming" | "error";
   errorText?: string;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
@@ -25,7 +49,7 @@ export interface ChatMessage {
 }
 
 interface MessageListProps {
-  messages: ChatMessage[];
+  messages: (ChatMessage | ThreadModeEvent)[];
   onRetry?: (id: string) => void;
 }
 
@@ -180,8 +204,162 @@ function AssistantActions({ message, onRetry }: { message: ChatMessage; onRetry?
 }
 
 /**
+ * 可折叠思考摘要（Issue 14）。
+ *
+ * 生成开始时自动展开并展示进行中的步骤；完成后折叠为精确格式
+ * 「已思考（用时 X 秒）」，点击或键盘激活（summary 原生 Enter/Space）
+ * 可再次展开。内容只包含可公开的步骤、采用的证据、工具调用进度与
+ * 质量检查结论，绝不展示原始思维链。耗时来自真实生成生命周期
+ * （duration_ms），不使用硬编码数字。受控 details：显式 role=button
+ * 与 aria-expanded，保证 ARIA 状态与折叠规则同步。
+ */
+function ThinkingSummary({
+  thinking,
+  streaming,
+}: {
+  thinking: ChatThinking;
+  streaming: boolean;
+}) {
+  const [open, setOpen] = useState(streaming);
+
+  // 生成完成/失败/停止后自动折叠为「已思考（用时 X 秒）」；
+  // 用户手动展开过的消息在刷新重建后保持默认折叠规则。
+  useEffect(() => {
+    if (!streaming) setOpen(false);
+  }, [streaming]);
+
+  const collapsedLabel =
+    thinking.seconds !== null
+      ? `已思考（用时 ${thinking.seconds} 秒）`
+      : streaming
+        ? "正在思考…"
+        : "已思考";
+
+  const sections: { label: string; items: string[]; numbered: boolean }[] = [];
+  if (thinking.steps.length > 0) {
+    sections.push({ label: "处理步骤", items: thinking.steps, numbered: true });
+  }
+  if (thinking.evidence.length > 0) {
+    sections.push({ label: "采用的证据", items: thinking.evidence, numbered: false });
+  }
+  if (thinking.tools.length > 0) {
+    sections.push({ label: "工具进度", items: thinking.tools, numbered: false });
+  }
+  if (thinking.quality.length > 0) {
+    sections.push({ label: "质量检查", items: thinking.quality, numbered: false });
+  }
+
+  return (
+    <details
+      open={open}
+      onToggle={(event) => setOpen((event.target as HTMLDetailsElement).open)}
+      data-testid="thinking-summary"
+      style={{
+        marginBottom: "var(--space-3)",
+        border: "1px solid var(--color-border)",
+        borderRadius: "var(--radius-md)",
+        padding: "var(--space-2) var(--space-3)",
+        backgroundColor: "var(--color-bg-secondary)",
+        transition: "border-color 150ms ease",
+      }}
+    >
+      <summary
+        role="button"
+        aria-expanded={open}
+        style={{
+          cursor: "pointer",
+          fontSize: "var(--text-sm)",
+          color: streaming ? "var(--color-accent-primary)" : "var(--color-text-secondary)",
+          display: "flex",
+          alignItems: "center",
+          gap: "var(--space-2)",
+          minHeight: "var(--target-size)",
+          padding: "0 var(--space-1)",
+        }}
+      >
+        {streaming && <ThinkingSpinner />}
+        {collapsedLabel}
+      </summary>
+      <div
+        style={{
+          marginTop: "var(--space-1)",
+          display: "flex",
+          flexDirection: "column",
+          gap: "var(--space-2)",
+          fontSize: "var(--text-sm)",
+          color: "var(--color-text-secondary)",
+        }}
+      >
+        {sections.map((section) => (
+          <div key={section.label}>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: "var(--space-1)",
+                fontWeight: 600,
+                color: "var(--color-text-secondary)",
+              }}
+            >
+              {section.label}
+            </p>
+            {section.numbered ? (
+              <ol
+                style={{
+                  margin: 0,
+                  paddingLeft: "var(--space-5)",
+                  listStyle: "decimal",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-1)",
+                }}
+              >
+                {section.items.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ol>
+            ) : (
+              <ul
+                style={{
+                  margin: 0,
+                  paddingLeft: "var(--space-5)",
+                  listStyle: "disc",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "var(--space-1)",
+                }}
+              >
+                {section.items.map((item, index) => (
+                  <li key={`${item}-${index}`}>{item}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function ThinkingSpinner() {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        border: "2px solid var(--color-border-strong)",
+        borderTopColor: "var(--color-accent-primary)",
+        animation: "thinking-spin 0.8s linear infinite",
+        flexShrink: 0,
+      }}
+    />
+  );
+}
+
+/**
  * 消息流：用户消息气泡靠右，助手消息占整列并带操作行；
- * 思考摘要在生成后折叠为「已思考（用时 X 秒）」，可随时展开。
+ * 思考摘要在生成中自动展开、完成后折叠为「已思考（用时 X 秒）」，可随时展开。
  */
 export function MessageList({ messages, onRetry }: MessageListProps) {
   return (
@@ -190,7 +368,31 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
       aria-label="对话消息"
       style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}
     >
-      {messages.map((message) => (
+      {messages.map((message) =>
+        "kind" in message ? (
+          <li
+            key={message.event_id}
+            data-testid="mode-event"
+            style={{
+              display: "flex",
+              justifyContent: "center",
+            }}
+          >
+            <p
+              role="status"
+              style={{
+                margin: 0,
+                fontSize: "var(--text-xs)",
+                color: "var(--color-text-tertiary)",
+                padding: "var(--space-1) var(--space-3)",
+                borderRadius: "var(--radius-full)",
+                backgroundColor: "var(--color-bg-secondary)",
+              }}
+            >
+              已切换为{MODE_EVENT_LABEL[message.to_mode]}
+            </p>
+          </li>
+        ) : (
         <li key={message.id}>
           {message.role === "user" ? (
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -265,41 +467,10 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
                 )}
 
                 {message.thinking && (
-                  <details
-                    style={{
-                          marginBottom: "var(--space-3)",
-                          border: "1px solid var(--color-border)",
-                          borderRadius: "var(--radius-md)",
-                          padding: "var(--space-2) var(--space-3)",
-                          backgroundColor: "var(--color-bg-secondary)",
-                        }}
-                  >
-                    <summary
-                      style={{
-                        cursor: "pointer",
-                        fontSize: "var(--text-sm)",
-                        color: "var(--color-text-secondary)",
-                      }}
-                    >
-                      已思考（用时 {message.thinking.seconds} 秒）
-                    </summary>
-                    <ol
-                      style={{
-                        marginTop: "var(--space-2)",
-                        paddingLeft: "var(--space-5)",
-                        listStyle: "decimal",
-                        fontSize: "var(--text-sm)",
-                        color: "var(--color-text-secondary)",
-                        display: "flex",
-                        flexDirection: "column",
-                        gap: "var(--space-1)",
-                      }}
-                    >
-                      {message.thinking.steps.map((step) => (
-                        <li key={step}>{step}</li>
-                      ))}
-                    </ol>
-                  </details>
+                  <ThinkingSummary
+                    thinking={message.thinking}
+                    streaming={message.status === "streaming"}
+                  />
                 )}
 
                 {message.status === "error" ? (
@@ -335,7 +506,8 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
             </article>
           )}
         </li>
-      ))}
+        )
+      )}
     </ol>
   );
 }
