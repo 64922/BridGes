@@ -22,6 +22,8 @@ class ConversationRecord:
     account_id: str
     title: str
     mode: str
+    pinned: bool
+    project_id: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -79,19 +81,22 @@ class ConversationRepository:
         title: str,
         mode: str,
         created_at: datetime,
+        project_id: str | None = None,
     ) -> None:
         updated_at = created_at
         try:
             with self._db.transaction():
                 self._db.connection.execute(
                     "INSERT INTO conversations"
-                    "(conversation_id, account_id, title, mode, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?)",
+                    "(conversation_id, account_id, title, mode, pinned, project_id,"
+                    " created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, 0, ?, ?, ?)",
                     (
                         conversation_id,
                         account_id,
                         title,
                         mode,
+                        project_id,
                         _iso(created_at),
                         _iso(updated_at),
                     ),
@@ -105,38 +110,36 @@ class ConversationRepository:
         self, account_id: str, conversation_id: str
     ) -> ConversationRecord | None:
         row = self._db.connection.execute(
-            "SELECT conversation_id, account_id, title, mode, created_at, updated_at"
+            "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
+            " created_at, updated_at"
             " FROM conversations WHERE conversation_id = ? AND account_id = ?",
             (conversation_id, account_id),
         ).fetchone()
         if row is None:
             return None
+        return self._conversation_from_row(row)
+
+    def list_conversations(self, account_id: str) -> list[ConversationRecord]:
+        rows = self._db.connection.execute(
+            "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
+            " created_at, updated_at FROM conversations WHERE account_id = ?"
+            " ORDER BY pinned DESC, updated_at DESC, created_at DESC, conversation_id",
+            (account_id,),
+        ).fetchall()
+        return [self._conversation_from_row(row) for row in rows]
+
+    @staticmethod
+    def _conversation_from_row(row: Any) -> ConversationRecord:
         return ConversationRecord(
             conversation_id=str(row["conversation_id"]),
             account_id=str(row["account_id"]),
             title=str(row["title"]),
             mode=str(row["mode"]),
+            pinned=bool(row["pinned"]),
+            project_id=(str(row["project_id"]) if row["project_id"] is not None else None),
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
         )
-
-    def list_conversations(self, account_id: str) -> list[ConversationRecord]:
-        rows = self._db.connection.execute(
-            "SELECT conversation_id, account_id, title, mode, created_at, updated_at"
-            " FROM conversations WHERE account_id = ? ORDER BY updated_at DESC, created_at DESC",
-            (account_id,),
-        ).fetchall()
-        return [
-            ConversationRecord(
-                conversation_id=str(row["conversation_id"]),
-                account_id=str(row["account_id"]),
-                title=str(row["title"]),
-                mode=str(row["mode"]),
-                created_at=_parse_iso(str(row["created_at"])),
-                updated_at=_parse_iso(str(row["updated_at"])),
-            )
-            for row in rows
-        ]
 
     def set_conversation_title(
         self, account_id: str, conversation_id: str, title: str, updated_at: datetime
@@ -147,6 +150,55 @@ class ConversationRepository:
                 " WHERE conversation_id = ? AND account_id = ?",
                 (title, _iso(updated_at), conversation_id, account_id),
             )
+
+    def update_conversation(
+        self,
+        account_id: str,
+        conversation_id: str,
+        *,
+        title: str | None = None,
+        pinned: bool | None = None,
+        updated_at: datetime,
+    ) -> int:
+        """更新会话元数据；每个字段更新都带账户条件，返回影响行数。"""
+        assignments: list[str] = []
+        values: list[Any] = []
+        if title is not None:
+            assignments.append("title = ?")
+            values.append(title)
+        if pinned is not None:
+            assignments.append("pinned = ?")
+            values.append(1 if pinned else 0)
+        if not assignments:
+            return 0
+        assignments.append("updated_at = ?")
+        values.append(_iso(updated_at))
+        values.extend([conversation_id, account_id])
+        with self._db.transaction():
+            cursor = self._db.connection.execute(
+                "UPDATE conversations SET "
+                + ", ".join(assignments)
+                + " WHERE conversation_id = ? AND account_id = ?",
+                values,
+            )
+            return cursor.rowcount
+
+    def delete_conversation(self, account_id: str, conversation_id: str) -> int:
+        """删除会话及其消息/模式事件；跨账户目标返回 0。"""
+        with self._db.transaction():
+            self._db.connection.execute(
+                "DELETE FROM mode_events WHERE conversation_id = ? AND account_id = ?",
+                (conversation_id, account_id),
+            )
+            self._db.connection.execute(
+                "DELETE FROM messages WHERE conversation_id = ? AND account_id = ?",
+                (conversation_id, account_id),
+            )
+            cursor = self._db.connection.execute(
+                "DELETE FROM conversations WHERE conversation_id = ? AND account_id = ?",
+                (conversation_id, account_id),
+            )
+            return cursor.rowcount
 
     def touch_conversation(
         self, account_id: str, conversation_id: str, updated_at: datetime

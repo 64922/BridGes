@@ -875,16 +875,39 @@ export async function listChatConversations(): Promise<ChatConversationListProje
 
 export async function createChatConversation(
   title?: string,
-  mode: ChatMode = "companion"
+  mode: ChatMode = "companion",
+  projectId?: string
 ): Promise<ChatConversationProjection> {
   const res = await fetch(`${API_BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ title: title ?? null, mode }),
+    body: JSON.stringify({ title: title ?? null, mode, project_id: projectId ?? null }),
   });
   if (!res.ok) throw await parseAuthError(res);
   return res.json();
+}
+
+export async function updateChatConversation(
+  conversationId: string,
+  update: { title?: string; pinned?: boolean }
+): Promise<ChatConversationProjection> {
+  const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(update),
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function deleteChatConversation(conversationId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseAuthError(res);
 }
 
 /** 切换对话模式（日常陪伴/学习模式）；返回切换后的对话与本次可见事件。 */

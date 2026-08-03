@@ -10,10 +10,9 @@ import { ApiError, createChatConversation } from "@/lib/api";
  * 学习项目 → 新建学习对话入口（Issue 14，ADR-0022）。
  *
  * 从学习项目创建的新对话默认「学习模式」；创建后跳转到对话页，走正常
- * 授权、审计与对话保存流程。学习项目只组织对话与文件，对话本身不绑定
- * 项目标识（ADR-0022 上下文隔离由用户主动新建对话）。
+ * 授权、审计与对话保存流程，并保留学习项目归属，供最近对话恢复上下文。
  */
-export function StudyChatEntry() {
+export function StudyChatEntry({ projectId }: { projectId: string }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -23,7 +22,7 @@ export function StudyChatEntry() {
     setCreating(true);
     setError("");
     try {
-      const conversation = await createChatConversation(undefined, "study");
+      const conversation = await createChatConversation(undefined, "study", projectId);
       router.push(`/chat/${conversation.conversation_id}`);
     } catch (exc) {
       setError(

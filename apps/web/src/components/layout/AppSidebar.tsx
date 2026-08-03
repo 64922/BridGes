@@ -1,15 +1,25 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { AccountMenu } from "@/components/account/AccountMenu";
 import { BrandLogo } from "@/components/bridges/BrandLogo";
+import { Dialog } from "@/components/bridges/Dialog";
+import { Menu } from "@/components/bridges/Menu";
 import { Button } from "@/components/design-system/Button";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { useAuth } from "@/context/AuthContext";
-import { useRecentConversations } from "@/lib/recent-conversations";
+import {
+  CHAT_LIST_CHANGED_EVENT,
+  useRecentConversations,
+} from "@/lib/recent-conversations";
+import {
+  deleteChatConversation,
+  updateChatConversation,
+  type ChatConversationSummary,
+} from "@/lib/api";
 
 /** 侧栏收起状态的本地持久化键（与根布局内联脚本共用，避免刷新闪烁）。 */
 export const SIDEBAR_COLLAPSED_KEY = "bridges-sidebar-collapsed";
@@ -28,6 +38,33 @@ const SIDEBAR_MODULES: SidebarModule[] = [
   { label: "插件", icon: "plugins", href: "/plugins" },
   { label: "用户画像", icon: "profile", href: "/account/profile" },
 ];
+
+function conversationTitle(conversation: ChatConversationSummary): string {
+  return conversation.title || "未命名对话";
+}
+
+function conversationModeLabel(mode: ChatConversationSummary["mode"]): string {
+  return mode === "study" ? "学习模式" : "日常陪伴";
+}
+
+function formatConversationTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "时间未知";
+  const now = new Date();
+  const time = new Intl.DateTimeFormat("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+  const sameDay = date.toDateString() === now.toDateString();
+  if (sameDay) return time;
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  if (date.toDateString() === yesterday.toDateString()) return `昨天 ${time}`;
+  if (date.getFullYear() === now.getFullYear()) {
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
+  }
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+}
 
 const itemBaseStyle: React.CSSProperties = {
   display: "flex",
@@ -74,8 +111,14 @@ const iconOnlyStyle: React.CSSProperties = {
  */
 export function AppSidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, authState, refreshSession } = useAuth();
-  const { conversations, loading, loadError, reload } = useRecentConversations();
+  const { conversations, loading, loadError, permissionDenied, reload } = useRecentConversations();
+  const [renameTarget, setRenameTarget] = useState<ChatConversationSummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ChatConversationSummary | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [operationBusy, setOperationBusy] = useState(false);
+  const [operationError, setOperationError] = useState("");
   // 始终以展开态做首渲染（与 SSR 一致），水合后从 localStorage 同步，
   // 避免 hydration mismatch；持久化值已由内联脚本写入
   // documentElement.dataset.sidebarCollapsed 提前隐藏。
@@ -117,6 +160,73 @@ export function AppSidebar() {
       }
     } catch {
       // 忽略持久化失败，内存态仍然生效
+    }
+  };
+
+  const reportOperationFailure = async (message: string) => {
+    await reload();
+    setOperationError(`${message} 列表已恢复为服务器状态。`);
+  };
+
+  const togglePinned = async (conversation: ChatConversationSummary) => {
+    if (operationBusy) return;
+    setOperationBusy(true);
+    setOperationError("");
+    try {
+      await updateChatConversation(conversation.conversation_id, {
+        pinned: !conversation.pinned,
+      });
+      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
+    } catch (error) {
+      await reportOperationFailure(error instanceof Error ? error.message : "置顶操作失败。");
+    } finally {
+      setOperationBusy(false);
+    }
+  };
+
+  const openRename = (conversation: ChatConversationSummary) => {
+    setOperationError("");
+    setRenameTarget(conversation);
+    setRenameValue(conversation.title);
+  };
+
+  const renameConversation = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!renameTarget || operationBusy) return;
+    const title = renameValue.trim();
+    if (!title) {
+      setOperationError("请输入会话标题。");
+      return;
+    }
+    setOperationBusy(true);
+    setOperationError("");
+    try {
+      await updateChatConversation(renameTarget.conversation_id, { title });
+      setRenameTarget(null);
+      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
+    } catch (error) {
+      await reportOperationFailure(error instanceof Error ? error.message : "改名操作失败。");
+    } finally {
+      setOperationBusy(false);
+    }
+  };
+
+  const deleteConversation = async () => {
+    if (!deleteTarget || operationBusy) return;
+    const target = deleteTarget;
+    setOperationBusy(true);
+    setOperationError("");
+    try {
+      await deleteChatConversation(target.conversation_id);
+      setDeleteTarget(null);
+      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
+      if (pathname === `/chat/${target.conversation_id}`) {
+        router.push("/");
+      }
+    } catch (error) {
+      await reportOperationFailure(error instanceof Error ? error.message : "删除操作失败。");
+    } finally {
+      setOperationBusy(false);
     }
   };
 
@@ -287,17 +397,49 @@ export function AppSidebar() {
           <Icon name="recent" size={14} aria-hidden />
           最近对话
         </h2>
-        {loading && conversations.length === 0 ? (
+        {operationError && (
           <p
-            role="status"
+            role="alert"
+            style={{
+              margin: "0 var(--space-3) var(--space-2)",
+              color: "var(--color-status-error)",
+              fontSize: "var(--text-xs)",
+            }}
+          >
+            {operationError}
+          </p>
+        )}
+        {loading && conversations.length === 0 ? (
+          <div role="status" aria-label="正在加载最近对话" style={{ padding: "0 var(--space-2)" }}>
+            {["skeleton-1", "skeleton-2", "skeleton-3"].map((key) => (
+              <div
+                key={key}
+                aria-hidden="true"
+                style={{
+                  height: "var(--target-size)",
+                  marginBottom: "2px",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "var(--color-surface)",
+                  opacity: 0.7,
+                }}
+              />
+            ))}
+            <span className="sc-visually-hidden">正在加载最近对话…</span>
+          </div>
+        ) : permissionDenied ? (
+          <div
+            role="alert"
             style={{
               padding: "var(--space-2) var(--space-3)",
               fontSize: "var(--text-sm)",
-              color: "var(--color-text-tertiary)",
+              color: "var(--color-text-secondary)",
             }}
           >
-            正在加载对话…
-          </p>
+            当前账户没有权限查看最近对话。
+            <Button variant="ghost" size="sm" onClick={() => void reload()}>
+              重试
+            </Button>
+          </div>
         ) : loadError ? (
           <div
             role="alert"
@@ -320,19 +462,24 @@ export function AppSidebar() {
               color: "var(--color-text-tertiary)",
             }}
           >
-            还没有对话，点击「新聊天」开始。
+            还没有对话记录，点击「新聊天」开始。
           </p>
         ) : (
           <ul role="list" style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
             {conversations.map((conversation) => {
               const href = `/chat/${conversation.conversation_id}`;
               const active = pathname === href;
+              const title = conversationTitle(conversation);
               return (
-                <li key={conversation.conversation_id}>
+                <li
+                  key={conversation.conversation_id}
+                  style={{ display: "flex", alignItems: "stretch", minWidth: 0 }}
+                  data-testid={`conversation-item-${conversation.conversation_id}`}
+                >
                   <Link
                     href={href}
                     aria-current={active ? "page" : undefined}
-                    style={itemStyle(active)}
+                    style={{ ...itemStyle(active), flex: 1, minWidth: 0, paddingRight: "var(--space-1)" }}
                   >
                     <span
                       style={{
@@ -343,9 +490,65 @@ export function AppSidebar() {
                         whiteSpace: "nowrap",
                       }}
                     >
-                      {conversation.title || "新对话"}
+                      <span
+                        style={{
+                          display: "block",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {conversation.pinned && <span aria-label="已置顶">置顶 · </span>}
+                        {title}
+                      </span>
+                      <span
+                        style={{
+                          display: "block",
+                          marginTop: "2px",
+                          color: "var(--color-text-tertiary)",
+                          fontSize: "var(--text-xs)",
+                          lineHeight: 1.3,
+                        }}
+                      >
+                        {conversationModeLabel(conversation.mode)}
+                        {conversation.project_id ? " · 学习项目归属" : ""}
+                        {` · ${formatConversationTime(conversation.updated_at)}`}
+                      </span>
                     </span>
                   </Link>
+                  <Menu
+                    ariaLabel={`会话操作：${title}`}
+                    trigger={<Icon name="more" size={18} aria-hidden />}
+                    triggerStyle={{
+                      width: "var(--target-size)",
+                      minWidth: "var(--target-size)",
+                      padding: "var(--space-1)",
+                      justifyContent: "center",
+                    }}
+                    items={[
+                      {
+                        label: conversation.pinned ? "取消置顶" : "置顶",
+                        icon: "pin",
+                        onSelect: () => void togglePinned(conversation),
+                      },
+                      {
+                        label: "改名",
+                        icon: "edit",
+                        returnFocus: false,
+                        onSelect: () => openRename(conversation),
+                      },
+                      {
+                        label: "删除",
+                        icon: "trash",
+                        danger: true,
+                        returnFocus: false,
+                        onSelect: () => {
+                          setOperationError("");
+                          setDeleteTarget(conversation);
+                        },
+                      },
+                    ]}
+                  />
                 </li>
               );
             })}
@@ -383,6 +586,80 @@ export function AppSidebar() {
           </div>
         )}
       </div>
+
+      <Dialog
+        open={renameTarget !== null}
+        onClose={() => {
+          if (!operationBusy) setRenameTarget(null);
+        }}
+        title="修改会话名称"
+        description="名称会保存到当前账户，并在最近对话中保持一致。"
+      >
+        <form onSubmit={(event) => void renameConversation(event)}>
+          <label
+            htmlFor="conversation-rename-input"
+            style={{ display: "block", marginBottom: "var(--space-2)", fontWeight: 600 }}
+          >
+            会话名称
+          </label>
+          <input
+            id="conversation-rename-input"
+            value={renameValue}
+            maxLength={120}
+            onChange={(event) => setRenameValue(event.target.value)}
+            style={{
+              width: "100%",
+              minHeight: "var(--target-size)",
+              padding: "var(--space-2) var(--space-3)",
+              border: "1px solid var(--color-border-strong)",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--color-surface)",
+              color: "var(--color-text-primary)",
+            }}
+          />
+          {operationError && (
+            <p role="alert" style={{ marginTop: "var(--space-2)", color: "var(--color-status-error)" }}>
+              {operationError}
+            </p>
+          )}
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)", marginTop: "var(--space-4)" }}>
+            <Button type="button" variant="ghost" onClick={() => setRenameTarget(null)} disabled={operationBusy}>
+              取消
+            </Button>
+            <Button type="submit" variant="primary" disabled={operationBusy}>
+              {operationBusy ? "正在保存…" : "保存名称"}
+            </Button>
+          </div>
+        </form>
+      </Dialog>
+
+      <Dialog
+        open={deleteTarget !== null}
+        onClose={() => {
+          if (!operationBusy) setDeleteTarget(null);
+        }}
+        title="删除会话？"
+        description="删除后会永久移除这段会话的消息、模式切换记录与附件关联，且无法恢复。"
+      >
+        {deleteTarget && (
+          <p style={{ color: "var(--color-text-secondary)", marginBottom: "var(--space-4)" }}>
+            将删除「{conversationTitle(deleteTarget)}」。
+          </p>
+        )}
+        {operationError && (
+          <p role="alert" style={{ marginBottom: "var(--space-3)", color: "var(--color-status-error)" }}>
+            {operationError}
+          </p>
+        )}
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: "var(--space-2)" }}>
+          <Button type="button" variant="ghost" onClick={() => setDeleteTarget(null)} disabled={operationBusy}>
+            取消
+          </Button>
+          <Button type="button" variant="danger" onClick={() => void deleteConversation()} disabled={operationBusy}>
+            {operationBusy ? "正在删除…" : "确认删除"}
+          </Button>
+        </div>
+      </Dialog>
     </nav>
   );
 }

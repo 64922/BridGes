@@ -10,7 +10,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class ChatMessageRole(StrEnum):
@@ -107,6 +107,8 @@ class ChatConversationSummary(BaseModel):
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
+    pinned: bool = Field(default=False, description="是否置顶。")
+    project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
     message_count: int = Field(default=0, description="消息条数（含所有尝试）。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近活动时间。")
@@ -134,6 +136,8 @@ class ChatConversationProjection(BaseModel):
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
+    pinned: bool = Field(default=False, description="是否置顶。")
+    project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近活动时间。")
     messages: list[ChatMessageProjection] = Field(default_factory=list)
@@ -150,6 +154,20 @@ class ChatCreateRequest(BaseModel):
 
     title: str | None = Field(default=None, max_length=120, description="可选标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话初始模式。")
+    project_id: str | None = Field(default=None, max_length=200, description="可选学习项目标识。")
+
+
+class ChatConversationUpdateRequest(BaseModel):
+    """更新对话标题或置顶状态；至少提供一个字段。"""
+
+    title: str | None = Field(default=None, min_length=1, max_length=120, description="新标题。")
+    pinned: bool | None = Field(default=None, description="是否置顶。")
+
+    @model_validator(mode="after")
+    def require_an_update(self) -> "ChatConversationUpdateRequest":
+        if self.title is None and self.pinned is None:
+            raise ValueError("至少提供标题或置顶状态。")
+        return self
 
 
 class ChatModeSwitchRequest(BaseModel):

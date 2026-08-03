@@ -16,7 +16,7 @@ from pathlib import Path
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -137,6 +137,19 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         CREATE INDEX idx_mode_events_account ON mode_events(account_id)
+        """,
+    ],
+    # Issue 15: 最近会话生命周期。置顶、可选学习项目归属与旧数据库兼容。
+    4: [
+        """
+        ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE conversations ADD COLUMN project_id TEXT
+        """,
+        """
+        CREATE INDEX idx_conversations_account_pinned_updated
+        ON conversations(account_id, pinned DESC, updated_at DESC, created_at DESC)
         """,
     ],
 }

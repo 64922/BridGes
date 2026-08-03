@@ -11,12 +11,12 @@ export const metadata = {
  * Shows the learning mission, scientific growth loop, next steps, running
  * tasks, and recent artifacts.
  */
-export default function ProjectOverviewPage() {
+export default function ProjectOverviewPage({ params }: { params: { projectId: string } }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
       <TaskStage />
 
-      <StudyChatEntry />
+      <StudyChatEntry projectId={params.projectId} />
 
       <section className="sc-card" aria-labelledby="mission-title">
         <h2 id="mission-title" className="sc-section-title">

@@ -177,6 +177,7 @@ class ChatService:
         account_id: str,
         title: str | None = None,
         mode: ChatMode = ChatMode.COMPANION,
+        project_id: str | None = None,
     ) -> ChatConversationProjection:
         """新建对话；普通新聊天默认日常陪伴，学习项目传入 ``study``。"""
         now = datetime.now(UTC)
@@ -187,12 +188,15 @@ class ChatService:
             title=(title or "").strip(),
             mode=mode.value,
             created_at=now,
+            project_id=project_id,
         )
         return self._project_conversation(
             account_id,
             conversation_id,
             title=(title or "").strip(),
             mode=mode,
+            pinned=False,
+            project_id=project_id,
             created_at=now,
             updated_at=now,
             messages=[],
@@ -239,6 +243,8 @@ class ChatService:
             conversation_id,
             title=record.title,
             mode=mode,
+            pinned=record.pinned,
+            project_id=record.project_id,
             created_at=record.created_at,
             updated_at=now if current != mode else record.updated_at,
             messages=self._repo.list_messages(account_id, conversation_id),
@@ -249,17 +255,79 @@ class ChatService:
         records = self._repo.list_conversations(account_id)
         summaries: list[ChatConversationSummary] = []
         for record in records:
+            message_count = self._repo.message_count(account_id, record.conversation_id)
+            # 新聊天页在发送前会先创建一个无标题空草稿；它不是可回访的
+            # 最近会话，不能伪装成已存在的临时聊天。
+            if not record.title and message_count == 0:
+                continue
             summaries.append(
                 ChatConversationSummary(
                     conversation_id=record.conversation_id,
                     title=record.title,
                     mode=ChatMode(record.mode),
-                    message_count=self._repo.message_count(account_id, record.conversation_id),
+                    pinned=record.pinned,
+                    project_id=record.project_id,
+                    message_count=message_count,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
                 )
             )
         return ChatConversationListProjection(conversations=summaries)
+
+    def update_conversation(
+        self,
+        account_id: str,
+        conversation_id: str,
+        *,
+        title: str | None = None,
+        pinned: bool | None = None,
+    ) -> ChatConversationProjection:
+        """改名或置顶自己的会话；跨账户目标统一返回安全 404。"""
+        record = self._repo.get_conversation(account_id, conversation_id)
+        if record is None:
+            raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
+        normalized_title = title.strip() if title is not None else None
+        if title is not None and not normalized_title:
+            raise ChatDomainError("invalid_title", "对话标题不能为空。", 422)
+        changed = normalized_title != record.title if normalized_title is not None else False
+        changed = changed or (pinned is not None and pinned != record.pinned)
+        now = datetime.now(UTC)
+        if changed:
+            self._repo.update_conversation(
+                account_id,
+                conversation_id,
+                title=normalized_title,
+                pinned=pinned,
+                updated_at=now,
+            )
+            record = self._repo.get_conversation(account_id, conversation_id)
+            assert record is not None
+        return self._project_conversation(
+            account_id,
+            conversation_id,
+            title=record.title,
+            mode=ChatMode(record.mode),
+            pinned=record.pinned,
+            project_id=record.project_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            messages=self._repo.list_messages(account_id, conversation_id),
+            mode_events=self._repo.list_mode_events(account_id, conversation_id),
+        )
+
+    def delete_conversation(self, account_id: str, conversation_id: str) -> None:
+        """删除自己的会话及其历史；生成中会话先拒绝，避免删除流状态。"""
+        record = self._repo.get_conversation(account_id, conversation_id)
+        if record is None:
+            raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
+        if any(
+            message.status == ChatMessageStatus.STREAMING
+            for message in self._repo.list_messages(account_id, conversation_id)
+        ):
+            raise ChatDomainError("generation_in_progress", "回答仍在生成中，请先停止后再删除。", 409)
+        deleted = self._repo.delete_conversation(account_id, conversation_id)
+        if deleted != 1:
+            raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
 
     def get_conversation(
         self, account_id: str, conversation_id: str
@@ -306,6 +374,8 @@ class ChatService:
             record.conversation_id,
             title=record.title,
             mode=ChatMode(record.mode),
+            pinned=record.pinned,
+            project_id=record.project_id,
             created_at=record.created_at,
             updated_at=record.updated_at,
             messages=messages,
@@ -796,6 +866,8 @@ class ChatService:
         *,
         title: str,
         mode: ChatMode,
+        pinned: bool,
+        project_id: str | None,
         created_at: datetime,
         updated_at: datetime,
         messages: list[MessageRecord],
@@ -806,6 +878,8 @@ class ChatService:
             conversation_id=conversation_id,
             title=title,
             mode=mode,
+            pinned=pinned,
+            project_id=project_id,
             created_at=created_at,
             updated_at=updated_at,
             messages=[cls._project_message(message) for message in messages],

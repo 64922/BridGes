@@ -13,7 +13,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import StreamingResponse
 
 from bridges.api.auth import SubjectDep
@@ -26,6 +26,7 @@ from bridges.chat.service import (
 from bridges.contracts.chat import (
     ChatConversationListProjection,
     ChatConversationProjection,
+    ChatConversationUpdateRequest,
     ChatCreateRequest,
     ChatError,
     ChatMessageCreateRequest,
@@ -38,6 +39,8 @@ from bridges.contracts.credentials import ProbeStatus
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.credentials.service import KeyCredentialService
+from bridges.projects import ProjectError as ProjectServiceError
+from bridges.projects import ProjectService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -74,6 +77,22 @@ def _get_credential_service(request: Request) -> KeyCredentialService:
 
 
 CredentialServiceDep = Annotated[KeyCredentialService, Depends(_get_credential_service)]
+
+
+def _get_project_service(request: Request) -> ProjectService:
+    service: ProjectService | None = getattr(request.app.state, "project_service", None)
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ChatError(
+                error="projects_unavailable",
+                message="学习项目服务未启用，当前实例拒绝创建项目归属会话。",
+            ).model_dump(),
+        )
+    return service
+
+
+ProjectServiceDep = Annotated[ProjectService, Depends(_get_project_service)]
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -302,17 +321,82 @@ def create_conversation(
     body: ChatCreateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
+    project_service: ProjectServiceDep,
 ) -> ChatConversationProjection:
     """新建对话；标题可选，缺省由首条消息自动推导。
 
     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
     """
     try:
+        if body.project_id is not None:
+            try:
+                project_service.get_project(subject.account_id, body.project_id)
+            except ProjectServiceError as exc:
+                raise _error(
+                    status.HTTP_404_NOT_FOUND,
+                    "project_not_found",
+                    "学习项目不存在或没有访问权限。",
+                ) from exc
         return service.create_conversation(
-            subject.account_id, title=body.title, mode=body.mode
+            subject.account_id,
+            title=body.title,
+            mode=body.mode,
+            project_id=body.project_id,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+
+
+@router.patch(
+    "/conversations/{conversation_id}",
+    response_model=ChatConversationProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def update_conversation(
+    conversation_id: str,
+    body: ChatConversationUpdateRequest,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> ChatConversationProjection:
+    """更新当前账户会话的标题或置顶状态。"""
+    try:
+        return service.update_conversation(
+            subject.account_id,
+            conversation_id,
+            title=body.title,
+            pinned=body.pinned,
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+
+
+@router.delete(
+    "/conversations/{conversation_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def delete_conversation(
+    conversation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """删除当前账户会话及其消息历史；跨账户访问安全返回 404。"""
+    try:
+        service.delete_conversation(subject.account_id, conversation_id)
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

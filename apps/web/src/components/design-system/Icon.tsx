@@ -41,6 +41,9 @@ const icons = {
   chevronRight: stroke("M8.25 4.5l7.5 7.5-7.5 7.5"),
   chevronDown: stroke("M4.5 8.25l7.5 7.5 7.5-7.5"),
   more: stroke("M5 12h.01M12 12h.01M19 12h.01"),
+  pin: stroke("M9 3.5h6M10 3.5v5l-3.5 3.5h11L14 8.5v-5M12 12v8.5"),
+  edit: stroke("M4 20h4l10.5-10.5a2.121 2.121 0 00-3-3L5 17v3zM13.5 7.5l3 3"),
+  trash: stroke("M4.5 7.5h15M10 11v5M14 11v5M6.5 7.5l.75 12h9.5l.75-12M9 7.5V4h6v3.5"),
   search: stroke(
     "M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z",
   ),

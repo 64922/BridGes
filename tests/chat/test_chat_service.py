@@ -122,11 +122,11 @@ def _start(service: ChatService, conversation_id: str, content: str = "你好"):
 
 
 def test_create_and_list_conversation(service: ChatService) -> None:
-    created = service.create_conversation("alice")
+    created = service.create_conversation("alice", title="可回访对话")
     listing = service.list_conversations("alice")
     assert len(listing.conversations) == 1
     assert listing.conversations[0].conversation_id == created.conversation_id
-    assert listing.conversations[0].title == ""
+    assert listing.conversations[0].title == "可回访对话"
     assert listing.conversations[0].message_count == 0
     assert service.list_conversations("bob").conversations == []
 
@@ -144,6 +144,61 @@ def test_first_message_derives_title(service: ChatService) -> None:
     assert projection is not None
     assert projection.title.startswith("请帮我写一篇关于量子计算的短文")
     assert projection.title.endswith("…") or len(projection.title) <= 24
+
+
+def test_conversation_lifecycle_persists_pin_rename_project_and_order(
+    service: ChatService,
+    tmp_path: Path,
+) -> None:
+    recent = service.create_conversation("alice", title="最近对话", project_id="project-1")
+    older = service.create_conversation("alice", title="较早对话")
+
+    service.update_conversation("alice", older.conversation_id, pinned=True)
+    renamed = service.update_conversation(
+        "alice", recent.conversation_id, title="已改名对话"
+    )
+
+    assert renamed.title == "已改名对话"
+    assert renamed.project_id == "project-1"
+    assert renamed.pinned is False
+    listing = service.list_conversations("alice").conversations
+    assert [item.conversation_id for item in listing] == [
+        older.conversation_id,
+        recent.conversation_id,
+    ]
+    assert listing[0].pinned is True
+
+    # 重新打开同一数据库后，列表状态仍由持久化数据恢复。
+    database = BridgesDatabase(tmp_path / "bridges.db")
+    database.initialize()
+    restored = ChatService(
+        repository=ConversationRepository(database), gateway=service._gateway
+    ).list_conversations("alice")
+    assert restored.conversations[0].title == "较早对话"
+    assert restored.conversations[0].pinned is True
+    assert restored.conversations[1].project_id == "project-1"
+
+
+def test_unnamed_empty_draft_is_not_a_recent_conversation(service: ChatService) -> None:
+    service.create_conversation("alice")
+    assert service.list_conversations("alice").conversations == []
+
+
+def test_conversation_delete_is_account_scoped_and_removes_history(
+    service: ChatService,
+) -> None:
+    created = service.create_conversation("alice", title="待删除")
+    _, assistant = _start(service, created.conversation_id, "会被删除的消息")
+    service.stop_generation("alice", created.conversation_id, assistant.message_id)
+
+    with pytest.raises(ChatDomainError) as exc_info:
+        service.delete_conversation("bob", created.conversation_id)
+    assert exc_info.value.code == "conversation_not_found"
+    assert service.get_conversation("alice", created.conversation_id) is not None
+
+    service.delete_conversation("alice", created.conversation_id)
+    assert service.get_conversation("alice", created.conversation_id) is None
+    assert service.list_conversations("alice").conversations == []
 
 
 # ---------------------------------------------------------------------------
@@ -566,14 +621,14 @@ def test_restart_recovery_via_same_database_file(tmp_path: Path) -> None:
 
 
 def test_create_conversation_defaults_to_companion_mode(service: ChatService) -> None:
-    created = service.create_conversation("alice")
+    created = service.create_conversation("alice", title="日常对话")
     assert created.mode == ChatMode.COMPANION
     assert created.mode_events == []
     assert service.list_conversations("alice").conversations[0].mode == ChatMode.COMPANION
 
 
 def test_create_conversation_supports_study_mode(service: ChatService) -> None:
-    created = service.create_conversation("alice", mode=ChatMode.STUDY)
+    created = service.create_conversation("alice", title="学习对话", mode=ChatMode.STUDY)
     assert created.mode == ChatMode.STUDY
     listing = service.list_conversations("alice").conversations
     assert listing[0].mode == ChatMode.STUDY

@@ -177,18 +177,58 @@ def test_create_conversation_defaults_companion_and_supports_study(
     client: TestClient, sqlite_app: Any
 ) -> None:
     _register(client)
-    default = client.post("/chat/conversations", json={})
+    default = client.post("/chat/conversations", json={"title": "日常对话"})
     assert default.status_code == 201
     assert default.json()["mode"] == "companion"
     assert default.json()["mode_events"] == []
 
-    study = client.post("/chat/conversations", json={"mode": "study"})
+    study = client.post("/chat/conversations", json={"title": "学习对话", "mode": "study"})
     assert study.status_code == 201
     assert study.json()["mode"] == "study"
 
     listing = client.get("/chat/conversations").json()["conversations"]
     modes = {item["mode"] for item in listing}
     assert modes == {"companion", "study"}
+
+
+def test_conversation_lifecycle_api_is_persistent_and_account_scoped(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    alice = _register(client, "31")
+    created = client.post(
+        "/chat/conversations",
+        json={"title": "原始标题", "mode": "study"},
+    )
+    assert created.status_code == 201, created.text
+    conversation_id = created.json()["conversation_id"]
+
+    updated = client.patch(
+        f"/chat/conversations/{conversation_id}",
+        json={"title": "新的标题", "pinned": True},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["title"] == "新的标题"
+    assert updated.json()["pinned"] is True
+    assert updated.json()["mode"] == "study"
+
+    listed = client.get("/chat/conversations")
+    assert listed.status_code == 200
+    assert listed.json()["conversations"][0]["conversation_id"] == conversation_id
+    assert listed.json()["conversations"][0]["pinned"] is True
+
+    bob_client = TestClient(sqlite_app)
+    _register(bob_client, "32")
+    assert bob_client.patch(
+        f"/chat/conversations/{conversation_id}",
+        json={"title": "越权改名"},
+    ).status_code == 404
+    assert bob_client.delete(f"/chat/conversations/{conversation_id}").status_code == 404
+
+    deleted = client.delete(f"/chat/conversations/{conversation_id}")
+    assert deleted.status_code == 204, deleted.text
+    assert client.get(f"/chat/conversations/{conversation_id}").status_code == 404
+    assert client.get("/chat/conversations").json()["conversations"] == []
+    assert alice["id"]
 
 
 def test_switch_mode_writes_visible_event_and_persists_after_restart(
