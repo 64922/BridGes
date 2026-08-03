@@ -12,11 +12,17 @@ import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Annotated, Any
+from urllib.parse import quote, unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from bridges.api.auth import SubjectDep
+from bridges.chat.attachments import (
+    MAX_ATTACHMENT_BYTES,
+    ChatAttachmentError,
+    ChatAttachmentService,
+)
 from bridges.chat.service import (
     ChatDomainError,
     ChatService,
@@ -24,6 +30,7 @@ from bridges.chat.service import (
     user_facing_error,
 )
 from bridges.contracts.chat import (
+    ChatAttachmentProjection,
     ChatConversationListProjection,
     ChatConversationProjection,
     ChatConversationUpdateRequest,
@@ -59,6 +66,24 @@ def _get_chat_service(request: Request) -> ChatService:
 
 
 ChatServiceDep = Annotated[ChatService, Depends(_get_chat_service)]
+
+
+def _get_attachment_service(request: Request) -> ChatAttachmentService:
+    service: ChatAttachmentService | None = getattr(
+        request.app.state, "chat_attachment_service", None
+    )
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ChatError(
+                error="attachments_unavailable",
+                message="附件服务未启用，当前实例拒绝附件读写。",
+            ).model_dump(),
+        )
+    return service
+
+
+AttachmentServiceDep = Annotated[ChatAttachmentService, Depends(_get_attachment_service)]
 
 
 def _get_credential_service(request: Request) -> KeyCredentialService:
@@ -455,6 +480,178 @@ def get_conversation(
 
 
 @router.post(
+    "/conversations/{conversation_id}/attachments",
+    responses={
+        status.HTTP_201_CREATED: {"model": ChatAttachmentProjection},
+        status.HTTP_400_BAD_REQUEST: {"model": ChatError},
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_413_CONTENT_TOO_LARGE: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+async def upload_attachment(
+    conversation_id: str,
+    request: Request,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。"""
+    declared_length = request.headers.get("content-length")
+    if declared_length is not None:
+        try:
+            if int(declared_length) > MAX_ATTACHMENT_BYTES:
+                raise _error(
+                    status.HTTP_413_CONTENT_TOO_LARGE,
+                    "file_too_large",
+                    "文件超过 10 MB 大小限制，请压缩后重试。",
+                )
+        except ValueError as exc:
+            raise _error(
+                status.HTTP_400_BAD_REQUEST, "invalid_request", "上传请求大小无效。"
+            ) from exc
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > MAX_ATTACHMENT_BYTES:
+            raise _error(
+                status.HTTP_413_CONTENT_TOO_LARGE,
+                "file_too_large",
+                "文件超过 10 MB 大小限制，请压缩后重试。",
+            )
+        chunks.append(chunk)
+    filename_header = request.headers.get("x-bridges-filename")
+    if not filename_header:
+        raise _error(status.HTTP_400_BAD_REQUEST, "invalid_filename", "缺少文件名，无法上传。")
+    filename = unquote(filename_header)
+    try:
+        projection, created = service.upload(
+            subject.account_id,
+            conversation_id,
+            filename,
+            b"".join(chunks),
+            upload_id=request.headers.get("x-bridges-upload-id"),
+        )
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    return JSONResponse(
+        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
+        content=projection.model_dump(mode="json"),
+    )
+
+
+@router.get(
+    "/conversations/{conversation_id}/attachments/{object_id}/download",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def download_attachment(
+    conversation_id: str,
+    object_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """通过账户与对话授权读取附件，不暴露对象库路径。"""
+    try:
+        attachment, content = service.download(
+            subject.account_id, conversation_id, object_id
+        )
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    safe_filename = quote(attachment.original_filename, safe="")
+    return Response(
+        content=content,
+        media_type=attachment.media_type,
+        headers={
+            "Content-Disposition": (
+                f'attachment; filename="attachment"; filename*=UTF-8\'\'{safe_filename}'
+            ),
+            "Cache-Control": "no-store",
+        },
+    )
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}/attachments/{object_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def delete_message_attachment(
+    conversation_id: str,
+    message_id: str,
+    object_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """解除消息引用并按对象引用计数安全清理附件。"""
+    try:
+        service.delete(
+            subject.account_id,
+            conversation_id,
+            object_id,
+            message_id=message_id,
+        )
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/conversations/{conversation_id}/attachments/by-upload/{upload_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def cancel_attachment_upload(
+    conversation_id: str,
+    upload_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """按上传幂等标识取消未绑定项，覆盖客户端中止后的服务端竞态。"""
+    try:
+        service.delete_by_upload_id(subject.account_id, conversation_id, upload_id)
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.delete(
+    "/conversations/{conversation_id}/attachments/{object_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def cancel_attachment(
+    conversation_id: str,
+    object_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """删除尚未绑定消息的上传项，用于取消或移除待发送附件。"""
+    try:
+        service.delete(subject.account_id, conversation_id, object_id)
+    except ChatAttachmentError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
     "/conversations/{conversation_id}/messages",
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
@@ -479,7 +676,7 @@ async def send_message(
     _ensure_chat_capability_ready(subject, credential_service)
     try:
         user_message, assistant_message = service.start_generation(
-            subject.account_id, conversation_id, body.content
+            subject.account_id, conversation_id, body.content, body.attachment_ids
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc

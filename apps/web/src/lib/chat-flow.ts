@@ -8,3 +8,7 @@
 export function chatPromptKey(conversationId: string): string {
   return `bridges:chat:prompt:${conversationId}`;
 }
+
+export function chatAttachmentKey(conversationId: string): string {
+  return `bridges:chat:attachments:${conversationId}`;
+}

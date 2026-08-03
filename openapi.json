@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -526,7 +526,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -588,7 +588,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -1383,7 +1383,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1492,7 +1492,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1768,7 +1768,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1779,6 +1779,511 @@
               }
             },
             "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/attachments": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Upload Attachment",
+        "description": "接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。",
+        "operationId": "upload_attachment_chat_conversations__conversation_id__attachments_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatAttachmentProjection"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/attachments/{object_id}/download": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Download Attachment",
+        "description": "通过账户与对话授权读取附件，不暴露对象库路径。",
+        "operationId": "download_attachment_chat_conversations__conversation_id__attachments__object_id__download_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/attachments/{object_id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Delete Message Attachment",
+        "description": "解除消息引用并按对象引用计数安全清理附件。",
+        "operationId": "delete_message_attachment_chat_conversations__conversation_id__messages__message_id__attachments__object_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/attachments/by-upload/{upload_id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Cancel Attachment Upload",
+        "description": "按上传幂等标识取消未绑定项，覆盖客户端中止后的服务端竞态。",
+        "operationId": "cancel_attachment_upload_chat_conversations__conversation_id__attachments_by_upload__upload_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "upload_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Upload Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/attachments/{object_id}": {
+      "delete": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Cancel Attachment",
+        "description": "删除尚未绑定消息的上传项，用于取消或移除待发送附件。",
+        "operationId": "cancel_attachment_chat_conversations__conversation_id__attachments__object_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -1875,7 +2380,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -5009,7 +5514,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -5233,7 +5738,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -5382,7 +5887,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -5700,7 +6205,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -5870,7 +6375,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -6019,7 +6524,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -6242,7 +6747,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -6473,7 +6978,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -6563,7 +7068,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -6662,7 +7167,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -6752,7 +7257,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -7431,7 +7936,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -7673,7 +8178,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -7752,7 +8257,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -7943,7 +8448,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8215,7 +8720,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -8393,7 +8898,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8573,7 +9078,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8761,7 +9266,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -8859,7 +9364,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -8939,7 +9444,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9160,7 +9665,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9390,7 +9895,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10039,7 +10544,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10128,7 +10633,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10217,7 +10722,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10306,7 +10811,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10465,7 +10970,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10573,7 +11078,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10769,7 +11274,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10886,7 +11391,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11038,7 +11543,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11129,7 +11634,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11237,7 +11742,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11335,7 +11840,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11619,7 +12124,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11708,7 +12213,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11859,7 +12364,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12170,7 +12675,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12428,7 +12933,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12508,7 +13013,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12597,7 +13102,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12677,7 +13182,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -13328,7 +13833,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -13575,7 +14080,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -13673,7 +14178,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -13762,7 +14267,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -13851,7 +14356,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14035,7 +14540,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14115,7 +14620,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14204,7 +14709,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14284,7 +14789,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14452,7 +14957,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14541,7 +15046,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14692,7 +15197,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14762,7 +15267,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14929,7 +15434,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14988,7 +15493,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15430,7 +15935,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15617,7 +16122,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16032,7 +16537,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16248,7 +16753,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -16478,7 +16983,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -16704,7 +17209,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -20525,6 +21030,83 @@
         "title": "ChartMark",
         "description": "Visual mark type for a data chart."
       },
+      "ChatAttachmentProjection": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "稳定对象标识。"
+          },
+          "original_filename": {
+            "type": "string",
+            "title": "Original Filename",
+            "description": "用户选择时的显示文件名。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "服务端内容嗅探得到的安全媒体类型。"
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "文件大小（字节）。"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "内容 SHA-256 摘要。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "所属对话标识。"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "绑定的用户消息标识。"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "uploaded 或 bound。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "上传时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "original_filename",
+          "media_type",
+          "content_length",
+          "content_hash",
+          "conversation_id",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatAttachmentProjection",
+        "description": "聊天附件的安全公开投影；不包含宿主路径或对象存储密钥。"
+      },
       "ChatConversationListProjection": {
         "properties": {
           "conversations": {
@@ -20776,6 +21358,15 @@
             "minLength": 1,
             "title": "Content",
             "description": "用户消息正文。"
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Attachment Ids",
+            "description": "已上传且待绑定到本条消息的对象标识。"
           }
         },
         "type": "object",
@@ -20816,6 +21407,14 @@
             "title": "Content",
             "description": "消息正文；失败/停止时保留已接收部分。",
             "default": ""
+          },
+          "attachments": {
+            "items": {
+              "$ref": "#/components/schemas/ChatAttachmentProjection"
+            },
+            "type": "array",
+            "title": "Attachments",
+            "description": "该用户消息关联的安全附件。"
           },
           "thinking": {
             "anyOf": [

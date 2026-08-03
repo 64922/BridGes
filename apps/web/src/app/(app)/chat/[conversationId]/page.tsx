@@ -16,15 +16,18 @@ import { AppShell } from "@/components/layout/AppShell";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
   ApiError,
+  deleteChatMessageAttachment,
+  downloadChatAttachment,
   getChatConversation,
   retryChatMessage,
   stopChatMessage,
   streamChatMessage,
   switchChatMode,
   type ChatConversationProjection,
+  type ChatAttachmentProjection,
   type ChatStreamEvent,
 } from "@/lib/api";
-import { chatPromptKey } from "@/lib/chat-flow";
+import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
 import { buildThreadMessages } from "@/lib/chat-thread";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -104,8 +107,21 @@ export default function ChatConversationPage() {
     const prompt = sessionStorage.getItem(chatPromptKey(conversationId));
     if (prompt) {
       sessionStorage.removeItem(chatPromptKey(conversationId));
+      const rawAttachmentIds = sessionStorage.getItem(chatAttachmentKey(conversationId));
+      sessionStorage.removeItem(chatAttachmentKey(conversationId));
+      let attachmentIds: string[] = [];
+      if (rawAttachmentIds) {
+        try {
+          const parsed: unknown = JSON.parse(rawAttachmentIds);
+          if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
+            attachmentIds = parsed;
+          }
+        } catch {
+          setSendError({ message: "附件发送信息损坏，请重新上传后重试。" });
+        }
+      }
       sendingRef.current = true;
-      void sendMessage(prompt);
+      void sendMessage(prompt, attachmentIds);
     }
   }, [loadState, conversation, conversationId]);
 
@@ -185,22 +201,35 @@ export default function ChatConversationPage() {
   activeRunRef.current = activeRun;
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, attachmentIds: string[] = []): Promise<boolean> => {
       setSendError(null);
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
       abortRef.current = controller;
+      let started = false;
       try {
-        await streamChatMessage(conversationId, text, handleStreamEvent("send", text), controller.signal);
+        const onEvent = handleStreamEvent("send", text);
+        await streamChatMessage(
+          conversationId,
+          text,
+          (event) => {
+            if (event.event === "started") started = true;
+            onEvent(event);
+          },
+          controller.signal,
+          attachmentIds
+        );
+        return true;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          return; // 停止：状态由停止接口收敛
+          return started; // 停止：状态由停止接口收敛
         }
         const message = error instanceof Error ? error.message : "发送失败，请稍后重试。";
         setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
         setAnnouncement(`生成失败：${message}`);
         // 断流/内部错误时服务端已收敛消息状态：刷新展示可重试错误
         void load();
+        return started;
       } finally {
         abortRef.current = null;
         sendingRef.current = false;
@@ -208,6 +237,39 @@ export default function ChatConversationPage() {
       }
     },
     [conversationId, handleStreamEvent, load]
+  );
+
+  const downloadAttachment = useCallback(
+    async (attachment: ChatAttachmentProjection) => {
+      try {
+        await downloadChatAttachment(
+          conversationId,
+          attachment.object_id,
+          attachment.original_filename
+        );
+        setAnnouncement(`已下载附件：${attachment.original_filename}`);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "附件下载失败，请重试。";
+        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setAnnouncement(`附件下载失败：${message}`);
+      }
+    },
+    [conversationId]
+  );
+
+  const deleteAttachment = useCallback(
+    async (messageId: string, attachment: ChatAttachmentProjection) => {
+      try {
+        await deleteChatMessageAttachment(conversationId, messageId, attachment.object_id);
+        setAnnouncement(`已删除附件：${attachment.original_filename}`);
+        await load(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "附件删除失败，请重试。";
+        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setAnnouncement(`附件删除失败：${message}`);
+      }
+    },
+    [conversationId, load]
   );
 
   const stop = useCallback(async () => {
@@ -337,6 +399,10 @@ export default function ChatConversationPage() {
               <ChatThread
                 messages={threadMessages}
                 onRetry={(messageId) => void retry(messageId)}
+                onDownloadAttachment={(attachment) => void downloadAttachment(attachment)}
+                onDeleteAttachment={(messageId, attachment) =>
+                  void deleteAttachment(messageId, attachment)
+                }
                 announcement={announcement}
               />
               {sendError && (
@@ -348,7 +414,8 @@ export default function ChatConversationPage() {
                     <ModeToggle value={currentMode} onChange={(mode) => void changeMode(mode)} />
                   </div>
                   <Composer
-                    onSend={(text) => void sendMessage(text)}
+                    onSend={(text, attachmentIds) => sendMessage(text, attachmentIds)}
+                    conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}
                   />

@@ -40,7 +40,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api.media import router as media_router
-from bridges.chat import ChatService, ConversationRepository
+from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
 from bridges.config import get_settings
 from bridges.contracts.ai import (
     CapabilityKind,
@@ -814,9 +814,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # 路由返回"对话存储未启用"，绝不静默降级到内存。
     bridges_database = getattr(app.state, "bridges_database", None)
     if bridges_database is not None:
+        object_repository = getattr(app.state, "object_repository", None)
+        if object_repository is not None:
+            app.state.chat_attachment_service = ChatAttachmentService(
+                bridges_database, object_repository
+            )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
+            attachment_service=getattr(app.state, "chat_attachment_service", None),
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

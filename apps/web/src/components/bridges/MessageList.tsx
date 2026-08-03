@@ -4,7 +4,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
-import type { ChatMode, ChatModeEventProjection } from "@/lib/api";
+import type {
+  ChatAttachmentProjection,
+  ChatMode,
+  ChatModeEventProjection,
+} from "@/lib/api";
 import { BrandLogo } from "./BrandLogo";
 
 /** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
@@ -40,6 +44,7 @@ export interface ChatMessage {
   thinking?: ChatThinking;
   status?: "done" | "streaming" | "error";
   errorText?: string;
+  attachments?: ChatAttachmentProjection[];
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -51,6 +56,8 @@ export interface ChatMessage {
 interface MessageListProps {
   messages: (ChatMessage | ThreadModeEvent)[];
   onRetry?: (id: string) => void;
+  onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
+  onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
 }
 
 const actionButtonStyle: React.CSSProperties = {
@@ -91,6 +98,104 @@ function MessageAction({
     >
       <Icon name={icon} size={18} aria-hidden />
     </button>
+  );
+}
+
+function formatAttachmentSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function MessageAttachments({
+  messageId,
+  attachments,
+  onDownload,
+  onDelete,
+}: {
+  messageId: string;
+  attachments: ChatAttachmentProjection[];
+  onDownload?: (attachment: ChatAttachmentProjection) => void;
+  onDelete?: (messageId: string, attachment: ChatAttachmentProjection) => void;
+}) {
+  if (attachments.length === 0) return null;
+  return (
+    <ul
+      role="list"
+      aria-label="消息附件"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: "var(--space-2)",
+        margin: "var(--space-3) 0 0",
+        padding: 0,
+        listStyle: "none",
+      }}
+    >
+      {attachments.map((attachment) => (
+        <li
+          key={attachment.object_id}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+            padding: "var(--space-2)",
+            border: "1px solid var(--color-accent-warm, #d6a64f)",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-surface)",
+          }}
+        >
+          <Icon name="uploadFile" size={18} aria-hidden />
+          <span style={{ minWidth: 0, flex: 1 }}>
+            <span
+              style={{
+                display: "block",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontWeight: 600,
+              }}
+              title={attachment.original_filename}
+            >
+              {attachment.original_filename}
+            </span>
+            <span
+              role="status"
+              style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}
+            >
+              {attachment.media_type} · {formatAttachmentSize(attachment.content_length)} ·
+              {attachment.status === "bound" ? " 已关联消息" : " 待发送"}
+            </span>
+          </span>
+          {onDownload && (
+            <button
+              type="button"
+              onClick={() => onDownload(attachment)}
+              aria-label={`下载附件 ${attachment.original_filename}`}
+              title="下载附件"
+              style={actionButtonStyle}
+            >
+              <Icon name="download" size={18} aria-hidden />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`确认删除附件“${attachment.original_filename}”吗？`)) {
+                  onDelete(messageId, attachment);
+                }
+              }}
+              aria-label={`删除附件 ${attachment.original_filename}`}
+              title="删除附件"
+              style={actionButtonStyle}
+            >
+              <Icon name="trash" size={18} aria-hidden />
+            </button>
+          )}
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -361,7 +466,12 @@ function ThinkingSpinner() {
  * 消息流：用户消息气泡靠右，助手消息占整列并带操作行；
  * 思考摘要在生成中自动展开、完成后折叠为「已思考（用时 X 秒）」，可随时展开。
  */
-export function MessageList({ messages, onRetry }: MessageListProps) {
+export function MessageList({
+  messages,
+  onRetry,
+  onDownloadAttachment,
+  onDeleteAttachment,
+}: MessageListProps) {
   return (
     <ol
       role="list"
@@ -407,6 +517,12 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
                 }}
               >
                 {message.content}
+                <MessageAttachments
+                  messageId={message.id}
+                  attachments={message.attachments ?? []}
+                  onDownload={onDownloadAttachment}
+                  onDelete={onDeleteAttachment}
+                />
               </div>
             </div>
           ) : (

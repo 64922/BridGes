@@ -16,6 +16,7 @@ export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"]
 export type KeySettingsProjection = components["schemas"]["KeySettingsProjection"];
 export type CapabilityProbeSummary = components["schemas"]["CapabilityProbeSummary"];
 export type ChatMessageProjection = components["schemas"]["ChatMessageProjection"];
+export type ChatAttachmentProjection = components["schemas"]["ChatAttachmentProjection"];
 export type ChatMessageRole = components["schemas"]["ChatMessageRole"];
 export type ChatMessageStatus = components["schemas"]["ChatMessageStatus"];
 export type ChatConversationProjection = components["schemas"]["ChatConversationProjection"];
@@ -939,6 +940,131 @@ export async function getChatConversation(
   return res.json();
 }
 
+function attachmentApiError(status: number, body: unknown): ApiError {
+  if (body && typeof body === "object" && "detail" in body) {
+    const detail = (body as { detail?: unknown }).detail;
+    if (detail && typeof detail === "object" && "message" in detail) {
+      const message = (detail as { message?: unknown }).message;
+      const code = (detail as { error?: unknown }).error;
+      if (typeof message === "string" && message) {
+        return new ApiError(message, status, typeof code === "string" ? code : undefined);
+      }
+    }
+  }
+  return new ApiError(`附件请求失败（${status}）`, status);
+}
+
+/** 原始字节上传：服务端负责内容嗅探，XHR 只用于提供可靠的上传进度与取消。 */
+export function uploadChatAttachment(
+  conversationId: string,
+  file: File,
+  uploadId: string,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<ChatAttachmentProjection> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+    const cleanup = () => signal?.removeEventListener("abort", abort);
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const abort = () => xhr.abort();
+
+    if (signal?.aborted) {
+      fail(new DOMException("上传已取消。", "AbortError"));
+      return;
+    }
+    signal?.addEventListener("abort", abort, { once: true });
+    xhr.open(
+      "POST",
+      `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments`
+    );
+    xhr.withCredentials = true;
+    xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
+    xhr.setRequestHeader("X-Bridges-Filename", encodeURIComponent(file.name));
+    xhr.setRequestHeader("X-Bridges-Upload-Id", uploadId);
+    xhr.upload.onprogress = (event) => {
+      onProgress?.(event.loaded, event.lengthComputable ? event.total : file.size);
+    };
+    xhr.onload = () => {
+      cleanup();
+      let body: unknown;
+      try {
+        body = JSON.parse(xhr.responseText);
+      } catch {
+        body = undefined;
+      }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        fail(attachmentApiError(xhr.status, body));
+        return;
+      }
+      settled = true;
+      onProgress?.(file.size, file.size);
+      resolve(body as ChatAttachmentProjection);
+    };
+    xhr.onerror = () => fail(new ApiError("上传失败，请检查网络后重试。", 0));
+    xhr.onabort = () => fail(new DOMException("上传已取消。", "AbortError"));
+    xhr.send(file);
+  });
+}
+
+export async function cancelChatAttachment(
+  conversationId: string,
+  objectId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function cancelChatAttachmentUpload(
+  conversationId: string,
+  uploadId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/by-upload/${encodeURIComponent(uploadId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function deleteChatMessageAttachment(
+  conversationId: string,
+  messageId: string,
+  objectId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(objectId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseAuthError(res);
+}
+
+export async function downloadChatAttachment(
+  conversationId: string,
+  objectId: string,
+  originalFilename: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/download`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseAuthError(res);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = originalFilename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 /**
  * 发送消息并流式接收回答；AbortController 用于停止/切换账户时中断。
  * 触发回调序列：started → delta* → done | error。
@@ -947,13 +1073,14 @@ export async function streamChatMessage(
   conversationId: string,
   content: string,
   onEvent: (event: ChatStreamEvent) => void,
-  signal?: AbortSignal
+  signal?: AbortSignal,
+  attachmentIds: string[] = []
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ content }),
+    body: JSON.stringify({ content, attachment_ids: attachmentIds }),
     signal,
   });
   if (!res.ok) throw await parseAuthError(res);

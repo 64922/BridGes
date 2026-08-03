@@ -9,7 +9,7 @@ import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
-import { chatPromptKey } from "@/lib/chat-flow";
+import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
 import { ApiError, createChatConversation } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -35,20 +35,48 @@ export function NewChatHome() {
   const [mode, setMode] = useState<ChatMode>("companion");
   // 递增计数器保证每次建议卡点击都触发预填（同毫秒点击不会丢）
   const prefillCounter = useRef(0);
+  const preparedConversationRef = useRef<string | undefined>();
 
-  const handleSend = async (text: string) => {
+  const ensureConversation = async (): Promise<string | undefined> => {
+    if (preparedConversationRef.current) return preparedConversationRef.current;
+    try {
+      const conversation = await createChatConversation(undefined, mode);
+      preparedConversationRef.current = conversation.conversation_id;
+      return conversation.conversation_id;
+    } catch (error) {
+      setSendError({
+        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
+        code: error instanceof ApiError ? error.code : undefined,
+      });
+      return undefined;
+    }
+  };
+
+  const handleSend = async (
+    text: string,
+    attachmentIds: string[] = [],
+    preparedConversationId?: string
+  ): Promise<boolean> => {
     setSending(true);
     setSendError(null);
     try {
-      const conversation = await createChatConversation(undefined, mode);
-      sessionStorage.setItem(chatPromptKey(conversation.conversation_id), text);
-      router.push(`/chat/${conversation.conversation_id}`);
+      const conversationId =
+        preparedConversationId ??
+        preparedConversationRef.current ??
+        (await createChatConversation(undefined, mode)).conversation_id;
+      sessionStorage.setItem(chatPromptKey(conversationId), text);
+      if (attachmentIds.length > 0) {
+        sessionStorage.setItem(chatAttachmentKey(conversationId), JSON.stringify(attachmentIds));
+      }
+      router.push(`/chat/${conversationId}`);
+      return true;
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
         code: error instanceof ApiError ? error.code : undefined,
       });
       setSending(false);
+      return false;
     }
   };
 
@@ -79,7 +107,8 @@ export function NewChatHome() {
                 />
               )}
               <Composer
-                onSend={(text) => void handleSend(text)}
+                onSend={handleSend}
+                ensureConversation={ensureConversation}
                 generating={sending}
                 onStop={() => setSending(false)}
                 prefill={prefill}

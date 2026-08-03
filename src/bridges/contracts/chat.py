@@ -75,6 +75,21 @@ class ChatError(BaseModel):
     message: str = Field(description="可操作的中文提示。")
 
 
+class ChatAttachmentProjection(BaseModel):
+    """聊天附件的安全公开投影；不包含宿主路径或对象存储密钥。"""
+
+    object_id: str = Field(description="稳定对象标识。")
+    original_filename: str = Field(description="用户选择时的显示文件名。")
+    media_type: str = Field(description="服务端内容嗅探得到的安全媒体类型。")
+    content_length: int = Field(description="文件大小（字节）。")
+    content_hash: str = Field(description="内容 SHA-256 摘要。")
+    conversation_id: str = Field(description="所属对话标识。")
+    message_id: str | None = Field(default=None, description="绑定的用户消息标识。")
+    status: str = Field(description="uploaded 或 bound。")
+    created_at: datetime = Field(description="上传时间。")
+    updated_at: datetime = Field(description="最近更新时间。")
+
+
 class ChatMessageProjection(BaseModel):
     """单条消息的公开投影。
 
@@ -88,6 +103,9 @@ class ChatMessageProjection(BaseModel):
     attempt_number: int = Field(default=1, description="助手尝试序号（用户消息恒为 1）。")
     status: ChatMessageStatus = Field(description="生成状态。")
     content: str = Field(default="", description="消息正文；失败/停止时保留已接收部分。")
+    attachments: list[ChatAttachmentProjection] = Field(
+        default_factory=list, description="该用户消息关联的安全附件。"
+    )
     thinking: ChatThinkingSummary | None = Field(
         default=None,
         description="可公开的思考摘要；失败/停止/断流时保留已完成部分。",
@@ -164,7 +182,7 @@ class ChatConversationUpdateRequest(BaseModel):
     pinned: bool | None = Field(default=None, description="是否置顶。")
 
     @model_validator(mode="after")
-    def require_an_update(self) -> "ChatConversationUpdateRequest":
+    def require_an_update(self) -> ChatConversationUpdateRequest:
         if self.title is None and self.pinned is None:
             raise ValueError("至少提供标题或置顶状态。")
         return self
@@ -189,6 +207,9 @@ class ChatMessageCreateRequest(BaseModel):
     """发送一条用户消息。"""
 
     content: str = Field(min_length=1, max_length=4000, description="用户消息正文。")
+    attachment_ids: list[str] = Field(
+        default_factory=list, max_length=10, description="已上传且待绑定到本条消息的对象标识。"
+    )
 
 
 class ChatStopResponse(BaseModel):

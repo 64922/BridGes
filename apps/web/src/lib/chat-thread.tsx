@@ -31,6 +31,7 @@ export function buildThreadMessages(
         id: message.message_id,
         role: "user",
         plainText: message.content,
+        attachments: message.attachments ?? [],
         content: <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{message.content}</p>,
       });
       continue;

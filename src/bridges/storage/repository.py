@@ -38,6 +38,7 @@ class StoredObject:
     account_id: str
     content_hash: str
     original_filename: str
+    media_type: str
     content_length: int
     status: str
     cleanup_retry_count: int
@@ -77,12 +78,7 @@ class BridgesObjectRepository:
         return account_id
 
     def ensure_account(self, account_id: str, email: str) -> None:
-        """Ensure storage knows the identity domain's stable account ID.
-
-        Identity owns account IDs. The object repository mirrors that immutable
-        ownership key so uploaded media never acquires a second account identity.
-        Repeated calls are idempotent and a conflicting ID/email pair is rejected.
-        """
+        """让对象库认识身份域的稳定账户 ID，并拒绝冲突的邮箱归属。"""
         normalized_email = email.strip().lower()
         existing = self._database.connection.execute(
             "SELECT account_id, email FROM accounts WHERE account_id = ? OR email = ?",
@@ -118,7 +114,11 @@ class BridgesObjectRepository:
     # ------------------------------------------------------------------
 
     def create_object(
-        self, account_id: str, original_filename: str, content: bytes
+        self,
+        account_id: str,
+        original_filename: str,
+        content: bytes,
+        media_type: str = "application/octet-stream",
     ) -> StoredObject:
         """保存对象：密文先落盘，再事务化写入元数据行。
 
@@ -134,13 +134,14 @@ class BridgesObjectRepository:
             with self._database.transaction():
                 self._database.connection.execute(
                     "INSERT INTO objects(object_id, account_id, content_hash,"
-                    " original_filename, content_length, status, created_at,"
-                    " updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    " original_filename, media_type, content_length, status,"
+                    " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         object_id,
                         account_id,
                         content_hash,
                         original_filename,
+                        media_type,
                         len(content),
                         OBJECT_STATUS_ACTIVE,
                         now,
@@ -329,6 +330,7 @@ class BridgesObjectRepository:
             account_id=str(row["account_id"]),
             content_hash=str(row["content_hash"]),
             original_filename=str(row["original_filename"]),
+            media_type=str(row["media_type"]),
             content_length=int(row["content_length"]),
             status=str(row["status"]),
             cleanup_retry_count=int(row["cleanup_retry_count"]),

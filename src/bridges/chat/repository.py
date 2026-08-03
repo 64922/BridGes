@@ -309,6 +309,73 @@ class ConversationRepository:
         except Exception as exc:  # noqa: BLE001
             raise StorageError("保存消息失败，请稍后重试。") from exc
 
+    def insert_messages_with_attachments(
+        self,
+        user_record: MessageRecord,
+        assistant_record: MessageRecord,
+        attachment_ids: list[str],
+    ) -> None:
+        """在同一事务中保存一轮消息并绑定待发送附件。"""
+        try:
+            with self._db.transaction():
+                for record in (user_record, assistant_record):
+                    self._db.connection.execute(
+                        "INSERT INTO messages"
+                        "(message_id, conversation_id, account_id, role, attempt_number,"
+                        " status, content, thinking, error_code, error_message,"
+                        " duration_ms, model_id, run_lock_id, created_at, updated_at)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            record.message_id,
+                            record.conversation_id,
+                            record.account_id,
+                            record.role.value,
+                            record.attempt_number,
+                            record.status.value,
+                            record.content,
+                            _json_dumps(record.thinking) if record.thinking else None,
+                            record.error_code,
+                            record.error_message,
+                            record.duration_ms,
+                            record.model_id,
+                            record.run_lock_id,
+                            _iso(record.created_at),
+                            _iso(record.updated_at),
+                        ),
+                    )
+                placeholders = ",".join("?" for _ in attachment_ids)
+                rows = self._db.connection.execute(
+                    "SELECT object_id FROM chat_attachments"
+                    " WHERE account_id = ? AND conversation_id = ?"
+                    " AND message_id IS NULL AND status = 'uploaded'"
+                    f" AND object_id IN ({placeholders})",
+                    (
+                        user_record.account_id,
+                        user_record.conversation_id,
+                        *attachment_ids,
+                    ),
+                ).fetchall()
+                if {str(row["object_id"]) for row in rows} != set(attachment_ids):
+                    raise StorageError("附件不存在或没有访问权限。")
+                now = _iso(user_record.updated_at)
+                for object_id in attachment_ids:
+                    self._db.connection.execute(
+                        "UPDATE chat_attachments SET message_id = ?, status = 'bound',"
+                        " updated_at = ? WHERE object_id = ? AND account_id = ?"
+                        " AND conversation_id = ? AND message_id IS NULL",
+                        (
+                            user_record.message_id,
+                            now,
+                            object_id,
+                            user_record.account_id,
+                            user_record.conversation_id,
+                        ),
+                    )
+        except StorageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError("保存消息与附件失败，请稍后重试。") from exc
+
     def list_messages(self, account_id: str, conversation_id: str) -> list[MessageRecord]:
         rows = self._db.connection.execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"

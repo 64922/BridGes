@@ -16,7 +16,7 @@ from pathlib import Path
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 6
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -150,6 +150,47 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_conversations_account_pinned_updated
         ON conversations(account_id, pinned DESC, updated_at DESC, created_at DESC)
+        """,
+    ],
+    # Issue 16：安全聊天附件。
+    5: [
+        """
+        ALTER TABLE objects ADD COLUMN media_type TEXT NOT NULL
+            DEFAULT 'application/octet-stream'
+        """,
+        """
+        CREATE TABLE chat_attachments (
+            object_id TEXT PRIMARY KEY REFERENCES objects(object_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            message_id TEXT,
+            upload_id TEXT NOT NULL UNIQUE,
+            media_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'uploaded'
+                CHECK (status IN ('uploaded', 'bound')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_chat_attachments_message
+        ON chat_attachments(account_id, conversation_id, message_id)
+        """,
+        """
+        CREATE INDEX idx_chat_attachments_upload
+        ON chat_attachments(account_id, conversation_id, upload_id)
+        """,
+    ],
+    # Issue 16：记录先到达的取消请求，避免上传事务随后落库形成孤儿对象。
+    6: [
+        """
+        CREATE TABLE chat_attachment_cancellations (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            upload_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, conversation_id, upload_id)
+        )
         """,
     ],
 }

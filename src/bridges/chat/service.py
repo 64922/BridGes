@@ -17,6 +17,7 @@ from typing import Any
 
 from bridges.ai import ModelGateway
 from bridges.ai.streaming import StreamEvent
+from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.repository import (
     ConversationRepository,
     MessageRecord,
@@ -161,9 +162,15 @@ class ChatDomainError(Exception):
 class ChatService:
     """对话与生成编排服务；所有操作都限定在传入的账户 ID 内。"""
 
-    def __init__(self, repository: ConversationRepository, gateway: ModelGateway) -> None:
+    def __init__(
+        self,
+        repository: ConversationRepository,
+        gateway: ModelGateway,
+        attachment_service: ChatAttachmentService | None = None,
+    ) -> None:
         self._repo = repository
         self._gateway = gateway
+        self._attachments = attachment_service
         #: 进行中生成的停止信号（message_id → 事件与生成启动时刻）。
         self._stops: dict[str, tuple[threading.Event, float]] = {}
         self._stops_guard = threading.Lock()
@@ -324,10 +331,14 @@ class ChatService:
             message.status == ChatMessageStatus.STREAMING
             for message in self._repo.list_messages(account_id, conversation_id)
         ):
-            raise ChatDomainError("generation_in_progress", "回答仍在生成中，请先停止后再删除。", 409)
+            raise ChatDomainError(
+                "generation_in_progress", "回答仍在生成中，请先停止后再删除。", 409
+            )
         deleted = self._repo.delete_conversation(account_id, conversation_id)
         if deleted != 1:
             raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
+        if self._attachments is not None:
+            self._attachments.delete_for_conversation(account_id, conversation_id)
 
     def get_conversation(
         self, account_id: str, conversation_id: str
@@ -387,7 +398,11 @@ class ChatService:
     # ------------------------------------------------------------------
 
     def start_generation(
-        self, account_id: str, conversation_id: str, content: str
+        self,
+        account_id: str,
+        conversation_id: str,
+        content: str,
+        attachment_ids: list[str] | None = None,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
         """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。"""
         now = datetime.now(UTC)
@@ -406,6 +421,18 @@ class ChatService:
                 "上一轮回答仍在生成中，请先停止或等待完成。",
                 409,
             )
+        attachment_ids = list(attachment_ids or [])
+        if attachment_ids:
+            if self._attachments is None:
+                raise ChatDomainError(
+                    "attachments_unavailable", "附件服务未启用，请稍后重试。", 503
+                )
+            try:
+                self._attachments.validate_unbound(
+                    account_id, conversation_id, attachment_ids
+                )
+            except ChatAttachmentError as exc:
+                raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
 
         thinking = _initial_thinking(ChatMode(record.mode))
         user_message = MessageRecord(
@@ -442,8 +469,13 @@ class ChatService:
             created_at=now,
             updated_at=now,
         )
-        self._repo.insert_message(user_message)
-        self._repo.insert_message(assistant_message)
+        if attachment_ids:
+            self._repo.insert_messages_with_attachments(
+                user_message, assistant_message, attachment_ids
+            )
+        else:
+            self._repo.insert_message(user_message)
+            self._repo.insert_message(assistant_message)
         self._repo.touch_conversation(account_id, conversation_id, now)
         # 预注册停止事件：生成一经创建即视为"活跃"，读取收敛不会误伤
         self._register_stop(assistant_message.message_id)
@@ -835,8 +867,17 @@ class ChatService:
     # 投影
     # ------------------------------------------------------------------
 
-    @staticmethod
-    def _project_message(message: MessageRecord) -> ChatMessageProjection:
+    def _project_message(self, message: MessageRecord) -> ChatMessageProjection:
+        attachments = (
+            [
+                attachment.projection()
+                for attachment in self._attachments.list_for_message(
+                    message.account_id, message.conversation_id, message.message_id
+                )
+            ]
+            if self._attachments is not None and message.role == ChatMessageRole.USER
+            else []
+        )
         return ChatMessageProjection(
             message_id=message.message_id,
             conversation_id=message.conversation_id,
@@ -844,6 +885,7 @@ class ChatService:
             attempt_number=message.attempt_number,
             status=message.status,
             content=message.content,
+            attachments=attachments,
             thinking=(
                 ChatThinkingSummary(**message.thinking)
                 if message.thinking is not None
@@ -858,9 +900,8 @@ class ChatService:
             updated_at=message.updated_at,
         )
 
-    @classmethod
     def _project_conversation(
-        cls,
+        self,
         account_id: str,
         conversation_id: str,
         *,
@@ -873,7 +914,6 @@ class ChatService:
         messages: list[MessageRecord],
         mode_events: list[ModeEventRecord] | None = None,
     ) -> ChatConversationProjection:
-        del account_id  # 投影不含账户标识，避免向前端泄漏内部 ID 语义
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,
@@ -882,7 +922,7 @@ class ChatService:
             project_id=project_id,
             created_at=created_at,
             updated_at=updated_at,
-            messages=[cls._project_message(message) for message in messages],
+            messages=[self._project_message(message) for message in messages],
             mode_events=[
                 ChatModeEventProjection(
                     event_id=event.event_id,

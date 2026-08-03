@@ -390,6 +390,11 @@ class IdentityService:
             account=account,
             password_hash=_PASSWORD_HASHER.hash(request.password.get_secret_value()),
         )
+        if self._object_repository is not None:
+            try:
+                self._object_repository.ensure_account(account.id, account.qq_email)
+            except StorageError as exc:
+                raise IdentityError("账户对象归属初始化失败，请稍后重试。") from exc
         self._accounts[account.id] = stored
         self._username_to_account[normalized_username] = account.id
         self._qq_email_to_account[qq_email] = account.id
