@@ -338,6 +338,115 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversations
+         * @description 返回当前账户的对话列表（按最近活动倒序）。
+         */
+        get: operations["list_conversations_chat_conversations_get"];
+        put?: never;
+        /**
+         * Create Conversation
+         * @description 新建对话；标题可选，缺省由首条消息自动推导。
+         */
+        post: operations["create_conversation_chat_conversations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Conversation
+         * @description 返回对话完整历史；跨账户访问返回 404，不泄漏存在性。
+         */
+        get: operations["get_conversation_chat_conversations__conversation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Message
+         * @description 发送用户消息并流式接收真实 Qwen 回答（SSE）。
+         *
+         *     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
+         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。
+         */
+        post: operations["send_message_chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/stop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Stop Message
+         * @description 停止进行中的生成；幂等，已终态的消息直接返回当前状态。
+         */
+        post: operations["stop_message_chat_conversations__conversation_id__messages__message_id__stop_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Message
+         * @description 重试失败的助手消息：创建新的助手尝试并流式生成。
+         *
+         *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。
+         */
+        post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/key-settings": {
         parameters: {
             query?: never;
@@ -5067,6 +5176,227 @@ export interface components {
          * @enum {string}
          */
         ChartMark: "bar" | "line" | "point" | "area" | "scatter" | "error_bar" | "histogram";
+        /**
+         * ChatConversationListProjection
+         * @description 当前账户的对话列表，按最近活动倒序。
+         */
+        ChatConversationListProjection: {
+            /** Conversations */
+            conversations?: components["schemas"]["ChatConversationSummary"][];
+        };
+        /**
+         * ChatConversationProjection
+         * @description 单个对话的完整投影（含消息历史）。
+         */
+        ChatConversationProjection: {
+            /**
+             * Conversation Id
+             * @description 稳定对话标识。
+             */
+            conversation_id: string;
+            /**
+             * Title
+             * @description 对话标题。
+             * @default
+             */
+            title: string;
+            /**
+             * Mode
+             * @description 对话模式。
+             * @default companion
+             */
+            mode: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近活动时间。
+             */
+            updated_at: string;
+            /** Messages */
+            messages?: components["schemas"]["ChatMessageProjection"][];
+        };
+        /**
+         * ChatConversationSummary
+         * @description 对话列表项（不含消息正文）。
+         */
+        ChatConversationSummary: {
+            /**
+             * Conversation Id
+             * @description 稳定对话标识。
+             */
+            conversation_id: string;
+            /**
+             * Title
+             * @description 对话标题。
+             * @default
+             */
+            title: string;
+            /**
+             * Mode
+             * @description 对话模式（预留双模式）。
+             * @default companion
+             */
+            mode: string;
+            /**
+             * Message Count
+             * @description 消息条数（含所有尝试）。
+             * @default 0
+             */
+            message_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近活动时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * ChatCreateRequest
+         * @description 新建对话请求；标题可选，缺省由首条消息自动推导。
+         */
+        ChatCreateRequest: {
+            /**
+             * Title
+             * @description 可选标题。
+             */
+            title?: string | null;
+        };
+        /**
+         * ChatError
+         * @description 聊天 API 的错误响应体（非泄漏、可操作的中文说明）。
+         */
+        ChatError: {
+            /**
+             * Error
+             * @description 稳定错误码，供前端分类处理。
+             */
+            error: string;
+            /**
+             * Message
+             * @description 可操作的中文提示。
+             */
+            message: string;
+        };
+        /**
+         * ChatMessageCreateRequest
+         * @description 发送一条用户消息。
+         */
+        ChatMessageCreateRequest: {
+            /**
+             * Content
+             * @description 用户消息正文。
+             */
+            content: string;
+        };
+        /**
+         * ChatMessageProjection
+         * @description 单条消息的公开投影。
+         *
+         *     助手消息的 ``attempt_number`` 从 1 开始，每次重试生成新的助手消息行
+         *     （尝试号递增），历史尝试原样保留，绝不静默改写。
+         */
+        ChatMessageProjection: {
+            /**
+             * Message Id
+             * @description 稳定消息标识。
+             */
+            message_id: string;
+            /**
+             * Conversation Id
+             * @description 所属对话标识。
+             */
+            conversation_id: string;
+            /** @description 用户或助手消息。 */
+            role: components["schemas"]["ChatMessageRole"];
+            /**
+             * Attempt Number
+             * @description 助手尝试序号（用户消息恒为 1）。
+             * @default 1
+             */
+            attempt_number: number;
+            /** @description 生成状态。 */
+            status: components["schemas"]["ChatMessageStatus"];
+            /**
+             * Content
+             * @description 消息正文；失败/停止时保留已接收部分。
+             * @default
+             */
+            content: string;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Duration Ms
+             * @description 本次生成耗时（毫秒）。
+             */
+            duration_ms?: number | null;
+            /**
+             * Model Id
+             * @description 实际使用的固定模型快照。
+             */
+            model_id?: string | null;
+            /**
+             * Run Lock Id
+             * @description 绑定的模型运行锁标识。
+             */
+            run_lock_id?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * ChatMessageRole
+         * @description 消息角色。
+         * @enum {string}
+         */
+        ChatMessageRole: "user" | "assistant";
+        /**
+         * ChatMessageStatus
+         * @description 助手消息的生成状态。
+         *
+         *     - ``streaming``：正在生成（收到停止/断流/完成前都可能离开此状态）；
+         *     - ``done``：完整回答已落库；
+         *     - ``error``：生成失败（含断流），保留已接收正文，可点击重试；
+         *     - ``stopped``：用户主动停止，保留已接收正文。
+         * @enum {string}
+         */
+        ChatMessageStatus: "streaming" | "done" | "error" | "stopped";
+        /**
+         * ChatStopResponse
+         * @description 停止生成的结果投影。
+         */
+        ChatStopResponse: {
+            /** @description 停止后的消息状态。 */
+            message: components["schemas"]["ChatMessageProjection"];
+        };
         /**
          * ChunkCorrection
          * @description A human correction to a single chunk.
@@ -17626,6 +17956,372 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_conversations_chat_conversations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    create_conversation_chat_conversations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_conversation_chat_conversations__conversation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatConversationProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    send_message_chat_conversations__conversation_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessageCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    stop_message_chat_conversations__conversation_id__messages__message_id__stop_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatStopResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    retry_message_chat_conversations__conversation_id__messages__message_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
                 };
             };
         };

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -124,6 +125,59 @@ class QwenApiClient:
         Raises AdapterError subclasses so the gateway can classify the failure.
         """
         return self._post_openai("/chat/completions", request_body, "Qwen")
+
+    def chat_completions_stream(self, request_body: dict[str, Any]) -> Iterator[dict[str, Any]]:
+        """流式 POST /chat/completions，逐条产出解析后的 SSE 数据对象。
+
+        请求体必须包含 ``"stream": true``；按 ``data:`` 行产出 dict
+        （``[DONE]`` 哨兵在内部消费）。HTTP 错误按与 ``chat_completions``
+        相同的 ``AdapterError`` 分类抛出，供网关统一路由。
+
+        流式不参与 cassette 录制/回放：cassette 模式是探测与非流式适配器
+        的同步便利设施，流式测试通过注入 ``httpx.MockTransport`` 完成。
+        """
+        url = f"{self.base_url}/chat/completions"
+        headers: dict[str, str] = {"Content-Type": "application/json"}
+        if self._api_key is not None:
+            headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
+
+        try:
+            with self._client.stream("POST", url, json=request_body, headers=headers) as response:
+                if response.status_code == 429:
+                    raise RateLimitError("Qwen rate limit (429).")
+                if response.status_code in (401, 403):
+                    raise AuthError("Qwen authentication/authorization failed.")
+                if response.status_code >= 500:
+                    raise TransientError(f"Qwen server error ({response.status_code}).")
+                if response.status_code >= 400:
+                    raise AdapterError(
+                        code=f"client_error_{response.status_code}",
+                        message=f"Qwen client error ({response.status_code}).",
+                        retryable=False,
+                    )
+                for line in response.iter_lines():
+                    if not line:
+                        continue
+                    line = line.strip()
+                    if not line.startswith("data:"):
+                        continue
+                    payload = line[len("data:"):].strip()
+                    if payload == "[DONE]":
+                        return
+                    try:
+                        yield json.loads(payload)
+                    except json.JSONDecodeError as exc:
+                        raise TransientError(
+                            f"Qwen stream returned invalid SSE data: {exc}"
+                        ) from exc
+        except httpx.TimeoutException as exc:
+            raise TransientError(f"Qwen stream timeout: {exc}") from exc
+        except httpx.ConnectError as exc:
+            raise RegionError(f"Qwen stream regional endpoint unreachable: {exc}") from exc
+        except httpx.NetworkError as exc:
+            raise TransientError(f"Qwen stream network error: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise TransientError(f"Qwen stream HTTP error: {exc}") from exc
 
     def embeddings(self, request_body: dict[str, Any]) -> dict[str, Any]:
         """POST /embeddings and return the parsed response body.

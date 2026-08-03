@@ -15,6 +15,7 @@ from __future__ import annotations
 import random
 import secrets
 import time
+from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,6 +28,7 @@ from bridges.ai.adapters import (
     TransientError,
 )
 from bridges.ai.capability_registry import CapabilityRegistry, CapabilityRegistryError
+from bridges.ai.streaming import StreamEvent
 from bridges.contracts.ai import (
     CapabilityRecord,
     CapabilityStatus,
@@ -181,6 +183,187 @@ class ModelGateway:
             attempted,
         )
         return fallback_result
+
+    def stream(
+        self,
+        capability_name: str,
+        capability_version: str,
+        run_context: RunContextEnvelope,
+        payload: dict[str, Any] | None = None,
+    ) -> Iterator[StreamEvent]:
+        """流式调用一个能力，逐块产出事件并在结束时附带不可变运行锁。
+
+        与 ``invoke`` 的差异：真正的流式适配器路径不做网关级自动重试与
+        降级——聊天以"新建助手尝试"作为用户级重试机制（Issue 11）。
+        连接阶段失败（尚未产出任何增量）直接以 error 事件结束；已开始
+        输出后的失败同样以 error 事件结束并保留已接收正文。无
+        ``stream_call`` 的适配器（如测试替身）降级为一次性 ``invoke``，
+        复用其重试/降级语义。能力未注册/未验证/未绑定适配器时产出带
+        BLOCKED 运行锁的 error 事件，绝不静默成功。
+        """
+        payload = payload or {}
+        try:
+            primary = self._registry.get(capability_name, capability_version)
+        except CapabilityRegistryError as exc:
+            lock = ModelRunLock(
+                lock_id=secrets.token_urlsafe(16),
+                run_id=run_context.run_id,
+                account_id=run_context.account_id,
+                project_id=run_context.project_id,
+                capability_name=capability_name,
+                capability_version=capability_version,
+                actual_model_id=None,
+                region="unknown",
+                parameters={},
+                prompt_version="unknown",
+                input_output_contract="unknown",
+                fallback_path=[f"{capability_name}@{capability_version}"],
+                status=ModelCallStatus.BLOCKED,
+                retry_count=0,
+                degradation_reason=str(exc),
+                error_code="unregistered_capability",
+                error_message=str(exc),
+                created_at=datetime.now(UTC),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="unregistered_capability",
+                error_message=str(exc),
+                lock=lock,
+            )
+            return
+
+        if primary.status != CapabilityStatus.VERIFIED:
+            blocked = self._blocked_result(
+                run_context,
+                primary,
+                "capability_not_verified",
+                f"能力未通过验证：{capability_name}@{capability_version}。",
+            )
+            assert blocked.lock is not None
+            yield StreamEvent(
+                kind="error",
+                error_code=blocked.error_code,
+                error_message=blocked.error_message,
+                lock=blocked.lock,
+            )
+            return
+
+        adapter = self._adapters.get((capability_name, capability_version))
+        if adapter is None:
+            blocked = self._blocked_result(
+                run_context,
+                primary,
+                "no_adapter",
+                f"能力没有绑定适配器：{capability_name}@{capability_version}。",
+            )
+            assert blocked.lock is not None
+            yield StreamEvent(
+                kind="error",
+                error_code=blocked.error_code,
+                error_message=blocked.error_message,
+                lock=blocked.lock,
+            )
+            return
+
+        stream_call = getattr(adapter, "stream_call", None)
+        if stream_call is None:
+            # 非流式适配器（如测试替身）降级为一次性调用：完整回答作为
+            # 单个 delta 输出，错误沿用 invoke 的分类结果。
+            result = self.invoke(
+                capability_name,
+                capability_version,
+                run_context,
+                payload,
+            )
+            if result.status == ModelCallStatus.SUCCESS and result.lock is not None:
+                content = ""
+                if isinstance(result.output, dict):
+                    content = str(result.output.get("content") or "")
+                if content:
+                    yield StreamEvent(kind="delta", delta=content)
+                yield StreamEvent(kind="done", lock=result.lock, usage=result.lock.usage)
+            else:
+                yield StreamEvent(
+                    kind="error",
+                    error_code=result.error_code,
+                    error_message=result.error_message,
+                    lock=result.lock,
+                )
+            return
+
+        actual_model_id: str | None = primary.model_id
+        usage: dict[str, Any] | None = None
+        try:
+            for chunk in stream_call(primary, run_context, payload):
+                if chunk.kind == "delta":
+                    yield StreamEvent(kind="delta", delta=chunk.delta)
+                elif chunk.kind == "error":
+                    lock = self._build_lock(
+                        run_context,
+                        primary,
+                        self._lock_status_for_code(chunk.error_code or "unknown"),
+                        [f"{primary.name}@{primary.version}"],
+                        retry_count=0,
+                        degradation_reason=chunk.error_message,
+                        actual_model_id=primary.model_id,
+                        error_code=chunk.error_code,
+                        error_message=chunk.error_message,
+                        payload=payload,
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code=chunk.error_code,
+                        error_message=chunk.error_message,
+                        lock=lock,
+                    )
+                    return
+                elif chunk.kind == "done":
+                    actual_model_id = chunk.actual_model_id or primary.model_id
+                    usage = chunk.usage
+        except (RateLimitError, TransientError, RegionError, AuthError, AdapterError) as exc:
+            lock = self._build_lock(
+                run_context,
+                primary,
+                self._lock_status_for_code(exc.code),
+                [f"{primary.name}@{primary.version}"],
+                retry_count=0,
+                degradation_reason=str(exc),
+                actual_model_id=primary.model_id,
+                error_code=exc.code,
+                error_message=exc.message,
+                payload=payload,
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code=exc.code,
+                error_message=exc.message,
+                lock=lock,
+            )
+            return
+
+        lock = self._build_lock(
+            run_context,
+            primary,
+            ModelCallStatus.SUCCESS,
+            [f"{primary.name}@{primary.version}"],
+            retry_count=0,
+            actual_model_id=actual_model_id,
+            usage=usage,
+            payload=payload,
+        )
+        yield StreamEvent(kind="done", lock=lock, usage=usage)
+
+    @staticmethod
+    def _lock_status_for_code(error_code: str) -> ModelCallStatus:
+        """按稳定错误码映射运行锁状态。
+
+        限流与瞬时故障属于可重试失败；鉴权、区域与其余供应商拒绝
+        一律失败关闭（fail closed），与 ``invoke`` 的分类一致。
+        """
+        if error_code in {"rate_limit", "transient", "stream_interrupted"}:
+            return ModelCallStatus.RETRYABLE_FAIL
+        return ModelCallStatus.BLOCKED
 
     def _resolve_fallback(
         self,

@@ -103,7 +103,9 @@ test.describe("Issue 08 — 个人资料", () => {
     expect(afterAccount.username).toBe(nextUsername);
 
     await page.goto("/");
-    await expect(page.getByText(new RegExp(`${nextUsername}，这里是你与 BridGes`))).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: new RegExp(`账户菜单：${nextUsername}`) })
+    ).toBeVisible();
 
     const updatedTrigger = page.getByRole("button", { name: new RegExp(`账户菜单：${nextUsername}`) });
     await updatedTrigger.focus();
@@ -335,6 +337,15 @@ test.describe("Issue 08 — 桌面视觉回归", () => {
           message: "尚未配置百炼密钥。",
           next_step: "录入百炼 Key 后，系统将用非用户数据逐项真实探测固定能力。",
         }),
+      })
+    );
+
+    // Issue 11：新聊天首页会拉取真实对话列表；视觉回归注入空列表保证确定性。
+    await page.route("**/api/chat/conversations", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ conversations: [] }),
       })
     );
 

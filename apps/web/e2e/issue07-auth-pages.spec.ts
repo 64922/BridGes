@@ -124,7 +124,7 @@ test.describe("Issue 07 — 注册页", () => {
     await page.keyboard.press("Tab");
     await page.keyboard.press("Enter");
     await page.waitForURL("/");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
   });
 
   test("注册页与登录页可以互相链接", async ({ page }) => {
@@ -201,7 +201,7 @@ test.describe("Issue 07 — 登录页", () => {
     await page.getByLabel("用户名或 QQ 邮箱").fill(creds.username);
     await page.getByRole("button", { name: "登录" }).click();
     await page.waitForURL("/");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
   });
 
   test("提交过程中按钮防重复提交", async ({ page }) => {
@@ -244,11 +244,11 @@ test.describe("Issue 07 — 重定向与 Cookie 合同", () => {
 
     await page.goto("/login");
     await page.waitForURL("/");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
 
     await page.goto("/register");
     await page.waitForURL("/");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
   });
 
   test("会话 Cookie 为 HttpOnly + SameSite=Lax 且令牌不进入本地存储", async ({

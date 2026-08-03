@@ -16,7 +16,7 @@ from pathlib import Path
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -47,6 +47,71 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         CREATE INDEX idx_objects_status ON objects(status)
+        """,
+    ],
+    # Issue 11: 持久化对话、消息（含助手尝试）与模型运行锁。所有表都绑定
+    # 稳定账户 ID（account_id 列），查询一律按 account_id 过滤，跨账户访问
+    # 视为不存在。accounts 表只随头像等对象创建时填充（ensure_account），
+    # 因此本域不设到 accounts 的外键，账户隔离由仓库查询层强制。
+    2: [
+        """
+        CREATE TABLE conversations (
+            conversation_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            mode TEXT NOT NULL DEFAULT 'companion',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_conversations_account_updated
+        ON conversations(account_id, updated_at DESC)
+        """,
+        """
+        CREATE TABLE model_run_locks (
+            lock_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            capability_name TEXT NOT NULL,
+            capability_version TEXT NOT NULL,
+            actual_model_id TEXT,
+            region TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error_code TEXT,
+            error_message TEXT,
+            usage TEXT,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_run_locks_account_created
+        ON model_run_locks(account_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE messages (
+            message_id TEXT PRIMARY KEY,
+            conversation_id TEXT NOT NULL REFERENCES conversations(conversation_id),
+            account_id TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+            attempt_number INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'done'
+                CHECK (status IN ('streaming', 'done', 'error', 'stopped')),
+            content TEXT NOT NULL DEFAULT '',
+            error_code TEXT,
+            error_message TEXT,
+            duration_ms INTEGER,
+            model_id TEXT,
+            run_lock_id TEXT REFERENCES model_run_locks(lock_id),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_messages_conversation_created
+        ON messages(conversation_id, created_at, message_id)
+        """,
+        """
+        CREATE INDEX idx_messages_account ON messages(account_id)
         """,
     ],
 }

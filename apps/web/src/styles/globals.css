@@ -363,7 +363,12 @@
   }
 
   .sc-visually-hidden:focus {
-    position: static;
+    /* 聚焦时以覆盖层出现，绝不改变文档流：浏览器可能在客户端导航后把
+       焦点落在跳转链接上，若改为 static 会把整页内容下推（Issue 11 修复：
+       点击目标因布局位移而落空）。 */
+    position: absolute;
+    top: 0;
+    left: 0;
     width: auto;
     height: auto;
     padding: var(--space-3) var(--space-4);

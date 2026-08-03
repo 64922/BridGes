@@ -13,7 +13,7 @@ test.describe("T003 — 完成账户注册、登录、退出与会话恢复", ()
     const creds = uniqueCredentials("t003-register");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
     // 注册成功落在新聊天首页。
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
   });
 
   test("登录失败显示安全且不泄露信息的错误", async ({ page }) => {
@@ -64,7 +64,7 @@ test.describe("T003 — 完成账户注册、登录、退出与会话恢复", ()
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
     await page.goto("/login");
     await page.waitForURL("/");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
   });
 
   test("同一账户可以用用户名或 QQ 邮箱分别登录", async ({ page }) => {
@@ -74,11 +74,11 @@ test.describe("T003 — 完成账户注册、登录、退出与会话恢复", ()
 
     // 用 QQ 邮箱登录。
     await signIn(page, creds.qqEmail, "correct-horse-12");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
     await signOut(page);
 
     // 用用户名登录。
     await signIn(page, creds.username, "correct-horse-12");
-    await expect(page.getByText("新聊天")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
   });
 });

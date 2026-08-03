@@ -15,6 +15,13 @@ export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsRespon
 export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
 export type KeySettingsProjection = components["schemas"]["KeySettingsProjection"];
 export type CapabilityProbeSummary = components["schemas"]["CapabilityProbeSummary"];
+export type ChatMessageProjection = components["schemas"]["ChatMessageProjection"];
+export type ChatMessageRole = components["schemas"]["ChatMessageRole"];
+export type ChatMessageStatus = components["schemas"]["ChatMessageStatus"];
+export type ChatConversationProjection = components["schemas"]["ChatConversationProjection"];
+export type ChatConversationSummary = components["schemas"]["ChatConversationSummary"];
+export type ChatConversationListProjection = components["schemas"]["ChatConversationListProjection"];
+export type ChatStopResponse = components["schemas"]["ChatStopResponse"];
 export type Project = components["schemas"]["Project"];
 export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
 export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
@@ -785,6 +792,137 @@ export async function executeRollback(rollbackId: string): Promise<PackRollbackR
     }
   );
   if (!res.ok) throw new Error((await parseDomainPackError(res)).message);
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Issue 11：持久化流式聊天
+// ---------------------------------------------------------------------------
+
+export type ChatStreamEvent =
+  | { event: "started"; data: { message_id: string; user_message_id: string; attempt_number: number } }
+  | { event: "delta"; data: { message_id: string; delta: string } }
+  | {
+      event: "error";
+      data: { message_id: string; error: { code: string; message: string; retryable: boolean } };
+    }
+  | { event: "done"; data: { message_id: string; message: ChatMessageProjection | null } };
+
+/**
+ * 消费一次 SSE 流式响应，把每个事件回调给调用方。
+ * 不在此处抛出网络错误以外的异常——服务端错误事件通过 error 事件回调。
+ */
+async function readSseStream(
+  response: Response,
+  onEvent: (event: ChatStreamEvent) => void
+): Promise<void> {
+  if (!response.body) {
+    throw new Error("流式响应没有可读内容。");
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let separator = buffer.indexOf("\n\n");
+    while (separator !== -1) {
+      const block = buffer.slice(0, separator);
+      buffer = buffer.slice(separator + 2);
+      let eventName = "message";
+      let dataText = "";
+      for (const line of block.split("\n")) {
+        if (line.startsWith("event:")) {
+          eventName = line.slice("event:".length).trim();
+        } else if (line.startsWith("data:")) {
+          dataText += line.slice("data:".length).trim();
+        }
+      }
+      if (dataText) {
+        onEvent({ event: eventName, data: JSON.parse(dataText) } as ChatStreamEvent);
+      }
+      separator = buffer.indexOf("\n\n");
+    }
+  }
+}
+
+export async function listChatConversations(): Promise<ChatConversationListProjection> {
+  const res = await fetch(`${API_BASE}/chat/conversations`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function createChatConversation(title?: string): Promise<ChatConversationProjection> {
+  const res = await fetch(`${API_BASE}/chat/conversations`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ title: title ?? null }),
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+export async function getChatConversation(
+  conversationId: string
+): Promise<ChatConversationProjection> {
+  const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  return res.json();
+}
+
+/**
+ * 发送消息并流式接收回答；AbortController 用于停止/切换账户时中断。
+ * 触发回调序列：started → delta* → done | error。
+ */
+export async function streamChatMessage(
+  conversationId: string,
+  content: string,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ content }),
+    signal,
+  });
+  if (!res.ok) throw await parseAuthError(res);
+  await readSseStream(res, onEvent);
+}
+
+/** 重试失败的助手消息：创建新的助手尝试并流式生成。 */
+export async function retryChatMessage(
+  conversationId: string,
+  messageId: string,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/retry`,
+    { method: "POST", credentials: "same-origin", signal }
+  );
+  if (!res.ok) throw await parseAuthError(res);
+  await readSseStream(res, onEvent);
+}
+
+export async function stopChatMessage(
+  conversationId: string,
+  messageId: string
+): Promise<ChatStopResponse> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/stop`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseAuthError(res);
   return res.json();
 }
 

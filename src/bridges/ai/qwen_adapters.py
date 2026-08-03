@@ -10,6 +10,7 @@ immutable run locks.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 from bridges.ai.adapters import (
@@ -18,6 +19,7 @@ from bridges.ai.adapters import (
     CapabilityAdapter,
 )
 from bridges.ai.qwen_client import QwenApiClient
+from bridges.ai.streaming import StreamChunk
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
 
@@ -72,6 +74,48 @@ class QwenTextChatAdapter(CapabilityAdapter):
             actual_model_id=response_body.get("model") or capability.model_id,
             output={"content": content},
             usage=response_body.get("usage"),
+        )
+
+    def stream_call(
+        self,
+        capability: CapabilityRecord,
+        run_context: RunContextEnvelope,
+        payload: dict[str, Any],
+    ) -> Iterator[StreamChunk]:
+        """流式调用 Chat Completions，逐块产出增量正文（Issue 11）。
+
+        连接阶段失败抛 ``AdapterError`` 子类（网关据此分类）；已经开始
+        输出后的失败以 ``StreamChunk(kind="error")`` 返回，保留已接收正文。
+        """
+        messages = self._build_messages(payload)
+        request_body = {
+            "model": capability.model_id,
+            "messages": messages,
+            "temperature": payload.get("temperature", 0.7),
+            "max_tokens": payload.get("max_tokens", 1024),
+            "stream": True,
+        }
+        last_body: dict[str, Any] | None = None
+        for response_body in self._client.chat_completions_stream(request_body):
+            last_body = response_body
+            choices = response_body.get("choices")
+            if not isinstance(choices, list) or not choices:
+                continue
+            choice = choices[0]
+            if not isinstance(choice, dict):
+                continue
+            delta = choice.get("delta")
+            if isinstance(delta, dict):
+                content = delta.get("content")
+                if isinstance(content, str) and content:
+                    yield StreamChunk(kind="delta", delta=content)
+        # 空流（立即 [DONE]）时 last_body 为 None：不引用未定义变量
+        yield StreamChunk(
+            kind="done",
+            usage=last_body.get("usage") if last_body is not None else None,
+            actual_model_id=(
+                last_body.get("model") if last_body is not None else capability.model_id
+            ),
         )
 
     def _build_messages(self, payload: dict[str, Any]) -> list[dict[str, str]]:

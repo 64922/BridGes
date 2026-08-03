@@ -30,6 +30,12 @@ export default defineConfig({
       url: `http://127.0.0.1:${API_PORT}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
+      // Issue 11：聊天纵向切片要求 bridges.db 持久化；e2e API 进程注入
+      // 临时数据目录与测试密钥（仓库 .gitignore 已排除 .e2e-data）。
+      env: {
+        BRIDGES_DATABASE_URL: `sqlite:///./.e2e-data/bridges.db`,
+        BRIDGES_SECRET_KEY: "e2e-chat-test-secret-key",
+      },
     },
     {
       command: "npm run dev",

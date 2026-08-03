@@ -1250,6 +1250,554 @@
         }
       }
     },
+    "/chat/conversations": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Conversations",
+        "description": "返回当前账户的对话列表（按最近活动倒序）。",
+        "operationId": "list_conversations_chat_conversations_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Create Conversation",
+        "description": "新建对话；标题可选，缺省由首条消息自动推导。",
+        "operationId": "create_conversation_chat_conversations_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Conversation",
+        "description": "返回对话完整历史；跨账户访问返回 404，不泄漏存在性。",
+        "operationId": "get_conversation_chat_conversations__conversation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatConversationProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Send Message",
+        "description": "发送用户消息并流式接收真实 Qwen 回答（SSE）。\n\n事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；\n失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。",
+        "operationId": "send_message_chat_conversations__conversation_id__messages_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatMessageCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/stop": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Stop Message",
+        "description": "停止进行中的生成；幂等，已终态的消息直接返回当前状态。",
+        "operationId": "stop_message_chat_conversations__conversation_id__messages__message_id__stop_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStopResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/retry": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Retry Message",
+        "description": "重试失败的助手消息：创建新的助手尝试并流式生成。\n\n新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。",
+        "operationId": "retry_message_chat_conversations__conversation_id__messages__message_id__retry_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/auth/key-settings": {
       "get": {
         "tags": [
@@ -19680,6 +20228,324 @@
         ],
         "title": "ChartMark",
         "description": "Visual mark type for a data chart."
+      },
+      "ChatConversationListProjection": {
+        "properties": {
+          "conversations": {
+            "items": {
+              "$ref": "#/components/schemas/ChatConversationSummary"
+            },
+            "type": "array",
+            "title": "Conversations"
+          }
+        },
+        "type": "object",
+        "title": "ChatConversationListProjection",
+        "description": "当前账户的对话列表，按最近活动倒序。"
+      },
+      "ChatConversationProjection": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "稳定对话标识。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "对话标题。",
+            "default": ""
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "对话模式。",
+            "default": "companion"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近活动时间。"
+          },
+          "messages": {
+            "items": {
+              "$ref": "#/components/schemas/ChatMessageProjection"
+            },
+            "type": "array",
+            "title": "Messages"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatConversationProjection",
+        "description": "单个对话的完整投影（含消息历史）。"
+      },
+      "ChatConversationSummary": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "稳定对话标识。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "对话标题。",
+            "default": ""
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "对话模式（预留双模式）。",
+            "default": "companion"
+          },
+          "message_count": {
+            "type": "integer",
+            "title": "Message Count",
+            "description": "消息条数（含所有尝试）。",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近活动时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatConversationSummary",
+        "description": "对话列表项（不含消息正文）。"
+      },
+      "ChatCreateRequest": {
+        "properties": {
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "可选标题。"
+          }
+        },
+        "type": "object",
+        "title": "ChatCreateRequest",
+        "description": "新建对话请求；标题可选，缺省由首条消息自动推导。"
+      },
+      "ChatError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "稳定错误码，供前端分类处理。"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "可操作的中文提示。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message"
+        ],
+        "title": "ChatError",
+        "description": "聊天 API 的错误响应体（非泄漏、可操作的中文说明）。"
+      },
+      "ChatMessageCreateRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "description": "用户消息正文。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content"
+        ],
+        "title": "ChatMessageCreateRequest",
+        "description": "发送一条用户消息。"
+      },
+      "ChatMessageProjection": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "稳定消息标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "所属对话标识。"
+          },
+          "role": {
+            "$ref": "#/components/schemas/ChatMessageRole",
+            "description": "用户或助手消息。"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "title": "Attempt Number",
+            "description": "助手尝试序号（用户消息恒为 1）。",
+            "default": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChatMessageStatus",
+            "description": "生成状态。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "消息正文；失败/停止时保留已接收部分。",
+            "default": ""
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "本次生成耗时（毫秒）。"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "实际使用的固定模型快照。"
+          },
+          "run_lock_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Run Lock Id",
+            "description": "绑定的模型运行锁标识。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "conversation_id",
+          "role",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatMessageProjection",
+        "description": "单条消息的公开投影。\n\n助手消息的 ``attempt_number`` 从 1 开始，每次重试生成新的助手消息行\n（尝试号递增），历史尝试原样保留，绝不静默改写。"
+      },
+      "ChatMessageRole": {
+        "type": "string",
+        "enum": [
+          "user",
+          "assistant"
+        ],
+        "title": "ChatMessageRole",
+        "description": "消息角色。"
+      },
+      "ChatMessageStatus": {
+        "type": "string",
+        "enum": [
+          "streaming",
+          "done",
+          "error",
+          "stopped"
+        ],
+        "title": "ChatMessageStatus",
+        "description": "助手消息的生成状态。\n\n- ``streaming``：正在生成（收到停止/断流/完成前都可能离开此状态）；\n- ``done``：完整回答已落库；\n- ``error``：生成失败（含断流），保留已接收正文，可点击重试；\n- ``stopped``：用户主动停止，保留已接收正文。"
+      },
+      "ChatStopResponse": {
+        "properties": {
+          "message": {
+            "$ref": "#/components/schemas/ChatMessageProjection",
+            "description": "停止后的消息状态。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "title": "ChatStopResponse",
+        "description": "停止生成的结果投影。"
       },
       "ChunkCorrection": {
         "properties": {

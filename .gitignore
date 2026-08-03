@@ -18,6 +18,9 @@ out/
 test-results/
 
 # Local env
+
+# E2E 本地数据目录（Issue 11：聊天 e2e 需要 sqlite 持久化）
+apps/web/.e2e-data/
 .env
 .env.local
 

@@ -16,6 +16,12 @@ export interface ChatMessage {
   thinking?: { seconds: number; steps: string[] };
   status?: "done" | "streaming" | "error";
   errorText?: string;
+  /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
+  previousAttempts?: {
+    attemptNumber: number;
+    status: "done" | "streaming" | "error" | "stopped";
+    errorMessage?: string | null;
+  }[];
 }
 
 interface MessageListProps {
@@ -217,6 +223,46 @@ export function MessageList({ messages, onRetry }: MessageListProps) {
                 >
                   BridGes
                 </p>
+
+                {message.previousAttempts && message.previousAttempts.length > 0 && (
+                  <details
+                    style={{
+                      marginBottom: "var(--space-3)",
+                      border: "1px solid var(--color-border)",
+                      borderRadius: "var(--radius-md)",
+                      padding: "var(--space-2) var(--space-3)",
+                      backgroundColor: "var(--color-bg-secondary)",
+                      fontSize: "var(--text-sm)",
+                    }}
+                  >
+                    <summary style={{ cursor: "pointer", color: "var(--color-text-secondary)" }}>
+                      此问题的前 {message.previousAttempts.length} 次尝试
+                    </summary>
+                    <ol
+                      style={{
+                        marginTop: "var(--space-2)",
+                        paddingLeft: "var(--space-4)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: "var(--space-2)",
+                      }}
+                    >
+                      {message.previousAttempts.map((attempt) => (
+                        <li key={attempt.attemptNumber} style={{ color: "var(--color-text-secondary)" }}>
+                          {attempt.status === "error" || attempt.status === "stopped" ? (
+                            <span style={{ color: "var(--color-status-error)" }}>
+                              第 {attempt.attemptNumber} 次尝试（
+                              {attempt.status === "stopped" ? "已停止" : "失败"}）
+                              {attempt.errorMessage ? `：${attempt.errorMessage}` : ""}
+                            </span>
+                          ) : (
+                            <span>第 {attempt.attemptNumber} 次尝试</span>
+                          )}
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
 
                 {message.thinking && (
                   <details

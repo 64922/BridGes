@@ -32,7 +32,7 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
     await page.getByRole("button", { name: "注册" }).press("Enter");
     await page.waitForURL("/");
     // 注册成功落在新聊天首页，再进入账户主壳。
-    await page.getByRole("button", { name: "进入账户主壳" }).first().click();
+    await page.getByRole("link", { name: "全局科学伙伴" }).click();
     await page.waitForURL("/account");
     await expect(page.getByRole("heading", { name: /欢迎回来/ })).toBeVisible();
     await expect(page.getByTestId("route-announcer")).toContainText("/account");

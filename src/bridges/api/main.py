@@ -25,6 +25,7 @@ from bridges.ai import (
 )
 from bridges.api import (
     auth,
+    chat,
     credentials,
     domain_packs,
     evaluation,
@@ -39,6 +40,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api.media import router as media_router
+from bridges.chat import ChatService, ConversationRepository
 from bridges.config import get_settings
 from bridges.contracts.ai import (
     CapabilityKind,
@@ -807,6 +809,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
 
+    # Issue 11: 持久化流式聊天纵向切片。对话/消息/运行锁写入 bridges.db；
+    # 未配置持久化数据目录（内存模式，仅测试/E2E）时不挂载聊天服务，
+    # 路由返回"对话存储未启用"，绝不静默降级到内存。
+    bridges_database = getattr(app.state, "bridges_database", None)
+    if bridges_database is not None:
+        app.state.chat_service = ChatService(
+            repository=ConversationRepository(bridges_database),
+            gateway=model_gateway,
+        )
+
     # T040/T046: register the built-in domain packs as candidates and attach the
     # expert workbench. The workbench owns three-signature release, semantic
     # diffs and gray-release candidates; it never activates a pack implicitly.
@@ -1127,6 +1139,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(chat.router)
     app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)

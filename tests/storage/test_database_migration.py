@@ -30,9 +30,9 @@ def test_first_startup_transactionally_creates_versioned_sqlite_database(
     database = BridgesDatabase(tmp_path / "bridges.db")
     version = database.initialize()
 
-    assert version == 1
+    assert version == 2
     assert (tmp_path / "bridges.db").exists()
-    assert _schema_version(tmp_path / "bridges.db") == 1
+    assert _schema_version(tmp_path / "bridges.db") == 2
     with sqlite3.connect(tmp_path / "bridges.db") as connection:
         tables = {
             str(row[0])
@@ -58,8 +58,8 @@ def test_repeated_startup_does_not_remigrate_or_corrupt_sqlite_data(
 
     # 重复启动（重新打开数据库）只补齐缺失迁移，不重复执行、不损坏数据。
     second = BridgesDatabase(path)
-    assert second.initialize() == 1
-    assert second.initialize() == 1  # 第三次启动同样幂等
+    assert second.initialize() == 2
+    assert second.initialize() == 2  # 第三次启动同样幂等
     row = second.connection.execute(
         "SELECT account_id FROM accounts WHERE account_id = ?",
         (account_id,),
@@ -157,7 +157,7 @@ def test_app_first_startup_creates_versioned_sqlite_database(
     assert app.state.bridges_database is not None
     assert app.state.object_repository is not None
     assert (tmp_path / "bridges.db").exists()
-    assert _schema_version(tmp_path / "bridges.db") == 1
+    assert _schema_version(tmp_path / "bridges.db") == 2
 
     # 重启（再次启动）不重复迁移、不报错。
     get_settings.cache_clear()

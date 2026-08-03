@@ -115,6 +115,9 @@ class StubQwenAdapter:
                 "run_id": run_context.run_id,
                 "payload_keys": sorted(payload.keys()),
                 "stub": True,
+                # Issue 11: 聊天纵向切片把该输出当作一次完整回答（单块流式
+                # 降级路径）；生产环境不会注册 Stub 到真实模型能力上。
+                "content": "这是一条来自本地替身模式的确定性测试回答。",
             },
             usage={"prompt_tokens": 0, "completion_tokens": 0},
         )
