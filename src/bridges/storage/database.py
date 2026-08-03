@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -340,6 +340,138 @@ MIGRATIONS: dict[int, list[str]] = {
               'image/gif',
               'image/webp'
           )
+        """,
+    ],
+    # Issue 18：全局本地知识库。document_records.conversation_id 放开为可空
+    # （全局知识库材料不绑定对话），并新增 source 列区分聊天附件
+    # （chat_attachment，存量行默认值）与知识库材料（knowledge_base）；
+    # rebuild_requested 标记用户显式请求的版本化重建，由后台执行器在
+    # 文档重新就绪后做全量重建（产生新索引版本）。SQLite 不能修改列约束，
+    # 按表重建迁移；外键全程开启时不能删除仍被引用的父表，因此按
+    # document_chunks / index_vectors（子表先备份再删）→ document_records
+    # 重建 → 子表原样恢复的顺序执行，全部数据保留。
+    8: [
+        """
+        CREATE TABLE document_records_v8 (
+            document_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            conversation_id TEXT,
+            content_hash TEXT NOT NULL,
+            parser_version TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'parsing', 'processing', 'ready', 'empty', 'error')),
+            failure_stage TEXT,
+            failure_reason TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            title TEXT,
+            page_count INTEGER NOT NULL DEFAULT 0,
+            section_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            vector_enabled INTEGER NOT NULL DEFAULT 0,
+            vector_indexed INTEGER NOT NULL DEFAULT 0,
+            claimed_at TEXT,
+            lease_expires_at TEXT,
+            source TEXT NOT NULL DEFAULT 'chat_attachment'
+                CHECK (source IN ('chat_attachment', 'knowledge_base')),
+            rebuild_requested INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        INSERT INTO document_records_v8
+            (document_id, account_id, object_id, conversation_id, content_hash,
+             parser_version, status, failure_stage, failure_reason, retry_count,
+             title, page_count, section_count, chunk_count, vector_enabled,
+             vector_indexed, claimed_at, lease_expires_at, created_at, updated_at)
+        SELECT document_id, account_id, object_id, conversation_id, content_hash,
+               parser_version, status, failure_stage, failure_reason, retry_count,
+               title, page_count, section_count, chunk_count, vector_enabled,
+               vector_indexed, claimed_at, lease_expires_at, created_at, updated_at
+        FROM document_records
+        """,
+        # 子表备份（纯数据表，无外键），随后按子→父顺序删除，父表才能安全重建。
+        """
+        CREATE TABLE document_chunks_backup AS SELECT * FROM document_chunks
+        """,
+        """
+        CREATE TABLE index_vectors_backup AS SELECT * FROM index_vectors
+        """,
+        """
+        DROP TABLE index_vectors
+        """,
+        """
+        DROP TABLE document_chunks
+        """,
+        """
+        DROP TABLE document_records
+        """,
+        """
+        ALTER TABLE document_records_v8 RENAME TO document_records
+        """,
+        # 子表按原 v7 模式恢复并回填数据，外键在提交时校验通过。
+        """
+        CREATE TABLE document_chunks (
+            chunk_id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES document_records(document_id),
+            account_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            section_title TEXT,
+            page_number INTEGER,
+            start_offset INTEGER NOT NULL,
+            end_offset INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            vector_status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (vector_status IN ('pending', 'indexed', 'unavailable')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (document_id, chunk_index)
+        )
+        """,
+        """
+        INSERT INTO document_chunks SELECT * FROM document_chunks_backup
+        """,
+        """
+        CREATE TABLE index_vectors (
+            vector_id TEXT PRIMARY KEY,
+            version_id TEXT NOT NULL REFERENCES index_versions(version_id),
+            account_id TEXT NOT NULL,
+            chunk_id TEXT NOT NULL REFERENCES document_chunks(chunk_id),
+            vector_json TEXT NOT NULL,
+            dimension_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        INSERT INTO index_vectors SELECT * FROM index_vectors_backup
+        """,
+        """
+        DROP TABLE document_chunks_backup
+        """,
+        """
+        DROP TABLE index_vectors_backup
+        """,
+        """
+        CREATE UNIQUE INDEX idx_document_records_object
+        ON document_records(account_id, object_id)
+        """,
+        """
+        CREATE INDEX idx_document_records_account_status
+        ON document_records(account_id, status)
+        """,
+        """
+        CREATE INDEX idx_document_records_account_source
+        ON document_records(account_id, source, created_at DESC)
+        """,
+        """
+        CREATE INDEX idx_document_chunks_document
+        ON document_chunks(account_id, document_id)
+        """,
+        """
+        CREATE INDEX idx_index_vectors_version
+        ON index_vectors(version_id)
         """,
     ],
 }

@@ -109,7 +109,9 @@ class DocumentIngestionProjection(BaseModel):
 
     document_id: str = Field(description="稳定文档摄取标识。")
     object_id: str = Field(description="来源对象标识。")
-    conversation_id: str = Field(description="所属对话标识。")
+    conversation_id: str | None = Field(
+        default=None, description="所属对话标识；全局知识库材料不绑定对话，为 None。"
+    )
     status: DocumentIngestionStatus = Field(description="摄取状态。")
     parser_version: str = Field(description="实际使用的解析器版本。")
     content_hash: str = Field(description="对象内容 SHA-256 摘要。")

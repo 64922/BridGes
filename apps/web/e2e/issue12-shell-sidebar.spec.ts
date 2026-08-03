@@ -180,7 +180,7 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
         name: "本地知识库",
         url: "/knowledge-base",
         heading: "本地知识库",
-        emptyText: "当前账户还没有知识库内容",
+        emptyText: "当前账户还没有知识库材料",
       },
       { name: "学习项目", url: "/account/projects", heading: "学习项目" },
       { name: "任务安排", url: "/tasks", heading: "任务安排", emptyText: "当前账户还没有任务" },

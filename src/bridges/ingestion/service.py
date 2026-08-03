@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import sqlite3
 from datetime import UTC, datetime, timedelta
+from typing import NamedTuple, cast
 
 from bridges.contracts.ingestion import (
     DocumentIngestionProjection,
     DocumentIngestionStatus,
     IndexStatusProjection,
 )
+from bridges.contracts.knowledge_base import KnowledgeBaseMaterialProjection
 from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.chunker import TextChunk, chunk_document
 from bridges.ingestion.embedding import (
@@ -47,7 +49,7 @@ LEASE_SECONDS = 1800
 #: 只等用户手动重试（mark_retry 重置计数）。
 MAX_AUTO_RETRIES = 3
 #: 摄取支持的文件媒体类型（与解析器覆盖范围一致）。
-_SUPPORTED_MEDIA_TYPES = {
+SUPPORTED_MEDIA_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     "text/plain",
@@ -57,6 +59,20 @@ _SUPPORTED_MEDIA_TYPES = {
     "image/gif",
     "image/webp",
 }
+#: document_records.source 的中文呈现（知识库材料投影使用）。
+_SOURCE_DISPLAY = {
+    "chat_attachment": "聊天附件",
+    "knowledge_base": "本地上传",
+}
+
+
+class _MaterialIndexContext(NamedTuple):
+    """知识库材料投影共享的账户级索引上下文。"""
+
+    embedding_available: bool
+    vector_unavailable_reason: str | None
+    index_version_id: str | None
+    index_rebuilding: bool
 
 
 class IngestionError(Exception):
@@ -144,8 +160,14 @@ class IngestionService:
     # API 进程：入队 / 重试 / 投影
     # ------------------------------------------------------------------
 
-    def enqueue(self, account_id: str, object_id: str, conversation_id: str) -> None:
-        """为已上传对象创建摄取记录（幂等；不支持的媒体类型不入队）。"""
+    def enqueue(
+        self, account_id: str, object_id: str, conversation_id: str | None = None
+    ) -> None:
+        """为已上传对象创建摄取记录（幂等；不支持的媒体类型不入队）。
+
+        ``conversation_id`` 为 None 时表示全局知识库材料（Issue 18），
+        不绑定对话，来源标记为 ``knowledge_base``。
+        """
         object_row = self._database.scoped(account_id).execute(
             "SELECT content_hash, media_type, original_filename FROM objects"
             " WHERE object_id = ? AND account_id = ? AND status = 'active'",
@@ -155,16 +177,17 @@ class IngestionService:
             raise IngestionError(
                 "ingestion_not_found", "附件不存在或没有访问权限。", 404
             )
-        if str(object_row["media_type"]) not in _SUPPORTED_MEDIA_TYPES:
+        if str(object_row["media_type"]) not in SUPPORTED_MEDIA_TYPES:
             return
         now = _now()
+        source = "chat_attachment" if conversation_id is not None else "knowledge_base"
         try:
             with self._database.transaction():
                 self._database.scoped(account_id).execute(
                     "INSERT OR IGNORE INTO document_records"
                     " (document_id, account_id, object_id, conversation_id, content_hash,"
-                    "  parser_version, status, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
+                    "  parser_version, status, source, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
                     (
                         f"doc-{object_id}",
                         account_id,
@@ -172,6 +195,7 @@ class IngestionService:
                         conversation_id,
                         str(object_row["content_hash"]),
                         parser_version_for(str(object_row["media_type"])),
+                        source,
                         now,
                         now,
                     ),
@@ -238,7 +262,9 @@ class IngestionService:
         return DocumentIngestionProjection(
             document_id=str(row["document_id"]),
             object_id=str(row["object_id"]),
-            conversation_id=str(row["conversation_id"]),
+            conversation_id=(
+                str(row["conversation_id"]) if row["conversation_id"] is not None else None
+            ),
             status=status,
             parser_version=str(row["parser_version"]),
             content_hash=str(row["content_hash"]),
@@ -271,6 +297,202 @@ class IngestionService:
         return row is not None
 
     # ------------------------------------------------------------------
+    # 全局知识库：材料投影 / 显式重建 / 级联删除（Issue 18）
+    # ------------------------------------------------------------------
+
+    def list_materials(self, account_id: str) -> list[KnowledgeBaseMaterialProjection]:
+        """列出账户全部知识库材料投影（最新上传在前）。"""
+        rows = self._database.scoped(account_id).execute(
+            "SELECT r.*, o.original_filename, o.media_type, o.content_length"
+            " FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.source = 'knowledge_base'"
+            " AND o.status = 'active'"
+            " ORDER BY r.created_at DESC, r.rowid DESC",
+            (account_id,),
+        ).fetchall()
+        context = self._material_index_context(account_id)
+        return [self._material_from_row(row, context) for row in rows]
+
+    def material_projection(
+        self, account_id: str, object_id: str
+    ) -> KnowledgeBaseMaterialProjection | None:
+        """返回单份知识库材料投影；跨账户/不存在/非知识库来源返回 None。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT r.*, o.original_filename, o.media_type, o.content_length"
+            " FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.object_id = ?"
+            " AND r.source = 'knowledge_base' AND o.status = 'active'",
+            (account_id, object_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._material_from_row(row, self._material_index_context(account_id))
+
+    def rebuild_material(self, account_id: str, object_id: str) -> None:
+        """显式触发版本化重建：清除派生分块与索引行并重新入队（幂等）。
+
+        清理、状态重置在同一事务内完成；后台执行器接管后按当前索引合同
+        重新解析/分块/索引。租约检查与清理在同一事务内重新读取后执行，
+        防止检查到清理之间被后台执行器领取（TOCTOU）；文档正被处理时抛
+        409 冲突；已处于 queued 时幂等返回，不重复清理。
+        """
+        if self._material_record(account_id, object_id) is None:
+            raise IngestionError("material_not_found", "材料不存在或没有访问权限。", 404)
+        with self._database.transaction():
+            row = self._material_record(account_id, object_id)
+            if row is None:
+                raise IngestionError(
+                    "material_not_found", "材料不存在或没有访问权限。", 404
+                )
+            if self._lease_active(row):
+                raise IngestionError(
+                    "material_processing",
+                    "材料正在处理中，请等待当前处理完成后再重建。",
+                    409,
+                )
+            if str(row["status"]) == "queued":
+                return
+            document_id = str(row["document_id"])
+            self._purge_document_chunks(account_id, document_id)
+            self._database.scoped(account_id).execute(
+                "UPDATE document_records SET status = 'queued', retry_count = 0,"
+                " title = NULL, page_count = 0, section_count = 0, chunk_count = 0,"
+                " vector_enabled = 0, vector_indexed = 0,"
+                " failure_stage = NULL, failure_reason = NULL,"
+                " claimed_at = NULL, lease_expires_at = NULL,"
+                " rebuild_requested = 1, updated_at = ?"
+                " WHERE account_id = ? AND document_id = ?",
+                (_now(), account_id, document_id),
+            )
+
+    def delete_material(self, account_id: str, object_id: str) -> None:
+        """级联删除材料：分块、fts/向量派生行、解析缓存、摄取记录与对象。
+
+        数据库级联在单个事务内完成，随后走既有 ``pending_cleanup`` 路径
+        删除对象（共享内容哈希只移除行，不误删他人文件）。租约检查与级联
+        在同一事务内重新读取后执行（防 TOCTOU）；文档正被后台任务处理时
+        抛 409 冲突，可稍后安全重试。对象删除失败时数据库级联已提交，
+        报 503 可重试错误，绝不伪装成材料不存在。
+        """
+        if self._material_record(account_id, object_id) is None:
+            raise IngestionError("material_not_found", "材料不存在或没有访问权限。", 404)
+        with self._database.transaction():
+            row = self._material_record(account_id, object_id)
+            if row is None:
+                raise IngestionError(
+                    "material_not_found", "材料不存在或没有访问权限。", 404
+                )
+            if self._lease_active(row):
+                raise IngestionError(
+                    "material_processing",
+                    "材料正在被后台任务处理，暂时无法删除，请稍后重试。",
+                    409,
+                )
+            document_id = str(row["document_id"])
+            content_hash = str(row["content_hash"])
+            self._purge_document_chunks(account_id, document_id)
+            shared = self._database.scoped(account_id).execute(
+                "SELECT 1 FROM document_records"
+                " WHERE account_id = ? AND content_hash = ? AND document_id != ?"
+                " LIMIT 1",
+                (account_id, content_hash, document_id),
+            ).fetchone()
+            if shared is None:
+                self._database.scoped(account_id).execute(
+                    "DELETE FROM document_parse_cache"
+                    " WHERE account_id = ? AND content_hash = ?",
+                    (account_id, content_hash),
+                )
+            self._database.scoped(account_id).execute(
+                "DELETE FROM document_records"
+                " WHERE account_id = ? AND document_id = ?",
+                (account_id, document_id),
+            )
+        try:
+            self._objects.delete_object(account_id, object_id)
+        except StorageError as exc:
+            raise IngestionError(
+                "material_delete_failed",
+                "材料的索引数据已删除，但原文件删除未完全成功，请重试删除。",
+                503,
+            ) from exc
+
+    def _material_record(self, account_id: str, object_id: str) -> sqlite3.Row | None:
+        """读取知识库材料的摄取记录；非知识库来源（聊天附件）一律不可见。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT document_id, status, lease_expires_at, content_hash"
+            " FROM document_records WHERE account_id = ? AND object_id = ?"
+            " AND source = 'knowledge_base'",
+            (account_id, object_id),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    @staticmethod
+    def _lease_active(row: sqlite3.Row) -> bool:
+        """文档正被后台任务处理（parsing/processing 且领取租约未过期）。"""
+        lease = str(row["lease_expires_at"]) if row["lease_expires_at"] else None
+        return (
+            display_ingestion_status(str(row["status"]), lease)
+            == DocumentIngestionStatus.PROCESSING
+        )
+
+    def _material_index_context(self, account_id: str) -> _MaterialIndexContext:
+        """材料投影共享的索引上下文：向量可用性、活跃版本与重建标记。"""
+        embedding_available, vector_reason, _ = self._embedding_availability(account_id)
+        active = self._database.connection.execute(
+            "SELECT version_id FROM index_active WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        return _MaterialIndexContext(
+            embedding_available=embedding_available,
+            vector_unavailable_reason=vector_reason,
+            index_version_id=(
+                str(active["version_id"]) if active is not None else None
+            ),
+            index_rebuilding=self._index_rebuilding(account_id),
+        )
+
+    def _material_from_row(
+        self,
+        row: sqlite3.Row,
+        context: _MaterialIndexContext,
+    ) -> KnowledgeBaseMaterialProjection:
+        lease = str(row["lease_expires_at"]) if row["lease_expires_at"] else None
+        material_status = display_ingestion_status(str(row["status"]), lease)
+        content_hash = str(row["content_hash"])
+        return KnowledgeBaseMaterialProjection(
+            document_id=str(row["document_id"]),
+            object_id=str(row["object_id"]),
+            filename=str(row["original_filename"]),
+            media_type=str(row["media_type"]),
+            content_length=int(row["content_length"]),
+            content_hash=content_hash,
+            content_hash_summary=content_hash[:12],
+            source=_SOURCE_DISPLAY.get(str(row["source"]), str(row["source"])),
+            status=material_status,
+            title=str(row["title"]) if row["title"] is not None else None,
+            chunk_count=int(row["chunk_count"]),
+            failure_stage=(
+                str(row["failure_stage"]) if row["failure_stage"] is not None else None
+            ),
+            failure_reason=(
+                str(row["failure_reason"]) if row["failure_reason"] is not None else None
+            ),
+            retry_count=int(row["retry_count"]),
+            vector_enabled=bool(row["vector_enabled"]),
+            vector_indexed=bool(row["vector_indexed"]),
+            embedding_available=context.embedding_available,
+            vector_unavailable_reason=context.vector_unavailable_reason,
+            index_version_id=context.index_version_id,
+            index_rebuilding=context.index_rebuilding,
+            usable_for_chat=material_status == DocumentIngestionStatus.READY,
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+            updated_at=datetime.fromisoformat(str(row["updated_at"])),
+        )
+
+    # ------------------------------------------------------------------
     # 后台执行器：领取 / 处理 / 索引维护 / 清理
     # ------------------------------------------------------------------
 
@@ -300,8 +522,35 @@ class IngestionService:
         for document_id in claimed:
             if self._process_document(account_id, document_id):
                 processed += 1
+        self._apply_rebuild_requests(account_id)
         self._maintain_account_index(account_id)
         return processed
+
+    def _apply_rebuild_requests(self, account_id: str) -> None:
+        """执行用户显式请求的版本化重建（Issue 18）：全量重建产生新版本。
+
+        只在文档完成本轮重新处理（不再 queued）后触发；重建失败保留
+        标记下一轮重试，上一可用版本继续服务。
+        """
+        assert self._index is not None
+        rows = self._database.connection.execute(
+            "SELECT document_id FROM document_records"
+            " WHERE account_id = ? AND rebuild_requested = 1 AND status != 'queued'",
+            (account_id,),
+        ).fetchall()
+        if not rows:
+            return
+        available, _, _ = self._embedding_availability(account_id)
+        try:
+            self._index.rebuild(account_id, embedding_available=available)
+        except IndexWriteError:
+            return
+        with self._database.transaction():
+            self._database.connection.execute(
+                "UPDATE document_records SET rebuild_requested = 0, updated_at = ?"
+                " WHERE account_id = ? AND rebuild_requested = 1 AND status != 'queued'",
+                (_now(), account_id),
+            )
 
     def _claim(self, account_id: str, limit: int) -> list[str]:
         """按租约领取可处理文档（幂等：已被领取且租约未过期的不再领取）。

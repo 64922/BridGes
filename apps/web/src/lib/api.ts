@@ -29,6 +29,7 @@ export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
 export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
 export type DocumentIngestionProjection = components["schemas"]["DocumentIngestionProjection"];
+export type KnowledgeBaseMaterialProjection = components["schemas"]["KnowledgeBaseMaterialProjection"];
 export type IngestionStatus = components["schemas"]["IngestionStatus"];
 export type IndexStatusProjection = components["schemas"]["IndexStatusProjection"];
 export type IndexVersionProjection = components["schemas"]["IndexVersionProjection"];
@@ -958,14 +959,17 @@ function attachmentApiError(status: number, body: unknown): ApiError {
   return errorFromDetail(status, body);
 }
 
-/** 原始字节上传：服务端负责内容嗅探，XHR 只用于提供可靠的上传进度与取消。 */
-export function uploadChatAttachment(
-  conversationId: string,
+/**
+ * 原始字节上传共享实现：服务端负责内容嗅探，XHR 只用于提供可靠的
+ * 上传进度与取消。对话附件与知识库材料上传仅 URL 与返回类型不同。
+ */
+function uploadRawBytes<T>(
+  url: string,
   file: File,
   uploadId: string,
   onProgress?: (loaded: number, total: number) => void,
   signal?: AbortSignal
-): Promise<ChatAttachmentProjection> {
+): Promise<T> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     let settled = false;
@@ -983,10 +987,7 @@ export function uploadChatAttachment(
       return;
     }
     signal?.addEventListener("abort", abort, { once: true });
-    xhr.open(
-      "POST",
-      `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments`
-    );
+    xhr.open("POST", url);
     xhr.withCredentials = true;
     xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
     xhr.setRequestHeader("X-Bridges-Filename", encodeURIComponent(file.name));
@@ -1008,12 +1009,29 @@ export function uploadChatAttachment(
       }
       settled = true;
       onProgress?.(file.size, file.size);
-      resolve(body as ChatAttachmentProjection);
+      resolve(body as T);
     };
     xhr.onerror = () => fail(new ApiError("上传失败，请检查网络后重试。", 0));
     xhr.onabort = () => fail(new DOMException("上传已取消。", "AbortError"));
     xhr.send(file);
   });
+}
+
+/** 原始字节上传：服务端负责内容嗅探，XHR 只用于提供可靠的上传进度与取消。 */
+export function uploadChatAttachment(
+  conversationId: string,
+  file: File,
+  uploadId: string,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<ChatAttachmentProjection> {
+  return uploadRawBytes<ChatAttachmentProjection>(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments`,
+    file,
+    uploadId,
+    onProgress,
+    signal
+  );
 }
 
 export async function cancelChatAttachment(
@@ -1151,6 +1169,94 @@ export async function stopChatMessage(
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Issue 18：全局本地知识库
+// ---------------------------------------------------------------------------
+
+/** 当前账户的全局知识库材料列表（最新在前）。 */
+export async function listKnowledgeBaseMaterials(
+  options?: { signal?: AbortSignal }
+): Promise<KnowledgeBaseMaterialProjection[]> {
+  const res = await fetch(`${API_BASE}/knowledge-base/materials`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    signal: options?.signal,
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 上传一份知识库材料：与对话附件共用 uploadRawBytes；
+ * 201 新建 / 200 幂等复用，均按成功处理。
+ */
+export function uploadKnowledgeBaseMaterial(
+  file: File,
+  uploadId: string,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<KnowledgeBaseMaterialProjection> {
+  return uploadRawBytes<KnowledgeBaseMaterialProjection>(
+    `${API_BASE}/knowledge-base/materials`,
+    file,
+    uploadId,
+    onProgress,
+    signal
+  );
+}
+
+/** 下载材料原始文件（与对话附件下载同一模式）。 */
+export async function downloadKnowledgeBaseMaterial(
+  objectId: string,
+  originalFilename: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/knowledge-base/materials/${encodeURIComponent(objectId)}/download`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = originalFilename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 把失败/恢复中的材料重新入队；幂等返回当前投影。 */
+export async function retryKnowledgeBaseMaterial(
+  objectId: string
+): Promise<KnowledgeBaseMaterialProjection> {
+  const res = await fetch(
+    `${API_BASE}/knowledge-base/materials/${encodeURIComponent(objectId)}/retry`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 以当前索引配置重建该材料的索引（处理中返回 409 material_processing）。 */
+export async function rebuildKnowledgeBaseMaterial(
+  objectId: string
+): Promise<KnowledgeBaseMaterialProjection> {
+  const res = await fetch(
+    `${API_BASE}/knowledge-base/materials/${encodeURIComponent(objectId)}/rebuild`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 删除材料本体、解析分块与派生索引（处理中返回 409 material_processing）。 */
+export async function deleteKnowledgeBaseMaterial(objectId: string): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/knowledge-base/materials/${encodeURIComponent(objectId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export function statusText(status: HealthStatus): string {

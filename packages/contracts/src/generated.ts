@@ -646,6 +646,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/knowledge-base/materials": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Materials
+         * @description 列出当前账户的全部知识库材料（最新上传在前）。
+         */
+        get: operations["list_materials_knowledge_base_materials_get"];
+        put?: never;
+        /**
+         * Upload Material
+         * @description 接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
+         *
+         *     上传成功即入队摄取（不绑定对话的全局材料）：解析、分块与索引由
+         *     后台执行器完成。接受 ``X-Bridges-Upload-Id`` 头与聊天附件保持同一
+         *     上传约定；知识库不持久化上传标识，幂等由同名同内容复用保证——
+         *     客户端安全重试同一上传只会得到已有材料的 200 投影，绝不重复摄取。
+         */
+        post: operations["upload_material_knowledge_base_materials_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-base/materials/{object_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Material
+         * @description 返回材料详情（摄取状态、失败阶段、索引版本与向量可用性）。
+         */
+        get: operations["get_material_knowledge_base_materials__object_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Material
+         * @description 级联删除材料与派生索引数据；被后台任务使用时返回 409。
+         */
+        delete: operations["delete_material_knowledge_base_materials__object_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-base/materials/{object_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download Material
+         * @description 通过账户授权下载材料原文，不暴露对象库路径。
+         */
+        get: operations["download_material_knowledge_base_materials__object_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-base/materials/{object_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Material
+         * @description 把失败材料重新入队（重置自动重试计数）；非失败状态幂等返回。
+         */
+        post: operations["retry_material_knowledge_base_materials__object_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-base/materials/{object_id}/rebuild": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rebuild Material
+         * @description 显式触发版本化重建；材料正在处理中时返回 409，可稍后重试。
+         */
+        post: operations["rebuild_material_knowledge_base_materials__object_id__rebuild_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/key-settings": {
         parameters: {
             query?: never;
@@ -7797,9 +7910,9 @@ export interface components {
             object_id: string;
             /**
              * Conversation Id
-             * @description 所属对话标识。
+             * @description 所属对话标识；全局知识库材料不绑定对话，为 None。
              */
-            conversation_id: string;
+            conversation_id?: string | null;
             /** @description 摄取状态。 */
             status: components["schemas"]["DocumentIngestionStatus"];
             /**
@@ -10416,6 +10529,133 @@ export interface components {
              * @description 屏幕阅读器在该步骤的播报文本。
              */
             screen_reader_announcement: string;
+        };
+        /**
+         * KnowledgeBaseMaterialProjection
+         * @description 单份知识库材料的列表/详情投影（列表与详情共用同一模型）。
+         */
+        KnowledgeBaseMaterialProjection: {
+            /**
+             * Document Id
+             * @description 稳定文档摄取标识。
+             */
+            document_id: string;
+            /**
+             * Object Id
+             * @description 来源对象标识。
+             */
+            object_id: string;
+            /**
+             * Filename
+             * @description 原始文件名。
+             */
+            filename: string;
+            /**
+             * Media Type
+             * @description 服务端嗅探确认的媒体类型。
+             */
+            media_type: string;
+            /**
+             * Content Length
+             * @description 文件大小（字节）。
+             */
+            content_length: number;
+            /**
+             * Content Hash
+             * @description 对象内容 SHA-256 摘要。
+             */
+            content_hash: string;
+            /**
+             * Content Hash Summary
+             * @description 内容哈希短摘要（前 12 位）。
+             */
+            content_hash_summary: string;
+            /**
+             * Source
+             * @description 材料来源的中文说明（如“本地上传”）。
+             */
+            source: string;
+            /** @description 摄取状态。 */
+            status: components["schemas"]["DocumentIngestionStatus"];
+            /**
+             * Title
+             * @description 提取的文档标题。
+             */
+            title?: string | null;
+            /**
+             * Chunk Count
+             * @description 分块数。
+             * @default 0
+             */
+            chunk_count: number;
+            /**
+             * Failure Stage
+             * @description 失败阶段：read/parse/chunk/embed/index。
+             */
+            failure_stage?: string | null;
+            /**
+             * Failure Reason
+             * @description 失败的中文原因。
+             */
+            failure_reason?: string | null;
+            /**
+             * Retry Count
+             * @description 已处理尝试次数。
+             * @default 0
+             */
+            retry_count: number;
+            /**
+             * Vector Enabled
+             * @description 处理时向量能力是否可用（按探测结果）。
+             * @default false
+             */
+            vector_enabled: boolean;
+            /**
+             * Vector Indexed
+             * @description 分块向量是否已写入当前索引版本。
+             * @default false
+             */
+            vector_indexed: boolean;
+            /**
+             * Embedding Available
+             * @description Embedding 能力当前是否可用（探测快照）。
+             * @default false
+             */
+            embedding_available: boolean;
+            /**
+             * Vector Unavailable Reason
+             * @description 向量索引不可用时的中文原因。
+             */
+            vector_unavailable_reason?: string | null;
+            /**
+             * Index Version Id
+             * @description 当前服务检索的索引版本；尚无索引时为 None。
+             */
+            index_version_id?: string | null;
+            /**
+             * Index Rebuilding
+             * @description 当前账户索引版本正在重建（旧版继续服务）。
+             * @default false
+             */
+            index_rebuilding: boolean;
+            /**
+             * Usable For Chat
+             * @description 材料已就绪、可在对话检索中使用。
+             * @default false
+             */
+            usable_for_chat: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 上传入队时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近状态更新时间。
+             */
+            updated_at: string;
         };
         /**
          * KnowledgeConfidence
@@ -19830,6 +20070,493 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_materials_knowledge_base_materials_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseMaterialProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    upload_material_knowledge_base_materials_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseMaterialProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_material_knowledge_base_materials__object_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseMaterialProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    delete_material_knowledge_base_materials__object_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    download_material_knowledge_base_materials__object_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    retry_material_knowledge_base_materials__object_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseMaterialProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    rebuild_material_knowledge_base_materials__object_id__rebuild_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeBaseMaterialProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

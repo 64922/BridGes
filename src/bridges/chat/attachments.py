@@ -124,14 +124,14 @@ class ChatAttachmentService:
     ) -> tuple[ChatAttachmentProjection, bool]:
         """上传一个待绑定附件；返回投影与是否为新建记录。"""
         self._require_conversation(account_id, conversation_id)
-        filename = _validate_filename(original_filename)
+        filename = validate_filename(original_filename)
         if not content:
             raise ChatAttachmentError("empty_file", "文件为空，无法上传。")
         if len(content) > MAX_ATTACHMENT_BYTES:
             raise ChatAttachmentError(
                 "file_too_large", "文件超过 10 MB 大小限制，请压缩后重试。", 413
             )
-        media_type = _sniff_media_type(filename, content)
+        media_type = sniff_media_type(filename, content)
         upload_key = upload_id or secrets.token_urlsafe(18)
         if len(upload_key) > 120 or not re.fullmatch(r"[A-Za-z0-9._~-]+", upload_key):
             raise ChatAttachmentError("invalid_upload_id", "上传标识无效，请重新选择文件。")
@@ -441,7 +441,7 @@ class ChatAttachmentService:
         )
 
 
-def _validate_filename(value: str) -> str:
+def validate_filename(value: str) -> str:
     filename = unicodedata.normalize("NFC", unquote(value)).strip()
     if (
         not filename
@@ -461,7 +461,7 @@ def _validate_filename(value: str) -> str:
     return filename
 
 
-def _sniff_media_type(filename: str, content: bytes) -> str:
+def sniff_media_type(filename: str, content: bytes) -> str:
     extension = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     expected = _EXTENSION_TYPES.get(extension)
     detected: str | None = None

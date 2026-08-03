@@ -32,6 +32,7 @@ from bridges.api import (
     expression,
     ingestion,
     institution,
+    knowledge_base,
     projects,
     science,
     scope,
@@ -90,6 +91,7 @@ from bridges.identity import IdentityService
 from bridges.ingestion.service import IngestionService
 from bridges.institution import InstitutionService
 from bridges.invalidation import AffectedDownstream, InvalidationService
+from bridges.knowledge_base import KnowledgeBaseService
 from bridges.learning import (
     InMemoryLearningRepository,
     LearningPathService,
@@ -828,6 +830,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 object_repository=object_repository,
                 probe_service=CapabilityProbeService(state_store=state_store),
             )
+            # Issue 18: 全局本地知识库（材料不绑定对话，复用摄取状态机）。
+            app.state.knowledge_base_service = KnowledgeBaseService(
+                bridges_database,
+                object_repository,
+                app.state.ingestion_service,
+            )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1156,6 +1164,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(auth.router)
     app.include_router(chat.router)
     app.include_router(ingestion.router)
+    app.include_router(knowledge_base.router)
     app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)
