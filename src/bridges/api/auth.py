@@ -51,6 +51,18 @@ def _get_identity_service(request: Request) -> IdentityService:
 IdentityServiceDep = Annotated[IdentityService, Depends(_get_identity_service)]
 
 
+def _cookie_secure(request: Request) -> bool:
+    """决定会话/设备 Cookie 的 Secure 标志。
+
+    显式配置 ``BRIDGES_SESSION_COOKIE_SECURE`` 时强制启用（覆盖反代 TLS
+    终止导致 scheme 为 http 的场景）；未配置时跟随请求协议（HTTPS 才标记）。
+    """
+    settings = getattr(request.app.state, "settings", None)
+    if settings is not None and settings.session_cookie_secure:
+        return True
+    return request.url.scheme == "https"
+
+
 def _set_session_cookie(
     response: Response, token: str, *, secure: bool, max_age: int = 8 * 60 * 60
 ) -> None:
@@ -259,12 +271,12 @@ async def register(
         raise _identity_error(exc, "registration_failed") from exc
 
     _set_session_cookie(
-        response, result.session_token, secure=request.url.scheme == "https"
+        response, result.session_token, secure=_cookie_secure(request)
     )
     device_token, _ = service.ensure_device(
         request.cookies.get(DEVICE_COOKIE_NAME), result.session.id
     )
-    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    _set_device_cookie(response, device_token, secure=_cookie_secure(request))
     return result.public_response()
 
 
@@ -307,12 +319,12 @@ async def login(
         raise _identity_error(exc, "invalid_credentials") from exc
 
     _set_session_cookie(
-        response, result.session_token, secure=request.url.scheme == "https"
+        response, result.session_token, secure=_cookie_secure(request)
     )
     device_token, _ = service.ensure_device(
         request.cookies.get(DEVICE_COOKIE_NAME), result.session.id
     )
-    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    _set_device_cookie(response, device_token, secure=_cookie_secure(request))
     return result.public_response()
 
 
@@ -521,12 +533,12 @@ async def recover_reset(
         raise _identity_error(exc, "invalid_recovery") from exc
 
     _set_session_cookie(
-        response, result.session_token, secure=request.url.scheme == "https"
+        response, result.session_token, secure=_cookie_secure(request)
     )
     device_token, _ = service.ensure_device(
         request.cookies.get(DEVICE_COOKIE_NAME), result.session.id
     )
-    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    _set_device_cookie(response, device_token, secure=_cookie_secure(request))
     return result.public_response()
 
 
@@ -597,7 +609,7 @@ async def list_device_accounts(
     device_token, _ = service.ensure_device(
         request.cookies.get(DEVICE_COOKIE_NAME), subject.session_id
     )
-    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    _set_device_cookie(response, device_token, secure=_cookie_secure(request))
     return _device_accounts_response(service, device_token, subject.session_id)
 
 
@@ -627,8 +639,8 @@ async def add_device_account(
         service.attach_session_to_device(device_token, result.session.id)
     except IdentityError as exc:
         raise _identity_error(exc, "device_account_add_failed") from exc
-    _set_session_cookie(response, result.session_token, secure=request.url.scheme == "https")
-    _set_device_cookie(response, device_token, secure=request.url.scheme == "https")
+    _set_session_cookie(response, result.session_token, secure=_cookie_secure(request))
+    _set_device_cookie(response, device_token, secure=_cookie_secure(request))
     _clear_account_site_data(response)
     return _device_accounts_response(service, device_token, result.session.id)
 
@@ -673,7 +685,7 @@ async def switch_device_account(
             "device_account_unavailable",
             "该设备账户不可用，请重新登录。",
         ) from exc
-    _set_session_cookie(response, result.session_token, secure=request.url.scheme == "https")
+    _set_session_cookie(response, result.session_token, secure=_cookie_secure(request))
     _clear_account_site_data(response)
     return _device_accounts_response(service, device_token, result.session.id)
 
@@ -721,9 +733,63 @@ async def reauthenticate_device_account(
             "device_reauthentication_failed",
             "账户信息或密码不正确。",
         ) from exc
-    _set_session_cookie(response, result.session_token, secure=request.url.scheme == "https")
+    _set_session_cookie(response, result.session_token, secure=_cookie_secure(request))
     _clear_account_site_data(response)
     return _device_accounts_response(service, device_token, result.session.id)
+
+
+@router.get(
+    "/device/accounts/{session_id}/avatar",
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_403_FORBIDDEN: {"model": AuthError},
+        status.HTTP_404_NOT_FOUND: {"model": AuthError},
+    },
+)
+async def get_device_account_avatar(
+    request: Request,
+    response: Response,
+    session_id: str,
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> Response:
+    """按设备作用域读取已注册账户的头像。
+
+    切换器需要展示设备上其他账户的上传头像；普通头像端点只读取当前
+    账户，本端点要求目标会话已注册在设备 Cookie 上，且不暴露宿主路径。
+    """
+    device_token = request.cookies.get(DEVICE_COOKIE_NAME)
+    if not device_token or not service.is_session_registered_on_device(
+        device_token, session_id
+    ):
+        raise _auth_error(
+            status.HTTP_403_FORBIDDEN,
+            "device_account_unavailable",
+            "该设备账户不可用，请重新登录。",
+        )
+    session = service.get_session(session_id)
+    if session is None:
+        raise _auth_error(
+            status.HTTP_404_NOT_FOUND,
+            "avatar_not_found",
+            "头像不存在或没有访问权限。",
+        )
+    try:
+        avatar = service.get_avatar(session.account_id)
+    except IdentityError as exc:
+        raise _auth_error(
+            status.HTTP_404_NOT_FOUND,
+            "avatar_not_found",
+            str(exc),
+        ) from exc
+    return Response(
+        content=avatar.content,
+        media_type=avatar.media_type,
+        headers={
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.post(
@@ -756,7 +822,7 @@ async def logout_device_account(
         _clear_session_cookie(response)
         _clear_account_site_data(response)
         return DeviceLogoutResponse()
-    _set_session_cookie(response, fallback.session_token, secure=request.url.scheme == "https")
+    _set_session_cookie(response, fallback.session_token, secure=_cookie_secure(request))
     _clear_account_site_data(response)
     return DeviceLogoutResponse(
         current_account=fallback.account,

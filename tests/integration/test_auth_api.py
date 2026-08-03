@@ -81,6 +81,27 @@ def test_session_cookie_is_secure_over_https() -> None:
     assert "HttpOnly" in header
 
 
+def test_session_cookie_honors_explicit_secure_config_over_plain_http(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BRIDGES_SESSION_COOKIE_SECURE=true 时即使走明文 HTTP 也强制 Secure。
+
+    覆盖反向代理 TLS 终止导致 request.url.scheme 为 http 的生产场景。
+    """
+    from bridges.config import get_settings
+
+    monkeypatch.setenv("BRIDGES_SESSION_COOKIE_SECURE", "true")
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    response = client.post(
+        "/auth/register",
+        json={"username": "桥桥", "qq_email": "123456@qq.com", "password": "correct-horse-12"},
+    )
+    header = _set_cookie_header(response)
+    assert "Secure" in header
+    assert "HttpOnly" in header
+
+
 def test_session_token_never_appears_in_json(client: TestClient) -> None:
     for path, payload in (
         (
@@ -418,6 +439,44 @@ def test_device_accounts_add_and_switch_without_revoking_the_previous_session() 
     )
     assert guessed.status_code == 403
     assert guessed.json()["detail"]["error"] == "device_account_unavailable"
+
+
+def test_device_avatar_endpoint_is_scoped_to_registered_device_session() -> None:
+    app = create_app()
+    alice = TestClient(app)
+    bob_creator = TestClient(app)
+    _register(alice, username="Alice", qq_email="111111@qq.com")
+    _register(bob_creator, username="Bob", qq_email="222222@qq.com")
+    added = alice.post(
+        "/auth/device/accounts/add",
+        json={"identifier": "Bob", "password": "correct-horse-12"},
+    )
+    bob_session_id = added.json()["current_session_id"]
+    alice_session_id = next(
+        item["session_id"]
+        for item in alice.get("/auth/device/accounts").json()["accounts"]
+        if item["username"] == "Alice"
+    )
+
+    # Bob 先上传头像。
+    bob_creator.put(
+        "/auth/profile/avatar",
+        content=_PNG_1X1,
+        headers={"content-type": "image/png"},
+    )
+    # 当前账户（Alice）经设备作用域端点读取 Bob 会话头像。
+    avatar = alice.get(f"/auth/device/accounts/{bob_session_id}/avatar")
+    assert avatar.status_code == 200
+    assert avatar.content == _PNG_1X1
+    assert avatar.headers["content-type"] == "image/png"
+    assert avatar.headers["cache-control"] == "private, no-store"
+
+    # 未注册在本设备的会话（用 Bob 自己设备的 cookie 也不可读 Alice 会话头像）。
+    foreign = bob_creator.get(f"/auth/device/accounts/{alice_session_id}/avatar")
+    assert foreign.status_code == 403
+    # 未注册的会话 ID 同样拒绝。
+    guessed = alice.get("/auth/device/accounts/session-does-not-exist/avatar")
+    assert guessed.status_code == 403
 
 
 def test_expired_device_account_requires_password_and_does_not_leak_session_state() -> None:

@@ -41,7 +41,7 @@ def _first_choice(response_body: dict[str, Any]) -> dict[str, Any]:
 
 
 class QwenTextChatAdapter(CapabilityAdapter):
-    """Adapter for ``qwen_text_chat`` and ``qwen_text_chat_fallback``.
+    """Adapter for the fixed ``qwen_text_chat`` binding (ADR-0009).
 
     Expects the payload to contain either ``messages`` or a ``prompt``/``node_id``
     from which a minimal message list can be built. Returns the assistant message

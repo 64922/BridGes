@@ -12,7 +12,8 @@ import { AccountSwitcher } from "./AccountSwitcher";
 
 function maskQqEmail(email: string): string {
   const [local = "", domain = "qq.com"] = email.split("@", 2);
-  if (local.length <= 3) return `${local.slice(0, 1)}***@${domain}`;
+  // 4 位及更短的 QQ 号只保留首位，避免"前 2 + 后 2"拼接还原完整号码。
+  if (local.length <= 4) return `${local.slice(0, 1)}***@${domain}`;
   return `${local.slice(0, 2)}***${local.slice(-2)}@${domain}`;
 }
 

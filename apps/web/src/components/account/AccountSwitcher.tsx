@@ -25,6 +25,17 @@ interface AccountSwitcherProps {
 }
 
 function SwitcherAvatar({ account }: { account: DeviceAccountProjection }) {
+  if (account.avatar_choice === "uploaded" && account.has_uploaded_avatar) {
+    // 设备作用域头像端点：只有已注册在本设备的会话才能读取。
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={`/api/auth/device/accounts/${encodeURIComponent(account.session_id)}/avatar`}
+        alt=""
+        className={styles.avatarImage}
+      />
+    );
+  }
   return (
     <span className={styles.avatar} aria-hidden="true">
       {account.avatar_choice === "knowledge" ? (

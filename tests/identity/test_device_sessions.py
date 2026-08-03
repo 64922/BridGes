@@ -113,3 +113,20 @@ def test_device_cookie_cannot_join_another_session_registry() -> None:
     assert [item.username for item in service.list_device_accounts(bob_device, bob.session.id)] == [
         "Bob"
     ]
+
+
+def test_masked_qq_email_never_reveals_short_qq_number() -> None:
+    """4 位及更短的 QQ 号脱敏后不得还原完整号码（前 2 + 后 2 拼接漏洞）。"""
+    service = IdentityService()
+    alice = service.register(_registration("Alice", "1111@qq.com"))
+    bob = service.register(_registration("Bob", "123456@qq.com"))
+    device_token, _ = service.ensure_device(None, alice.session.id)
+    service.attach_session_to_device(device_token, bob.session.id)
+
+    accounts = service.list_device_accounts(device_token, alice.session.id)
+    by_username = {item.username: item for item in accounts}
+    assert by_username["Alice"].masked_qq_email == "1***@qq.com"
+    # 完整号码不得出现在脱敏投影中。
+    assert "1111" not in by_username["Alice"].masked_qq_email
+    assert by_username["Bob"].masked_qq_email == "12***56@qq.com"
+    assert "123456" not in by_username["Bob"].masked_qq_email

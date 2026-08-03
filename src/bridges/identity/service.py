@@ -831,7 +831,8 @@ class IdentityService:
     @staticmethod
     def _mask_qq_email(qq_email: str) -> str:
         local, _, domain = qq_email.partition("@")
-        if len(local) <= 3:
+        if len(local) <= 4:
+            # 4 位及更短的 QQ 号只保留首位，避免"前 2 + 后 2"拼接还原完整号码。
             return f"{local[:1]}***@{domain or 'qq.com'}"
         return f"{local[:2]}***{local[-2:]}@{domain or 'qq.com'}"
 
