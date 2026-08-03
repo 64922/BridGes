@@ -312,12 +312,22 @@ def test_key_settings_report_unconfigured_and_enforce_recent_password(
     _register(client)
     initial = client.get("/auth/key-settings")
     assert initial.status_code == 200
-    assert initial.json() == {
-        "status": "unconfigured",
-        "configured": False,
-        "message": "尚未配置百炼密钥。",
-        "next_step": "完成密钥接入后，可在本页录入并验证；现在请勿在聊天中粘贴密钥。",
-    }
+    body = initial.json()
+    assert body["status"] == "unconfigured"
+    assert body["configured"] is False
+    assert body["key_tail"] is None
+    # 固定能力矩阵逐项呈现真实"未探测"状态，无 Stub 成功。
+    assert [c["capability_id"] for c in body["capabilities"]] == [
+        "chat",
+        "embedding",
+        "asr",
+        "tts",
+        "image",
+        "video",
+    ]
+    assert all(c["status"] == "not_probed" for c in body["capabilities"])
+    assert all(c["can_retry"] is False for c in body["capabilities"])
+    assert body["message"] == "尚未配置百炼密钥。"
 
     service = client.app.state.identity_service  # type: ignore[attr-defined]
     initial_now = service._now()
@@ -488,3 +498,199 @@ def test_device_logout_all_revokes_current_session_with_invalid_device_cookie() 
 
     assert response.status_code == 204
     assert app.state.identity_service.get_session(session_id).revoked_at is not None
+
+
+# ---------------------------------------------------------------------------
+# Issue 10：账户级百炼 Key 与固定能力探测 API
+# ---------------------------------------------------------------------------
+
+
+class _FakeProbeRunner:
+    """探测替身：可配置逐能力成功/失败；只允许测试环境使用。"""
+
+    def __init__(self, failures: dict[str, str] | None = None) -> None:
+        self.failures = failures or {}
+        self.calls: list[str] = []
+
+    def probe(self, binding, client) -> object:
+        self.calls.append(binding.capability_id)
+        if binding.capability_id in self.failures:
+            from bridges.credentials.probes import ProbeError
+
+            raise ProbeError(
+                self.failures[binding.capability_id], code="fake_failure"
+            )
+        from bridges.credentials.probes import ProbeOutcome
+
+        return ProbeOutcome(success=True, message="探测成功。")
+
+
+@pytest.fixture
+def credential_client() -> TestClient:
+    """同步探测 + 替身 runner 的客户端，保证测试确定性。"""
+    app = create_app()
+    service = app.state.credential_service  # type: ignore[attr-defined]
+    service._sync_probes = True
+    service._probes._runner = _FakeProbeRunner()
+    return TestClient(app)
+
+
+def _reauth(client: TestClient) -> None:
+    response = client.post(
+        "/auth/reauthenticate", json={"password": "correct-horse-12"}
+    )
+    assert response.status_code == 204
+
+
+def test_key_save_probes_all_capabilities_and_never_leaks_key(
+    credential_client: TestClient,
+) -> None:
+    _register(credential_client)
+    _reauth(credential_client)
+
+    response = credential_client.put(
+        "/auth/key-settings",
+        json={"key": "sk-probe-1234567890abcdef"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "configured"
+    assert body["configured"] is True
+    assert body["key_tail"] == "…cdef"
+    # 完整 Key 绝不进入 API 响应。
+    assert "sk-probe" not in response.text
+    assert all(c["status"] == "available" for c in body["capabilities"])
+
+    # 审计事件存在且不含 Key 正文。
+    events = credential_client.app.state.observability_service.list_audit_events(
+        action="key_save"
+    )
+    assert len(events) == 1
+    assert "sk-probe" not in events[0].model_dump_json()
+    assert events[0].details == {"operation": "save"}
+
+
+def test_key_save_and_delete_require_recent_password(
+    credential_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _register(credential_client)
+    _reauth(credential_client)
+
+    service = credential_client.app.state.identity_service  # type: ignore[attr-defined]
+    initial_now = service._now()
+    monkeypatch.setattr(service, "_now", lambda: initial_now + timedelta(minutes=6))
+
+    denied = credential_client.put(
+        "/auth/key-settings", json={"key": "sk-probe-1234567890abcdef"}
+    )
+    assert denied.status_code == 403
+    assert denied.json()["detail"]["error"] == "reauth_required"
+
+    denied_delete = credential_client.delete("/auth/key-settings")
+    assert denied_delete.status_code == 403
+
+    _reauth(credential_client)
+    saved = credential_client.put(
+        "/auth/key-settings", json={"key": "sk-probe-1234567890abcdef"}
+    )
+    assert saved.status_code == 200
+
+    # 再认证后跳过 6 分钟（>5 分钟 TTL），删除必须再次确认密码。
+    monkeypatch.setattr(service, "_now", lambda: initial_now + timedelta(minutes=12))
+    assert credential_client.delete("/auth/key-settings").status_code == 403
+    _reauth(credential_client)
+
+    deleted = credential_client.delete("/auth/key-settings")
+    assert deleted.status_code == 200
+    body = deleted.json()
+    assert body["status"] == "unconfigured"
+    assert body["configured"] is False
+    assert all(c["status"] == "not_probed" for c in body["capabilities"])
+
+
+def test_key_isolation_between_accounts(credential_client: TestClient) -> None:
+    alice = credential_client
+    _register(alice, username="Alice", qq_email="111111@qq.com")
+    _reauth(alice)
+    bob = TestClient(credential_client.app)
+    _register(bob, username="Bob", qq_email="222222@qq.com")
+    _reauth(bob)
+
+    saved = alice.put(
+        "/auth/key-settings", json={"key": "sk-alice-key-0000"}
+    )
+    assert saved.status_code == 200
+    assert saved.json()["key_tail"] == "…0000"
+
+    # Bob 看不到 Alice 的 Key，自己的页面保持未配置。
+    bob_view = bob.get("/auth/key-settings")
+    assert bob_view.status_code == 200
+    assert bob_view.json()["configured"] is False
+    assert "sk-alice" not in bob_view.text
+    # 猜测 account_id 无法读取 Alice 的配置。
+    guessed = bob.get("/auth/key-settings?account_id=alice")
+    assert guessed.json()["configured"] is False
+    assert alice.get("/auth/key-settings").json()["configured"] is True
+
+
+def test_partial_failure_only_disables_that_capability(
+    credential_client: TestClient,
+) -> None:
+    app = credential_client.app
+    runner = _FakeProbeRunner(failures={"asr": "语音转写探测失败。"})
+    app.state.credential_service._probes._runner = runner  # type: ignore[attr-defined]
+    _register(credential_client)
+    _reauth(credential_client)
+
+    response = credential_client.put(
+        "/auth/key-settings", json={"key": "sk-probe-1234567890abcdef"}
+    )
+    assert response.status_code == 200
+    by_id = {c["capability_id"]: c for c in response.json()["capabilities"]}
+    assert by_id["asr"]["status"] == "unavailable"
+    assert by_id["asr"]["message"] == "语音转写探测失败。"
+    assert by_id["asr"]["can_retry"] is True
+    assert by_id["chat"]["status"] == "available"
+
+    # 单项同模型重试：修复 runner 后只重试该项。
+    runner.failures.clear()
+    retried = credential_client.post("/auth/key-settings/probes/asr/retry")
+    assert retried.status_code == 200
+    by_id = {c["capability_id"]: c for c in retried.json()["capabilities"]}
+    assert by_id["asr"]["status"] == "available"
+    # 重试只探测指定能力，不重复全量。
+    assert runner.calls.count("asr") == 2
+    assert runner.calls.count("chat") == 1
+
+
+def test_probe_all_and_unknown_capability_retry(
+    credential_client: TestClient,
+) -> None:
+    app = credential_client.app
+    runner = _FakeProbeRunner(failures={"video": "视频生成探测失败。"})
+    app.state.credential_service._probes._runner = runner  # type: ignore[attr-defined]
+    _register(credential_client)
+    _reauth(credential_client)
+    credential_client.put(
+        "/auth/key-settings", json={"key": "sk-probe-1234567890abcdef"}
+    )
+
+    unknown = credential_client.post(
+        "/auth/key-settings/probes/unknown/retry"
+    )
+    assert unknown.status_code == 400
+
+    refreshed = credential_client.post("/auth/key-settings/probes")
+    assert refreshed.status_code == 200
+    by_id = {c["capability_id"]: c for c in refreshed.json()["capabilities"]}
+    assert by_id["video"]["status"] == "unavailable"
+
+
+def test_save_rejects_short_key(credential_client: TestClient) -> None:
+    _register(credential_client)
+    _reauth(credential_client)
+    response = credential_client.put(
+        "/auth/key-settings", json={"key": "short"}
+    )
+    assert response.status_code == 422

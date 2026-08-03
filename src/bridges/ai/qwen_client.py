@@ -123,6 +123,37 @@ class QwenApiClient:
 
         Raises AdapterError subclasses so the gateway can classify the failure.
         """
+        return self._post_openai("/chat/completions", request_body, "Qwen")
+
+    def embeddings(self, request_body: dict[str, Any]) -> dict[str, Any]:
+        """POST /embeddings and return the parsed response body.
+
+        Used by the fixed knowledge-base vectorization capability probe
+        (ADR-0009). Raises AdapterError subclasses for gateway classification.
+        """
+        return self._post_openai("/embeddings", request_body, "Qwen")
+
+    def dashscope_native(
+        self, path: str, request_body: dict[str, Any]
+    ) -> dict[str, Any]:
+        """POST to a DashScope-native service endpoint and return the body.
+
+        Used by the fixed image and video generation capability probes
+        (ADR-0009). DashScope native service endpoints use the public domain
+        regardless of region (unlike the OpenAI-compatible endpoint, which
+        varies by region/workspace), so the base URL is not region-derived.
+        Raises AdapterError subclasses for gateway classification.
+        """
+        url = f"https://dashscope.aliyuncs.com{path}"
+        return self._post_dashscope(url, request_body, "Qwen DashScope", "native_error")
+
+    def _post_openai(
+        self,
+        path: str,
+        request_body: dict[str, Any],
+        noun: str,
+    ) -> dict[str, Any]:
+        """POST to an OpenAI-compatible endpoint with cassette and error taxonomy."""
         if self._cassette_store is not None and not self._record_mode:
             recorded = self._cassette_store.load(request_body)
             if recorded is not None:
@@ -139,7 +170,7 @@ class QwenApiClient:
             if recorded is not None:
                 return recorded
 
-        url = f"{self.base_url}/chat/completions"
+        url = f"{self.base_url}{path}"
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key is not None:
             headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
@@ -147,34 +178,34 @@ class QwenApiClient:
         try:
             response = self._client.post(url, json=request_body, headers=headers)
         except httpx.TimeoutException as exc:
-            raise TransientError(f"Qwen request timeout: {exc}") from exc
+            raise TransientError(f"{noun} request timeout: {exc}") from exc
         except httpx.ConnectError as exc:
-            raise RegionError(f"Qwen regional endpoint unreachable: {exc}") from exc
+            raise RegionError(f"{noun} regional endpoint unreachable: {exc}") from exc
         except httpx.NetworkError as exc:
-            raise TransientError(f"Qwen network error: {exc}") from exc
+            raise TransientError(f"{noun} network error: {exc}") from exc
         except httpx.HTTPError as exc:
-            raise TransientError(f"Qwen HTTP error: {exc}") from exc
+            raise TransientError(f"{noun} HTTP error: {exc}") from exc
 
         if response.status_code == 429:
-            raise RateLimitError("Qwen rate limit (429).")
+            raise RateLimitError(f"{noun} rate limit (429).")
         if response.status_code in (401, 403):
-            raise AuthError("Qwen authentication/authorization failed.")
+            raise AuthError(f"{noun} authentication/authorization failed.")
         if response.status_code >= 500:
-            raise TransientError(f"Qwen server error ({response.status_code}).")
+            raise TransientError(f"{noun} server error ({response.status_code}).")
         if response.status_code >= 400:
             raise AdapterError(
                 code=f"client_error_{response.status_code}",
-                message=f"Qwen client error ({response.status_code}).",
+                message=f"{noun} client error ({response.status_code}).",
                 retryable=False,
             )
 
         try:
             response_body = response.json()
         except Exception as exc:
-            raise TransientError(f"Qwen returned invalid JSON: {exc}") from exc
+            raise TransientError(f"{noun} returned invalid JSON: {exc}") from exc
 
         if not isinstance(response_body, dict):
-            raise TransientError("Qwen returned a non-object JSON response.")
+            raise TransientError(f"{noun} returned a non-object JSON response.")
 
         if self._record_mode and self._cassette_store is not None:
             self._cassette_store.save(request_body, response_body)
@@ -190,6 +221,16 @@ class QwenApiClient:
 
         Raises AdapterError subclasses so the gateway can classify the failure.
         """
+        return self._post_dashscope(self.tts_base_url, request_body, "Qwen TTS", "tts_error")
+
+    def _post_dashscope(
+        self,
+        url: str,
+        request_body: dict[str, Any],
+        noun: str,
+        error_code_prefix: str,
+    ) -> dict[str, Any]:
+        """POST to a DashScope-native endpoint with cassette and error taxonomy."""
         if self._cassette_store is not None and not self._record_mode:
             recorded = self._cassette_store.load(request_body)
             if recorded is not None:
@@ -197,7 +238,7 @@ class QwenApiClient:
             if self._api_key is None:
                 raise AdapterError(
                     code="cassette_missing",
-                    message="No cassette for this TTS request and no API key configured.",
+                    message="No cassette for this request and no API key configured.",
                     retryable=False,
                 )
 
@@ -206,7 +247,6 @@ class QwenApiClient:
             if recorded is not None:
                 return recorded
 
-        url = self.tts_base_url
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key is not None:
             headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
@@ -214,34 +254,34 @@ class QwenApiClient:
         try:
             response = self._client.post(url, json=request_body, headers=headers)
         except httpx.TimeoutException as exc:
-            raise TransientError(f"Qwen TTS request timeout: {exc}") from exc
+            raise TransientError(f"{noun} request timeout: {exc}") from exc
         except httpx.ConnectError as exc:
-            raise RegionError(f"Qwen TTS endpoint unreachable: {exc}") from exc
+            raise RegionError(f"{noun} endpoint unreachable: {exc}") from exc
         except httpx.NetworkError as exc:
-            raise TransientError(f"Qwen TTS network error: {exc}") from exc
+            raise TransientError(f"{noun} network error: {exc}") from exc
         except httpx.HTTPError as exc:
-            raise TransientError(f"Qwen TTS HTTP error: {exc}") from exc
+            raise TransientError(f"{noun} HTTP error: {exc}") from exc
 
         if response.status_code == 429:
-            raise RateLimitError("Qwen TTS rate limit (429).")
+            raise RateLimitError(f"{noun} rate limit (429).")
         if response.status_code in (401, 403):
-            raise AuthError("Qwen TTS authentication/authorization failed.")
+            raise AuthError(f"{noun} authentication/authorization failed.")
         if response.status_code >= 500:
-            raise TransientError(f"Qwen TTS server error ({response.status_code}).")
+            raise TransientError(f"{noun} server error ({response.status_code}).")
         if response.status_code >= 400:
             raise AdapterError(
                 code=f"client_error_{response.status_code}",
-                message=f"Qwen TTS client error ({response.status_code}).",
+                message=f"{noun} client error ({response.status_code}).",
                 retryable=False,
             )
 
         try:
             response_body = response.json()
         except Exception as exc:
-            raise TransientError(f"Qwen TTS returned invalid JSON: {exc}") from exc
+            raise TransientError(f"{noun} returned invalid JSON: {exc}") from exc
 
         if not isinstance(response_body, dict):
-            raise TransientError("Qwen TTS returned a non-object JSON response.")
+            raise TransientError(f"{noun} returned a non-object JSON response.")
 
         # The DashScope native API may return HTTP 200 with an error status_code
         # in the response body. Classify these using the body status code.
@@ -250,14 +290,14 @@ class QwenApiClient:
             code_str = str(response_body.get("code") or "")
             message_str = str(response_body.get("message") or "")
             if body_status == 429:
-                raise RateLimitError(f"Qwen TTS rate limit: {message_str}")
+                raise RateLimitError(f"{noun} rate limit: {message_str}")
             if body_status in (401, 403):
-                raise AuthError(f"Qwen TTS auth error: {message_str}")
+                raise AuthError(f"{noun} auth error: {message_str}")
             if body_status >= 500:
-                raise TransientError(f"Qwen TTS server error ({body_status}): {message_str}")
+                raise TransientError(f"{noun} server error ({body_status}): {message_str}")
             raise AdapterError(
-                code=f"tts_error_{body_status}",
-                message=f"Qwen TTS error ({body_status}): {message_str or code_str}",
+                code=f"{error_code_prefix}_{body_status}",
+                message=f"{noun} error ({body_status}): {message_str or code_str}",
                 retryable=False,
             )
 

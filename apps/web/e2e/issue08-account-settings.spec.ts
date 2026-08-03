@@ -167,8 +167,12 @@ test.describe("Issue 08 — 密钥保护与会话闭环", () => {
 
     await expect(page.getByText("身份确认成功，已安全读取当前账户的配置状态。")).toBeVisible();
     await expect(page.getByTestId("key-status")).toHaveText(/尚未配置/);
-    await expect(page.getByText("当前没有可验证的模型能力，系统不会显示“连接成功”。"))
-      .toBeVisible();
+    // Issue 10：空态提供真实录入入口与固定能力矩阵（全部未探测，无 Stub 成功）。
+    await expect(page.getByLabel("百炼 API Key")).toBeVisible();
+    await expect(page.getByRole("button", { name: "保存并逐项探测" })).toBeVisible();
+    await expect(page.getByText("固定能力矩阵")).toBeVisible();
+    await expect(page.getByTestId("capability-chat")).toHaveText(/未探测/);
+    await expect(page.getByTestId("capability-video")).toHaveText(/未探测/);
   });
 
   test("密钥状态读取失败可重试恢复", async ({ page }) => {
@@ -318,8 +322,18 @@ test.describe("Issue 08 — 桌面视觉回归", () => {
         body: JSON.stringify({
           status: "unconfigured",
           configured: false,
+          key_tail: null,
+          updated_at: null,
+          capabilities: [
+            { capability_id: "chat", display_name: "核心对话", model_id: "qwen3.7-plus-2026-05-26", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
+            { capability_id: "embedding", display_name: "知识库向量化", model_id: "text-embedding-v4", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
+            { capability_id: "asr", display_name: "语音转写", model_id: "qwen3-asr-flash-2025-09-08", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
+            { capability_id: "tts", display_name: "语音朗读", model_id: "qwen3-tts-flash-2025-11-27", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
+            { capability_id: "image", display_name: "图片生成与编辑", model_id: "qwen-image-2.0-pro-2026-06-22", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
+            { capability_id: "video", display_name: "视频生成", model_id: "wan2.7-t2v-2026-06-12", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
+          ],
           message: "尚未配置百炼密钥。",
-          next_step: "完成密钥接入后，可在本页录入并验证；现在请勿在聊天中粘贴密钥。",
+          next_step: "录入百炼 Key 后，系统将用非用户数据逐项真实探测固定能力。",
         }),
       })
     );

@@ -11,6 +11,8 @@ services:
       - BRIDGES_API_PORT=8000
       - BRIDGES_WEB_DEV=false
       - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+      # Issue 10：容器使用自动生成主密钥保护的加密凭据卷（bridges-data 卷）。
+      - BRIDGES_CREDENTIAL_BACKEND=encrypted-volume
     volumes:
       - bridges-data:/var/lib/bridges
     healthcheck:

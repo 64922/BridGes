@@ -39,6 +39,9 @@ class AuditAction(str, Enum):
     PROFILE_DELETE = "profile_delete"
     PROFILE_ROLLBACK = "profile_rollback"
     PROFILE_EXPORT = "profile_export"
+    KEY_SAVE = "key_save"
+    KEY_DELETE = "key_delete"
+    KEY_PROBE = "key_probe"
 
 
 class AuditResult(str, Enum):

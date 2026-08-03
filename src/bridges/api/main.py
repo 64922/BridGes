@@ -25,6 +25,7 @@ from bridges.ai import (
 )
 from bridges.api import (
     auth,
+    credentials,
     domain_packs,
     evaluation,
     expression,
@@ -43,7 +44,6 @@ from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
-    FallbackPolicy,
     RetryPolicy,
 )
 from bridges.contracts.domain import (
@@ -54,6 +54,14 @@ from bridges.contracts.domain import (
 from bridges.contracts.health import DependencyHealth, HealthProjection, HealthStatus
 from bridges.contracts.projects import ObjectRef
 from bridges.contracts.workflows import RunProjection, WorkflowRunStatus
+from bridges.credentials.probes import CapabilityProbeService
+from bridges.credentials.service import KeyCredentialService
+from bridges.credentials.store import (
+    CredentialStorePort,
+    EncryptedVolumeCredentialStore,
+    InMemoryCredentialStore,
+    OsCredentialStore,
+)
 from bridges.domain import (
     DomainPackLoader,
     DomainPackRegistry,
@@ -139,7 +147,12 @@ from bridges.workflows import WorkflowError, WorkflowService
 
 
 def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
-    """Register the Qwen capabilities used by built-in workflows at T009."""
+    """Register the Qwen capabilities used by built-in workflows at T009.
+
+    Issue 10 起按 ADR-0009 固定模型矩阵：核心对话绑定
+    ``qwen3.7-plus-2026-05-26`` 唯一快照，不注册备用模型——失败只允许
+    重试同一绑定，不得暗中切换模型。
+    """
     registry.register(
         CapabilityRecord(
             name="qwen_text_chat",
@@ -147,30 +160,11 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3.7-plus",
+            model_id="qwen3.7-plus-2026-05-26",
             input_schema_version="chat-messages-v1",
             output_schema_version="chat-completion-v1",
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=3, backoff_seconds=1.0),
-            fallback_policy=FallbackPolicy(
-                fallback_capability_name="qwen_text_chat_fallback",
-                fallback_capability_version="1",
-            ),
-            prompt_version="2026-07-24",
-        )
-    )
-    registry.register(
-        CapabilityRecord(
-            name="qwen_text_chat_fallback",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3.6-flash",
-            input_schema_version="chat-messages-v1",
-            output_schema_version="chat-completion-v1",
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
         )
     )
@@ -249,7 +243,7 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3-asr-flash",
+            model_id="qwen3-asr-flash-2025-09-08",
             input_schema_version="audio-upload-v1",
             output_schema_version="transcript-v1",
             status=CapabilityStatus.VERIFIED,
@@ -272,9 +266,9 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             prompt_version="2026-07-24",
         )
     )
-    # T062: real Qwen TTS capabilities for accessibility narration synthesis.
-    # qwen3-tts-flash is the primary; qwen3-tts-instruct-flash is the fallback
-    # when instruction-controlled speech is needed.
+    # T062: real Qwen TTS capability for accessibility narration synthesis.
+    # Issue 10 起按 ADR-0009 固定绑定 qwen3-tts-flash-2025-11-27，不注册
+    # 备用模型——失败只重试同一绑定。
     registry.register(
         CapabilityRecord(
             name="qwen_tts",
@@ -282,28 +276,8 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3-tts-flash",
+            model_id="qwen3-tts-flash-2025-11-27",
             input_schema_version="tts-text-v1",
-            output_schema_version="tts-audio-v1",
-            supported_modalities=["text", "audio"],
-            status=CapabilityStatus.VERIFIED,
-            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
-            fallback_policy=FallbackPolicy(
-                fallback_capability_name="qwen_tts_instruct",
-                fallback_capability_version="1",
-            ),
-            prompt_version="2026-07-24",
-        )
-    )
-    registry.register(
-        CapabilityRecord(
-            name="qwen_tts_instruct",
-            version="1",
-            kind=CapabilityKind.MODEL,
-            vendor="qwen",
-            region="cn-beijing",
-            model_id="qwen3-tts-instruct-flash",
-            input_schema_version="tts-instruct-v1",
             output_schema_version="tts-audio-v1",
             supported_modalities=["text", "audio"],
             status=CapabilityStatus.VERIFIED,
@@ -691,6 +665,50 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # emit privacy-preserving audit events.
     app.state.observability_service = ObservabilityService()
 
+    # Issue 10: 账户级百炼凭据存储与固定能力探测。
+    # 源码环境使用操作系统凭据库（keyring，Windows 兜底 DPAPI）；容器环境
+    # 使用自动生成主密钥保护的加密凭据卷（数据目录 credentials/ 子目录）。
+    # 未配置数据库（内存模式，测试/E2E）时使用进程内替身，保证测试确定性。
+    settings_at_credential = app.state.settings
+    credential_store: CredentialStorePort = InMemoryCredentialStore()
+    data_dir: Path | None = None
+    if isinstance(state_store, SqliteStateStore) and state_store.path != ":memory:":
+        data_dir = Path(state_store.path).parent
+    if settings_at_credential is not None and data_dir is not None:
+        if settings_at_credential.credential_backend == "encrypted-volume":
+            credential_store = EncryptedVolumeCredentialStore(data_dir)
+        else:
+            credential_store = OsCredentialStore(data_dir=data_dir)
+    app.state.credential_service = KeyCredentialService(
+        credential_store=credential_store,
+        probe_service=CapabilityProbeService(
+            state_store=state_store,
+            region=(
+                settings_at_credential.qwen_region
+                if settings_at_credential is not None
+                else "cn-beijing"
+            ),
+            workspace_id=(
+                settings_at_credential.qwen_workspace_id
+                if settings_at_credential is not None
+                else None
+            ),
+            cassette_dir=(
+                settings_at_credential.qwen_cassette_dir
+                if settings_at_credential is not None
+                else None
+            ),
+            record_mode=(
+                settings_at_credential.qwen_record_cassettes
+                if settings_at_credential is not None
+                else False
+            ),
+        ),
+        observability_service=app.state.observability_service,
+        state_store=state_store,
+    )
+    app.state.credential_store = credential_store
+
     # T018/T020: attach the in-memory profile service. Candidate profiles cannot be
     # treated as stable facts until the user accepts them through the human
     # decision loop; accepted candidates are promoted to active assertions. At
@@ -757,9 +775,6 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             "qwen_text_chat", "1", QwenTextChatAdapter(qwen_client)
         )
         model_gateway.register_adapter(
-            "qwen_text_chat_fallback", "1", QwenTextChatAdapter(qwen_client)
-        )
-        model_gateway.register_adapter(
             "qwen_structured_output", "1", QwenStructuredOutputAdapter(qwen_client)
         )
         model_gateway.register_adapter(
@@ -774,14 +789,20 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         model_gateway.register_adapter(
             "qwen_asr_long", "1", QwenAsrAdapter(qwen_client)
         )
-        # T062: TTS adapters for accessibility narration synthesis.
+        # T062: TTS adapter for accessibility narration synthesis.
         tts_adapter = QwenTtsAdapter(qwen_client)
         model_gateway.register_adapter("qwen_tts", "1", tts_adapter)
-        model_gateway.register_adapter("qwen_tts_instruct", "1", tts_adapter)
 
+    # Issue 10：生产环境禁止为真实模型 ID 注册 Stub 成功。StubQwenAdapter
+    # 只允许在显式测试开关（qwen_force_stub）下使用，或绑定在内置
+    # deterministic 工具能力上；缺少真实适配器的云端能力保持未注册，
+    # 由网关返回明确的"未绑定适配器"阻塞结果，绝不伪装可用。
     stub_adapter = StubQwenAdapter()
+    force_stub = settings is not None and settings.qwen_force_stub
     for capability in capability_registry.list_active():
-        if not model_gateway.is_adapter_registered(capability.name, capability.version):
+        if model_gateway.is_adapter_registered(capability.name, capability.version):
+            continue
+        if force_stub or capability.model_id == "deterministic":
             model_gateway.register_adapter(capability.name, capability.version, stub_adapter)
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
@@ -1106,6 +1127,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)
     app.include_router(vault.router)

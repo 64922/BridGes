@@ -21,8 +21,6 @@ from bridges.contracts.identity import (
     DeviceLogoutResponse,
     DeviceReauthenticationRequest,
     DeviceSwitchRequest,
-    KeySettingsProjection,
-    KeySettingsStatus,
     LoginCredential,
     ReauthenticationRequest,
     RecoveryRequest,
@@ -476,37 +474,6 @@ async def reauthenticate(
         )
     except IdentityError as exc:
         raise _identity_error(exc, "reauthentication_failed") from exc
-
-
-@router.get(
-    "/key-settings",
-    response_model=KeySettingsProjection,
-    responses={
-        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
-        status.HTTP_403_FORBIDDEN: {"model": AuthError},
-    },
-)
-async def get_key_settings(
-    service: IdentityServiceDep,
-    subject: SubjectDep,
-) -> KeySettingsProjection:
-    """Return the truthful pre-Issue-10 key state after recent reauthentication."""
-    try:
-        needs_reauthentication = service.requires_recent_auth(subject.session_id)
-    except IdentityError as exc:
-        raise _identity_error(exc, "unauthenticated") from exc
-    if needs_reauthentication:
-        raise _auth_error(
-            status.HTTP_403_FORBIDDEN,
-            "reauth_required",
-            "此页面包含敏感设置，请重新输入当前账户密码。",
-        )
-    return KeySettingsProjection(
-        status=KeySettingsStatus.UNCONFIGURED,
-        configured=False,
-        message="尚未配置百炼密钥。",
-        next_step="完成密钥接入后，可在本页录入并验证；现在请勿在聊天中粘贴密钥。",
-    )
 
 
 @router.post(

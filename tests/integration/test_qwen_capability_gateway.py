@@ -75,7 +75,8 @@ def test_successful_qwen_task_records_model_run_locks() -> None:
     lock1 = after_first["model_run_locks"][0]
     assert lock1["capability_name"] == "qwen_text_chat"
     assert lock1["status"] == "success"
-    assert lock1["actual_model_id"] == "qwen3.7-plus"
+    # Issue 10：按 ADR-0009 固定模型快照记录不可变绑定。
+    assert lock1["actual_model_id"] == "qwen3.7-plus-2026-05-26"
     assert lock1["region"] == "cn-beijing"
 
     advance2 = client.post(f"/_test/runs/{run_id}/advance")

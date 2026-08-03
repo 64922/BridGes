@@ -76,6 +76,13 @@ class Settings(BaseSettings):
         default=None, validation_alias=_env_aliases("QWEN_API_KEY")
     )
 
+    # 账户级凭据存储后端：源码环境用操作系统凭据库（os），容器用自动生成
+    # 主密钥保护的加密凭据卷（encrypted-volume）。容器 Compose 显式设置
+    # encrypted-volume；其余环境默认 os。
+    credential_backend: str = Field(
+        default="os", validation_alias=_env_aliases("CREDENTIAL_BACKEND")
+    )
+
     # Qwen routing configuration.
     qwen_workspace_id: str | None = Field(
         default=None, validation_alias=_env_aliases("QWEN_WORKSPACE_ID")

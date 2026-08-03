@@ -128,22 +128,6 @@ class ReauthenticationRequest(BaseModel):
     password: SecretStr = Field(description="Current account password.")
 
 
-class KeySettingsStatus(StrEnum):
-    """Truthful model-key configuration state."""
-
-    UNCONFIGURED = "unconfigured"
-    CONFIGURED = "configured"
-
-
-class KeySettingsProjection(BaseModel):
-    """Protected model-key settings summary without secret material."""
-
-    status: KeySettingsStatus = Field(description="Current configuration status.")
-    configured: bool = Field(description="Whether a usable key is configured.")
-    message: str = Field(description="Human-readable status.")
-    next_step: str = Field(description="Safe, actionable next step.")
-
-
 class RecoveryRequest(BaseModel):
     """Request a credential recovery flow.
 
