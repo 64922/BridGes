@@ -329,6 +329,13 @@ class ChatAttachmentService:
                 " WHERE account_id = ? AND conversation_id = ?",
                 (account_id, conversation_id),
             ).fetchall()
+            # 一并清理本会话的取消标记：避免会话删除后残留无主记录
+            # （否则随取消次数无限积累）。
+            self._database.connection.execute(
+                "DELETE FROM chat_attachment_cancellations"
+                " WHERE account_id = ? AND conversation_id = ?",
+                (account_id, conversation_id),
+            )
             if rows:
                 now = datetime.now(UTC).isoformat()
                 self._database.connection.execute(

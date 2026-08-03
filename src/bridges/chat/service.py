@@ -495,6 +495,7 @@ class ChatService:
         conversation_id: str,
         assistant_message_id: str,
         run_context: RunContextEnvelope,
+        until_user_message_id: str | None = None,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
@@ -528,7 +529,9 @@ class ChatService:
             ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
         )
         try:
-            history = self._model_history(account_id, conversation_id)
+            history = self._model_history(
+                account_id, conversation_id, until_user_message_id
+            )
             payload: dict[str, Any] = {
                 "messages": history,
                 "temperature": 0.7,
@@ -739,7 +742,10 @@ class ChatService:
             duration_ms=None,
             model_id=None,
             run_lock_id=None,
-            created_at=now,
+            # 重试尝试保持所属轮次的时间戳：排序时按 attempt_number 归入
+            # 该轮（避免 created_at=now 把新尝试排到对话末尾，导致渲染分组
+            # 与模型上下文错配到后续轮次）。
+            created_at=owner.created_at,
             updated_at=now,
         )
         self._repo.insert_message(new_attempt)
@@ -794,12 +800,19 @@ class ChatService:
     # 内部
     # ------------------------------------------------------------------
 
-    def _model_history(self, account_id: str, conversation_id: str) -> list[dict[str, str]]:
+    def _model_history(
+        self,
+        account_id: str,
+        conversation_id: str,
+        until_user_message_id: str | None = None,
+    ) -> list[dict[str, str]]:
         """组装发送给模型的会话历史。
 
         首条为当前对话模式的系统角色合同（companion/study，Issue 14）；
         每轮用户消息只带最新一条已完成（done）的助手回答；失败、停止与
-        进行中的尝试不进上下文，避免把错误内容当成回答。
+        进行中的尝试不进上下文，避免把错误内容当成回答。``until_user_message_id``
+        把历史截断到指定轮次（重试旧轮次失败消息时，新尝试的上下文不得
+        包含其后的后续轮次）。
         """
         messages = self._repo.list_messages(account_id, conversation_id)
         record = self._repo.get_conversation(account_id, conversation_id)
@@ -814,10 +827,16 @@ class ChatService:
                     history.append({"role": "assistant", "content": latest_done.content})
                     latest_done = None
                 history.append({"role": "user", "content": message.content})
+                if (
+                    until_user_message_id is not None
+                    and message.message_id == until_user_message_id
+                ):
+                    break
             elif message.status == ChatMessageStatus.DONE:
                 latest_done = message
-        if latest_done is not None:
-            history.append({"role": "assistant", "content": latest_done.content})
+        else:
+            if latest_done is not None:
+                history.append({"role": "assistant", "content": latest_done.content})
         return history
 
     def _persist_lock(self, account_id: str, lock: ModelRunLock | None) -> None:

@@ -382,7 +382,8 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
-            " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END, message_id",
+            " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
+            " attempt_number, message_id",
             (conversation_id, account_id),
         ).fetchall()
         return [self._message_from_row(row) for row in rows]

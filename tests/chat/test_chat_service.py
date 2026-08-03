@@ -577,6 +577,84 @@ def test_model_history_excludes_failed_and_stopped_attempts(service: ChatService
     ]
 
 
+def test_retry_of_older_turn_keeps_turn_position_and_truncates_context(
+    service: ChatService,
+) -> None:
+    """重试旧轮次失败消息：新尝试归入所属轮次，模型上下文截断到该轮。
+
+    回归：此前新尝试以 created_at=now 排在对话末尾，渲染分组把新尝试
+    错配给后续轮次，模型历史也把后续轮次内容喂给重试生成。
+    """
+    created = service.create_conversation("alice")
+    # 第 1 轮：失败
+    service._gateway = _with_chunks(service, connect_error=RateLimitError("slow"))
+    _, failed = _start(service, created.conversation_id, "问题一")
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, failed.message_id, _context("run-1")
+        )
+    )
+    # 第 2 轮：成功
+    service._gateway = _with_chunks(
+        service, [StreamChunk(kind="delta", delta="回答二")]
+    )
+    _, done2 = _start(service, created.conversation_id, "问题二")
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, done2.message_id, _context("run-2")
+        )
+    )
+    # 重试第 1 轮的失败消息
+    service._gateway = _with_chunks(
+        service, [StreamChunk(kind="delta", delta="回答一重试")]
+    )
+    owner, retried = service.retry_generation(
+        "alice", created.conversation_id, failed.message_id
+    )
+    assert retried.attempt_number == 2
+    list(
+        service.stream_generation(
+            "alice",
+            created.conversation_id,
+            retried.message_id,
+            _context("run-3"),
+            until_user_message_id=owner.message_id,
+        )
+    )
+
+    projection = service.get_conversation("alice", created.conversation_id)
+    assert projection is not None
+    order = [
+        (m.role, m.attempt_number, m.content, m.status)
+        for m in projection.messages
+    ]
+    # 重试尝试必须归入第 1 轮（渲染分组依赖相邻性），而不是排在对话末尾
+    assert order == [
+        (ChatMessageRole.USER, 1, "问题一", ChatMessageStatus.DONE),
+        (ChatMessageRole.ASSISTANT, 1, "", ChatMessageStatus.ERROR),
+        (ChatMessageRole.ASSISTANT, 2, "回答一重试", ChatMessageStatus.DONE),
+        (ChatMessageRole.USER, 1, "问题二", ChatMessageStatus.DONE),
+        (ChatMessageRole.ASSISTANT, 1, "回答二", ChatMessageStatus.DONE),
+    ]
+
+    # 重试生成的上下文截断到第 1 轮用户消息：不含第 2 轮的问题与回答，
+    # 也不含该轮自身任何回答（旧尝试失败、新尝试尚在流式生成）。
+    history = service._model_history(
+        "alice", created.conversation_id, until_user_message_id=owner.message_id
+    )
+    assert history[1:] == [{"role": "user", "content": "问题一"}]
+
+    # 后续轮次（发送第 2 轮消息）的完整上下文：重试尝试作为该轮最新
+    # 已完成回答进入历史，顺序正确。
+    full = service._model_history("alice", created.conversation_id)
+    assert full[1:] == [
+        {"role": "user", "content": "问题一"},
+        {"role": "assistant", "content": "回答一重试"},
+        {"role": "user", "content": "问题二"},
+        {"role": "assistant", "content": "回答二"},
+    ]
+
+
 # ---------------------------------------------------------------------------
 # 重启恢复（同一数据库文件重新打开）
 # ---------------------------------------------------------------------------

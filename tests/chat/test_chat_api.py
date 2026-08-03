@@ -479,8 +479,8 @@ def test_sse_always_terminates_when_message_finalized_before_stream(
         ) as response:
             assert response.status_code == 200
             for line in response.iter_lines():
-                if line:
-                    collected.append(line)
+                # 保留空行（SSE 事件分隔符），供 _parse_sse 按块切分
+                collected.append(line)
 
     thread = threading.Thread(target=consume)
     thread.start()
@@ -497,6 +497,18 @@ def test_sse_always_terminates_when_message_finalized_before_stream(
     # 无论生成器是否来得及启动，SSE 都以 error（stopped）终态结束
     assert "event: error" in body
     assert '"code": "stopped"' in body
+    # 补发终态与 error 事件载荷一致：携带思考摘要与真实耗时，
+    # 停止后的 error 态渲染不依赖重新加载的间隙（Issue 14）。
+    error_events = [
+        payload
+        for name, payload in _parse_sse(body)
+        if name == "error" and payload["error"]["code"] == "stopped"
+    ]
+    assert error_events, "stopped 终态事件缺失"
+    error_payload = error_events[0]
+    assert "thinking" in error_payload
+    assert error_payload["thinking"]["quality"] == ["已停止生成，保留已生成内容。"]
+    assert error_payload["duration_ms"] is not None and error_payload["duration_ms"] >= 1
 
 
 def test_stop_generation_via_api(client: TestClient, sqlite_app: Any) -> None:

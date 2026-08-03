@@ -251,6 +251,9 @@ def _generation_events(
         conversation_id,
         assistant_message.message_id,
         run_context,
+        # 生成上下文截断到本轮用户消息：发送路径为新消息（等价完整历史），
+        # 重试路径为该轮所属用户消息（不含后续轮次，Issue 11 重试语义）。
+        until_user_message_id=user_message.message_id,
     ):
         if event.kind == "delta":
             yield "delta", {
@@ -304,6 +307,14 @@ def _generation_events(
         yield "error", {
             "message_id": assistant_message.message_id,
             "error": {"code": "stopped", "message": "生成已停止。", "retryable": True},
+            # 与 error 事件载荷一致：补发终态也携带思考摘要与真实耗时，
+            # 前端停止后的 error 态渲染不依赖重新加载的间隙。
+            "thinking": (
+                final.thinking.model_dump(mode="json")
+                if final.thinking is not None
+                else None
+            ),
+            "duration_ms": final.duration_ms,
         }
         return
     yield "error", {
@@ -313,6 +324,12 @@ def _generation_events(
             "message": final.error_message or "生成失败，请稍后重试。",
             "retryable": error_is_retryable(final.error_code),
         },
+        "thinking": (
+            final.thinking.model_dump(mode="json")
+            if final.thinking is not None
+            else None
+        ),
+        "duration_ms": final.duration_ms,
     }
 
 
