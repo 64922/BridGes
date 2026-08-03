@@ -130,3 +130,31 @@ def test_masked_qq_email_never_reveals_short_qq_number() -> None:
     assert "1111" not in by_username["Alice"].masked_qq_email
     assert by_username["Bob"].masked_qq_email == "12***56@qq.com"
     assert "123456" not in by_username["Bob"].masked_qq_email
+
+
+def test_successful_reauthentication_resets_failure_counter() -> None:
+    """再认证成功后失败计数清零，后续一次失误不会立即触发锁定。"""
+    service = IdentityService()
+    registered = service.register(_registration("Alice", "111111@qq.com"))
+    session_id = registered.session.id
+
+    for _ in range(3):
+        with pytest.raises(IdentityError):
+            service.reauthenticate(
+                registered.account.id, session_id, "wrong-password-12"
+            )
+
+    service.reauthenticate(
+        registered.account.id, session_id, "correct-horse-12"
+    )
+    stored = service._sessions[session_id]
+    assert stored.reauth_failures == 0
+    assert stored.reauth_locked_until is None
+
+    # 重置后一次失误不会触发锁定（锁定需要连续 5 次失败）。
+    with pytest.raises(IdentityError):
+        service.reauthenticate(
+            registered.account.id, session_id, "wrong-password-12"
+        )
+    assert stored.reauth_failures == 1
+    assert stored.reauth_locked_until is None

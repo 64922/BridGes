@@ -81,6 +81,60 @@ def test_session_cookie_is_secure_over_https() -> None:
     assert "HttpOnly" in header
 
 
+def test_device_cookie_contract(client: TestClient) -> None:
+    """设备 Cookie 与会话 Cookie 同合同：HttpOnly/SameSite/Path/Max-Age=30 天。"""
+    response = client.post(
+        "/auth/register",
+        json={"username": "桥桥", "qq_email": "123456@qq.com", "password": "correct-horse-12"},
+    )
+    header = response.headers.get("set-cookie")
+    assert header is not None
+    assert "bridges_device=" in header
+    assert "HttpOnly" in header
+    assert "SameSite=lax" in header
+    assert "Path=/" in header
+    assert "Max-Age=2592000" in header  # 30 天
+    # 明文 HTTP（开发环境）不得标记 Secure。
+    assert "Secure" not in header
+
+
+def test_stale_device_operation_is_rejected_with_conflict() -> None:
+    """并发切换竞态守卫：旧操作的 operation_id 不得改写更新的切换结果。"""
+    app = create_app()
+    alice = TestClient(app)
+    bob_creator = TestClient(app)
+    _register(alice, username="Alice", qq_email="111111@qq.com")
+    _register(bob_creator, username="Bob", qq_email="222222@qq.com")
+    added = alice.post(
+        "/auth/device/accounts/add",
+        json={"identifier": "Bob", "password": "correct-horse-12"},
+    )
+    assert added.status_code == 200
+    accounts = alice.get("/auth/device/accounts").json()["accounts"]
+    alice_session_id = next(
+        item["session_id"] for item in accounts if item["username"] == "Alice"
+    )
+
+    # 第一次切换成功（operation 1000 已被记录）。
+    first = alice.post(
+        "/auth/device/switch",
+        json={"session_id": alice_session_id},
+        headers={"X-Bridges-Account-Operation": "1000"},
+    )
+    assert first.status_code == 200
+
+    # 旧操作编号（<= 已记录值）重放必须被拒绝，且当前会话不被动摇。
+    stale = alice.post(
+        "/auth/device/switch",
+        json={"session_id": alice_session_id},
+        headers={"X-Bridges-Account-Operation": "999"},
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["error"] == "device_operation_stale"
+    # 会话仍为第一次切换后的账户。
+    assert alice.get("/auth/session").json()["account"]["username"] == "Alice"
+
+
 def test_session_cookie_honors_explicit_secure_config_over_plain_http(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
