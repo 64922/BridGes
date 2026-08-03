@@ -8,6 +8,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { SkipLink } from "@/components/design-system/SkipLink";
 import { useAuth } from "@/context/AuthContext";
 
+import { AppSidebar } from "./AppSidebar";
 import { MainContent } from "./MainContent";
 import { SidebarNav } from "./SidebarNav";
 
@@ -21,9 +22,10 @@ interface AppShellProps {
 /**
  * Authenticated application shell.
  *
- * Provides the stable top bar, skip link, and responsive sidebar navigation.
- * On desktop the navigation is a persistent left rail; on mobile it collapses
- * into a drawer toggled from the top bar.
+ * Account mode (the normal user path, Issue 12) uses the ChatGPT-desktop-style
+ * global layout: collapsible `AppSidebar` + content area, no persistent top
+ * bar. Project mode keeps the legacy workbench chrome (top bar + `SidebarNav`)
+ * while project workbench pages are replaced incrementally (ADR-0016).
  */
 export function AppShell({ children, mode = "account", projectId, showSkipLink = true }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
@@ -60,75 +62,96 @@ export function AppShell({ children, mode = "account", projectId, showSkipLink =
       </MainContent>
     );
 
+  if (mode === "project") {
+    return (
+      <>
+        {showSkipLink && <SkipLink />}
+        <header
+          style={{
+            position: "sticky",
+            top: 0,
+            zIndex: 20,
+            height: "var(--topbar-height)",
+            backgroundColor: "var(--color-surface)",
+            borderBottom: "1px solid var(--color-border)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            paddingInline: "var(--space-4)",
+            gap: "var(--space-4)",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
+            <div className="mobile-nav-toggle">
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-expanded={mobileNavOpen}
+                aria-controls="primary-navigation"
+                aria-label={mobileNavOpen ? "关闭导航" : "打开主导航"}
+                onClick={() => setMobileNavOpen(!mobileNavOpen)}
+                style={{
+                  minWidth: "var(--target-size)",
+                  minHeight: "var(--target-size)",
+                }}
+              >
+                <Icon name="menu" size={20} ariaLabel="菜单" />
+              </Button>
+            </div>
+            <a
+              href="/"
+              style={{
+                fontFamily: "var(--font-serif)",
+                fontSize: "var(--text-lg)",
+                fontWeight: 600,
+                color: "var(--color-text-primary)",
+                textDecoration: "none",
+              }}
+            >
+              BridGes
+            </a>
+          </div>
+
+          <p
+            className="mobile-hide"
+            style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-sm)" }}
+          >
+            科学项目空间
+          </p>
+        </header>
+
+        <div
+          style={{
+            display: "flex",
+            minHeight: "calc(100vh - var(--topbar-height))",
+          }}
+        >
+          <SidebarNav
+            mode={mode}
+            projectId={projectId}
+            open={mobileNavOpen}
+            onClose={() => setMobileNavOpen(false)}
+          />
+          {protectedContent}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       {showSkipLink && <SkipLink />}
-      <header
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
-          height: "var(--topbar-height)",
-          backgroundColor: "var(--color-surface)",
-          borderBottom: "1px solid var(--color-border)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingInline: "var(--space-4)",
-          gap: "var(--space-4)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-          <div className="mobile-nav-toggle">
-            <Button
-              variant="ghost"
-              size="sm"
-              aria-expanded={mobileNavOpen}
-              aria-controls="primary-navigation"
-              aria-label={mobileNavOpen ? "关闭导航" : "打开主导航"}
-              onClick={() => setMobileNavOpen(!mobileNavOpen)}
-              style={{
-                minWidth: "var(--target-size)",
-                minHeight: "var(--target-size)",
-              }}
-            >
-              <Icon name="menu" size={20} ariaLabel="菜单" />
-            </Button>
-          </div>
-          <a
-            href="/"
-            style={{
-              fontFamily: "var(--font-serif)",
-              fontSize: "var(--text-lg)",
-              fontWeight: 600,
-              color: "var(--color-text-primary)",
-              textDecoration: "none",
-            }}
-          >
-            BridGes
-          </a>
-        </div>
-
-        <p
-          className="mobile-hide"
-          style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-sm)" }}
-        >
-          {mode === "project" ? "科学项目空间" : "长期科学学习与表达伙伴"}
-        </p>
-      </header>
-
       <div
-        style={{
-          display: "flex",
-          minHeight: "calc(100vh - var(--topbar-height))",
-        }}
+        style={
+          {
+            display: "flex",
+            minHeight: "100vh",
+            // 无顶栏外壳：内容区占满视口高度（MainContent/聊天列据此计算）
+            "--shell-chrome-height": "0px",
+          } as React.CSSProperties
+        }
       >
-        <SidebarNav
-          mode={mode}
-          projectId={projectId}
-          open={mobileNavOpen}
-          onClose={() => setMobileNavOpen(false)}
-        />
+        <AppSidebar />
         {protectedContent}
       </div>
     </>

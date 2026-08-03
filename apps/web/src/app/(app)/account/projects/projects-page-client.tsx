@@ -144,10 +144,10 @@ export default function ProjectsPageClient() {
     <MainContent>
       <section className="sc-card" aria-labelledby="projects-title">
         <h1 id="projects-title" className="sc-section-title">
-          科学项目空间
+          学习项目
         </h1>
         <p style={{ color: "var(--color-text-secondary)", maxWidth: "60ch" }}>
-          每个科学项目空间都有明确的所有者、对象域和版本。未选择项目时，不能创建无归属产物。
+          每个学习项目都有明确的所有者、对象域和版本。未选择项目时，不能创建无归属产物。
         </p>
       </section>
 

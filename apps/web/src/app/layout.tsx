@@ -14,6 +14,9 @@ try {
   if (theme === "dark" || theme === "light") {
     document.documentElement.dataset.theme = theme;
   }
+  if (localStorage.getItem("bridges-sidebar-collapsed") === "1") {
+    document.documentElement.dataset.sidebarCollapsed = "1";
+  }
 } catch {}
 `;
 

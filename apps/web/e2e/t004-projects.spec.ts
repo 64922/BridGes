@@ -8,7 +8,7 @@ test.describe("T004 — 创建带对象归属的科学项目空间", () => {
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
     await page.goto("/account/projects");
-    await expect(page.getByRole("heading", { name: "科学项目空间" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "学习项目" })).toBeVisible();
 
     const projectName = `测试项目 ${Date.now()}`;
     await page.getByLabel("项目名称").fill(projectName);
@@ -73,7 +73,7 @@ test.describe("T004 — 创建带对象归属的科学项目空间", () => {
     await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
 
     await page.goto("/account");
-    await expect(page.getByRole("heading", { name: "科学项目空间" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "学习项目" })).toBeVisible();
     await expect(page.getByRole("link", { name: `打开项目 ${projectName}` })).toBeVisible();
   });
 

@@ -4,11 +4,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { ChatConversationNav, CHAT_LIST_CHANGED_EVENT } from "@/components/bridges/chat/ChatConversationNav";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
 import { AppShell } from "@/components/layout/AppShell";
+import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
   ApiError,
   getChatConversation,
@@ -34,7 +34,7 @@ interface ActiveRun {
  *
  * 状态覆盖：loading（加载中）/ error（加载失败可重试）/ 恢复后正常（重启
  * 后重新打开同一对话）/ 生成中（streaming + 停止入口）/ 失败（保留正文 +
- * 重试）。键盘可达：跳转链接 → 对话列表 → 消息 → 输入区，Enter 发送、
+ * 重试）。键盘可达：跳转链接 → 侧栏最近对话 → 消息 → 输入区，Enter 发送、
  * Shift+Enter 换行、Esc 停止；流式更新不移动焦点、不逐 token 朗读。
  */
 export default function ChatConversationPage() {
@@ -230,7 +230,6 @@ export default function ChatConversationPage() {
   return (
     <AppShell mode="account">
       <div className={styles.chatShell}>
-        <ChatConversationNav activeConversationId={conversationId} />
         <main
           id="main-content"
           tabIndex={-1}

@@ -1,7 +1,7 @@
 import ProjectsPageClient from "./projects-page-client";
 
 export const metadata = {
-  title: "科学项目空间 — BridGes",
+  title: "学习项目 — BridGes",
 };
 
 export default function ProjectsListPage() {

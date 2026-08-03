@@ -19,7 +19,7 @@ export function MainContent({ children }: MainContentProps) {
       style={{
         flex: 1,
         minWidth: 0,
-        minHeight: "calc(100vh - var(--topbar-height))",
+        minHeight: "calc(100vh - var(--shell-chrome-height, var(--topbar-height)))",
       }}
     >
       {children}

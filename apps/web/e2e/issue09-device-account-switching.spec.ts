@@ -64,6 +64,15 @@ async function setUpAuthenticatedPage(page: Page) {
   await page.route("**/api/projects", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ active: [], archived: [] }) })
   );
+  // Issue 12：全局侧栏会拉取真实对话列表；mock 会话对真实 API 无效（后端会
+  // 清除无效会话 Cookie），注入空列表保证后续导航不被登出。
+  await page.route("**/api/chat/conversations", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ conversations: [] }),
+    })
+  );
   await page.goto("/account/settings");
   await expect(page.getByRole("button", { name: /账户菜单：Alice/ })).toBeVisible();
 }

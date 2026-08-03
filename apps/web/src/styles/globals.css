@@ -412,4 +412,11 @@
       padding-bottom: calc(var(--space-6) + 4rem);
     }
   }
+
+  /* Issue 12：侧栏收起状态在刷新时不闪烁——根布局内联脚本在水合前
+     根据 localStorage["bridges-sidebar-collapsed"] 写入
+     data-sidebar-collapsed，水合后由 React 状态接管渲染。 */
+  [data-sidebar-collapsed="1"] [data-testid="app-sidebar"] {
+    display: none;
+  }
 }

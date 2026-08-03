@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { ChatConversationNav } from "@/components/bridges/chat/ChatConversationNav";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { Composer } from "@/components/bridges/Composer";
 import { AppShell } from "@/components/layout/AppShell";
@@ -41,9 +40,8 @@ export function NewChatHome() {
   };
 
   return (
-    <AppShell mode="account">
+    <AppShell mode="account" showSkipLink={false}>
       <div className={styles.chatShell}>
-        <ChatConversationNav />
         <main
           id="main-content"
           tabIndex={-1}

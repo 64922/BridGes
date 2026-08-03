@@ -228,7 +228,10 @@ test.describe("Issue 11 — 持久化流式聊天", () => {
     // 刷新后对话仍存在（持久化恢复），但用户消息未被重复插入
     await page.reload();
     await expect(page.getByRole("list", { name: "对话消息" })).not.toContainText("你好，介绍一下你自己");
-    await expect(page.getByRole("link", { name: "新对话" })).toBeVisible();
+    // Issue 12：新聊天入口在全局侧栏中
+    await expect(
+      page.getByTestId("app-sidebar").getByRole("link", { name: "新聊天", exact: true })
+    ).toBeVisible();
   });
 
   test("流式回答增量渲染，可停止且保留已接收正文", async ({ page }) => {

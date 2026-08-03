@@ -23,7 +23,7 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
     await expect(page.getByTestId("main-content")).toBeFocused();
   });
 
-  test("仅通过键盘即可从公共入口进入账户主壳并触发路由公告", async ({ page }) => {
+  test("仅通过键盘即可注册并进入账户主壳并触发路由公告", async ({ page }) => {
     const id = Date.now();
     await page.goto("/register");
     await page.getByLabel("用户名").fill(`t002-keyboard-${id}`);
@@ -31,24 +31,30 @@ test.describe("T002 — 项目主壳、电脑端布局与无障碍基线", () =>
     await page.getByLabel("密码").fill("correct-horse-12");
     await page.getByRole("button", { name: "注册" }).press("Enter");
     await page.waitForURL("/");
-    // 注册成功落在新聊天首页，再进入账户主壳。
-    await page.getByRole("link", { name: "全局科学伙伴" }).click();
-    await page.waitForURL("/account");
+    // 注册成功落在新聊天首页；经全局侧栏进入学习项目（客户端导航触发
+    // 路由公告），账户主壳页面保持直链可达。
+    const sidebar = page.getByTestId("app-sidebar");
+    await sidebar.getByRole("link", { name: "学习项目" }).click();
+    await page.waitForURL("/account/projects");
+    await expect(page.getByTestId("route-announcer")).toContainText("/account/projects");
+    await page.goto("/account");
     await expect(page.getByRole("heading", { name: /欢迎回来/ })).toBeVisible();
-    await expect(page.getByTestId("route-announcer")).toContainText("/account");
   });
 
-  test("账户主壳高亮当前页并在主导航中提供项目入口", async ({ page }) => {
+  test("全局侧栏高亮当前页并提供学习项目入口", async ({ page }) => {
     const creds = uniqueCredentials("t002-nav");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
-    // 注册后落在新聊天首页，先进入账户主壳。
-    await page.goto("/account");
-    const companionLink = page.getByRole("link", { name: "全局科学伙伴" });
-    await expect(companionLink).toHaveAttribute("aria-current", "page");
-    await page.getByRole("link", { name: "科学项目空间" }).click();
+    // Issue 12：普通用户导航为固定顺序的全局侧栏。
+    const sidebar = page.getByTestId("app-sidebar");
+    await expect(sidebar).toBeVisible();
+    await sidebar.getByRole("link", { name: "学习项目" }).click();
     await page.waitForURL("/account/projects");
-    await expect(page.getByRole("heading", { name: "科学项目空间" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "学习项目" })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "学习项目" })).toHaveAttribute(
+      "aria-current",
+      "page"
+    );
   });
 
   test("项目主壳显示项目头部、任务舞台、工作台标签和上下文检查器", async ({ page }) => {

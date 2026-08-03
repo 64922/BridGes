@@ -109,7 +109,7 @@ export default function AccountPageClient() {
             欢迎回来，{user?.username || "用户"}
           </h1>
           <p style={{ color: "var(--color-text-secondary)", marginTop: "var(--space-2)", maxWidth: "60ch" }}>
-            今天的下一步：继续整理项目的证据，或创建一个新的科学项目空间。
+            今天的下一步：继续整理项目的证据，或创建一个新的学习项目。
           </p>
           <div
             style={{
@@ -127,7 +127,7 @@ export default function AccountPageClient() {
 
         <section aria-labelledby="project-list-title">
           <h2 id="project-list-title" className="sc-section-title">
-            科学项目空间
+            学习项目
           </h2>
           <ul
             role="list"
@@ -178,7 +178,7 @@ export default function AccountPageClient() {
             }}
           >
             {[
-              { label: "画像与记忆中心", href: "/account/profile" },
+              { label: "用户画像", href: "/account/profile" },
               { label: "评测与运行中心", href: "/account/eval" },
               { label: "设置、设备与同步", href: "/account/settings" },
             ].map((item) => (
