@@ -4,12 +4,15 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
+import { CHAT_TOOL_INTENTS } from "@/lib/chat-tools";
 import { Menu } from "./Menu";
 
 interface ComposerProps {
   onSend: (text: string) => void;
   generating?: boolean;
   onStop?: () => void;
+  /** 外部预填请求（建议卡等）：nonce 变化时把 text 作为结构化意图填入并聚焦 */
+  prefill?: { text: string; nonce: number } | null;
 }
 
 interface SpeechRecognitionResultEventLike {
@@ -33,11 +36,24 @@ interface SpeechRecognitionLike {
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
-/** 「+」菜单中的功能入口：论文搜索 / 文章人味化 / 生涯规划助手 */
-const TOOL_PROMPTS = [
-  { label: "论文搜索", icon: "paperSearch", prefix: "论文搜索：" },
-  { label: "文章人味化", icon: "humanize", prefix: "文章人味化：" },
-  { label: "生涯规划助手", icon: "career", prefix: "生涯规划助手：" },
+/** 「+」菜单中的功能入口：与空白态建议卡共享的结构化意图（lib/chat-tools） */
+const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
+
+/**
+ * 「+」菜单中尚未由后续 Issue 实现的入口：只显示明确不可用原因，
+ * 不产生假项目、假插件或任何伪造结果（Issue 13 验收约束）。
+ */
+const UNAVAILABLE_TOOLS = [
+  {
+    label: "选择学习项目",
+    icon: "learningProject",
+    reason: "学习项目功能将在后续版本开放，现在可以直接在消息中描述你的学习目标。",
+  },
+  {
+    label: "选择已启用插件",
+    icon: "plugins",
+    reason: "插件中心将在后续版本开放，目前没有可选择的已启用插件。",
+  },
 ] as const;
 
 /**
@@ -49,11 +65,12 @@ const TOOL_PROMPTS = [
  * 模板仅保存文件名，不读取文件内容）、论文搜索、文章人味化、生涯规划助手；
  * 听写按钮位于输入区右侧、发送按钮左边。
  */
-export function Composer({ onSend, generating = false, onStop }: ComposerProps) {
+export function Composer({ onSend, generating = false, onStop, prefill = null }: ComposerProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<string[]>([]);
   const [dictating, setDictating] = useState(false);
   const [dictationError, setDictationError] = useState("");
+  const [toolNotice, setToolNotice] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -72,6 +89,7 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
     onSend(text.trim() || "（仅附件）");
     setText("");
     setAttachments([]);
+    setToolNotice("");
     recognitionRef.current?.stop();
     recognitionRef.current = null;
     setDictating(false);
@@ -86,6 +104,7 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
 
   const insertToolPrefix = (prefix: string) => {
     setText((current) => (current.startsWith(prefix) ? current : `${prefix}${current}`));
+    setToolNotice("");
     requestAnimationFrame(() => {
       const el = textareaRef.current;
       if (!el) return;
@@ -94,6 +113,14 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
       autoGrow();
     });
   };
+
+  // 外部预填（建议卡）：与「+」菜单工具入口同一预填路径，走正常消息流
+  const prefillNonce = prefill?.nonce;
+  useEffect(() => {
+    if (prefillNonce === undefined || !prefill) return;
+    insertToolPrefix(prefill.text);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefillNonce]);
 
   const stopDictation = () => {
     recognitionRef.current?.stop();
@@ -248,6 +275,7 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
         value={text}
         onChange={(event) => {
           setText(event.target.value);
+          setToolNotice("");
           autoGrow();
         }}
         onKeyDown={(event) => {
@@ -306,6 +334,11 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
               onSelect: () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
+            ...UNAVAILABLE_TOOLS.map((tool) => ({
+              label: tool.label,
+              icon: tool.icon,
+              onSelect: () => setToolNotice(tool.reason),
+            })),
           ]}
         />
 
@@ -353,6 +386,19 @@ export function Composer({ onSend, generating = false, onStop }: ComposerProps) 
           </Button>
         )}
       </div>
+      {toolNotice && (
+        <p
+          role="status"
+          data-testid="tool-unavailable-notice"
+          style={{
+            margin: 0,
+            fontSize: "var(--text-sm)",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          {toolNotice}
+        </p>
+      )}
     </div>
   );
 }

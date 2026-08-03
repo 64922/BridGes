@@ -1,7 +1,6 @@
-/* 聊天布局（Issue 11/12）：单一居中消息列 + 底部输入区；最近对话已并入
-   全局侧栏 AppSidebar（Issue 12），聊天页不再有第二列。
-   布局参照桌面聊天应用惯例：居中消息列（max 46rem）、圆角输入框；
-   配色全部走设计令牌，深色/浅色均由令牌驱动。 */
+/* 聊天布局（Issue 11/12/13）：单一居中消息列 + 底部输入区；最近对话已并入
+   全局侧栏 AppSidebar（Issue 12），聊天页不再有第二列；新聊天空白态为
+   居中限宽列：问候 + 轮换学习名言 + 输入区 + 建议卡（Issue 13）。 */
 
 .chatShell {
   display: flex;
@@ -35,16 +34,30 @@
   gap: var(--space-6);
 }
 
-/* ---- 空状态问候区（新对话） ---- */
+/* ---- 空白态（新对话，Issue 13） ---- */
 
-.greeting {
+.blankState {
   flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--space-4);
-  padding: var(--space-12) var(--space-6);
+  padding: var(--space-8) var(--space-6);
+}
+
+.blankStateInner {
+  width: 100%;
+  max-width: 46rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.greetingCompact {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
   text-align: center;
 }
 
@@ -55,10 +68,11 @@
   color: var(--color-text-primary);
 }
 
-.greetingHint {
-  max-width: 42ch;
+.blankStateNote {
+  margin: 0;
+  text-align: center;
+  font-size: var(--text-xs);
   color: var(--color-text-tertiary);
-  font-size: var(--text-sm);
 }
 
 /* ---- 输入区 ---- */

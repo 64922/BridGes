@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Composer } from "@/components/bridges/Composer";
 import { MessageList, type ChatMessage } from "@/components/bridges/MessageList";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
+import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { TemplateShell, DEMO_RECENTS } from "@/components/bridges/TemplateShell";
 import { useTemplateState } from "@/components/bridges/use-template-state";
@@ -271,55 +272,8 @@ const DEMO_MESSAGES: ChatMessage[] = [
 
 /* ---------- 空白新对话：轮播名言 + 居中输入区 + 功能推荐 ---------- */
 
-/** 5 条关于学习的简短名人名言（聊天框顶部可变文字，每 8 秒轮换一条） */
-const LEARNING_QUOTES: { text: string; source: string }[] = [
-  { text: "学而不思则罔，思而不学则殆。", source: "孔子" },
-  { text: "知之者不如好之者，好之者不如乐之者。", source: "孔子" },
-  { text: "读书破万卷，下笔如有神。", source: "杜甫" },
-  { text: "吾生也有涯，而知也无涯。", source: "庄子" },
-  { text: "少壮不努力，老大徒伤悲。", source: "汉乐府《长歌行》" },
-];
-
-const QUOTE_ROTATE_MS = 8000;
-
-function RotatingQuote() {
-  const [index, setIndex] = useState(0);
-  useEffect(() => {
-    const timer = window.setInterval(
-      () => setIndex((current) => (current + 1) % LEARNING_QUOTES.length),
-      QUOTE_ROTATE_MS,
-    );
-    return () => window.clearInterval(timer);
-  }, []);
-  const quote = LEARNING_QUOTES[index];
-  return (
-    <p
-      data-testid="empty-quote"
-      data-quote-index={index}
-      style={{
-        fontSize: "var(--text-2xl)",
-        textAlign: "center",
-        fontFamily: "var(--font-serif)",
-        fontWeight: 600,
-        color: "var(--color-text-primary)",
-      }}
-    >
-      {quote.text}
-      <span
-        style={{
-          display: "block",
-          marginTop: "var(--space-2)",
-          fontSize: "var(--text-sm)",
-          fontFamily: "var(--font-sans)",
-          fontWeight: 400,
-          color: "var(--color-text-tertiary)",
-        }}
-      >
-        —— {quote.source}
-      </span>
-    </p>
-  );
-}
+/* 名言数据与轮换组件共享自 Issue 13 的真实空白态实现
+   （components/bridges/RotatingQuote，含减少动态效果支持）。 */
 
 /** 对话框下方的功能推荐（内容对应 1.txt：论文搜索 / 文章人味化 / 生涯规划助手） */
 const SUGGESTIONS: { icon: IconName; label: string; prompt: string }[] = [

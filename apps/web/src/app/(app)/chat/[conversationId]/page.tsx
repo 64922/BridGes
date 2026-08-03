@@ -157,6 +157,10 @@ export default function ChatConversationPage() {
       // 停止失败不阻塞中断；重新加载后以服务端状态为准
     }
     abortRef.current?.abort();
+    // 中断后清除进行中状态：否则输入区会一直停留在「停止」无法恢复发送
+    activeRunRef.current = null;
+    setActiveRun(null);
+    setPendingUser(null);
     setAnnouncement("已停止生成");
     await load();
   }, [conversationId, load]);
