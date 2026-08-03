@@ -87,6 +87,16 @@ class ChatAttachmentProjection(BaseModel):
     conversation_id: str = Field(description="所属对话标识。")
     message_id: str | None = Field(default=None, description="绑定的用户消息标识。")
     status: str = Field(description="uploaded 或 bound。")
+    ingestion_status: str = Field(
+        default="none",
+        description=(
+            "文档摄取状态：queued/processing/ready/empty/error/recovery/none"
+            "（none 表示该类型不支持索引或尚无摄取记录）。"
+        ),
+    )
+    ingestion_error: str | None = Field(
+        default=None, description="摄取失败的中文原因（无失败时为 None）。"
+    )
     created_at: datetime = Field(description="上传时间。")
     updated_at: datetime = Field(description="最近更新时间。")
 

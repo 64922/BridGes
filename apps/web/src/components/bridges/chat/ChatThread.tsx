@@ -16,6 +16,9 @@ interface ChatThreadProps {
   onRetry?: (messageId: string) => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
+  /** 附件摄取重试（Issue 17）：调用重试 API 并刷新对话 */
+  onRetryIngestion?: (objectId: string) => Promise<void>;
+  conversationId?: string;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -31,6 +34,8 @@ export function ChatThread({
   onRetry,
   onDownloadAttachment,
   onDeleteAttachment,
+  onRetryIngestion,
+  conversationId,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -57,6 +62,8 @@ export function ChatThread({
           onRetry={onRetry}
           onDownloadAttachment={onDownloadAttachment}
           onDeleteAttachment={onDeleteAttachment}
+          onRetryIngestion={onRetryIngestion}
+          conversationId={conversationId}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

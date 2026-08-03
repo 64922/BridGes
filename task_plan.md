@@ -2,6 +2,43 @@
 
 状态：进行中（2026-08-04）
 
+## Issue 17 实施计划（文档摄取与版本化全文/向量索引）
+
+状态：已完成（2026-08-04）。全量验证：1254 pytest（+47，含 3 条审查回归）、117 E2E（+4）、mypy 160 文件 0 错误、改动区域 ruff 干净、npm typecheck/build 通过。双轴 code-review 修复 8 处缺陷后提交。
+
+### 目标
+把安全对象转换为可追溯、可恢复的本地检索材料：PDF/DOCX/TXT/MD/图片 → 解析（页码/章节/标题）→ 哈希分块 → SQLite FTS5(trigram) 全文 + text-embedding-v4 1024 维向量双索引；索引带不可混写版本合同，合同变化全量重建、校验后原子切换，旧版可回滚；后台执行器重启恢复未完成任务。
+
+### 新增模块
+1. `src/bridges/contracts/ingestion.py` — DocumentIngestionProjection / IndexStatusProjection / IndexContractProjection 契约
+2. `src/bridges/ingestion/parsers.py` — PDF(fitz)/DOCX(zip+xml)/TXT/MD/图片解析器，产出归一文本 + (起始/结束/页码/章节) 跨度
+3. `src/bridges/ingestion/chunker.py` — 结构锚点哈希分块（字符偏移可追溯）
+4. `src/bridges/ingestion/embedding.py` — EmbeddingPort + 真实 Qwen 实现（L2 归一 + 维度校验）+ 确定性假实现；能力探测门
+5. `src/bridges/ingestion/index.py` — 版本化索引：合同（model/dims/规范化/chunker/schema）、混合写拒绝、全量重建、覆盖率+维度校验、原子切换、回滚
+6. `src/bridges/ingestion/service.py` — 摄取状态机（入队/领取/处理/重试/投影/清理）+ 账户内解析缓存复用
+7. `src/bridges/api/ingestion.py` — 附件摄取详情 / 重试 / 索引状态路由
+
+### 修改
+8. `storage/database.py` — SCHEMA_VERSION 7：document_records、document_parse_cache、document_chunks、index_versions、index_active、index_vectors、fts_chunks（trigram）+ 存量附件回填入队
+9. `contracts/chat.py` — ChatAttachmentProjection 增加 ingestion_status / ingestion_error
+10. `chat/attachments.py` — 投影 LEFT JOIN 摄取状态
+11. `api/chat.py` — 上传成功后人队
+12. `api/main.py` — 挂载 ingestion service
+13. `runtime/executor.py` + `cli/main.py` — worker 摄取轮（清理 → 摄取 → 索引维护）
+
+### 前端
+14. api.ts + MessageList 附件卡片状态芯片（loading/queued/processing/ready/empty/error/permission/recovery）+ 详情展开 + 重试；先调 ui-ux-pro-max
+15. openapi.json + generated.ts 再生成；npm typecheck/build
+
+### 测试
+16. `tests/ingestion/` — 解析/页码章节/哈希分块/幂等重试/账户隔离/解析缓存
+17. 索引合同测试 — 维度错误、版本漂移、重建失败、原子切换、旧版回滚
+18. 编排测试 — 确定性 Embedding 假服务；显式真实冒烟（scripts/smoke）
+19. E2E issue17 — 处理进度/失败原因/重试/重启恢复
+
+### 收尾
+20. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review 修复；更新 Issue 17 验收状态；提交
+
 ## 目标
 
 按 `/improve-codebase-architecture` 审查报告（architecture-review-20260804-022658.html）

@@ -427,6 +427,9 @@ export interface paths {
         /**
          * Upload Attachment
          * @description 接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
+         *
+         *     上传成功即把对象入队摄取（Issue 17）：解析、分块与索引由后台
+         *     执行器完成；不支持解析的类型不创建摄取记录，附件投影显示"未索引"。
          */
         post: operations["upload_attachment_chat_conversations__conversation_id__attachments_post"];
         delete?: never;
@@ -574,6 +577,69 @@ export interface paths {
          *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。
          */
         post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/attachments/{object_id}/ingestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Attachment Ingestion
+         * @description 返回附件摄取的完整详情（状态、失败阶段、页码/章节、向量可用性）。
+         *
+         *     无摄取记录时返回 ``none`` 状态投影（该类型不支持索引或本 Issue
+         *     之前上传的对象），不以空响应掩盖失败。
+         */
+        get: operations["get_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/attachments/{object_id}/ingestion/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Attachment Ingestion
+         * @description 把失败文档重新入队；非失败状态幂等返回当前投影。
+         */
+        post: operations["retry_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/ingestion/index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Index Status
+         * @description 返回当前账户的索引状态（向量可用性、活跃版本与可回滚版本链）。
+         */
+        get: operations["get_index_status_chat_ingestion_index_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5355,6 +5421,17 @@ export interface components {
              */
             status: string;
             /**
+             * Ingestion Status
+             * @description 文档摄取状态：queued/processing/ready/empty/error/recovery/none（none 表示该类型不支持索引或尚无摄取记录）。
+             * @default none
+             */
+            ingestion_status: string;
+            /**
+             * Ingestion Error
+             * @description 摄取失败的中文原因（无失败时为 None）。
+             */
+            ingestion_error?: string | null;
+            /**
              * Created At
              * Format: date-time
              * @description 上传时间。
@@ -7704,6 +7781,127 @@ export interface components {
          */
         DiagnosticRunStatus: "draft" | "running" | "completed" | "cancelled";
         /**
+         * DocumentIngestionProjection
+         * @description 单个文档的摄取详情投影（不包含对象库路径或原文）。
+         */
+        DocumentIngestionProjection: {
+            /**
+             * Document Id
+             * @description 稳定文档摄取标识。
+             */
+            document_id: string;
+            /**
+             * Object Id
+             * @description 来源对象标识。
+             */
+            object_id: string;
+            /**
+             * Conversation Id
+             * @description 所属对话标识。
+             */
+            conversation_id: string;
+            /** @description 摄取状态。 */
+            status: components["schemas"]["DocumentIngestionStatus"];
+            /**
+             * Parser Version
+             * @description 实际使用的解析器版本。
+             */
+            parser_version: string;
+            /**
+             * Content Hash
+             * @description 对象内容 SHA-256 摘要。
+             */
+            content_hash: string;
+            /**
+             * Title
+             * @description 提取的文档标题。
+             */
+            title?: string | null;
+            /**
+             * Page Count
+             * @description 页码数。
+             * @default 0
+             */
+            page_count: number;
+            /**
+             * Section Count
+             * @description 章节数。
+             * @default 0
+             */
+            section_count: number;
+            /**
+             * Chunk Count
+             * @description 分块数。
+             * @default 0
+             */
+            chunk_count: number;
+            /**
+             * Vector Enabled
+             * @description 处理时向量能力是否可用（按探测结果）。
+             * @default false
+             */
+            vector_enabled: boolean;
+            /**
+             * Vector Indexed
+             * @description 分块向量是否已写入当前索引版本。
+             * @default false
+             */
+            vector_indexed: boolean;
+            /**
+             * Failure Stage
+             * @description 失败阶段：parse/embed/index。
+             */
+            failure_stage?: string | null;
+            /**
+             * Failure Reason
+             * @description 失败的中文原因。
+             */
+            failure_reason?: string | null;
+            /**
+             * Retry Count
+             * @description 已处理尝试次数。
+             * @default 0
+             */
+            retry_count: number;
+            /**
+             * Index Rebuilding
+             * @description 当前账户索引版本正在重建（旧版继续服务）。
+             * @default false
+             */
+            index_rebuilding: boolean;
+            /**
+             * Vector Unavailable Reason
+             * @description 向量索引不可用时的中文原因。
+             */
+            vector_unavailable_reason?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 入队时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * DocumentIngestionStatus
+         * @description 文档摄取状态（持久化状态机的对外呈现）。
+         *
+         *     - ``queued``：已入队，等待后台执行器处理；
+         *     - ``processing``：解析、分块、向量化或索引进行中；
+         *     - ``ready``：完成，可被全文/向量索引检索；
+         *     - ``empty``：解析完成但没有可索引的文本内容；
+         *     - ``error``：失败（携带失败阶段与中文原因），可从失败阶段重试；
+         *     - ``recovery``：上次处理中断（领取租约已过期），后台恢复中；
+         *     - ``none``：尚无摄取记录（本 Issue 之前上传且未回填的对象）。
+         * @enum {string}
+         */
+        DocumentIngestionStatus: "queued" | "processing" | "ready" | "empty" | "error" | "recovery" | "none";
+        /**
          * DocumentVersion
          * @description Immutable content snapshot of a source.
          *
@@ -9529,6 +9727,135 @@ export interface components {
              */
             next_step: string;
         };
+        /**
+         * IndexContractProjection
+         * @description 不可混写的索引版本合同（ADR-0008/0020）。
+         *
+         *     任一字段变化都会构造新合同哈希；新哈希与活跃版本不一致时触发
+         *     全量重建与原子切换，绝不向当前版本混合写入。
+         */
+        IndexContractProjection: {
+            /**
+             * Model Id
+             * @description 固定 Embedding 模型快照。
+             */
+            model_id: string;
+            /**
+             * Dimensions
+             * @description 向量维度。
+             */
+            dimensions: number;
+            /**
+             * Normalization
+             * @description 向量规范化合同（如 l2）。
+             */
+            normalization: string;
+            /**
+             * Chunker
+             * @description 分块器版本标识。
+             */
+            chunker: string;
+            /**
+             * Schema Version
+             * @description 索引 Schema 版本标识。
+             */
+            schema_version: string;
+            /**
+             * Contract Hash
+             * @description 合同规范化的 SHA-256 摘要。
+             */
+            contract_hash: string;
+        };
+        /**
+         * IndexStatusProjection
+         * @description 当前账户的索引整体状态（用于展示向量可用性与版本链）。
+         */
+        IndexStatusProjection: {
+            /**
+             * Embedding Probed
+             * @description 是否完成 Embedding 能力探测。
+             */
+            embedding_probed: boolean;
+            /**
+             * Embedding Available
+             * @description Embedding 能力当前是否可用。
+             */
+            embedding_available: boolean;
+            /**
+             * Vector Unavailable Reason
+             * @description 向量索引不可用时的中文原因。
+             */
+            vector_unavailable_reason?: string | null;
+            /** @description 当前服务检索的版本；尚无文档时为 None。 */
+            active_version?: components["schemas"]["IndexVersionProjection"] | null;
+            /**
+             * Versions
+             * @description 全部版本（含可回滚的旧版本）。
+             */
+            versions?: components["schemas"]["IndexVersionProjection"][];
+        };
+        /**
+         * IndexVersionProjection
+         * @description 单个索引版本的对外投影。
+         */
+        IndexVersionProjection: {
+            /**
+             * Version Id
+             * @description 稳定版本标识。
+             */
+            version_id: string;
+            /** @description 本版本锁定的合同。 */
+            contract: components["schemas"]["IndexContractProjection"];
+            /** @description 版本生命周期状态。 */
+            status: components["schemas"]["IndexVersionStatus"];
+            /**
+             * Expected Chunk Count
+             * @description 重建开始时预期的分块数。
+             */
+            expected_chunk_count: number;
+            /**
+             * Chunk Count
+             * @description 已写入全文索引的分块数。
+             */
+            chunk_count: number;
+            /**
+             * Vector Count
+             * @description 已写入向量索引的分块数。
+             */
+            vector_count: number;
+            /**
+             * Error Message
+             * @description 重建失败的中文原因。
+             */
+            error_message?: string | null;
+            /**
+             * Built At
+             * @description 构建完成时间。
+             */
+            built_at?: string | null;
+            /**
+             * Switched At
+             * @description 原子切换时间。
+             */
+            switched_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 版本创建时间。
+             */
+            created_at: string;
+        };
+        /**
+         * IndexVersionStatus
+         * @description 索引版本生命周期状态。
+         *
+         *     - ``building``：正在全量重建（合同变化触发），尚未服务检索；
+         *     - ``active``：当前唯一可服务检索的版本；
+         *     - ``obsolete``：被新版本替代，但在明确清理前仍可回滚；
+         *     - ``failed``：重建失败，上一可用版本继续服务。
+         * @enum {string}
+         */
+        IndexVersionStatus: "building" | "active" | "obsolete" | "failed";
         /**
          * IngestionRunRef
          * @description Reference to an asynchronous ingestion run.
@@ -19343,6 +19670,193 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentIngestionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    retry_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentIngestionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_index_status_chat_ingestion_index_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexStatusProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };

@@ -20,6 +20,7 @@ import {
   downloadChatAttachment,
   getChatConversation,
   isChatStreamEventOf,
+  retryAttachmentIngestion,
   retryChatMessage,
   stopChatMessage,
   streamChatMessage,
@@ -276,6 +277,23 @@ export default function ChatConversationPage() {
     [conversationId, load]
   );
 
+  /** 失败文档重新解析（Issue 17）：调用重试 API 并以服务端投影刷新对话。 */
+  const retryIngestion = useCallback(
+    async (objectId: string) => {
+      try {
+        await retryAttachmentIngestion(conversationId, objectId);
+        setAnnouncement("已重新加入解析队列");
+        await load(true);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "重新解析失败，请重试。";
+        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setAnnouncement(`重新解析失败：${message}`);
+        throw error;
+      }
+    },
+    [conversationId, load]
+  );
+
   const stop = useCallback(async () => {
     const run = activeRunRef.current;
     if (!run) return;
@@ -407,6 +425,8 @@ export default function ChatConversationPage() {
                 onDeleteAttachment={(messageId, attachment) =>
                   void deleteAttachment(messageId, attachment)
                 }
+                onRetryIngestion={retryIngestion}
+                conversationId={conversationId}
                 announcement={announcement}
               />
               {sendError && (

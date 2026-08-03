@@ -1789,7 +1789,7 @@
           "chat"
         ],
         "summary": "Upload Attachment",
-        "description": "接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。",
+        "description": "接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。\n\n上传成功即把对象入队摄取（Issue 17）：解析、分块与索引由后台\n执行器完成；不支持解析的类型不创建摄取记录，附件投影显示\"未索引\"。",
         "operationId": "upload_attachment_chat_conversations__conversation_id__attachments_post",
         "parameters": [
           {
@@ -2595,6 +2595,288 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/attachments/{object_id}/ingestion": {
+      "get": {
+        "tags": [
+          "ingestion"
+        ],
+        "summary": "Get Attachment Ingestion",
+        "description": "返回附件摄取的完整详情（状态、失败阶段、页码/章节、向量可用性）。\n\n无摄取记录时返回 ``none`` 状态投影（该类型不支持索引或本 Issue\n之前上传的对象），不以空响应掩盖失败。",
+        "operationId": "get_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentIngestionProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Get Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Get Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Get Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/attachments/{object_id}/ingestion/retry": {
+      "post": {
+        "tags": [
+          "ingestion"
+        ],
+        "summary": "Retry Attachment Ingestion",
+        "description": "把失败文档重新入队；非失败状态幂等返回当前投影。",
+        "operationId": "retry_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_retry_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentIngestionProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Retry Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Retry Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Retry Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Retry Post"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Retry Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Retry Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/ingestion/index": {
+      "get": {
+        "tags": [
+          "ingestion"
+        ],
+        "summary": "Get Index Status",
+        "description": "返回当前账户的索引状态（向量可用性、活跃版本与可回滚版本链）。",
+        "operationId": "get_index_status_chat_ingestion_index_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexStatusProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Get Index Status Chat Ingestion Index Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Get Index Status Chat Ingestion Index Get"
                 }
               }
             },
@@ -21093,6 +21375,24 @@
             "title": "Status",
             "description": "uploaded 或 bound。"
           },
+          "ingestion_status": {
+            "type": "string",
+            "title": "Ingestion Status",
+            "description": "文档摄取状态：queued/processing/ready/empty/error/recovery/none（none 表示该类型不支持索引或尚无摄取记录）。",
+            "default": "none"
+          },
+          "ingestion_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ingestion Error",
+            "description": "摄取失败的中文原因（无失败时为 None）。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -24952,6 +25252,168 @@
         "title": "DiagnosticRunStatus",
         "description": "Lifecycle status of a diagnostic run."
       },
+      "DocumentIngestionProjection": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "稳定文档摄取标识。"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "来源对象标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "所属对话标识。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentIngestionStatus",
+            "description": "摄取状态。"
+          },
+          "parser_version": {
+            "type": "string",
+            "title": "Parser Version",
+            "description": "实际使用的解析器版本。"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "对象内容 SHA-256 摘要。"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title",
+            "description": "提取的文档标题。"
+          },
+          "page_count": {
+            "type": "integer",
+            "title": "Page Count",
+            "description": "页码数。",
+            "default": 0
+          },
+          "section_count": {
+            "type": "integer",
+            "title": "Section Count",
+            "description": "章节数。",
+            "default": 0
+          },
+          "chunk_count": {
+            "type": "integer",
+            "title": "Chunk Count",
+            "description": "分块数。",
+            "default": 0
+          },
+          "vector_enabled": {
+            "type": "boolean",
+            "title": "Vector Enabled",
+            "description": "处理时向量能力是否可用（按探测结果）。",
+            "default": false
+          },
+          "vector_indexed": {
+            "type": "boolean",
+            "title": "Vector Indexed",
+            "description": "分块向量是否已写入当前索引版本。",
+            "default": false
+          },
+          "failure_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Stage",
+            "description": "失败阶段：parse/embed/index。"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason",
+            "description": "失败的中文原因。"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "description": "已处理尝试次数。",
+            "default": 0
+          },
+          "index_rebuilding": {
+            "type": "boolean",
+            "title": "Index Rebuilding",
+            "description": "当前账户索引版本正在重建（旧版继续服务）。",
+            "default": false
+          },
+          "vector_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Unavailable Reason",
+            "description": "向量索引不可用时的中文原因。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "入队时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "object_id",
+          "conversation_id",
+          "status",
+          "parser_version",
+          "content_hash",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "DocumentIngestionProjection",
+        "description": "单个文档的摄取详情投影（不包含对象库路径或原文）。"
+      },
+      "DocumentIngestionStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "processing",
+          "ready",
+          "empty",
+          "error",
+          "recovery",
+          "none"
+        ],
+        "title": "DocumentIngestionStatus",
+        "description": "文档摄取状态（持久化状态机的对外呈现）。\n\n- ``queued``：已入队，等待后台执行器处理；\n- ``processing``：解析、分块、向量化或索引进行中；\n- ``ready``：完成，可被全文/向量索引检索；\n- ``empty``：解析完成但没有可索引的文本内容；\n- ``error``：失败（携带失败阶段与中文原因），可从失败阶段重试；\n- ``recovery``：上次处理中断（领取租约已过期），后台恢复中；\n- ``none``：尚无摄取记录（本 Issue 之前上传且未回填的对象）。"
+      },
       "DocumentVersion": {
         "properties": {
           "document_id": {
@@ -27930,6 +28392,202 @@
         ],
         "title": "ImmediateFeedback",
         "description": "Specific feedback for a single exercise attempt, bound to evidence."
+      },
+      "IndexContractProjection": {
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "title": "Model Id",
+            "description": "固定 Embedding 模型快照。"
+          },
+          "dimensions": {
+            "type": "integer",
+            "title": "Dimensions",
+            "description": "向量维度。"
+          },
+          "normalization": {
+            "type": "string",
+            "title": "Normalization",
+            "description": "向量规范化合同（如 l2）。"
+          },
+          "chunker": {
+            "type": "string",
+            "title": "Chunker",
+            "description": "分块器版本标识。"
+          },
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "description": "索引 Schema 版本标识。"
+          },
+          "contract_hash": {
+            "type": "string",
+            "title": "Contract Hash",
+            "description": "合同规范化的 SHA-256 摘要。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_id",
+          "dimensions",
+          "normalization",
+          "chunker",
+          "schema_version",
+          "contract_hash"
+        ],
+        "title": "IndexContractProjection",
+        "description": "不可混写的索引版本合同（ADR-0008/0020）。\n\n任一字段变化都会构造新合同哈希；新哈希与活跃版本不一致时触发\n全量重建与原子切换，绝不向当前版本混合写入。"
+      },
+      "IndexStatusProjection": {
+        "properties": {
+          "embedding_probed": {
+            "type": "boolean",
+            "title": "Embedding Probed",
+            "description": "是否完成 Embedding 能力探测。"
+          },
+          "embedding_available": {
+            "type": "boolean",
+            "title": "Embedding Available",
+            "description": "Embedding 能力当前是否可用。"
+          },
+          "vector_unavailable_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vector Unavailable Reason",
+            "description": "向量索引不可用时的中文原因。"
+          },
+          "active_version": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndexVersionProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前服务检索的版本；尚无文档时为 None。"
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/IndexVersionProjection"
+            },
+            "type": "array",
+            "title": "Versions",
+            "description": "全部版本（含可回滚的旧版本）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "embedding_probed",
+          "embedding_available"
+        ],
+        "title": "IndexStatusProjection",
+        "description": "当前账户的索引整体状态（用于展示向量可用性与版本链）。"
+      },
+      "IndexVersionProjection": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "title": "Version Id",
+            "description": "稳定版本标识。"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/IndexContractProjection",
+            "description": "本版本锁定的合同。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/IndexVersionStatus",
+            "description": "版本生命周期状态。"
+          },
+          "expected_chunk_count": {
+            "type": "integer",
+            "title": "Expected Chunk Count",
+            "description": "重建开始时预期的分块数。"
+          },
+          "chunk_count": {
+            "type": "integer",
+            "title": "Chunk Count",
+            "description": "已写入全文索引的分块数。"
+          },
+          "vector_count": {
+            "type": "integer",
+            "title": "Vector Count",
+            "description": "已写入向量索引的分块数。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "重建失败的中文原因。"
+          },
+          "built_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Built At",
+            "description": "构建完成时间。"
+          },
+          "switched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Switched At",
+            "description": "原子切换时间。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "版本创建时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version_id",
+          "contract",
+          "status",
+          "expected_chunk_count",
+          "chunk_count",
+          "vector_count",
+          "created_at"
+        ],
+        "title": "IndexVersionProjection",
+        "description": "单个索引版本的对外投影。"
+      },
+      "IndexVersionStatus": {
+        "type": "string",
+        "enum": [
+          "building",
+          "active",
+          "obsolete",
+          "failed"
+        ],
+        "title": "IndexVersionStatus",
+        "description": "索引版本生命周期状态。\n\n- ``building``：正在全量重建（合同变化触发），尚未服务检索；\n- ``active``：当前唯一可服务检索的版本；\n- ``obsolete``：被新版本替代，但在明确清理前仍可回滚；\n- ``failed``：重建失败，上一可用版本继续服务。"
       },
       "IngestionRunRef": {
         "properties": {

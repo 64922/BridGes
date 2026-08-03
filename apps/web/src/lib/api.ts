@@ -28,6 +28,11 @@ export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
 export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
+export type DocumentIngestionProjection = components["schemas"]["DocumentIngestionProjection"];
+export type IngestionStatus = components["schemas"]["IngestionStatus"];
+export type IndexStatusProjection = components["schemas"]["IndexStatusProjection"];
+export type IndexVersionProjection = components["schemas"]["IndexVersionProjection"];
+export type IndexContractProjection = components["schemas"]["IndexContractProjection"];
 export type ChatStreamDoneData = components["schemas"]["ChatStreamDoneData"];
 export type ChatMode = components["schemas"]["ChatMode"];
 export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
@@ -1062,6 +1067,41 @@ export async function downloadChatAttachment(
   anchor.download = originalFilename;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+/** 读取附件摄取的完整详情（状态、失败阶段、页码/章节、向量可用性）。 */
+export async function getAttachmentIngestion(
+  conversationId: string,
+  objectId: string
+): Promise<DocumentIngestionProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/ingestion`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 把失败文档重新入队；非失败状态幂等返回当前投影。 */
+export async function retryAttachmentIngestion(
+  conversationId: string,
+  objectId: string
+): Promise<DocumentIngestionProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/ingestion/retry`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 返回当前账户的索引状态（向量可用性、活跃版本与可回滚版本链）。 */
+export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> {
+  const res = await fetch(`${API_BASE}/chat/ingestion/index`, {
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 /**

@@ -9,6 +9,7 @@ import type {
   ChatMode,
   ChatModeEventProjection,
 } from "@/lib/api";
+import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
 
 /** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
@@ -58,6 +59,10 @@ interface MessageListProps {
   onRetry?: (id: string) => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
+  /** 附件摄取重试（Issue 17）：页面处理器调用重试 API 并刷新对话 */
+  onRetryIngestion?: (objectId: string) => Promise<void>;
+  /** 附件所属对话（摄取详情接口的上下文） */
+  conversationId?: string;
 }
 
 const actionButtonStyle: React.CSSProperties = {
@@ -112,11 +117,15 @@ function MessageAttachments({
   attachments,
   onDownload,
   onDelete,
+  onRetryIngestion,
+  conversationId,
 }: {
   messageId: string;
   attachments: ChatAttachmentProjection[];
   onDownload?: (attachment: ChatAttachmentProjection) => void;
   onDelete?: (messageId: string, attachment: ChatAttachmentProjection) => void;
+  onRetryIngestion?: (objectId: string) => Promise<void>;
+  conversationId?: string;
 }) {
   if (attachments.length === 0) return null;
   return (
@@ -166,6 +175,13 @@ function MessageAttachments({
               {attachment.media_type} · {formatAttachmentSize(attachment.content_length)} ·
               {attachment.status === "bound" ? " 已关联消息" : " 待发送"}
             </span>
+            {conversationId && (
+              <AttachmentIngestionInfo
+                conversationId={conversationId}
+                attachment={attachment}
+                onRetryIngestion={onRetryIngestion}
+              />
+            )}
           </span>
           {onDownload && (
             <button
@@ -471,6 +487,8 @@ export function MessageList({
   onRetry,
   onDownloadAttachment,
   onDeleteAttachment,
+  onRetryIngestion,
+  conversationId,
 }: MessageListProps) {
   return (
     <ol
@@ -522,6 +540,8 @@ export function MessageList({
                   attachments={message.attachments ?? []}
                   onDownload={onDownloadAttachment}
                   onDelete={onDeleteAttachment}
+                  onRetryIngestion={onRetryIngestion}
+                  conversationId={conversationId}
                 />
               </div>
             </div>

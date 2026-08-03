@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 7
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -194,6 +194,154 @@ MIGRATIONS: dict[int, list[str]] = {
         )
         """,
     ],
+    # Issue 17：文档摄取与版本化全文/向量索引。document_records 是持久化摄取
+    # 状态机（含失败阶段与中文原因）；document_parse_cache 做账户内同内容
+    # 解析复用；document_chunks 记录可追溯到原文范围的哈希分块；index_versions
+    # / index_active / index_vectors / fts_chunks 组成不可混写的版本化索引
+    # （合同变化全量重建、校验后原子切换，旧版可回滚）。存量已上传附件在
+    # 迁移时按当前解析器版本回填为 queued，由后台执行器接管。
+    7: [
+        """
+        CREATE TABLE document_records (
+            document_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            parser_version TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'parsing', 'processing', 'ready', 'empty', 'error')),
+            failure_stage TEXT,
+            failure_reason TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            title TEXT,
+            page_count INTEGER NOT NULL DEFAULT 0,
+            section_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            vector_enabled INTEGER NOT NULL DEFAULT 0,
+            vector_indexed INTEGER NOT NULL DEFAULT 0,
+            claimed_at TEXT,
+            lease_expires_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE UNIQUE INDEX idx_document_records_object
+        ON document_records(account_id, object_id)
+        """,
+        """
+        CREATE INDEX idx_document_records_account_status
+        ON document_records(account_id, status)
+        """,
+        """
+        CREATE TABLE document_parse_cache (
+            account_id TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            parser_version TEXT NOT NULL,
+            parsed_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, content_hash)
+        )
+        """,
+        """
+        CREATE TABLE document_chunks (
+            chunk_id TEXT PRIMARY KEY,
+            document_id TEXT NOT NULL REFERENCES document_records(document_id),
+            account_id TEXT NOT NULL,
+            chunk_index INTEGER NOT NULL,
+            content TEXT NOT NULL,
+            section_title TEXT,
+            page_number INTEGER,
+            start_offset INTEGER NOT NULL,
+            end_offset INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            vector_status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (vector_status IN ('pending', 'indexed', 'unavailable')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (document_id, chunk_index)
+        )
+        """,
+        """
+        CREATE INDEX idx_document_chunks_document
+        ON document_chunks(account_id, document_id)
+        """,
+        """
+        CREATE TABLE index_versions (
+            version_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            contract_json TEXT NOT NULL,
+            contract_hash TEXT NOT NULL,
+            status TEXT NOT NULL
+                CHECK (status IN ('building', 'active', 'obsolete', 'failed')),
+            expected_chunk_count INTEGER NOT NULL DEFAULT 0,
+            chunk_count INTEGER NOT NULL DEFAULT 0,
+            vector_count INTEGER NOT NULL DEFAULT 0,
+            error_message TEXT,
+            built_at TEXT,
+            switched_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_index_versions_account
+        ON index_versions(account_id, status)
+        """,
+        """
+        CREATE TABLE index_active (
+            account_id TEXT PRIMARY KEY,
+            version_id TEXT NOT NULL REFERENCES index_versions(version_id)
+        )
+        """,
+        """
+        CREATE TABLE index_vectors (
+            vector_id TEXT PRIMARY KEY,
+            version_id TEXT NOT NULL REFERENCES index_versions(version_id),
+            account_id TEXT NOT NULL,
+            chunk_id TEXT NOT NULL REFERENCES document_chunks(chunk_id),
+            vector_json TEXT NOT NULL,
+            dimension_count INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_index_vectors_version
+        ON index_vectors(version_id)
+        """,
+        """
+        CREATE VIRTUAL TABLE fts_chunks USING fts5(
+            version_id UNINDEXED,
+            account_id UNINDEXED,
+            chunk_id UNINDEXED,
+            content,
+            tokenize = 'trigram'
+        )
+        """,
+        # 存量附件回填：只入队摄取支持的媒体类型（与 enqueue 行为一致），
+        # 由后台执行器摄取（幂等，重复执行会被 object_id 唯一索引拒绝）。
+        """
+        INSERT INTO document_records
+            (document_id, account_id, object_id, conversation_id, content_hash,
+             parser_version, status, created_at, updated_at)
+        SELECT 'doc-' || a.object_id, a.account_id, a.object_id, a.conversation_id,
+               o.content_hash, 'unknown-v0', 'queued',
+               a.created_at, a.created_at
+        FROM chat_attachments a
+        JOIN objects o ON o.object_id = a.object_id
+        WHERE o.status = 'active'
+          AND o.media_type IN (
+              'application/pdf',
+              'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+              'text/plain',
+              'text/markdown',
+              'image/png',
+              'image/jpeg',
+              'image/gif',
+              'image/webp'
+          )
+        """,
+    ],
 }
 
 
@@ -286,8 +434,11 @@ class BridgesDatabase:
                 for version in range(current + 1, SCHEMA_VERSION + 1):
                     for statement in MIGRATIONS[version]:
                         self._connection.execute(statement)
+                # 升级路径：版本行已存在（旧版本号），必须覆盖而非新增，
+                # 否则 UNIQUE 约束使既有库永远无法升级。
                 self._connection.execute(
-                    "INSERT INTO schema_meta(key, value) VALUES ('version', ?)",
+                    "INSERT INTO schema_meta(key, value) VALUES ('version', ?)"
+                    " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
                     (str(SCHEMA_VERSION),),
                 )
                 return SCHEMA_VERSION

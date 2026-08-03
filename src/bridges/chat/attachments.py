@@ -15,9 +15,21 @@ from datetime import UTC, datetime
 from urllib.parse import unquote
 
 from bridges.contracts.chat import ChatAttachmentProjection
+from bridges.ingestion.service import display_ingestion_status
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import OBJECT_STATUS_PENDING_CLEANUP, BridgesObjectRepository
+
+#: 附件投影查询共用的对象元数据片段（含摄取状态 LEFT JOIN）。
+_ATTACHMENT_SELECT = (
+    "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
+    " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
+    " o.original_filename, o.content_length, o.content_hash,"
+    " r.status AS ingestion_raw_status, r.lease_expires_at, r.failure_reason"
+    " FROM chat_attachments a"
+    " JOIN objects o ON o.object_id = a.object_id"
+    " LEFT JOIN document_records r ON r.object_id = a.object_id AND r.account_id = a.account_id"
+)
 
 MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024
 MAX_ATTACHMENT_COUNT = 10
@@ -68,6 +80,10 @@ class ChatAttachmentRecord:
     status: str
     created_at: datetime
     updated_at: datetime
+    #: 摄取原始状态（LEFT JOIN 缺记录为 None）与失败中文原因（Issue 17）。
+    ingestion_raw_status: str | None = None
+    ingestion_lease_expires_at: str | None = None
+    ingestion_error: str | None = None
 
     def projection(self) -> ChatAttachmentProjection:
         return ChatAttachmentProjection(
@@ -79,6 +95,10 @@ class ChatAttachmentRecord:
             conversation_id=self.conversation_id,
             message_id=self.message_id,
             status=self.status,
+            ingestion_status=display_ingestion_status(
+                self.ingestion_raw_status, self.ingestion_lease_expires_at
+            ).value,
+            ingestion_error=self.ingestion_error,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
@@ -201,11 +221,8 @@ class ChatAttachmentService:
         self, account_id: str, conversation_id: str, object_id: str
     ) -> ChatAttachmentRecord | None:
         row = self._database.scoped(account_id).execute(
-            "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
-            " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
-            " o.original_filename, o.content_length, o.content_hash"
-            " FROM chat_attachments a JOIN objects o ON o.object_id = a.object_id"
-            " WHERE a.object_id = ? AND a.account_id = ?"
+            _ATTACHMENT_SELECT
+            + " WHERE a.object_id = ? AND a.account_id = ?"
             " AND a.conversation_id = ? AND o.status = 'active'",
             (object_id, account_id, conversation_id),
         ).fetchone()
@@ -215,11 +232,8 @@ class ChatAttachmentService:
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ChatAttachmentRecord]:
         rows = self._database.scoped(account_id).execute(
-            "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
-            " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
-            " o.original_filename, o.content_length, o.content_hash"
-            " FROM chat_attachments a JOIN objects o ON o.object_id = a.object_id"
-            " WHERE a.account_id = ? AND a.conversation_id = ? AND a.message_id = ?"
+            _ATTACHMENT_SELECT
+            + " WHERE a.account_id = ? AND a.conversation_id = ? AND a.message_id = ?"
             " AND o.status = 'active' ORDER BY a.created_at, a.object_id",
             (account_id, conversation_id, message_id),
         ).fetchall()
@@ -377,11 +391,8 @@ class ChatAttachmentService:
         self, account_id: str, upload_id: str
     ) -> ChatAttachmentRecord | None:
         row = self._database.scoped(account_id).execute(
-            "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
-            " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
-            " o.original_filename, o.content_length, o.content_hash"
-            " FROM chat_attachments a JOIN objects o ON o.object_id = a.object_id"
-            " WHERE a.upload_id = ? AND a.account_id = ? AND o.status = 'active'",
+            _ATTACHMENT_SELECT
+            + " WHERE a.upload_id = ? AND a.account_id = ? AND o.status = 'active'",
             (upload_id, account_id),
         ).fetchone()
         return self._row_to_record(row) if row is not None else None
@@ -390,11 +401,8 @@ class ChatAttachmentService:
         self, account_id: str, conversation_id: str, filename: str, content_hash: str
     ) -> ChatAttachmentRecord | None:
         row = self._database.scoped(account_id).execute(
-            "SELECT a.object_id, a.account_id, a.conversation_id, a.message_id,"
-            " a.upload_id, a.media_type, a.status, a.created_at, a.updated_at,"
-            " o.original_filename, o.content_length, o.content_hash"
-            " FROM chat_attachments a JOIN objects o ON o.object_id = a.object_id"
-            " WHERE a.account_id = ? AND a.conversation_id = ?"
+            _ATTACHMENT_SELECT
+            + " WHERE a.account_id = ? AND a.conversation_id = ?"
             " AND a.message_id IS NULL AND o.original_filename = ?"
             " AND o.content_hash = ? AND o.status = 'active'"
             " ORDER BY a.created_at LIMIT 1",
@@ -415,6 +423,19 @@ class ChatAttachmentService:
             content_length=int(row["content_length"]),
             content_hash=str(row["content_hash"]),
             status=str(row["status"]),
+            # 摄取状态（Issue 17）：LEFT JOIN 缺记录时呈现 none（未索引），
+            # 失败原因随状态一起呈现，不以空列表掩盖失败。
+            ingestion_raw_status=(
+                str(row["ingestion_raw_status"])
+                if row["ingestion_raw_status"] is not None
+                else None
+            ),
+            ingestion_lease_expires_at=(
+                str(row["lease_expires_at"]) if row["lease_expires_at"] is not None else None
+            ),
+            ingestion_error=(
+                str(row["failure_reason"]) if row["failure_reason"] is not None else None
+            ),
             created_at=datetime.fromisoformat(str(row["created_at"])),
             updated_at=datetime.fromisoformat(str(row["updated_at"])),
         )

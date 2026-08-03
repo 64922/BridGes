@@ -255,3 +255,41 @@ def test_scoped_connection_allows_account_bound_sql(
         ("c-2", "acc-a"),
     ).fetchall()
     assert rows == []
+
+
+def test_upgrade_from_older_schema_overwrites_version_row(tmp_path: Path) -> None:
+    """既有库升级：版本行已存在时迁移成功并覆盖版本号（修复 UNIQUE 冲突）。
+
+    该路径在 Issue 17 前从未被真实触发（既有库升级时最终版本 INSERT 与
+    旧版本行冲突导致整体回滚）；回归测试保证后续每次 Schema 递增都安全。
+    """
+    from bridges.storage.database import MIGRATIONS
+
+    path = tmp_path / "bridges.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO schema_meta(key, value) VALUES ('version', '1')"
+        )
+        # 复刻真实 v1 模式：迁移 2..7 的语句都依赖 objects 表存在。
+        for statement in MIGRATIONS[1]:
+            connection.execute(statement)
+        connection.commit()
+
+    database = BridgesDatabase(path)
+    assert database.initialize() == SCHEMA_VERSION
+    assert _schema_version(path) == SCHEMA_VERSION
+    with sqlite3.connect(path) as connection:
+        tables = {
+            str(row[0])
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+    # v7 迁移产物真实存在
+    assert "document_records" in tables
+    assert "index_versions" in tables
+    assert "document_chunks" in tables
+    database.close()

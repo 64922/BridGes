@@ -55,6 +55,7 @@ from bridges.contracts.credentials import ProbeStatus
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.credentials.service import KeyCredentialService
+from bridges.ingestion.service import IngestionError, IngestionService
 from bridges.projects import ProjectError as ProjectServiceError
 from bridges.projects import ProjectService
 
@@ -111,6 +112,24 @@ def _get_credential_service(request: Request) -> KeyCredentialService:
 
 
 CredentialServiceDep = Annotated[KeyCredentialService, Depends(_get_credential_service)]
+
+
+def _get_ingestion_service(request: Request) -> IngestionService:
+    service: IngestionService | None = getattr(
+        request.app.state, "ingestion_service", None
+    )
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=ChatError(
+                error="ingestion_unavailable",
+                message="文档摄取服务未启用，当前实例拒绝摄取操作。",
+            ).model_dump(),
+        )
+    return service
+
+
+IngestionServiceDep = Annotated[IngestionService, Depends(_get_ingestion_service)]
 
 
 def _get_project_service(request: Request) -> ProjectService:
@@ -537,8 +556,13 @@ async def upload_attachment(
     request: Request,
     service: AttachmentServiceDep,
     subject: SubjectDep,
+    ingestion_service: IngestionServiceDep,
 ) -> Response:
-    """接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。"""
+    """接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
+
+    上传成功即把对象入队摄取（Issue 17）：解析、分块与索引由后台
+    执行器完成；不支持解析的类型不创建摄取记录，附件投影显示"未索引"。
+    """
     declared_length = request.headers.get("content-length")
     if declared_length is not None:
         try:
@@ -577,6 +601,20 @@ async def upload_attachment(
         )
     except ChatAttachmentError as exc:
         raise _error(exc.status_code, exc.code, exc.message) from exc
+    # 入队幂等（INSERT OR IGNORE），重复上传与失败重试都安全；入队失败
+    # 显式报错，前端可重试，绝不静默吞掉摄取记录缺失。
+    try:
+        ingestion_service.enqueue(
+            subject.account_id, projection.object_id, conversation_id
+        )
+    except IngestionError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
+    # 入队后重新读取投影：让响应携带最新摄取状态（queued），而非入队前快照。
+    refreshed = service.get(
+        subject.account_id, conversation_id, projection.object_id
+    )
+    if refreshed is not None:
+        projection = refreshed.projection()
     return JSONResponse(
         status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         content=projection.model_dump(mode="json"),

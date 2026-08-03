@@ -30,6 +30,7 @@ from bridges.api import (
     domain_packs,
     evaluation,
     expression,
+    ingestion,
     institution,
     projects,
     science,
@@ -86,6 +87,7 @@ from bridges.evaluation import EvaluationService
 from bridges.expression import ExpressionService
 from bridges.health.probe import build_health_projection
 from bridges.identity import IdentityService
+from bridges.ingestion.service import IngestionService
 from bridges.institution import InstitutionService
 from bridges.invalidation import AffectedDownstream, InvalidationService
 from bridges.learning import (
@@ -819,6 +821,13 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             app.state.chat_attachment_service = ChatAttachmentService(
                 bridges_database, object_repository
             )
+            # Issue 17: 文档摄取服务（API 进程只做入队/重试/投影，处理在后台
+            # 执行器进程）。探测快照复用同一 StateStore，读取不产生写竞争。
+            app.state.ingestion_service = IngestionService(
+                database=bridges_database,
+                object_repository=object_repository,
+                probe_service=CapabilityProbeService(state_store=state_store),
+            )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1146,6 +1155,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(chat.router)
+    app.include_router(ingestion.router)
     app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)
