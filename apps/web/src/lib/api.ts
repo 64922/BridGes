@@ -39,6 +39,14 @@ export type ChatMode = components["schemas"]["ChatMode"];
 export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
 export type ChatModeSwitchResponse = components["schemas"]["ChatModeSwitchResponse"];
 export type ChatThinkingSummary = components["schemas"]["ChatThinkingSummary"];
+export type RetrievalRoundProjection = components["schemas"]["RetrievalRoundProjection"];
+export type RetrievalLayerResult = components["schemas"]["RetrievalLayerResult"];
+export type RetrievalLayerStatus = components["schemas"]["RetrievalLayerStatus"];
+export type RetrievalSourceLayer = components["schemas"]["RetrievalSourceLayer"];
+export type RetrievalSufficiency = components["schemas"]["RetrievalSufficiency"];
+export type CitationProjection = components["schemas"]["CitationProjection"];
+export type CitationDetailProjection = components["schemas"]["CitationDetailProjection"];
+export type CitationAccessStatus = components["schemas"]["CitationAccessStatus"];
 export type LearningProjectSummary = components["schemas"]["LearningProjectSummary"];
 export type LearningProjectDetail = components["schemas"]["LearningProjectDetail"];
 export type LearningProjectConversation = components["schemas"]["LearningProjectConversation"];
@@ -1129,19 +1137,26 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
 /**
  * 发送消息并流式接收回答；AbortController 用于停止/切换账户时中断。
  * 触发回调序列：started → delta* → done | error。
+ * ``useKnowledgeBase``（Issue 20）：本轮是否启用全局知识库层；关闭后
+ * 本轮检索记录与引用均不包含知识库候选。
  */
 export async function streamChatMessage(
   conversationId: string,
   content: string,
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
-  attachmentIds: string[] = []
+  attachmentIds: string[] = [],
+  useKnowledgeBase: boolean = true
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ content, attachment_ids: attachmentIds }),
+    body: JSON.stringify({
+      content,
+      attachment_ids: attachmentIds,
+      use_knowledge_base: useKnowledgeBase,
+    }),
     signal,
   });
   if (!res.ok) throw await parseApiError(res);
@@ -1170,6 +1185,23 @@ export async function stopChatMessage(
   const res = await fetch(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/stop`,
     { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 单条引用的证据详情（Issue 20）：点击引用时实时校验授权并给出
+ * 打开原文入口；原文已删除或权限变化时返回安全中文状态。
+ */
+export async function getCitationDetail(
+  conversationId: string,
+  messageId: string,
+  citationId: string
+): Promise<CitationDetailProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/citations/${encodeURIComponent(citationId)}`,
+    { credentials: "same-origin", cache: "no-store" }
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();

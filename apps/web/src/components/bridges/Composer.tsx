@@ -28,7 +28,8 @@ interface ComposerProps {
   onSend: (
     text: string,
     attachmentIds?: string[],
-    preparedConversationId?: string
+    preparedConversationId?: string,
+    useKnowledgeBase?: boolean
   ) => Promise<boolean> | boolean | void;
   /** 已存在的真实对话；提供后选择文件会立即上传到该对话。 */
   conversationId?: string;
@@ -108,6 +109,9 @@ export function Composer({
   const [dictationError, setDictationError] = useState("");
   const [toolNotice, setToolNotice] = useState("");
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
+  // Issue 20：本轮是否启用全局知识库层（发送前可关闭；关闭后本轮请求、
+  // 检索记录与引用均不含知识库候选）。
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -121,6 +125,8 @@ export function Composer({
   );
   const hasUploading = attachments.some((item) => item.status === "uploading");
   const canSend = text.trim().length > 0 || uploadedAttachments.length > 0;
+  // 真实对话上下文（模板设计基线不渲染来源层面板）
+  const isRealChat = conversationId !== undefined || ensureConversation !== undefined;
 
   const autoGrow = () => {
     const element = textareaRef.current;
@@ -253,7 +259,8 @@ export function Composer({
       const accepted = await onSend(
         text.trim() || "（仅附件）",
         ids,
-        conversationId ?? preparedConversationRef.current
+        conversationId ?? preparedConversationRef.current,
+        useKnowledgeBase
       );
       if (accepted === false) return;
       setText("");
@@ -525,6 +532,123 @@ export function Composer({
             <Icon name="close" size={14} aria-hidden />
           </button>
         </div>
+      )}
+
+      {/* Issue 20：本轮启用的来源层面板（附件 → 项目 → 知识库）。
+          附件/项目仅作展示，知识库可发送前关闭；关闭后本轮检索与引用
+          均不含知识库候选。只在真实对话（有 conversationId 或延迟创建
+          钩子）渲染：模板设计基线不引入实时功能。 */}
+      {isRealChat && (
+      <div
+        data-testid="composer-source-layers"
+        role="group"
+        aria-label="本轮检索来源"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: "var(--space-2)",
+          padding: "var(--space-1) 0",
+        }}
+      >
+        <span
+          data-testid="source-layer-attachment"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-1)",
+            padding: "2px var(--space-2)",
+            borderRadius: "999px",
+            border: "1px solid var(--color-border)",
+            backgroundColor: "var(--color-bg-secondary)",
+            fontSize: "var(--text-xs)",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          <Icon name="uploadFile" size={13} aria-hidden />
+          {uploadedAttachments.length > 0
+            ? `当前附件 ${uploadedAttachments.length} 份`
+            : "当前附件 未附加"}
+        </span>
+        <span
+          data-testid="source-layer-project"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-1)",
+            padding: "2px var(--space-2)",
+            borderRadius: "999px",
+            border: "1px solid var(--color-border)",
+            backgroundColor: "var(--color-bg-secondary)",
+            fontSize: "var(--text-xs)",
+            color: "var(--color-text-secondary)",
+            maxWidth: "16rem",
+          }}
+          title={learningProject?.name ?? "该对话未归属学习项目"}
+        >
+          <Icon name="learningProject" size={13} aria-hidden />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {learningProject ? `项目：${learningProject.name}` : "当前项目 未归属"}
+          </span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={useKnowledgeBase}
+          data-testid="source-layer-knowledge-base"
+          onClick={() => setUseKnowledgeBase((value) => !value)}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-1)",
+            padding: "2px var(--space-2)",
+            borderRadius: "999px",
+            border: `1px solid ${
+              useKnowledgeBase ? "var(--color-accent-primary)" : "var(--color-border)"
+            }`,
+            backgroundColor: useKnowledgeBase
+              ? "var(--color-accent-primary-soft)"
+              : "var(--color-bg-secondary)",
+            fontSize: "var(--text-xs)",
+            color: useKnowledgeBase
+              ? "var(--color-accent-primary)"
+              : "var(--color-text-tertiary)",
+            cursor: "pointer",
+            font: "inherit",
+            minHeight: "var(--target-size)",
+          }}
+          title={useKnowledgeBase ? "本轮将检索全局知识库，点击关闭" : "点击开启本轮全局知识库检索"}
+        >
+          <Icon name="knowledgeBase" size={13} aria-hidden />
+          全局知识库
+          <span
+            aria-hidden="true"
+            style={{
+              display: "inline-block",
+              width: 24,
+              height: 14,
+              borderRadius: 999,
+              padding: 2,
+              backgroundColor: useKnowledgeBase
+                ? "var(--color-accent-primary)"
+                : "var(--color-border-strong)",
+              transition: "background-color 150ms ease",
+            }}
+          >
+            <span
+              style={{
+                display: "block",
+                width: 10,
+                height: 10,
+                borderRadius: "50%",
+                backgroundColor: "#FFFFFF",
+                transform: useKnowledgeBase ? "translateX(10px)" : "translateX(0)",
+                transition: "transform 150ms ease",
+              }}
+            />
+          </span>
+        </button>
+      </div>
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>

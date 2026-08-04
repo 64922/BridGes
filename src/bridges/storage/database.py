@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -620,6 +620,54 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_index_vectors_version
         ON index_vectors(version_id)
+        """,
+    ],
+    # Issue 20：分层本地检索、融合排序与引用。retrieval_rounds 记录每轮
+    # 检索的作用域（是否使用知识库）、充足性信号、索引版本与每层状态；
+    # message_citations 固化最终引用的展示数据（文件名/页码/章节/片段），
+    # 索引重建或原文变化不会让历史引用静默漂移，点击时按对象实时校验授权。
+    10: [
+        """
+        CREATE TABLE retrieval_rounds (
+            round_id TEXT PRIMARY KEY,
+            message_id TEXT NOT NULL,
+            user_message_id TEXT,
+            conversation_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            use_knowledge_base INTEGER NOT NULL DEFAULT 1,
+            sufficiency TEXT NOT NULL,
+            index_version_id TEXT,
+            layers_json TEXT NOT NULL DEFAULT '[]',
+            note TEXT,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_retrieval_rounds_message
+        ON retrieval_rounds(account_id, message_id)
+        """,
+        """
+        CREATE TABLE message_citations (
+            citation_id TEXT PRIMARY KEY,
+            round_id TEXT NOT NULL REFERENCES retrieval_rounds(round_id),
+            message_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            source_layer TEXT NOT NULL,
+            object_id TEXT NOT NULL,
+            filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            page_number INTEGER,
+            section_title TEXT,
+            snippet TEXT NOT NULL,
+            chunk_id TEXT NOT NULL,
+            rank INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_message_citations_round
+        ON message_citations(account_id, round_id)
         """,
     ],
 }

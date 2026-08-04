@@ -8,9 +8,11 @@ import type {
   ChatAttachmentProjection,
   ChatMode,
   ChatModeEventProjection,
+  RetrievalRoundProjection,
 } from "@/lib/api";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
+import { RetrievalCard } from "./RetrievalCard";
 
 /** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
 export interface ThreadModeEvent extends ChatModeEventProjection {
@@ -46,6 +48,8 @@ export interface ChatMessage {
   status?: "done" | "streaming" | "error";
   errorText?: string;
   attachments?: ChatAttachmentProjection[];
+  /** Issue 20：本条助手消息绑定的分层检索轮次（含引用），无轮次为 null */
+  retrieval?: RetrievalRoundProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -600,6 +604,19 @@ export function MessageList({
                       ))}
                     </ol>
                   </details>
+                )}
+
+                {/* Issue 20：本地检索轮次与引用（回答内容的证据卡）。
+                    streaming 且无轮次时显示检索中加载态；终态无轮次（无
+                    检索作用域）不渲染卡片。 */}
+                {conversationId && (
+                  <RetrievalCard
+                    retrieval={message.retrieval ?? null}
+                    conversationId={conversationId}
+                    messageId={message.id}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
                 )}
 
                 {message.thinking && (

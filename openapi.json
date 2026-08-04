@@ -2294,7 +2294,7 @@
           "chat"
         ],
         "summary": "Send Message",
-        "description": "发送用户消息并流式接收真实 Qwen 回答（SSE）。\n\n事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；\n失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。",
+        "description": "发送用户消息并流式接收真实 Qwen 回答（SSE）。\n\n事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；\n失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭\n本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索\n记录与引用均不包含知识库候选。",
         "operationId": "send_message_chat_conversations__conversation_id__messages_post",
         "parameters": [
           {
@@ -2398,6 +2398,113 @@
               }
             },
             "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/citations/{citation_id}": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Citation Detail",
+        "description": "返回单条引用的证据详情（展开引用时实时校验授权）。\n\n引用不属于当前账户/对话/消息时返回统一 404；原文已删除或权限变化时\n返回安全中文状态，不暴露资源存在性。",
+        "operationId": "citation_detail_chat_conversations__conversation_id__messages__message_id__citations__citation_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "citation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Citation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CitationDetailProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -2506,7 +2613,7 @@
           "chat"
         ],
         "summary": "Retry Message",
-        "description": "重试失败的助手消息：创建新的助手尝试并流式生成。\n\n新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。",
+        "description": "重试失败的助手消息：创建新的助手尝试并流式生成。\n\n新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域\n沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。",
         "operationId": "retry_message_chat_conversations__conversation_id__messages__message_id__retry_post",
         "parameters": [
           {
@@ -23265,6 +23372,12 @@
             "maxItems": 10,
             "title": "Attachment Ids",
             "description": "已上传且待绑定到本条消息的对象标识。"
+          },
+          "use_knowledge_base": {
+            "type": "boolean",
+            "title": "Use Knowledge Base",
+            "description": "本轮是否启用全局知识库层（可在发送前关闭）。",
+            "default": true
           }
         },
         "type": "object",
@@ -23272,7 +23385,7 @@
           "content"
         ],
         "title": "ChatMessageCreateRequest",
-        "description": "发送一条用户消息。"
+        "description": "发送一条用户消息。\n\n``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用\n均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。"
       },
       "ChatMessageProjection": {
         "properties": {
@@ -23324,6 +23437,17 @@
               }
             ],
             "description": "可公开的思考摘要；失败/停止/断流时保留已完成部分。"
+          },
+          "retrieval": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetrievalRoundProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。"
           },
           "error_code": {
             "anyOf": [
@@ -24150,6 +24274,53 @@
         "title": "Citation",
         "description": "A rendered citation binding wording to evidence with a precise locator.\n\nCitation records are immutable; when the source version changes or the\nlocator becomes stale, a new citation version is created rather than\noverwriting history."
       },
+      "CitationAccessStatus": {
+        "type": "string",
+        "enum": [
+          "accessible",
+          "deleted",
+          "permission_changed"
+        ],
+        "title": "CitationAccessStatus",
+        "description": "引用打开时的证据可访问状态。\n\n- ``accessible``：原文仍在当前账户授权范围，可精确打开；\n- ``deleted``：原文对象已删除；\n- ``permission_changed``：原文仍在但授权范围已变化（如附件已解绑、\n  项目已删除/文件已移除、知识库材料已删除），显示安全中文状态。"
+      },
+      "CitationDetailProjection": {
+        "properties": {
+          "citation": {
+            "$ref": "#/components/schemas/CitationProjection",
+            "description": "生成时固化的引用快照。"
+          },
+          "access_status": {
+            "$ref": "#/components/schemas/CitationAccessStatus",
+            "description": "当前可访问状态。"
+          },
+          "access_message": {
+            "type": "string",
+            "title": "Access Message",
+            "description": "面向用户的中文可访问说明。"
+          },
+          "download_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Download Url",
+            "description": "打开原文的授权入口（相对 URL；不可访问时为 None）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "citation",
+          "access_status",
+          "access_message"
+        ],
+        "title": "CitationDetailProjection",
+        "description": "单条引用的证据详情（点击展开时实时校验授权后返回）。"
+      },
       "CitationLocator": {
         "properties": {
           "page": {
@@ -24252,6 +24423,80 @@
         "type": "object",
         "title": "CitationLocator",
         "description": "Precise location of a citation within a document version."
+      },
+      "CitationProjection": {
+        "properties": {
+          "citation_id": {
+            "type": "string",
+            "title": "Citation Id",
+            "description": "稳定引用标识。"
+          },
+          "source_layer": {
+            "$ref": "#/components/schemas/RetrievalSourceLayer",
+            "description": "来源层。"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "原文对象标识（解析入口使用）。"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "来源文件名（生成时快照）。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "来源媒体类型（决定打开方式）。"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number",
+            "description": "页码（可空）。"
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title",
+            "description": "章节标题（可空）。"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "description": "可验证片段（生成时快照，可核对原文）。"
+          },
+          "rank": {
+            "type": "integer",
+            "title": "Rank",
+            "description": "融合后排序位次（从 1 开始）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "citation_id",
+          "source_layer",
+          "object_id",
+          "filename",
+          "media_type",
+          "snippet",
+          "rank"
+        ],
+        "title": "CitationProjection",
+        "description": "一条最终引用（融合后确定，展示数据在生成时固化不漂移）。\n\n``filename``、``page_number``/``section_title`` 与 ``snippet`` 都是\n引用生成时刻的原文快照：索引重建或原文变化不会让历史引用静默漂移。"
       },
       "CitationValidationResult": {
         "properties": {
@@ -37082,6 +37327,161 @@
         ],
         "title": "RetrievalExerciseType",
         "description": "Retrieval-practice exercise types that require active recall.\n\nBrowsing or completion-only activities are deliberately excluded."
+      },
+      "RetrievalLayerResult": {
+        "properties": {
+          "layer": {
+            "$ref": "#/components/schemas/RetrievalSourceLayer",
+            "description": "来源层。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RetrievalLayerStatus",
+            "description": "该层检索状态。"
+          },
+          "candidates": {
+            "type": "integer",
+            "title": "Candidates",
+            "description": "该层去重后的候选数。",
+            "default": 0
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "面向用户的中文说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "layer",
+          "status"
+        ],
+        "title": "RetrievalLayerResult",
+        "description": "单层检索结果（状态 + 去重后候选数 + 中文说明）。"
+      },
+      "RetrievalLayerStatus": {
+        "type": "string",
+        "enum": [
+          "disabled",
+          "no_material",
+          "index_unavailable",
+          "ok"
+        ],
+        "title": "RetrievalLayerStatus",
+        "description": "单层检索的对外状态。\n\n- ``disabled``：本轮未启用（未授权/被用户关闭），不产生任何候选；\n- ``no_material``：该层没有可检索材料（未上传/仍在处理/已删除）；\n- ``index_unavailable``：本地索引不可用，无法检索该层；\n- ``ok``：完成检索（候选数可为 0，配合整体充足性呈现）。"
+      },
+      "RetrievalRoundProjection": {
+        "properties": {
+          "round_id": {
+            "type": "string",
+            "title": "Round Id",
+            "description": "稳定轮次标识。"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "绑定助手消息标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "所属对话标识。"
+          },
+          "use_knowledge_base": {
+            "type": "boolean",
+            "title": "Use Knowledge Base",
+            "description": "本轮是否使用了全局知识库（关闭时请求/引用均不含其候选）。"
+          },
+          "index_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Index Version Id",
+            "description": "检索时服务的索引版本（审计用途）。"
+          },
+          "sufficiency": {
+            "$ref": "#/components/schemas/RetrievalSufficiency",
+            "description": "证据充足性信号。"
+          },
+          "layers": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalLayerResult"
+            },
+            "type": "array",
+            "title": "Layers",
+            "description": "按作用域顺序的每层结果。"
+          },
+          "citations": {
+            "items": {
+              "$ref": "#/components/schemas/CitationProjection"
+            },
+            "type": "array",
+            "title": "Citations",
+            "description": "融合排序后的最终引用。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "面向用户的整体中文说明。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "检索发生时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "round_id",
+          "message_id",
+          "conversation_id",
+          "use_knowledge_base",
+          "sufficiency",
+          "created_at"
+        ],
+        "title": "RetrievalRoundProjection",
+        "description": "一轮检索的完整投影（绑定一条助手消息，刷新/重启后保持稳定）。"
+      },
+      "RetrievalSourceLayer": {
+        "type": "string",
+        "enum": [
+          "attachment",
+          "project",
+          "knowledge_base"
+        ],
+        "title": "RetrievalSourceLayer",
+        "description": "候选来源层（作用域顺序即优先级：附件 → 项目文件 → 知识库）。\n\n- ``attachment``：当前对话明确附加的文件（本轮授权）；\n- ``project``：当前学习项目的文件（对话归属项目时启用）；\n- ``knowledge_base``：用户已授权的全局知识库（可在发送前关闭）。"
+      },
+      "RetrievalSufficiency": {
+        "type": "string",
+        "enum": [
+          "sufficient",
+          "no_hits",
+          "conflict",
+          "insufficient_coverage",
+          "index_unavailable"
+        ],
+        "title": "RetrievalSufficiency",
+        "description": "证据充足性信号（供后续教学门使用；本 Issue 只输出信号）。\n\n- ``sufficient``：去重后候选达到覆盖阈值；\n- ``no_hits``：本轮无任何命中（不以空候选表示成功）；\n- ``conflict``：关键词与向量检索的顶级命中不一致（歧义）；\n- ``insufficient_coverage``：有命中但覆盖不足；\n- ``index_unavailable``：本地索引不可用，无法产生候选。"
       },
       "RevalidateRequest": {
         "properties": {

@@ -1,0 +1,479 @@
+"""分层检索服务测试：作用域、融合排序、配额去重、隔离授权与充足性（Issue 20）。
+
+验证验收标准：三层作用域只查当前账户资源、固定融合合同、独立候选配额
+与去重、关闭知识库后请求/引用不含其候选、引用可精确打开且删除/权限
+变化显示安全状态、无命中/冲突/覆盖不足/索引不可用结构化输出、刷新后
+引用稳定、索引重建不漂移。
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import pytest
+
+from bridges.contracts.retrieval import (
+    CitationAccessStatus,
+    RetrievalLayerStatus,
+    RetrievalSourceLayer,
+    RetrievalSufficiency,
+)
+from bridges.ingestion.index import VersionedIndex
+from bridges.retrieval.service import RetrievalError
+from bridges.storage.database import BridgesDatabase
+from tests.ingestion.conftest import seed_probe_for_account
+from tests.retrieval.conftest import (
+    add_material,
+    add_user_message,
+    seed_conversation,
+    seed_project,
+)
+
+
+def _run(
+    env: dict[str, Any],
+    account_id: str,
+    conversation_id: str,
+    assistant_message_id: str,
+    query: str,
+    *,
+    user_message_id: str | None = None,
+    use_knowledge_base: bool = True,
+):
+    return env["retrieval"].run_round(
+        account_id,
+        conversation_id,
+        assistant_message_id,
+        user_message_id,
+        query,
+        use_knowledge_base=use_knowledge_base,
+    )
+
+
+def _layer(round_, layer: RetrievalSourceLayer):
+    return next(item for item in round_.layers if item.layer == layer)
+
+
+# ---------------------------------------------------------------------------
+# 作用域与三层检索
+# ---------------------------------------------------------------------------
+
+
+def test_scope_attachment_then_project_then_kb(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    project_id = seed_project(env, account)
+    conversation_id = seed_conversation(env, account, project_id=project_id)
+    user_message_id = add_user_message(env, account, conversation_id, "热力学问题")
+    add_material(
+        env, account, "附件笔记.txt", "热力学第二定律：熵永不减少。",
+        layer="attachment", conversation_id=conversation_id,
+        user_message_id=user_message_id,
+    )
+    add_material(
+        env, account, "项目讲义.md", "熵增原理与统计力学。",
+        layer="project", project_id=project_id,
+    )
+    add_material(
+        env, account, "知识库材料.txt", "孤立系统熵增。",
+        layer="knowledge_base",
+    )
+
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律",
+                  user_message_id=user_message_id)
+    assert round_ is not None
+    assert _layer(round_, RetrievalSourceLayer.ATTACHMENT).status == RetrievalLayerStatus.OK
+    assert _layer(round_, RetrievalSourceLayer.PROJECT).status == RetrievalLayerStatus.OK
+    assert (
+        _layer(round_, RetrievalSourceLayer.KNOWLEDGE_BASE).status
+        == RetrievalLayerStatus.OK
+    )
+    layers = [item.layer for item in round_.layers]
+    assert layers == [
+        RetrievalSourceLayer.ATTACHMENT,
+        RetrievalSourceLayer.PROJECT,
+        RetrievalSourceLayer.KNOWLEDGE_BASE,
+    ]
+    # 附件层候选优先于项目与知识库（作用域顺序即优先级）
+    assert round_.citations[0].source_layer == RetrievalSourceLayer.ATTACHMENT
+    assert round_.citations[0].filename == "附件笔记.txt"
+
+
+def test_scope_skipped_when_nothing_searchable(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    # 无附件、未归属项目、知识库无材料 → 无检索作用域
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学")
+    assert round_ is None
+
+
+def test_disabled_project_and_attachment_layers_show_honest_status(
+    env: dict[str, Any],
+) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "知识库.txt", "热力学第二定律。", layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None
+    assert _layer(round_, RetrievalSourceLayer.ATTACHMENT).status == RetrievalLayerStatus.DISABLED
+    assert _layer(round_, RetrievalSourceLayer.PROJECT).status == RetrievalLayerStatus.DISABLED
+    assert _layer(round_, RetrievalSourceLayer.KNOWLEDGE_BASE).status == RetrievalLayerStatus.OK
+
+
+# ---------------------------------------------------------------------------
+# 关闭知识库开关
+# ---------------------------------------------------------------------------
+
+
+def test_use_knowledge_base_false_excludes_kb_candidates(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    user_message_id = add_user_message(env, account, conversation_id, "热力学")
+    add_material(
+        env, account, "附件.txt", "热力学第二定律内容。",
+        layer="attachment", conversation_id=conversation_id,
+        user_message_id=user_message_id,
+    )
+    add_material(env, account, "知识库.txt", "热力学第二定律知识库内容。", layer="knowledge_base")
+
+    closed = _run(
+        env, account, conversation_id, "assistant-1", "热力学第二定律",
+        user_message_id=user_message_id, use_knowledge_base=False,
+    )
+    assert closed is not None
+    assert (
+        _layer(closed, RetrievalSourceLayer.KNOWLEDGE_BASE).status
+        == RetrievalLayerStatus.DISABLED
+    )
+    assert all(
+        c.source_layer != RetrievalSourceLayer.KNOWLEDGE_BASE
+        for c in closed.citations
+    )
+    # 轮次记录如实标记关闭状态（供前端展示与审计）
+    assert closed.use_knowledge_base is False
+
+    opened = _run(
+        env, account, conversation_id, "assistant-2", "热力学第二定律",
+        user_message_id=user_message_id, use_knowledge_base=True,
+    )
+    assert opened is not None
+    assert any(
+        c.source_layer == RetrievalSourceLayer.KNOWLEDGE_BASE
+        for c in opened.citations
+    )
+
+
+# ---------------------------------------------------------------------------
+# 账户隔离：相同哈希文件跨账户
+# ---------------------------------------------------------------------------
+
+
+def test_cross_account_same_content_is_isolated(env: dict[str, Any]) -> None:
+    account_a = env["account_a"]
+    account_b = env["account_b"]
+    conversation_a = seed_conversation(env, account_a)
+    conversation_b = seed_conversation(env, account_b)
+    add_material(
+        env, account_a, "共享内容.txt", "热力学第二定律：熵永不减少。",
+        layer="knowledge_base",
+    )
+    # 账户 B 上传相同内容（同内容哈希），归属 B
+    add_material(
+        env, account_b, "共享内容.txt", "热力学第二定律：熵永不减少。",
+        layer="knowledge_base",
+    )
+
+    round_a = _run(env, account_a, conversation_a, "assistant-a", "热力学第二定律")
+    assert round_a is not None
+    assert len(round_a.citations) == 1
+    assert round_a.citations[0].filename == "共享内容.txt"
+
+    round_b = _run(env, account_b, conversation_b, "assistant-b", "热力学第二定律")
+    assert round_b is not None
+    assert len(round_b.citations) == 1
+    # 各自只看到自己的对象（对象标识不同），绝不读取其他账户相同哈希文件
+    assert round_b.citations[0].object_id != round_a.citations[0].object_id
+    assert round_b.citations[0].citation_id != round_a.citations[0].citation_id
+
+    # 跨账户读取引用详情 → 统一 404
+    with pytest.raises(RetrievalError) as excinfo:
+        env["retrieval"].citation_detail(
+            account_b, conversation_a, "assistant-a", round_a.citations[0].citation_id
+        )
+    assert excinfo.value.code == "citation_not_found"
+
+
+# ---------------------------------------------------------------------------
+# 充足性信号
+# ---------------------------------------------------------------------------
+
+
+def test_no_hits_is_structured_not_silent_success(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "材料.txt", "量子力学波函数坍缩。", layer="knowledge_base")
+    # 关闭向量检索（探测不可用）：关键词无命中时即结构化 no_hits，
+    # 不以空候选表示成功（关键词路径是确定性判定）。
+    seed_probe_for_account(env["probe_service"], account, available=False)
+    round_ = _run(env, account, conversation_id, "assistant-1", "完全无关的问题内容")
+    assert round_ is not None
+    assert round_.sufficiency == RetrievalSufficiency.NO_HITS
+    assert round_.citations == []
+    assert "没有找到" in (round_.note or "")
+
+
+def test_conflict_signal_when_keyword_and_vector_disagree(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    # 三份同主题但细节不同的材料：确定性 Embedding 下关键词顶级与向量
+    # 顶级命中不一致（经实测固定），冲突信号确定性触发（AC-07）。
+    for index in range(3):
+        add_material(
+            env, account, f"材料{index}.txt",
+            f"热力学第二定律的第 {index} 条详细阐述内容。",
+            layer="knowledge_base",
+        )
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None
+    assert round_.sufficiency == RetrievalSufficiency.CONFLICT
+    assert len(round_.citations) >= 2  # 冲突仍展示候选，不以空候选表示成功
+
+
+def test_insufficient_coverage_below_threshold(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "单材料.txt", "热力学第二定律的一句话。", layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None
+    assert len(round_.citations) < 3
+    assert round_.sufficiency == RetrievalSufficiency.INSUFFICIENT_COVERAGE
+
+
+def test_sufficient_coverage(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    for index in range(3):
+        add_material(
+            env, account, f"材料{index}.txt",
+            f"热力学第二定律的第 {index} 条详细阐述内容。",
+            layer="knowledge_base",
+        )
+    # 关闭向量检索（探测不可用）：纯关键词路径无冲突可能，覆盖达标即充足
+    seed_probe_for_account(env["probe_service"], account, available=False)
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None
+    assert round_.sufficiency == RetrievalSufficiency.SUFFICIENT
+    assert len(round_.citations) >= 3
+
+
+def test_index_unavailable_when_no_active_version(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    # 材料已就绪（有索引版本），随后索引活跃指针被移除（模拟索引失效的
+    # 降级状态）：有可检索材料但没有可服务版本 → 结构化 index_unavailable
+    add_material(env, account, "材料.txt", "热力学内容。", layer="knowledge_base")
+    env["database"].connection.execute(
+        "DELETE FROM index_active WHERE account_id = ?", (account,)
+    )
+    env["database"].connection.execute(
+        "UPDATE index_versions SET status = 'obsolete' WHERE account_id = ?",
+        (account,),
+    )
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学")
+    assert round_ is not None
+    assert round_.sufficiency == RetrievalSufficiency.INDEX_UNAVAILABLE
+    assert _layer(round_, RetrievalSourceLayer.KNOWLEDGE_BASE).status == (
+        RetrievalLayerStatus.INDEX_UNAVAILABLE
+    )
+
+
+# ---------------------------------------------------------------------------
+# 引用详情：授权打开与安全状态
+# ---------------------------------------------------------------------------
+
+
+def test_citation_detail_accessible_with_download_entry(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    user_message_id = add_user_message(env, account, conversation_id, "热力学")
+    add_material(
+        env, account, "附件.pdf.txt", "热力学第二定律正文内容。", layer="attachment",
+        conversation_id=conversation_id, user_message_id=user_message_id,
+    )
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律",
+                  user_message_id=user_message_id)
+    assert round_ is not None and round_.citations
+    citation = round_.citations[0]
+    detail = env["retrieval"].citation_detail(
+        account, conversation_id, "assistant-1", citation.citation_id
+    )
+    assert detail.access_status == CitationAccessStatus.ACCESSIBLE
+    assert detail.citation.filename == "附件.pdf.txt"
+    assert detail.citation.snippet
+    assert detail.download_url == (
+        f"/chat/conversations/{conversation_id}/attachments/"
+        f"{citation.object_id}/download"
+    )
+
+
+def test_citation_detail_deleted_shows_safe_status(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "知识库.txt", "热力学内容。", layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学")
+    assert round_ is not None and round_.citations
+    citation_id = round_.citations[0].citation_id
+    # 删除对象（对象进入清理状态）
+    env["repository"].delete_object(account, round_.citations[0].object_id)
+    detail = env["retrieval"].citation_detail(
+        account, conversation_id, "assistant-1", citation_id
+    )
+    assert detail.access_status == CitationAccessStatus.DELETED
+    assert "已删除" in detail.access_message
+    assert detail.download_url is None
+
+
+def test_citation_detail_permission_changed_when_attachment_unbound(
+    env: dict[str, Any],
+) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    user_message_id = add_user_message(env, account, conversation_id, "热力学")
+    object_id = add_material(
+        env, account, "附件.txt", "热力学内容。", layer="attachment",
+        conversation_id=conversation_id, user_message_id=user_message_id,
+    )
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学",
+                  user_message_id=user_message_id)
+    assert round_ is not None and round_.citations
+    citation_id = round_.citations[0].citation_id
+    # 解绑附件（消息引用被删除）→ 权限变化
+    env["database"].connection.execute(
+        "DELETE FROM chat_attachments WHERE object_id = ? AND account_id = ?",
+        (object_id, account),
+    )
+    detail = env["retrieval"].citation_detail(
+        account, conversation_id, "assistant-1", citation_id
+    )
+    assert detail.access_status == CitationAccessStatus.PERMISSION_CHANGED
+    assert "已从消息中移除" in detail.access_message
+    assert detail.download_url is None
+
+
+def test_citation_detail_project_layer_uses_project_download_entry(
+    env: dict[str, Any],
+) -> None:
+    account = env["account_a"]
+    project_id = seed_project(env, account)
+    conversation_id = seed_conversation(env, account, project_id=project_id)
+    add_material(
+        env, account, "项目讲义.md", "热力学第二定律。",
+        layer="project", project_id=project_id,
+    )
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None and round_.citations
+    detail = env["retrieval"].citation_detail(
+        account, conversation_id, "assistant-1", round_.citations[0].citation_id
+    )
+    assert detail.access_status == CitationAccessStatus.ACCESSIBLE
+    assert detail.download_url == (
+        f"/learning-projects/{project_id}/files/"
+        f"{round_.citations[0].object_id}/download"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 持久化与版本稳定性
+# ---------------------------------------------------------------------------
+
+
+def test_round_survives_reload_and_index_rebuild(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "知识库.txt", "热力学第二定律详细内容。", layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None and round_.citations
+
+    # 刷新后引用仍指向相同展示数据（重新读取轮次投影）
+    reloaded = env["retrieval"].round_projection(account, "assistant-1")
+    assert reloaded is not None
+    assert reloaded.citations == round_.citations
+    assert reloaded.index_version_id == round_.index_version_id
+
+    # 索引重建（合同变化触发全量重建 → 新版本）后历史引用不漂移
+    database: BridgesDatabase = env["database"]
+    VersionedIndex(database, env["embedding"]).rebuild(account, embedding_available=True)
+    rebuilt = env["retrieval"].round_projection(account, "assistant-1")
+    assert rebuilt is not None
+    assert rebuilt.citations == round_.citations
+    assert rebuilt.index_version_id == round_.index_version_id
+
+
+def test_multi_token_query_searches_all_terms(env: dict[str, Any]) -> None:
+    """多词查询逐词合并：第一个词命中不阻断后续词的检索（窗口回退同理）。"""
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "甲.txt", "entropy 概念介绍。", layer="knowledge_base")
+    add_material(env, account, "乙.txt", "second law 相关论述。", layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "entropy second law")
+    assert round_ is not None
+    # 两个词都命中各自的材料（关键词路径逐词合并，不以第一个词结果代替）
+    assert {c.filename for c in round_.citations} >= {"甲.txt", "乙.txt"}
+
+
+def test_multi_chunk_document_yields_multiple_citations(env: dict[str, Any]) -> None:
+    """同文档多分块是独立引用：跨层去重不得把不同页/章节折叠为一条。"""
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    # 超过最大块长（2000 字符）的长段落 → 硬切成多个分块
+    long_content = "热力学第二定律的核心内容。" + ("熵增原理详细阐述。" * 300)
+    add_material(env, account, "长讲义.txt", long_content, layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None
+    # 同一文档多分块全部保留为独立引用，绝不折叠为 1 条
+    assert len(round_.citations) >= 2
+    assert {c.filename for c in round_.citations} == {"长讲义.txt"}
+
+
+def test_layer_search_failure_propagates_index_unavailable(
+    env: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """关键词检索失败（如 FTS 表损坏）必须结构化呈现索引不可用，
+    绝不静默当作无命中（AC-07）。"""
+    import sqlite3 as sqlite_module
+
+    from bridges.retrieval import service as retrieval_service_module
+
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "材料.txt", "热力学第二定律内容。", layer="knowledge_base")
+
+    def _broken_keyword_search(*args: object, **kwargs: object):
+        raise sqlite_module.Error("fts broken")
+
+    # 服务模块内已按名称导入 search_keyword：补丁必须打在服务模块引用上
+    monkeypatch.setattr(
+        retrieval_service_module, "search_keyword", _broken_keyword_search
+    )
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    assert round_ is not None
+    assert round_.sufficiency == RetrievalSufficiency.INDEX_UNAVAILABLE
+    assert _layer(round_, RetrievalSourceLayer.KNOWLEDGE_BASE).status == (
+        RetrievalLayerStatus.INDEX_UNAVAILABLE
+    )
+
+
+def test_round_projection_none_without_round(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    assert env["retrieval"].round_projection(account, "no-such-message") is None
+
+
+def test_citation_detail_cross_message_404(env: dict[str, Any]) -> None:
+    account = env["account_a"]
+    conversation_id = seed_conversation(env, account)
+    add_material(env, account, "知识库.txt", "热力学内容。", layer="knowledge_base")
+    round_ = _run(env, account, conversation_id, "assistant-1", "热力学")
+    assert round_ is not None and round_.citations
+    with pytest.raises(RetrievalError):
+        env["retrieval"].citation_detail(
+            account, conversation_id, "other-message", round_.citations[0].citation_id
+        )

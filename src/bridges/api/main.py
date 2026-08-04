@@ -89,6 +89,7 @@ from bridges.evaluation import EvaluationService
 from bridges.expression import ExpressionService
 from bridges.health.probe import build_health_projection
 from bridges.identity import IdentityService
+from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.service import IngestionService
 from bridges.institution import InstitutionService
 from bridges.invalidation import AffectedDownstream, InvalidationService
@@ -124,6 +125,7 @@ from bridges.persistence import (
 from bridges.profiles import InMemoryProfileRepository, ProfileService
 from bridges.profiles.api import router as profiles_router
 from bridges.projects import ProjectService
+from bridges.retrieval.service import LayeredRetrievalService
 from bridges.science import (
     ClaimEvidenceService,
     ScienceSearchService,
@@ -845,10 +847,33 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 app.state.ingestion_service,
                 ConversationRepository(bridges_database),
             )
+            # Issue 20: 分层本地检索（API 进程只读检索 + 写入检索记录）。查询
+            # 向量经账户级百炼 Key 调用固定 Embedding 模型；探测快照与摄取
+            # 服务共享同一 StateStore，读取不产生写竞争。
+            app.state.retrieval_service = LayeredRetrievalService(
+                database=bridges_database,
+                embedding=QwenEmbeddingPort(
+                    credential_store=credential_store,
+                    region=(
+                        settings.qwen_region if settings is not None else "cn-beijing"
+                    ),
+                    workspace_id=(
+                        settings.qwen_workspace_id if settings is not None else None
+                    ),
+                    cassette_dir=(
+                        settings.qwen_cassette_dir if settings is not None else None
+                    ),
+                    record_mode=(
+                        settings.qwen_record_cassettes if settings is not None else False
+                    ),
+                ),
+                probe_service=CapabilityProbeService(state_store=state_store),
+            )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
             attachment_service=getattr(app.state, "chat_attachment_service", None),
+            retrieval_service=getattr(app.state, "retrieval_service", None),
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

@@ -55,6 +55,8 @@ export function buildThreadMessages(
         </p>
       ),
       thinking: latest.thinking ? projectionThinking(latest) : undefined,
+      // Issue 20：本轮分层检索轮次（含引用）；无检索作用域时为 null
+      retrieval: latest.retrieval ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({

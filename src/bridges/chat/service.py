@@ -36,7 +36,14 @@ from bridges.contracts.chat import (
     ChatModeEventProjection,
     ChatThinkingSummary,
 )
+from bridges.contracts.retrieval import (
+    CitationProjection,
+    RetrievalLayerStatus,
+    RetrievalRoundProjection,
+    RetrievalSourceLayer,
+)
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.retrieval.service import LayeredRetrievalService
 
 #: 核心对话能力的固定绑定（ADR-0009 固定模型矩阵）。
 CHAT_CAPABILITY_NAME = "qwen_text_chat"
@@ -205,10 +212,13 @@ class ChatService:
         repository: ConversationRepository,
         gateway: ModelGateway,
         attachment_service: ChatAttachmentService | None = None,
+        retrieval_service: LayeredRetrievalService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
         self._attachments = attachment_service
+        #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
+        self._retrieval = retrieval_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -557,11 +567,16 @@ class ChatService:
         assistant_message_id: str,
         run_context: RunContextEnvelope,
         until_user_message_id: str | None = None,
+        use_knowledge_base: bool = True,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
-        事件经此处原样透传给 API 层；停止信号（用户停止/切换账户导致
-        的客户端断开）都会把消息收敛到明确终态，绝不留 streaming 僵尸。
+        生成前执行一轮分层本地检索（Issue 20）：按「当前附件 → 当前项目
+        文件 → 已授权全局知识库」确定候选作用域，把最终引用固化为消息的
+        检索轮次，并注入最小上下文；关闭全局知识库时本轮不查询该层。
+        检索失败不阻断生成（本轮无引用，仍按无依据呈现）。事件经此处
+        原样透传给 API 层；停止信号（用户停止/切换账户导致的客户端断开）
+        都会把消息收敛到明确终态，绝不留 streaming 僵尸。
         """
         # 生成器惰性启动：若在启动前已被停止/收敛（例如停止接口先行完成），
         # 直接退出，绝不重新唤起一条已经终态的消息；同时校验消息归属
@@ -590,11 +605,39 @@ class ChatService:
             history = self._model_history(
                 account_id, conversation_id, until_user_message_id
             )
+            # 生成前执行一轮分层检索：查询文本取所属用户消息正文；检索
+            # 结果固化到消息投影（引用展示数据不漂移），并注入最小上下文。
+            retrieval_round: RetrievalRoundProjection | None = None
+            if self._retrieval is not None and not stop_event.is_set():
+                messages = self._repo.list_messages(account_id, conversation_id)
+                owner = _owner_user_message(messages, assistant_message_id)
+                round_query = owner.content if owner is not None else ""
+                retrieval_round = self._retrieval.run_round(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    until_user_message_id
+                    or (owner.message_id if owner is not None else None),
+                    round_query,
+                    use_knowledge_base=use_knowledge_base,
+                )
+                if retrieval_round is not None:
+                    thinking = _retrieval_thinking(thinking, retrieval_round)
             payload: dict[str, Any] = {
                 "messages": history,
                 "temperature": 0.7,
                 "max_tokens": 1024,
             }
+            if retrieval_round is not None and retrieval_round.citations:
+                # 检索上下文以独立 system 块注入，与模式合同并存：模型只可
+                # 引用本块提供的材料，不得声称存在未提供的文件或页码。
+                payload["messages"].insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": _retrieval_context(retrieval_round.citations),
+                    },
+                )
             for event in self._gateway.stream(
                 CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
             ):
@@ -934,6 +977,14 @@ class ChatService:
                 if message.thinking is not None
                 else None
             ),
+            retrieval=(
+                self._retrieval.round_projection(
+                    message.account_id, message.message_id
+                )
+                if self._retrieval is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
             error_code=message.error_code,
             error_message=message.error_message,
             duration_ms=message.duration_ms,
@@ -1010,6 +1061,100 @@ def _attempt_group(
         if in_group:
             group.append(message)
     return group
+
+
+# ---------------------------------------------------------------------------
+# 分层检索的思考摘要与上下文（Issue 20）
+# ---------------------------------------------------------------------------
+#
+# 思考摘要的「引用依据」（evidence）与「工具进度」（tools）由本轮检索
+# 结果构造，与「模型组织说明」（steps，来自模式合同）严格区分；引用
+# 展示数据在检索时固化，索引重建不会让历史引用静默漂移。
+
+#: 来源层的中文呈现（思考摘要工具条目与上下文说明共用）。
+_LAYER_NAMES: dict[RetrievalSourceLayer, str] = {
+    RetrievalSourceLayer.ATTACHMENT: "当前附件",
+    RetrievalSourceLayer.PROJECT: "学习项目文件",
+    RetrievalSourceLayer.KNOWLEDGE_BASE: "全局知识库",
+}
+#: 思考摘要中引用片段的最大长度。
+_EVIDENCE_SNIPPET_MAX = 160
+#: 注入模型的最小上下文总长度上限。
+_CONTEXT_MAX_CHARS = 2400
+
+
+def _citation_location(
+    citation: CitationProjection, *, snippet_max: int = 0
+) -> str:
+    """引用位置的面向用户中文描述（页码/章节/原文片段）。"""
+    parts: list[str] = []
+    if citation.page_number is not None:
+        parts.append(f"第 {citation.page_number} 页")
+    if citation.section_title:
+        parts.append(f"章节：{citation.section_title}")
+    if parts:
+        return " · ".join(parts)
+    return "原文片段"
+
+
+def _retrieval_thinking(
+    thinking: dict[str, list[str]], retrieval_round: RetrievalRoundProjection
+) -> dict[str, list[str]]:
+    """把一轮检索结果并入思考摘要：evidence=引用依据，tools=检索进度。"""
+    evidence: list[str] = []
+    for citation in retrieval_round.citations:
+        snippet = citation.snippet
+        if len(snippet) > _EVIDENCE_SNIPPET_MAX:
+            snippet = snippet[:_EVIDENCE_SNIPPET_MAX] + "…"
+        evidence.append(
+            f"引用了「{citation.filename}」{_citation_location(citation)}"
+            f"：{snippet}"
+        )
+    tools: list[str] = []
+    for layer in retrieval_round.layers:
+        if layer.status == RetrievalLayerStatus.OK and layer.candidates > 0:
+            tools.append(
+                f"已检索{_LAYER_NAMES[layer.layer]}：{layer.candidates} 条候选"
+            )
+    if not tools:
+        tools.append(_sufficiency_tool(retrieval_round))
+    return {**thinking, "evidence": evidence, "tools": tools}
+
+
+def _sufficiency_tool(retrieval_round: RetrievalRoundProjection) -> str:
+    """无候选时面向用户的检索进度说明（结构化，不以空候选表示成功）。
+
+    直接复用检索轮次的中文注记（``note`` 是充足性信号的唯一文案来源），
+    避免同一信号在后端多份措辞漂移。
+    """
+    if retrieval_round.note:
+        return retrieval_round.note
+    if retrieval_round.citations:
+        return "已检索本地材料。"
+    return "本轮未检索到匹配的本地材料。"
+
+
+def _retrieval_context(citations: list[CitationProjection]) -> str:
+    """构造注入模型的最小检索上下文（固定格式，可测试）。
+
+    材料只作为参考：模型引用时必须注明来源编号，不得声称存在未提供的
+    文件或页码——引用芯片本身由检索轮次提供，杜绝幻觉来源。
+    """
+    lines = [
+        "以下是本轮检索到的本地材料（仅作参考；引用时注明来源编号，"
+        "不得声称存在未提供的文件或页码）："
+    ]
+    used = 0
+    for index, citation in enumerate(citations, start=1):
+        snippet = citation.snippet
+        if len(snippet) > _EVIDENCE_SNIPPET_MAX:
+            snippet = snippet[:_EVIDENCE_SNIPPET_MAX] + "…"
+        line = f"[{index}]「{citation.filename}」{_citation_location(citation)}：{snippet}"
+        if used + len(line) > _CONTEXT_MAX_CHARS:
+            break
+        used += len(line)
+        lines.append(line)
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

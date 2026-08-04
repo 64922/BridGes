@@ -265,7 +265,11 @@ export default function ChatConversationPage() {
   activeRunRef.current = activeRun;
 
   const sendMessage = useCallback(
-    async (text: string, attachmentIds: string[] = []): Promise<boolean> => {
+    async (
+      text: string,
+      attachmentIds: string[] = [],
+      useKnowledgeBase: boolean = true
+    ): Promise<boolean> => {
       setSendError(null);
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
@@ -281,7 +285,9 @@ export default function ChatConversationPage() {
             onEvent(event);
           },
           controller.signal,
-          attachmentIds
+          attachmentIds,
+          // Issue 20：本轮知识库开关（关闭后检索与引用不含知识库候选）
+          useKnowledgeBase
         );
         return true;
       } catch (error) {
@@ -497,7 +503,9 @@ export default function ChatConversationPage() {
                     <ModeToggle value={currentMode} onChange={(mode) => void changeMode(mode)} />
                   </div>
                   <Composer
-                    onSend={(text, attachmentIds) => sendMessage(text, attachmentIds)}
+                    onSend={(text, attachmentIds, _, useKnowledgeBase) =>
+                      sendMessage(text, attachmentIds, useKnowledgeBase)
+                    }
                     conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}

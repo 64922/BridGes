@@ -53,10 +53,12 @@ from bridges.contracts.chat import (
 )
 from bridges.contracts.credentials import ProbeStatus
 from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.credentials.service import KeyCredentialService
 from bridges.ingestion.service import IngestionError, IngestionService
 from bridges.learning_projects import LearningProjectError, LearningProjectService
+from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -129,6 +131,21 @@ def _get_ingestion_service(request: Request) -> IngestionService:
 
 
 IngestionServiceDep = Annotated[IngestionService, Depends(_get_ingestion_service)]
+
+
+def _get_retrieval_service(request: Request) -> LayeredRetrievalService | None:
+    """检索服务依赖：未挂载时返回 None（引用详情路由自行 503）。
+
+    重试路径只需读取旧轮次的知识库开关，检索服务缺省时回退默认开启，
+    与聊天主链路（检索可选）保持一致，避免重试在无检索挂载的实例上
+    被 503 拦截。
+    """
+    return getattr(request.app.state, "retrieval_service", None)
+
+
+RetrievalServiceDep = Annotated[
+    LayeredRetrievalService | None, Depends(_get_retrieval_service)
+]
 
 
 def _get_learning_project_service(request: Request) -> LearningProjectService:
@@ -278,13 +295,15 @@ def _generation_events(
     user_message: ChatMessageProjection,
     assistant_message: ChatMessageProjection,
     run_context: RunContextEnvelope,
+    use_knowledge_base: bool = True,
 ) -> Iterator[ChatStreamEvent]:
     """发送/重试共用的 SSE 事件序列：started → delta* → done | error。
 
     若消息在生成器启动前已被并发收敛（停止/断流/TTL 收敛抢先），生成器
     不会产出任何事件——此时读取消息当前状态补发诚实的终态事件，保证
     started 之后必有 done/error，绝不悬挂。所有事件载荷由契约模型
-    （ChatStreamEvent）构造，是前端类型生成的唯一来源。
+    （ChatStreamEvent）构造，是前端类型生成的唯一来源。``use_knowledge_base``
+    控制本轮分层检索是否包含全局知识库层（Issue 20）。
     """
     yield ChatStreamEvent(
         event=ChatStreamEventKind.STARTED,
@@ -306,6 +325,7 @@ def _generation_events(
         # 生成上下文截断到本轮用户消息：发送路径为新消息（等价完整历史），
         # 重试路径为该轮所属用户消息（不含后续轮次，Issue 11 重试语义）。
         until_user_message_id=user_message.message_id,
+        use_knowledge_base=use_knowledge_base,
     ):
         if event.kind == "delta":
             yield ChatStreamEvent(
@@ -780,7 +800,9 @@ async def send_message(
     """发送用户消息并流式接收真实 Qwen 回答（SSE）。
 
     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-    失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。
+    失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭
+    本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索
+    记录与引用均不包含知识库候选。
     """
     _ensure_chat_capability_ready(subject, credential_service)
     try:
@@ -802,8 +824,44 @@ async def send_message(
             user_message,
             assistant_message,
             run_context,
+            use_knowledge_base=body.use_knowledge_base,
         )
     )
+
+
+@router.get(
+    "/conversations/{conversation_id}/messages/{message_id}/citations/{citation_id}",
+    response_model=CitationDetailProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def citation_detail(
+    conversation_id: str,
+    message_id: str,
+    citation_id: str,
+    service: RetrievalServiceDep,
+    subject: SubjectDep,
+) -> CitationDetailProjection:
+    """返回单条引用的证据详情（展开引用时实时校验授权）。
+
+    引用不属于当前账户/对话/消息时返回统一 404；原文已删除或权限变化时
+    返回安全中文状态，不暴露资源存在性。
+    """
+    if service is None:
+        raise _error(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "retrieval_unavailable",
+            "本地检索服务未启用，当前实例拒绝检索操作。",
+        )
+    try:
+        return service.citation_detail(
+            subject.account_id, conversation_id, message_id, citation_id
+        )
+    except RetrievalError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
 
 
 @router.post(
@@ -855,10 +913,12 @@ async def retry_message(
     service: ChatServiceDep,
     credential_service: CredentialServiceDep,
     subject: SubjectDep,
+    retrieval_service: RetrievalServiceDep,
 ) -> StreamingResponse:
     """重试失败的助手消息：创建新的助手尝试并流式生成。
 
-    新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。
+    新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域
+    沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。
     """
     _ensure_chat_capability_ready(subject, credential_service)
     try:
@@ -867,6 +927,17 @@ async def retry_message(
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+
+    # 重试沿用旧尝试轮次的全局知识库开关：新尝试生成新检索轮次，但用户
+    # 发送时的设置不应被重试静默改变；检索服务未挂载时回退默认开启。
+    previous_round = (
+        retrieval_service.round_projection(subject.account_id, message_id)
+        if retrieval_service is not None
+        else None
+    )
+    use_knowledge_base = (
+        previous_round.use_knowledge_base if previous_round is not None else True
+    )
 
     run_context = _chat_run_context(
         subject.account_id, conversation_id, assistant_message.message_id
@@ -880,5 +951,6 @@ async def retry_message(
             user_message,
             assistant_message,
             run_context,
+            use_knowledge_base=use_knowledge_base,
         )
     )

@@ -536,9 +536,34 @@ export interface paths {
          * @description 发送用户消息并流式接收真实 Qwen 回答（SSE）。
          *
          *     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。
+         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭
+         *     本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索
+         *     记录与引用均不包含知识库候选。
          */
         post: operations["send_message_chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/citations/{citation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Citation Detail
+         * @description 返回单条引用的证据详情（展开引用时实时校验授权）。
+         *
+         *     引用不属于当前账户/对话/消息时返回统一 404；原文已删除或权限变化时
+         *     返回安全中文状态，不暴露资源存在性。
+         */
+        get: operations["citation_detail_chat_conversations__conversation_id__messages__message_id__citations__citation_id__get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -578,7 +603,8 @@ export interface paths {
          * Retry Message
          * @description 重试失败的助手消息：创建新的助手尝试并流式生成。
          *
-         *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。
+         *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域
+         *     沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。
          */
         post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
         delete?: never;
@@ -5857,6 +5883,9 @@ export interface components {
         /**
          * ChatMessageCreateRequest
          * @description 发送一条用户消息。
+         *
+         *     ``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用
+         *     均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。
          */
         ChatMessageCreateRequest: {
             /**
@@ -5869,6 +5898,12 @@ export interface components {
              * @description 已上传且待绑定到本条消息的对象标识。
              */
             attachment_ids?: string[];
+            /**
+             * Use Knowledge Base
+             * @description 本轮是否启用全局知识库层（可在发送前关闭）。
+             * @default true
+             */
+            use_knowledge_base: boolean;
         };
         /**
          * ChatMessageProjection
@@ -5911,6 +5946,8 @@ export interface components {
             attachments?: components["schemas"]["ChatAttachmentProjection"][];
             /** @description 可公开的思考摘要；失败/停止/断流时保留已完成部分。 */
             thinking?: components["schemas"]["ChatThinkingSummary"] | null;
+            /** @description 本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。 */
+            retrieval?: components["schemas"]["RetrievalRoundProjection"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -6380,6 +6417,37 @@ export interface components {
             verification_reason?: string | null;
         };
         /**
+         * CitationAccessStatus
+         * @description 引用打开时的证据可访问状态。
+         *
+         *     - ``accessible``：原文仍在当前账户授权范围，可精确打开；
+         *     - ``deleted``：原文对象已删除；
+         *     - ``permission_changed``：原文仍在但授权范围已变化（如附件已解绑、
+         *       项目已删除/文件已移除、知识库材料已删除），显示安全中文状态。
+         * @enum {string}
+         */
+        CitationAccessStatus: "accessible" | "deleted" | "permission_changed";
+        /**
+         * CitationDetailProjection
+         * @description 单条引用的证据详情（点击展开时实时校验授权后返回）。
+         */
+        CitationDetailProjection: {
+            /** @description 生成时固化的引用快照。 */
+            citation: components["schemas"]["CitationProjection"];
+            /** @description 当前可访问状态。 */
+            access_status: components["schemas"]["CitationAccessStatus"];
+            /**
+             * Access Message
+             * @description 面向用户的中文可访问说明。
+             */
+            access_message: string;
+            /**
+             * Download Url
+             * @description 打开原文的授权入口（相对 URL；不可访问时为 None）。
+             */
+            download_url?: string | null;
+        };
+        /**
          * CitationLocator
          * @description Precise location of a citation within a document version.
          */
@@ -6424,6 +6492,57 @@ export interface components {
              * @description End character offset in the document version.
              */
             end_offset?: number | null;
+        };
+        /**
+         * CitationProjection
+         * @description 一条最终引用（融合后确定，展示数据在生成时固化不漂移）。
+         *
+         *     ``filename``、``page_number``/``section_title`` 与 ``snippet`` 都是
+         *     引用生成时刻的原文快照：索引重建或原文变化不会让历史引用静默漂移。
+         */
+        CitationProjection: {
+            /**
+             * Citation Id
+             * @description 稳定引用标识。
+             */
+            citation_id: string;
+            /** @description 来源层。 */
+            source_layer: components["schemas"]["RetrievalSourceLayer"];
+            /**
+             * Object Id
+             * @description 原文对象标识（解析入口使用）。
+             */
+            object_id: string;
+            /**
+             * Filename
+             * @description 来源文件名（生成时快照）。
+             */
+            filename: string;
+            /**
+             * Media Type
+             * @description 来源媒体类型（决定打开方式）。
+             */
+            media_type: string;
+            /**
+             * Page Number
+             * @description 页码（可空）。
+             */
+            page_number?: number | null;
+            /**
+             * Section Title
+             * @description 章节标题（可空）。
+             */
+            section_title?: string | null;
+            /**
+             * Snippet
+             * @description 可验证片段（生成时快照，可核对原文）。
+             */
+            snippet: string;
+            /**
+             * Rank
+             * @description 融合后排序位次（从 1 开始）。
+             */
+            rank: number;
         };
         /**
          * CitationValidationResult
@@ -14452,6 +14571,114 @@ export interface components {
          */
         RetrievalExerciseType: "recall" | "explanation" | "computation" | "comparison" | "application";
         /**
+         * RetrievalLayerResult
+         * @description 单层检索结果（状态 + 去重后候选数 + 中文说明）。
+         */
+        RetrievalLayerResult: {
+            /** @description 来源层。 */
+            layer: components["schemas"]["RetrievalSourceLayer"];
+            /** @description 该层检索状态。 */
+            status: components["schemas"]["RetrievalLayerStatus"];
+            /**
+             * Candidates
+             * @description 该层去重后的候选数。
+             * @default 0
+             */
+            candidates: number;
+            /**
+             * Note
+             * @description 面向用户的中文说明。
+             */
+            note?: string | null;
+        };
+        /**
+         * RetrievalLayerStatus
+         * @description 单层检索的对外状态。
+         *
+         *     - ``disabled``：本轮未启用（未授权/被用户关闭），不产生任何候选；
+         *     - ``no_material``：该层没有可检索材料（未上传/仍在处理/已删除）；
+         *     - ``index_unavailable``：本地索引不可用，无法检索该层；
+         *     - ``ok``：完成检索（候选数可为 0，配合整体充足性呈现）。
+         * @enum {string}
+         */
+        RetrievalLayerStatus: "disabled" | "no_material" | "index_unavailable" | "ok";
+        /**
+         * RetrievalRoundProjection
+         * @description 一轮检索的完整投影（绑定一条助手消息，刷新/重启后保持稳定）。
+         */
+        RetrievalRoundProjection: {
+            /**
+             * Round Id
+             * @description 稳定轮次标识。
+             */
+            round_id: string;
+            /**
+             * Message Id
+             * @description 绑定助手消息标识。
+             */
+            message_id: string;
+            /**
+             * Conversation Id
+             * @description 所属对话标识。
+             */
+            conversation_id: string;
+            /**
+             * Use Knowledge Base
+             * @description 本轮是否使用了全局知识库（关闭时请求/引用均不含其候选）。
+             */
+            use_knowledge_base: boolean;
+            /**
+             * Index Version Id
+             * @description 检索时服务的索引版本（审计用途）。
+             */
+            index_version_id?: string | null;
+            /** @description 证据充足性信号。 */
+            sufficiency: components["schemas"]["RetrievalSufficiency"];
+            /**
+             * Layers
+             * @description 按作用域顺序的每层结果。
+             */
+            layers?: components["schemas"]["RetrievalLayerResult"][];
+            /**
+             * Citations
+             * @description 融合排序后的最终引用。
+             */
+            citations?: components["schemas"]["CitationProjection"][];
+            /**
+             * Note
+             * @description 面向用户的整体中文说明。
+             */
+            note?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 检索发生时间。
+             */
+            created_at: string;
+        };
+        /**
+         * RetrievalSourceLayer
+         * @description 候选来源层（作用域顺序即优先级：附件 → 项目文件 → 知识库）。
+         *
+         *     - ``attachment``：当前对话明确附加的文件（本轮授权）；
+         *     - ``project``：当前学习项目的文件（对话归属项目时启用）；
+         *     - ``knowledge_base``：用户已授权的全局知识库（可在发送前关闭）。
+         * @enum {string}
+         */
+        RetrievalSourceLayer: "attachment" | "project" | "knowledge_base";
+        /**
+         * RetrievalSufficiency
+         * @description 证据充足性信号（供后续教学门使用；本 Issue 只输出信号）。
+         *
+         *     - ``sufficient``：去重后候选达到覆盖阈值；
+         *     - ``no_hits``：本轮无任何命中（不以空候选表示成功）；
+         *     - ``conflict``：关键词与向量检索的顶级命中不一致（歧义）；
+         *     - ``insufficient_coverage``：有命中但覆盖不足；
+         *     - ``index_unavailable``：本地索引不可用，无法产生候选。
+         * @enum {string}
+         */
+        RetrievalSufficiency: "sufficient" | "no_hits" | "conflict" | "insufficient_coverage" | "index_unavailable";
+        /**
          * RevalidateRequest
          * @description 登记一个影响类别中已完成重验证的对象。
          */
@@ -20112,6 +20339,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    citation_detail_chat_conversations__conversation_id__messages__message_id__citations__citation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+                citation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CitationDetailProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Service Unavailable */

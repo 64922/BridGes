@@ -2,6 +2,47 @@
 
 状态：进行中（2026-08-04）
 
+## Issue 20 实施计划（分层本地检索、融合排序与引用）
+
+状态：实施完成，待 code-review 与提交。全量验证：1330 pytest（+76）、
+E2E 143 通过（新增 issue20 5 条，4 个失败均为干净树既有/环境 flake）、
+mypy 173 文件 0 错误、改动区域 ruff 干净、npm typecheck/build 通过。
+
+### 目标
+在真实对话中交付三层本地检索：当前对话附件 → 当前学习项目文件 → 已授权
+全局知识库。每层 FTS5 BM25 与 text-embedding-v4 向量结果按固定合同融合
+（RRF k=60 + 层权重 3/2/1），独立候选配额（4/5/5）与去重规则，引用固化
+为消息轮次（文件名/页码/章节/片段快照，索引重建不漂移），点击引用实时
+校验授权并打开原文；无命中/冲突/覆盖不足/索引不可用输出结构化充足性。
+
+### 新增模块
+1. `contracts/retrieval.py` — CitationProjection / RetrievalRoundProjection /
+   RetrievalLayerResult / RetrievalSufficiency / CitationDetailProjection
+2. `retrieval/search.py` — 查询清理、FTS 窗口回退、向量余弦、RRF 层内融合、
+   跨层加权合并与内容哈希去重、冲突与充足性判定
+3. `retrieval/repository.py` — 检索轮次与引用持久化（账户作用域）
+4. `retrieval/service.py` — 作用域解析、每轮检索编排、投影与引用详情授权校验
+5. `tests/retrieval/` — 搜索单测 11 条 + 服务测试 17 条（作用域/配额/去重/
+   隔离/充足性/引用详情/版本稳定）
+6. `tests/chat/test_retrieval_chat.py` — 生成前检索、上下文注入、重试新轮次、
+   知识库开关、刷新稳定（5 条）
+
+### 修改
+7. `storage/database.py` — SCHEMA_VERSION 10：retrieval_rounds + message_citations
+8. `contracts/chat.py` — ChatMessageProjection.retrieval、请求 use_knowledge_base
+9. `chat/service.py` — 生成前 run_round、最小上下文注入、思考摘要证据/工具、
+   消息投影携带检索轮次
+10. `api/chat.py` — send/retry 透传知识库开关、引用详情路由
+11. `api/main.py` — 挂载 LayeredRetrievalService（真实 QwenEmbeddingPort）
+12. 前端 — api.ts（useKnowledgeBase + getCitationDetail）、RetrievalCard.tsx
+    （状态卡/引用展开/打开原文）、MessageList/ChatThread 接入、Composer
+    来源层面板与知识库开关（模板基线不渲染）、openapi.json + generated.ts 再生成
+
+### 收尾
+13. 全量 pytest / ruff / mypy / npm typecheck+build / E2E 已验证
+14. code-review 双轴审查并修复；更新 Issue 20 验收状态；提交
+
+
 ## Issue 17 实施计划（文档摄取与版本化全文/向量索引）
 
 状态：已完成（2026-08-04）。全量验证：1254 pytest（+47，含 3 条审查回归）、117 E2E（+4）、mypy 160 文件 0 错误、改动区域 ruff 干净、npm typecheck/build 通过。双轴 code-review 修复 8 处缺陷后提交。

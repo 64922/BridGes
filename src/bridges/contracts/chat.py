@@ -13,6 +13,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from bridges.contracts.retrieval import RetrievalRoundProjection
+
 
 class ChatMessageRole(StrEnum):
     """消息角色。"""
@@ -121,6 +123,10 @@ class ChatMessageProjection(BaseModel):
         default=None,
         description="可公开的思考摘要；失败/停止/断流时保留已完成部分。",
     )
+    retrieval: RetrievalRoundProjection | None = Field(
+        default=None,
+        description="本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。",
+    )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
     duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
@@ -225,11 +231,18 @@ class ChatModeSwitchResponse(BaseModel):
 
 
 class ChatMessageCreateRequest(BaseModel):
-    """发送一条用户消息。"""
+    """发送一条用户消息。
+
+    ``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用
+    均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。
+    """
 
     content: str = Field(min_length=1, max_length=4000, description="用户消息正文。")
     attachment_ids: list[str] = Field(
         default_factory=list, max_length=10, description="已上传且待绑定到本条消息的对象标识。"
+    )
+    use_knowledge_base: bool = Field(
+        default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
     )
 
 
