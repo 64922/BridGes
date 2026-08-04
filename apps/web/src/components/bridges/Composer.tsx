@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
+import { LearningProjectPickerDialog } from "@/components/learning-projects/LearningProjectPickerDialog";
 import { CHAT_TOOL_INTENTS } from "@/lib/chat-tools";
 import {
   cancelChatAttachment,
@@ -37,6 +38,10 @@ interface ComposerProps {
   onStop?: () => void;
   /** 外部预填请求（建议卡等）：nonce 变化时把 text 作为结构化意图填入并聚焦 */
   prefill?: { text: string; nonce: number } | null;
+  /** 当前选中的学习项目（提供 onSelectLearningProject 时生效）。 */
+  learningProject?: { project_id: string; name: string } | null;
+  /** 「选择学习项目」入口；选择/清除后回调（传 null 表示清除）。 */
+  onSelectLearningProject?: (project: { project_id: string; name: string } | null) => void;
 }
 
 interface SpeechRecognitionResultEventLike {
@@ -63,11 +68,6 @@ type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 const UNAVAILABLE_TOOLS = [
-  {
-    label: "选择学习项目",
-    icon: "learningProject",
-    reason: "学习项目功能将在后续版本开放，现在可以直接在消息中描述你的学习目标。",
-  },
   {
     label: "选择已启用插件",
     icon: "plugins",
@@ -99,12 +99,15 @@ export function Composer({
   generating = false,
   onStop,
   prefill = null,
+  learningProject = null,
+  onSelectLearningProject,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [dictating, setDictating] = useState(false);
   const [dictationError, setDictationError] = useState("");
   const [toolNotice, setToolNotice] = useState("");
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
@@ -483,6 +486,47 @@ export function Composer({
         }}
       />
 
+      {learningProject && (
+        <div
+          data-testid="composer-learning-project-chip"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "var(--space-2)",
+            alignSelf: "flex-start",
+            maxWidth: "100%",
+            padding: "var(--space-1) var(--space-2)",
+            borderRadius: "var(--radius-md)",
+            border: "1px solid var(--color-border)",
+            backgroundColor: "var(--color-bg-secondary)",
+            fontSize: "var(--text-sm)",
+            color: "var(--color-text-secondary)",
+          }}
+        >
+          <Icon name="learningProject" size={16} aria-hidden />
+          <span
+            style={{
+              minWidth: 0,
+              maxWidth: "22rem",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={learningProject.name}
+          >
+            {learningProject.name}
+          </span>
+          <button
+            type="button"
+            aria-label="清除学习项目选择"
+            onClick={() => onSelectLearningProject?.(null)}
+            style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
+          >
+            <Icon name="close" size={14} aria-hidden />
+          </button>
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
         <input
           ref={fileInputRef}
@@ -520,6 +564,16 @@ export function Composer({
               onSelect: () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
+            ...(onSelectLearningProject
+              ? [
+                  {
+                    label: "选择学习项目",
+                    icon: "learningProject" as const,
+                    returnFocus: false,
+                    onSelect: () => setProjectPickerOpen(true),
+                  },
+                ]
+              : []),
             ...UNAVAILABLE_TOOLS.map((tool) => ({
               label: tool.label,
               icon: tool.icon,
@@ -565,6 +619,18 @@ export function Composer({
         >
           {toolNotice || "附件正在上传，完成后即可发送。"}
         </p>
+      )}
+      {projectPickerOpen && onSelectLearningProject && (
+        <LearningProjectPickerDialog
+          selectedProjectId={learningProject?.project_id ?? null}
+          onSelect={(project) => {
+            setProjectPickerOpen(false);
+            onSelectLearningProject(
+              project ? { project_id: project.project_id, name: project.name } : null
+            );
+          }}
+          onClose={() => setProjectPickerOpen(false)}
+        />
       )}
     </div>
   );

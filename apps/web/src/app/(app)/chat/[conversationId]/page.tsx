@@ -14,11 +14,13 @@ import {
 } from "@/components/bridges/MessageList";
 import { AppShell } from "@/components/layout/AppShell";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
+import { changeConversationLearningProject } from "@/lib/learning-projects";
 import {
   ApiError,
   deleteChatMessageAttachment,
   downloadChatAttachment,
   getChatConversation,
+  getLearningProject,
   isChatStreamEventOf,
   retryAttachmentIngestion,
   retryChatMessage,
@@ -70,6 +72,8 @@ export default function ChatConversationPage() {
   const [pendingUser, setPendingUser] = useState<{ id: string; text: string } | null>(null);
   const [sendError, setSendError] = useState<{ message: string; code?: string } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
+  // 对话所属学习项目名称（Issue 19）：由 project_id 解析，仅供 chip 展示
+  const [projectName, setProjectName] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
 
@@ -97,8 +101,63 @@ export default function ChatConversationPage() {
     setActiveRun(null);
     setPendingUser(null);
     setSendError(null);
+    setProjectName(null);
     void load();
   }, [load]);
+
+  // 解析对话所属学习项目名称；项目已在别处删除（404）时清除 chip 并提示。
+  const projectId = conversation?.project_id ?? null;
+  useEffect(() => {
+    if (!projectId) {
+      setProjectName(null);
+      return;
+    }
+    let cancelled = false;
+    getLearningProject(projectId)
+      .then((detail) => {
+        if (!cancelled) setProjectName(detail.name);
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        if (error instanceof ApiError && error.status === 404) {
+          setProjectName(null);
+          setConversation((current) =>
+            current ? { ...current, project_id: null } : current
+          );
+          setSendError({ message: "该学习项目已被删除，已清除对话的项目归属显示。" });
+        } else {
+          setProjectName(null);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
+
+  // 变更学习项目归属：立即写入服务端（显式 null 表示移出），
+  // 仅更新本地 project_id 字段，避免用 PATCH 响应覆盖消息列表。
+  const changeLearningProject = useCallback(
+    async (project: { project_id: string; name: string } | null) => {
+      if (!conversation || loadState !== "ready") return;
+      try {
+        await changeConversationLearningProject(
+          conversation.conversation_id,
+          project?.project_id ?? null
+        );
+        setConversation((current) =>
+          current ? { ...current, project_id: project?.project_id ?? null } : current
+        );
+        setProjectName(project?.name ?? null);
+        setAnnouncement(project ? `已移入学习项目：${project.name}` : "已清除学习项目选择");
+      } catch (error) {
+        setSendError({
+          message: error instanceof Error ? error.message : "更新学习项目归属失败，请稍后重试。",
+          code: error instanceof ApiError ? error.code : undefined,
+        });
+      }
+    },
+    [conversation, loadState]
+  );
 
   // 新对话首页跳转带来的待发送消息：同步消费防 StrictMode 双发
   useEffect(() => {
@@ -442,6 +501,12 @@ export default function ChatConversationPage() {
                     conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}
+                    learningProject={
+                      conversation?.project_id
+                        ? { project_id: conversation.project_id, name: projectName ?? "学习项目" }
+                        : null
+                    }
+                    onSelectLearningProject={(project) => void changeLearningProject(project)}
                   />
                 </div>
               </div>

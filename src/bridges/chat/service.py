@@ -19,6 +19,7 @@ from bridges.ai.adapters import StreamEvent
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
+    ConversationRecord,
     ConversationRepository,
     MessageRecord,
     ModeEventRecord,
@@ -356,6 +357,30 @@ class ChatService:
             updated_at=record.updated_at,
             messages=self._repo.list_messages(account_id, conversation_id),
             mode_events=self._repo.list_mode_events(account_id, conversation_id),
+        )
+
+    def projection_from_record(
+        self, record: ConversationRecord
+    ) -> ChatConversationProjection:
+        """由会话记录构造完整投影（与 update_conversation 同一响应形状）。
+
+        组合更新路径（标题/置顶 + 学习项目归属在同一事务内完成，见
+        ``LearningProjectService.update_conversation_metadata``）用已更新
+        的记录投影响应，不触发读取路径的陈旧流收敛。
+        """
+        return self._project_conversation(
+            record.account_id,
+            record.conversation_id,
+            title=record.title,
+            mode=ChatMode(record.mode),
+            pinned=record.pinned,
+            project_id=record.project_id,
+            created_at=record.created_at,
+            updated_at=record.updated_at,
+            messages=self._repo.list_messages(record.account_id, record.conversation_id),
+            mode_events=self._repo.list_mode_events(
+                record.account_id, record.conversation_id
+            ),
         )
 
     def delete_conversation(self, account_id: str, conversation_id: str) -> None:

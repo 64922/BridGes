@@ -56,8 +56,7 @@ from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.credentials.service import KeyCredentialService
 from bridges.ingestion.service import IngestionError, IngestionService
-from bridges.projects import ProjectError as ProjectServiceError
-from bridges.projects import ProjectService
+from bridges.learning_projects import LearningProjectError, LearningProjectService
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -132,8 +131,10 @@ def _get_ingestion_service(request: Request) -> IngestionService:
 IngestionServiceDep = Annotated[IngestionService, Depends(_get_ingestion_service)]
 
 
-def _get_project_service(request: Request) -> ProjectService:
-    service: ProjectService | None = getattr(request.app.state, "project_service", None)
+def _get_learning_project_service(request: Request) -> LearningProjectService:
+    service: LearningProjectService | None = getattr(
+        request.app.state, "learning_project_service", None
+    )
     if service is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -145,7 +146,9 @@ def _get_project_service(request: Request) -> ProjectService:
     return service
 
 
-ProjectServiceDep = Annotated[ProjectService, Depends(_get_project_service)]
+LearningProjectServiceDep = Annotated[
+    LearningProjectService, Depends(_get_learning_project_service)
+]
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -407,7 +410,7 @@ def create_conversation(
     body: ChatCreateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
-    project_service: ProjectServiceDep,
+    learning_project_service: LearningProjectServiceDep,
 ) -> ChatConversationProjection:
     """新建对话；标题可选，缺省由首条消息自动推导。
 
@@ -416,8 +419,8 @@ def create_conversation(
     try:
         if body.project_id is not None:
             try:
-                project_service.get_project(subject.account_id, body.project_id)
-            except ProjectServiceError as exc:
+                learning_project_service.get_project(subject.account_id, body.project_id)
+            except LearningProjectError as exc:
                 raise _error(
                     status.HTTP_404_NOT_FOUND,
                     "project_not_found",
@@ -449,9 +452,24 @@ def update_conversation(
     body: ChatConversationUpdateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
+    learning_project_service: LearningProjectServiceDep,
 ) -> ChatConversationProjection:
-    """更新当前账户会话的标题或置顶状态。"""
+    """更新当前账户会话的标题、置顶状态或学习项目归属。
+
+    ``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改
+    归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH
+    与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。
+    """
     try:
+        if "project_id" in body.model_fields_set:
+            record = learning_project_service.update_conversation_metadata(
+                subject.account_id,
+                conversation_id,
+                title=body.title,
+                pinned=body.pinned,
+                project_id=body.project_id,
+            )
+            return service.projection_from_record(record)
         return service.update_conversation(
             subject.account_id,
             conversation_id,
@@ -460,6 +478,8 @@ def update_conversation(
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+    except LearningProjectError as exc:
+        raise _error(exc.status_code, exc.code, exc.message) from exc
 
 
 @router.delete(

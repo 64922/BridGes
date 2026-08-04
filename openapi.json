@@ -1404,7 +1404,7 @@
           "chat"
         ],
         "summary": "Update Conversation",
-        "description": "更新当前账户会话的标题或置顶状态。",
+        "description": "更新当前账户会话的标题、置顶状态或学习项目归属。\n\n``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改\n归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH\n与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。",
         "operationId": "update_conversation_chat_conversations__conversation_id__patch",
         "parameters": [
           {
@@ -3547,6 +3547,907 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response 503 Rebuild Material Knowledge Base Materials  Object Id  Rebuild Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning-projects": {
+      "post": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Create Project",
+        "description": "新建学习项目；名称必填，描述可选。",
+        "operationId": "create_project_learning_projects_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningProjectCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Create Project Learning Projects Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 422 Create Project Learning Projects Post"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Create Project Learning Projects Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "List Projects",
+        "description": "列出当前账户的全部学习项目（最近更新在前）。",
+        "operationId": "list_projects_learning_projects_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 List Projects Learning Projects Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 List Projects Learning Projects Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning-projects/{project_id}": {
+      "get": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Get Project",
+        "description": "返回项目详情（含归属对话列表）；跨账户访问安全返回 404。",
+        "operationId": "get_project_learning_projects__project_id__get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectDetail"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Get Project Learning Projects  Project Id  Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Get Project Learning Projects  Project Id  Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Get Project Learning Projects  Project Id  Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Update Project",
+        "description": "更新项目名称或描述；字段缺省保持不变，显式 null 清空描述（名称显式 null 为 422）。",
+        "operationId": "update_project_learning_projects__project_id__patch",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningProjectUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Update Project Learning Projects  Project Id  Patch"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Update Project Learning Projects  Project Id  Patch"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 422 Update Project Learning Projects  Project Id  Patch"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Update Project Learning Projects  Project Id  Patch"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Delete Project",
+        "description": "删除项目；``keep`` 保留对话（解除归属），``delete`` 连同对话删除。",
+        "operationId": "delete_project_learning_projects__project_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "contents",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "keep",
+                "delete"
+              ],
+              "type": "string",
+              "default": "keep",
+              "title": "Contents"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Delete Project Learning Projects  Project Id  Delete"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Delete Project Learning Projects  Project Id  Delete"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 409 Delete Project Learning Projects  Project Id  Delete"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Delete Project Learning Projects  Project Id  Delete"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning-projects/{project_id}/files": {
+      "post": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Upload File",
+        "description": "接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。\n\n上传成功即入队摄取（source=project_file）：解析、分块与索引由后台\n执行器完成。同项目同名同内容的重复上传幂等复用——客户端安全重试\n同一上传只会得到已有文件的 200 投影，绝不重复摄取。",
+        "operationId": "upload_file_learning_projects__project_id__files_post",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectFile"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 400 Upload File Learning Projects  Project Id  Files Post"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Upload File Learning Projects  Project Id  Files Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Upload File Learning Projects  Project Id  Files Post"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 413 Upload File Learning Projects  Project Id  Files Post"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Upload File Learning Projects  Project Id  Files Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "List Files",
+        "description": "列出项目的全部文件（最新上传在前）。",
+        "operationId": "list_files_learning_projects__project_id__files_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectFileListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 List Files Learning Projects  Project Id  Files Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 List Files Learning Projects  Project Id  Files Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 List Files Learning Projects  Project Id  Files Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning-projects/{project_id}/files/{object_id}/download": {
+      "get": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Download File",
+        "description": "通过账户与项目授权下载文件原文，不暴露对象库路径。",
+        "operationId": "download_file_learning_projects__project_id__files__object_id__download_get",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Download File Learning Projects  Project Id  Files  Object Id  Download Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Download File Learning Projects  Project Id  Files  Object Id  Download Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Download File Learning Projects  Project Id  Files  Object Id  Download Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning-projects/{project_id}/files/{object_id}": {
+      "delete": {
+        "tags": [
+          "learning-projects"
+        ],
+        "summary": "Delete File",
+        "description": "级联删除项目文件与派生索引数据；被后台任务使用时返回 409。",
+        "operationId": "delete_file_learning_projects__project_id__files__object_id__delete",
+        "parameters": [
+          {
+            "name": "project_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Project Id"
+            }
+          },
+          {
+            "name": "object_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Object Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Delete File Learning Projects  Project Id  Files  Object Id  Delete"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Delete File Learning Projects  Project Id  Files  Object Id  Delete"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 409 Delete File Learning Projects  Project Id  Files  Object Id  Delete"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Delete File Learning Projects  Project Id  Files  Object Id  Delete"
                 }
               }
             },
@@ -22269,11 +23170,24 @@
             ],
             "title": "Pinned",
             "description": "是否置顶。"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "目标学习项目标识；显式 null 解除归属。"
           }
         },
         "type": "object",
         "title": "ChatConversationUpdateRequest",
-        "description": "更新对话标题或置顶状态；至少提供一个字段。"
+        "description": "更新对话标题、置顶状态或学习项目归属；至少提供一个字段。\n\n``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。"
       },
       "ChatCreateRequest": {
         "properties": {
@@ -30858,6 +31772,302 @@
         ],
         "title": "LearningPathNodeStatus",
         "description": "Lifecycle status of a node on a learning path."
+      },
+      "LearningProjectConversation": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "稳定对话标识。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "对话标题。",
+            "default": ""
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "对话当前模式。",
+            "default": "companion"
+          },
+          "pinned": {
+            "type": "boolean",
+            "title": "Pinned",
+            "description": "是否置顶。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近活动时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LearningProjectConversation",
+        "description": "项目详情中的对话条目（不含消息正文）。"
+      },
+      "LearningProjectCreateRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "description": "项目名称。"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "可选项目描述。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "LearningProjectCreateRequest",
+        "description": "新建学习项目请求；名称必填，描述可选。"
+      },
+      "LearningProjectDetail": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "稳定项目标识。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "项目名称。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "项目描述。",
+            "default": ""
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          },
+          "conversations": {
+            "items": {
+              "$ref": "#/components/schemas/LearningProjectConversation"
+            },
+            "type": "array",
+            "title": "Conversations"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LearningProjectDetail",
+        "description": "单个学习项目的完整投影（含归属对话列表）。"
+      },
+      "LearningProjectFile": {
+        "properties": {
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "稳定对象标识。"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "原始文件名。"
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "文件大小（字节）。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "服务端嗅探确认的媒体类型。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/DocumentIngestionStatus",
+            "description": "摄取状态。"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error",
+            "description": "摄取失败的中文原因。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "上传入队时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "object_id",
+          "filename",
+          "content_length",
+          "media_type",
+          "status",
+          "created_at"
+        ],
+        "title": "LearningProjectFile",
+        "description": "项目文件的列表投影（摄取状态与知识库材料共用同一词汇）。"
+      },
+      "LearningProjectFileListProjection": {
+        "properties": {
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/LearningProjectFile"
+            },
+            "type": "array",
+            "title": "Files"
+          }
+        },
+        "type": "object",
+        "title": "LearningProjectFileListProjection",
+        "description": "项目文件列表（最新上传在前）。"
+      },
+      "LearningProjectListProjection": {
+        "properties": {
+          "projects": {
+            "items": {
+              "$ref": "#/components/schemas/LearningProjectSummary"
+            },
+            "type": "array",
+            "title": "Projects"
+          }
+        },
+        "type": "object",
+        "title": "LearningProjectListProjection",
+        "description": "当前账户的学习项目列表，按最近更新倒序。"
+      },
+      "LearningProjectSummary": {
+        "properties": {
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "稳定项目标识。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "项目名称。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "项目描述。",
+            "default": ""
+          },
+          "conversation_count": {
+            "type": "integer",
+            "title": "Conversation Count",
+            "description": "归属对话数。",
+            "default": 0
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "description": "项目文件数。",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "project_id",
+          "name",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LearningProjectSummary",
+        "description": "学习项目列表项（含对话与文件计数，不含具体内容）。"
+      },
+      "LearningProjectUpdateRequest": {
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120,
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "新名称。"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "新描述；显式 null 表示清空。"
+          }
+        },
+        "type": "object",
+        "title": "LearningProjectUpdateRequest",
+        "description": "更新项目名称或描述；至少提供一个字段。\n\n字段缺省表示保持不变；``description`` 显式传 null 表示清空描述；\n``name`` 显式传 null 非法（名称永远不能为空），按 422 拒绝。"
       },
       "LearningRecord": {
         "properties": {

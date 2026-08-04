@@ -387,7 +387,11 @@ export interface paths {
         head?: never;
         /**
          * Update Conversation
-         * @description 更新当前账户会话的标题或置顶状态。
+         * @description 更新当前账户会话的标题、置顶状态或学习项目归属。
+         *
+         *     ``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改
+         *     归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH
+         *     与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。
          */
         patch: operations["update_conversation_chat_conversations__conversation_id__patch"];
         trace?: never;
@@ -754,6 +758,126 @@ export interface paths {
          */
         post: operations["rebuild_material_knowledge_base_materials__object_id__rebuild_post"];
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning-projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Projects
+         * @description 列出当前账户的全部学习项目（最近更新在前）。
+         */
+        get: operations["list_projects_learning_projects_get"];
+        put?: never;
+        /**
+         * Create Project
+         * @description 新建学习项目；名称必填，描述可选。
+         */
+        post: operations["create_project_learning_projects_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning-projects/{project_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Project
+         * @description 返回项目详情（含归属对话列表）；跨账户访问安全返回 404。
+         */
+        get: operations["get_project_learning_projects__project_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project
+         * @description 删除项目；``keep`` 保留对话（解除归属），``delete`` 连同对话删除。
+         */
+        delete: operations["delete_project_learning_projects__project_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Project
+         * @description 更新项目名称或描述；字段缺省保持不变，显式 null 清空描述（名称显式 null 为 422）。
+         */
+        patch: operations["update_project_learning_projects__project_id__patch"];
+        trace?: never;
+    };
+    "/learning-projects/{project_id}/files": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Files
+         * @description 列出项目的全部文件（最新上传在前）。
+         */
+        get: operations["list_files_learning_projects__project_id__files_get"];
+        put?: never;
+        /**
+         * Upload File
+         * @description 接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
+         *
+         *     上传成功即入队摄取（source=project_file）：解析、分块与索引由后台
+         *     执行器完成。同项目同名同内容的重复上传幂等复用——客户端安全重试
+         *     同一上传只会得到已有文件的 200 投影，绝不重复摄取。
+         */
+        post: operations["upload_file_learning_projects__project_id__files_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning-projects/{project_id}/files/{object_id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Download File
+         * @description 通过账户与项目授权下载文件原文，不暴露对象库路径。
+         */
+        get: operations["download_file_learning_projects__project_id__files__object_id__download_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/learning-projects/{project_id}/files/{object_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete File
+         * @description 级联删除项目文件与派生索引数据；被后台任务使用时返回 409。
+         */
+        delete: operations["delete_file_learning_projects__project_id__files__object_id__delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -5670,7 +5794,9 @@ export interface components {
         };
         /**
          * ChatConversationUpdateRequest
-         * @description 更新对话标题或置顶状态；至少提供一个字段。
+         * @description 更新对话标题、置顶状态或学习项目归属；至少提供一个字段。
+         *
+         *     ``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。
          */
         ChatConversationUpdateRequest: {
             /**
@@ -5683,6 +5809,11 @@ export interface components {
              * @description 是否置顶。
              */
             pinned?: boolean | null;
+            /**
+             * Project Id
+             * @description 目标学习项目标识；显式 null 解除归属。
+             */
+            project_id?: string | null;
         };
         /**
          * ChatCreateRequest
@@ -11082,6 +11213,218 @@ export interface components {
          * @enum {string}
          */
         LearningPathNodeStatus: "pending" | "completed" | "skipped";
+        /**
+         * LearningProjectConversation
+         * @description 项目详情中的对话条目（不含消息正文）。
+         */
+        LearningProjectConversation: {
+            /**
+             * Conversation Id
+             * @description 稳定对话标识。
+             */
+            conversation_id: string;
+            /**
+             * Title
+             * @description 对话标题。
+             * @default
+             */
+            title: string;
+            /**
+             * @description 对话当前模式。
+             * @default companion
+             */
+            mode: components["schemas"]["ChatMode"];
+            /**
+             * Pinned
+             * @description 是否置顶。
+             * @default false
+             */
+            pinned: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近活动时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * LearningProjectCreateRequest
+         * @description 新建学习项目请求；名称必填，描述可选。
+         */
+        LearningProjectCreateRequest: {
+            /**
+             * Name
+             * @description 项目名称。
+             */
+            name: string;
+            /**
+             * Description
+             * @description 可选项目描述。
+             */
+            description?: string | null;
+        };
+        /**
+         * LearningProjectDetail
+         * @description 单个学习项目的完整投影（含归属对话列表）。
+         */
+        LearningProjectDetail: {
+            /**
+             * Project Id
+             * @description 稳定项目标识。
+             */
+            project_id: string;
+            /**
+             * Name
+             * @description 项目名称。
+             */
+            name: string;
+            /**
+             * Description
+             * @description 项目描述。
+             * @default
+             */
+            description: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+            /** Conversations */
+            conversations?: components["schemas"]["LearningProjectConversation"][];
+        };
+        /**
+         * LearningProjectFile
+         * @description 项目文件的列表投影（摄取状态与知识库材料共用同一词汇）。
+         */
+        LearningProjectFile: {
+            /**
+             * Object Id
+             * @description 稳定对象标识。
+             */
+            object_id: string;
+            /**
+             * Filename
+             * @description 原始文件名。
+             */
+            filename: string;
+            /**
+             * Content Length
+             * @description 文件大小（字节）。
+             */
+            content_length: number;
+            /**
+             * Media Type
+             * @description 服务端嗅探确认的媒体类型。
+             */
+            media_type: string;
+            /** @description 摄取状态。 */
+            status: components["schemas"]["DocumentIngestionStatus"];
+            /**
+             * Error
+             * @description 摄取失败的中文原因。
+             */
+            error?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 上传入队时间。
+             */
+            created_at: string;
+        };
+        /**
+         * LearningProjectFileListProjection
+         * @description 项目文件列表（最新上传在前）。
+         */
+        LearningProjectFileListProjection: {
+            /** Files */
+            files?: components["schemas"]["LearningProjectFile"][];
+        };
+        /**
+         * LearningProjectListProjection
+         * @description 当前账户的学习项目列表，按最近更新倒序。
+         */
+        LearningProjectListProjection: {
+            /** Projects */
+            projects?: components["schemas"]["LearningProjectSummary"][];
+        };
+        /**
+         * LearningProjectSummary
+         * @description 学习项目列表项（含对话与文件计数，不含具体内容）。
+         */
+        LearningProjectSummary: {
+            /**
+             * Project Id
+             * @description 稳定项目标识。
+             */
+            project_id: string;
+            /**
+             * Name
+             * @description 项目名称。
+             */
+            name: string;
+            /**
+             * Description
+             * @description 项目描述。
+             * @default
+             */
+            description: string;
+            /**
+             * Conversation Count
+             * @description 归属对话数。
+             * @default 0
+             */
+            conversation_count: number;
+            /**
+             * File Count
+             * @description 项目文件数。
+             * @default 0
+             */
+            file_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * LearningProjectUpdateRequest
+         * @description 更新项目名称或描述；至少提供一个字段。
+         *
+         *     字段缺省表示保持不变；``description`` 显式传 null 表示清空描述；
+         *     ``name`` 显式传 null 非法（名称永远不能为空），按 422 拒绝。
+         */
+        LearningProjectUpdateRequest: {
+            /**
+             * Name
+             * @description 新名称。
+             */
+            name?: string | null;
+            /**
+             * Description
+             * @description 新描述；显式 null 表示清空。
+             */
+            description?: string | null;
+        };
         /**
          * LearningRecord
          * @description Evidence-backed record of a learning event that can update knowledge state.
@@ -20532,6 +20875,639 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["KnowledgeBaseMaterialProjection"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_projects_learning_projects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningProjectListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    create_project_learning_projects_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningProjectCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningProjectSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    get_project_learning_projects__project_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningProjectDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    delete_project_learning_projects__project_id__delete: {
+        parameters: {
+            query?: {
+                contents?: "keep" | "delete";
+            };
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    update_project_learning_projects__project_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LearningProjectUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningProjectSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    list_files_learning_projects__project_id__files_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningProjectFileListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    upload_file_learning_projects__project_id__files_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LearningProjectFile"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    download_file_learning_projects__project_id__files__object_id__download_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    delete_file_learning_projects__project_id__files__object_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: string;
+                object_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

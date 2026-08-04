@@ -1,13 +1,18 @@
-import type { Page } from "@playwright/test";
+import { expect, type Page } from "@playwright/test";
 
+/**
+ * 创建 legacy 科学项目空间并进入其工作台（/projects/{id}）。
+ *
+ * Issue 19 后 /account/projects 改为「学习项目」文件夹列表，旧的页面内
+ * 创建表单已退场；科学项目空间仍由 POST /api/projects 提供，这里直接走
+ * API 创建再导航到工作台深链（与页面内创建后的落点一致）。
+ */
 export async function createProject(page: Page, name: string): Promise<string> {
-  await page.goto("/account/projects");
-  await page.getByLabel("项目名称").fill(name);
-  await page.getByRole("button", { name: "创建项目" }).click();
-  await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
-  const match = page.url().match(/\/projects\/([A-Za-z0-9_-]+)/);
-  if (!match) {
-    throw new Error(`Failed to extract project id from ${page.url()}`);
-  }
-  return match[1];
+  const response = await page.request.post("/api/projects", { data: { name } });
+  expect(response.ok()).toBeTruthy();
+  const body = await response.json();
+  const projectId = body.id as string;
+  await page.goto(`/projects/${projectId}`);
+  await page.waitForURL(`/projects/${projectId}`);
+  return projectId;
 }

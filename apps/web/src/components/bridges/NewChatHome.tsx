@@ -10,7 +10,7 @@ import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
 import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
-import { ApiError, createChatConversation } from "@/lib/api";
+import { ApiError, createChatConversation, updateChatConversationProject } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -33,6 +33,8 @@ export function NewChatHome() {
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   // 新聊天默认日常陪伴；用户可切为学习模式后发送（Issue 14，ADR-0022）
   const [mode, setMode] = useState<ChatMode>("companion");
+  // 选中的学习项目（Issue 19）：本地状态，发送创建对话时写入 project_id
+  const [learningProject, setLearningProject] = useState<{ project_id: string; name: string } | null>(null);
   // 递增计数器保证每次建议卡点击都触发预填（同毫秒点击不会丢）
   const prefillCounter = useRef(0);
   const preparedConversationRef = useRef<string | undefined>();
@@ -60,10 +62,15 @@ export function NewChatHome() {
     setSending(true);
     setSendError(null);
     try {
+      // 附件预建对话不含项目归属；发送时把当前选择的项目一并写入，
+      // 保证「先传附件、后选项目、再发送」的路径归属一致。
+      const prepared = preparedConversationId ?? preparedConversationRef.current;
       const conversationId =
-        preparedConversationId ??
-        preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode)).conversation_id;
+        prepared ??
+        (await createChatConversation(undefined, mode, learningProject?.project_id)).conversation_id;
+      if (prepared && learningProject) {
+        await updateChatConversationProject(conversationId, learningProject.project_id);
+      }
       sessionStorage.setItem(chatPromptKey(conversationId), text);
       if (attachmentIds.length > 0) {
         sessionStorage.setItem(chatAttachmentKey(conversationId), JSON.stringify(attachmentIds));
@@ -112,6 +119,8 @@ export function NewChatHome() {
                 generating={sending}
                 onStop={() => setSending(false)}
                 prefill={prefill}
+                learningProject={learningProject}
+                onSelectLearningProject={setLearningProject}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>

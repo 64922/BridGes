@@ -249,15 +249,21 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
       "选择已启用插件",
     ]);
 
-    // 未实现入口：明确不可用原因，不弹假对话框、不产生假结果
+    // Issue 19：「选择学习项目」已落地——打开真实选择对话框（当前账户无项目
+    // 时给真实空状态），不再是不可用占位；Esc 关闭后不产生假结果。
     await menu.getByRole("menuitem", { name: "选择学习项目" }).click();
-    const notice = page.getByTestId("tool-unavailable-notice");
-    await expect(notice).toBeVisible();
-    await expect(notice).toContainText("后续版本");
+    const projectPicker = page.getByRole("dialog", { name: "选择学习项目" });
+    await expect(projectPicker).toBeVisible();
+    await expect(projectPicker).toContainText("还没有学习项目");
+    await expect(page.getByTestId("tool-unavailable-notice")).toHaveCount(0);
+    await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
+    // 未实现入口：明确不可用原因，不弹假对话框、不产生假结果
     await composer.getByRole("button", { name: "更多功能" }).click();
     await page.getByRole("menu", { name: "更多功能" }).getByRole("menuitem", { name: "选择已启用插件" }).click();
+    const notice = page.getByTestId("tool-unavailable-notice");
+    await expect(notice).toBeVisible();
     await expect(notice).toContainText("目前没有可选择的已启用插件");
   });
 

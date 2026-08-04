@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import NamedTuple, cast
 
@@ -63,6 +64,7 @@ SUPPORTED_MEDIA_TYPES = {
 _SOURCE_DISPLAY = {
     "chat_attachment": "聊天附件",
     "knowledge_base": "本地上传",
+    "project_file": "学习项目",
 }
 
 
@@ -161,12 +163,17 @@ class IngestionService:
     # ------------------------------------------------------------------
 
     def enqueue(
-        self, account_id: str, object_id: str, conversation_id: str | None = None
+        self,
+        account_id: str,
+        object_id: str,
+        conversation_id: str | None = None,
+        project_id: str | None = None,
     ) -> None:
         """为已上传对象创建摄取记录（幂等；不支持的媒体类型不入队）。
 
-        ``conversation_id`` 为 None 时表示全局知识库材料（Issue 18），
-        不绑定对话，来源标记为 ``knowledge_base``。
+        ``conversation_id`` 为 None 时表示不绑定对话的材料：``project_id``
+        非空为学习项目文件（Issue 19，来源 ``project_file``），否则为全局
+        知识库材料（Issue 18，来源 ``knowledge_base``）。
         """
         object_row = self._database.scoped(account_id).execute(
             "SELECT content_hash, media_type, original_filename FROM objects"
@@ -180,14 +187,18 @@ class IngestionService:
         if str(object_row["media_type"]) not in SUPPORTED_MEDIA_TYPES:
             return
         now = _now()
-        source = "chat_attachment" if conversation_id is not None else "knowledge_base"
+        source = (
+            "chat_attachment"
+            if conversation_id is not None
+            else ("project_file" if project_id is not None else "knowledge_base")
+        )
         try:
             with self._database.transaction():
                 self._database.scoped(account_id).execute(
                     "INSERT OR IGNORE INTO document_records"
                     " (document_id, account_id, object_id, conversation_id, content_hash,"
-                    "  parser_version, status, source, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
+                    "  parser_version, status, source, project_id, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?)",
                     (
                         f"doc-{object_id}",
                         account_id,
@@ -196,6 +207,7 @@ class IngestionService:
                         str(object_row["content_hash"]),
                         parser_version_for(str(object_row["media_type"])),
                         source,
+                        project_id,
                         now,
                         now,
                     ),
@@ -376,14 +388,102 @@ class IngestionService:
         抛 409 冲突，可稍后安全重试。对象删除失败时数据库级联已提交，
         报 503 可重试错误，绝不伪装成材料不存在。
         """
-        if self._material_record(account_id, object_id) is None:
-            raise IngestionError("material_not_found", "材料不存在或没有访问权限。", 404)
+        self._delete_scoped_material(
+            account_id,
+            object_id,
+            lookup=lambda: self._material_record(account_id, object_id),
+            not_found=IngestionError(
+                "material_not_found", "材料不存在或没有访问权限。", 404
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # 学习项目文件：项目作用域的投影与级联删除（Issue 19）
+    # ------------------------------------------------------------------
+
+    def list_project_materials(
+        self, account_id: str, project_id: str
+    ) -> list[KnowledgeBaseMaterialProjection]:
+        """列出项目全部文件投影（最新上传在前）；知识库列表不受影响。"""
+        rows = self._database.scoped(account_id).execute(
+            "SELECT r.*, o.original_filename, o.media_type, o.content_length"
+            " FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.source = 'project_file'"
+            " AND r.project_id = ? AND o.status = 'active'"
+            " ORDER BY r.created_at DESC, r.rowid DESC",
+            (account_id, project_id),
+        ).fetchall()
+        context = self._material_index_context(account_id)
+        return [self._material_from_row(row, context) for row in rows]
+
+    def project_material_projection(
+        self, account_id: str, project_id: str, object_id: str
+    ) -> KnowledgeBaseMaterialProjection | None:
+        """返回单份项目文件投影；跨账户/跨项目/不存在/非项目来源返回 None。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT r.*, o.original_filename, o.media_type, o.content_length"
+            " FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.object_id = ?"
+            " AND r.source = 'project_file' AND r.project_id = ?"
+            " AND o.status = 'active'",
+            (account_id, object_id, project_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._material_from_row(row, self._material_index_context(account_id))
+
+    def delete_project_material(
+        self, account_id: str, project_id: str, object_id: str
+    ) -> None:
+        """级联删除项目文件：与知识库材料同一级联语义与处理中 409 冲突。"""
+        self._delete_scoped_material(
+            account_id,
+            object_id,
+            lookup=lambda: self._project_material_record(
+                account_id, project_id, object_id
+            ),
+            not_found=IngestionError(
+                "file_not_found", "项目文件不存在或没有访问权限。", 404
+            ),
+        )
+
+    def purge_document_rows(self, account_id: str, document_id: str) -> None:
+        """在调用方事务内删除一份文档的全部分块行及 fts/向量派生行。
+
+        ``transaction()`` 不支持嵌套：学习项目删除在单个事务内级联多份
+        文件时直接复用本原语，而不是调用自行开启事务的服务级方法。
+        """
+        self._purge_document_chunks(account_id, document_id)
+
+    def _project_material_record(
+        self, account_id: str, project_id: str, object_id: str
+    ) -> sqlite3.Row | None:
+        """读取项目文件的摄取记录；非本项目/非项目来源一律不可见。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT document_id, status, lease_expires_at, content_hash"
+            " FROM document_records WHERE account_id = ? AND object_id = ?"
+            " AND source = 'project_file' AND project_id = ?",
+            (account_id, object_id, project_id),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def _delete_scoped_material(
+        self,
+        account_id: str,
+        object_id: str,
+        *,
+        lookup: Callable[[], sqlite3.Row | None],
+        not_found: IngestionError,
+    ) -> None:
+        """按来源作用域级联删除一份材料（知识库材料与项目文件共用）。"""
+        if lookup() is None:
+            raise not_found
         with self._database.transaction():
-            row = self._material_record(account_id, object_id)
+            row = lookup()
             if row is None:
-                raise IngestionError(
-                    "material_not_found", "材料不存在或没有访问权限。", 404
-                )
+                raise not_found
             if self._lease_active(row):
                 raise IngestionError(
                     "material_processing",

@@ -196,6 +196,15 @@ async function installAuthenticatedSession(page: Page, account = ACCOUNT_ALICE) 
       body: JSON.stringify({ conversations: [] }),
     })
   );
+  // Issue 19：侧栏新增学习项目列表请求；不 mock 时真实 API 以 401 清除
+  // 伪会话 Cookie，「返回新聊天」的整页导航会落到公开首页而非新聊天。
+  await page.route("**/api/learning-projects", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [] }),
+    })
+  );
 }
 
 test.describe("Issue 18 — 全局本地知识库", () => {

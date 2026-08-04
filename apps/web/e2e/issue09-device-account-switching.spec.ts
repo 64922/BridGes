@@ -73,6 +73,14 @@ async function setUpAuthenticatedPage(page: Page) {
       body: JSON.stringify({ conversations: [] }),
     })
   );
+  // Issue 19：侧栏新增学习项目列表请求，同理注入空列表避免 401 清除会话 Cookie。
+  await page.route("**/api/learning-projects", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [] }),
+    })
+  );
   await page.goto("/account/settings");
   await expect(page.getByRole("button", { name: /账户菜单：Alice/ })).toBeVisible();
 }

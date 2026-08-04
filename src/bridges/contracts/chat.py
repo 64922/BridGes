@@ -187,15 +187,25 @@ class ChatCreateRequest(BaseModel):
 
 
 class ChatConversationUpdateRequest(BaseModel):
-    """更新对话标题或置顶状态；至少提供一个字段。"""
+    """更新对话标题、置顶状态或学习项目归属；至少提供一个字段。
+
+    ``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。
+    """
 
     title: str | None = Field(default=None, min_length=1, max_length=120, description="新标题。")
     pinned: bool | None = Field(default=None, description="是否置顶。")
+    project_id: str | None = Field(
+        default=None, max_length=200, description="目标学习项目标识；显式 null 解除归属。"
+    )
 
     @model_validator(mode="after")
     def require_an_update(self) -> ChatConversationUpdateRequest:
-        if self.title is None and self.pinned is None:
-            raise ValueError("至少提供标题或置顶状态。")
+        if (
+            self.title is None
+            and self.pinned is None
+            and "project_id" not in self.model_fields_set
+        ):
+            raise ValueError("至少提供标题、置顶状态或学习项目归属。")
         return self
 
 

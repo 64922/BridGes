@@ -97,6 +97,15 @@ async function installAuthenticatedSession(page: Page) {
       }),
     })
   );
+  // Issue 19：侧栏新增学习项目列表请求；不 mock 时真实 API 以 401 清除
+  // 伪会话 Cookie，后续整页导航会落到公开首页。
+  await page.route("**/api/learning-projects", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ projects: [] }),
+    })
+  );
 }
 
 function conversation(id: string, title: string, mode: Conversation["mode"]): Conversation {

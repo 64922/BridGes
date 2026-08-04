@@ -1,219 +1,346 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { Menu, type MenuItem } from "@/components/bridges/Menu";
+import { StateBlock } from "@/components/bridges/StateBlock";
 import { Button } from "@/components/design-system/Button";
-import { ButtonLink } from "@/components/design-system/ButtonLink";
-import { ErrorSummary } from "@/components/design-system/ErrorSummary";
-import { LoadingStatus } from "@/components/design-system/LoadingStatus";
+import { Icon } from "@/components/design-system/Icon";
 import { MainContent } from "@/components/layout/MainContent";
-import { createProject, listProjects, type Project, type ProjectSummary } from "@/lib/api";
+import {
+  LearningProjectDeleteDialog,
+  type ProjectDeleteContents,
+} from "@/components/learning-projects/LearningProjectDeleteDialog";
+import { LearningProjectFormDialog } from "@/components/learning-projects/LearningProjectFormDialog";
+import {
+  ApiError,
+  classifyApiError,
+  createLearningProject,
+  deleteLearningProject,
+  listLearningProjects,
+  updateLearningProject,
+  type LearningProjectSummary,
+} from "@/lib/api";
+import { LEARNING_PROJECTS_CHANGED_EVENT } from "@/lib/learning-projects";
+import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
+import { formatAbsoluteTime, formatRelativeTime } from "@/lib/format";
 
-function domainLabel(domain: string): string {
-  switch (domain) {
-    case "personal_vault":
-      return "个人保险库";
-    case "shared_project":
-      return "显式共享项目";
-    case "institution_owned":
-      return "机构自有项目";
-    default:
-      return domain;
-  }
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }
 
-function roleLabel(role: string): string {
-  switch (role) {
-    case "owner":
-      return "所有者";
-    case "editor":
-      return "编辑者";
-    case "reviewer":
-      return "审阅者";
-    case "viewer":
-      return "查看者";
-    default:
-      return role;
-  }
-}
+type DialogState =
+  | { kind: "create" }
+  | { kind: "rename"; project: LearningProjectSummary }
+  | { kind: "delete"; project: LearningProjectSummary }
+  | null;
 
-function statusLabel(status: string): string {
-  return status === "archived" ? "已归档" : "活跃";
-}
-
-interface ProjectListProps {
-  projects: ProjectSummary[];
-  emptyMessage: string;
-}
-
-function ProjectList({ projects, emptyMessage }: ProjectListProps) {
-  const router = useRouter();
-
-  if (projects.length === 0) {
-    return <p style={{ color: "var(--color-text-secondary)" }}>{emptyMessage}</p>;
-  }
-
-  return (
-    <ul
-      role="list"
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(16rem, 1fr))",
-        gap: "var(--space-4)",
-      }}
-    >
-      {projects.map((project) => (
-        <li key={project.ref.object_id}>
-          <article
-            className="sc-card"
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: "var(--space-3)",
-              minHeight: "8rem",
-            }}
-          >
-            <div>
-              <h2 style={{ fontFamily: "var(--font-serif)", fontSize: "var(--text-lg)", fontWeight: 600 }}>
-                {project.name}
-              </h2>
-              <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)", marginTop: "var(--space-1)" }}>
-                {statusLabel(project.status)} · {domainLabel(project.ref.domain)} · 版本 {project.ref.version}
-              </p>
-            </div>
-            <div style={{ marginTop: "auto" }}>
-              <ButtonLink
-                href={`/projects/${project.ref.object_id}`}
-                ariaLabel={`打开项目 ${project.name}`}
-              >
-                打开项目
-              </ButtonLink>
-            </div>
-          </article>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
+/**
+ * 学习项目列表页（Issue 19，文件夹式学习项目）。
+ *
+ * ChatGPT Projects 式桌面列表：文件夹图标 + 名称 + 计数/更新时间元信息，
+ * 整行可点击/键盘聚焦进入详情页，行尾菜单提供改名与删除。新建、改名、
+ * 删除走共享对话框；加载/空/错误/权限状态齐全，失败绝不呈现为空列表。
+ */
 export default function ProjectsPageClient() {
   const router = useRouter();
-  const [active, setActive] = useState<ProjectSummary[]>([]);
-  const [archived, setArchived] = useState<ProjectSummary[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isCreating, setIsCreating] = useState(false);
-  const [errors, setErrors] = useState<string[]>([]);
-  const [newProjectName, setNewProjectName] = useState("");
+  const [projects, setProjects] = useState<LearningProjectSummary[] | null>(null);
+  const [loadError, setLoadError] = useState<{ kind: "error" | "permission"; message: string } | null>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
+  const [dialogError, setDialogError] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const loadProjects = useCallback(async () => {
+  const reload = useCallback(async () => {
     try {
-      const data = await listProjects();
-      setActive(data.active ?? []);
-      setArchived(data.archived ?? []);
-      setErrors([]);
-    } catch (err) {
-      setErrors([err instanceof Error ? err.message : "加载项目列表失败"]);
-    } finally {
-      setIsLoading(false);
+      const list = await listLearningProjects();
+      setProjects(list);
+      setLoadError(null);
+    } catch (error) {
+      const message = errorMessage(error, "学习项目列表加载失败，请稍后重试。");
+      const kind = classifyApiError(error) === "other" ? "error" : "permission";
+      setLoadError({ kind, message });
+      // 加载失败时不覆盖已有列表；首次失败保持 projects 为 null 以呈现错误态而非空态
     }
   }, []);
 
   useEffect(() => {
-    loadProjects();
-  }, [loadProjects]);
+    void reload();
+  }, [reload]);
 
-  const handleCreate = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!newProjectName.trim()) {
-      setErrors(["请输入项目名称。"]);
-      return;
-    }
-    setIsCreating(true);
-    setErrors([]);
+  const notifyChanged = () => {
+    window.dispatchEvent(new Event(LEARNING_PROJECTS_CHANGED_EVENT));
+  };
+
+  const doCreate = async (values: { name: string; description: string }) => {
+    setBusy(true);
+    setDialogError("");
     try {
-      const project: Project = await createProject({ name: newProjectName.trim() });
-      router.push(`/projects/${project.id}`);
-    } catch (err) {
-      setErrors([err instanceof Error ? err.message : "创建项目失败"]);
-      setIsCreating(false);
+      const project = await createLearningProject(values.name, values.description || undefined);
+      setDialog(null);
+      notifyChanged();
+      router.push(`/account/projects/${project.project_id}`);
+    } catch (error) {
+      setDialogError(errorMessage(error, "创建学习项目失败，请稍后重试。"));
+    } finally {
+      setBusy(false);
     }
   };
 
+  const doRename = async (
+    project: LearningProjectSummary,
+    values: { name: string; description: string }
+  ) => {
+    setBusy(true);
+    setDialogError("");
+    try {
+      await updateLearningProject(project.project_id, {
+        name: values.name,
+        description: values.description || null,
+      });
+      setDialog(null);
+      notifyChanged();
+      await reload();
+    } catch (error) {
+      setDialogError(errorMessage(error, "保存学习项目失败，请稍后重试。"));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doDelete = async (project: LearningProjectSummary, contents: ProjectDeleteContents) => {
+    setBusy(true);
+    setDialogError("");
+    try {
+      await deleteLearningProject(project.project_id, contents);
+      setDialog(null);
+      notifyChanged();
+      // 对话归属随删除变化（保留对话解绑 / 一并删除移除），侧栏列表同步刷新
+      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
+      await reload();
+    } catch (error) {
+      // 409 generation_in_progress 等可恢复错误：对话框内展示服务端中文原因
+      const message = errorMessage(error, "删除学习项目失败，请稍后重试。");
+      setDialogError(
+        error instanceof ApiError && error.status === 409
+          ? `${message} 请先停止正在生成的回答，再回到这里重试删除。`
+          : message
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openDialog = (next: NonNullable<DialogState>) => {
+    setDialogError("");
+    setDialog(next);
+  };
+
+  const rowMenuItems = (project: LearningProjectSummary): MenuItem[] => [
+    {
+      label: "改名",
+      icon: "edit",
+      returnFocus: false,
+      onSelect: () => openDialog({ kind: "rename", project }),
+    },
+    {
+      label: "删除",
+      icon: "trash",
+      danger: true,
+      returnFocus: false,
+      onSelect: () => openDialog({ kind: "delete", project }),
+    },
+  ];
+
   return (
     <MainContent>
-      <section className="sc-card" aria-labelledby="projects-title">
-        <h1 id="projects-title" className="sc-section-title">
-          学习项目
-        </h1>
-        <p style={{ color: "var(--color-text-secondary)", maxWidth: "60ch" }}>
-          每个学习项目都有明确的所有者、对象域和版本。未选择项目时，不能创建无归属产物。
-        </p>
-      </section>
-
-      <section aria-labelledby="create-project-title">
-        <h2 id="create-project-title" className="sc-section-title">
-          创建新项目
-        </h2>
-        <form
-          onSubmit={handleCreate}
+      <section
+        aria-labelledby="learning-projects-title"
+        style={{ maxWidth: "52rem", marginInline: "auto", padding: "0 var(--space-4)" }}
+      >
+        <div
           style={{
             display: "flex",
+            alignItems: "flex-start",
+            justifyContent: "space-between",
+            gap: "var(--space-4)",
             flexWrap: "wrap",
-            gap: "var(--space-3)",
-            alignItems: "flex-end",
           }}
         >
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)", flex: "1 1 16rem" }}>
-            <label htmlFor="project-name" style={{ fontSize: "var(--text-sm)", fontWeight: 500 }}>
-              项目名称
-            </label>
-            <input
-              id="project-name"
-              type="text"
-              value={newProjectName}
-              onChange={(e) => setNewProjectName(e.target.value)}
-              placeholder="例如：量子纠缠科普"
-              maxLength={200}
-              required
-              style={{
-                padding: "0.625rem 0.75rem",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--color-border)",
-                fontSize: "var(--text-base)",
-                minHeight: "var(--target-size)",
-              }}
-            />
+          <div>
+            <h1 id="learning-projects-title" className="sc-section-title">
+              学习项目
+            </h1>
+            <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+              把相关对话与项目文件组织在一起的文件夹，仅当前账户可见。
+            </p>
           </div>
-          <Button type="submit" isLoading={isCreating}>
-            创建项目
+          <Button data-testid="learning-project-create" onClick={() => openDialog({ kind: "create" })}>
+            <Icon name="plus" size={18} aria-hidden />
+            新建项目
           </Button>
-        </form>
-        {errors.length > 0 && (
-          <div style={{ marginTop: "var(--space-4)" }}>
-            <ErrorSummary errors={errors} />
-          </div>
-        )}
+        </div>
+
+        <div style={{ marginTop: "var(--space-6)" }}>
+          {projects === null && !loadError ? (
+            <StateBlock kind="loading" title="正在加载学习项目" description="读取当前账户的项目列表。" />
+          ) : loadError && projects === null ? (
+            <StateBlock
+              kind={loadError.kind}
+              title={loadError.kind === "permission" ? "暂时无法访问学习项目" : "学习项目加载失败"}
+              description={
+                loadError.kind === "permission"
+                  ? `${loadError.message} 请重新登录后再试。`
+                  : loadError.message
+              }
+              actionLabel="重试"
+              onAction={() => void reload()}
+            />
+          ) : (projects ?? []).length === 0 ? (
+            <div>
+              <StateBlock
+                kind="empty"
+                title="还没有学习项目"
+                description="创建一个学习项目，把同一主题的对话与项目文件放在一起管理。"
+              />
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <Button onClick={() => openDialog({ kind: "create" })}>
+                  <Icon name="plus" size={18} aria-hidden />
+                  新建项目
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {loadError && (
+                <p
+                  role="alert"
+                  style={{
+                    marginBottom: "var(--space-3)",
+                    padding: "var(--space-3) var(--space-4)",
+                    borderRadius: "var(--radius-md)",
+                    border: "1px solid var(--color-status-error)",
+                    backgroundColor: "var(--color-status-error-bg)",
+                    color: "var(--color-status-error)",
+                    fontSize: "var(--text-sm)",
+                  }}
+                >
+                  {loadError.message}
+                  <Button variant="ghost" size="sm" onClick={() => void reload()}>
+                    重试
+                  </Button>
+                </p>
+              )}
+              <ul role="list" style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+                {(projects ?? []).map((project) => (
+                  <li
+                    key={project.project_id}
+                    data-testid={`learning-project-row-${project.project_id}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-2)",
+                      borderRadius: "var(--radius-md)",
+                      border: "1px solid var(--color-border)",
+                      backgroundColor: "var(--color-surface)",
+                      transition:
+                        "background-color var(--motion-duration-fast) var(--motion-easing)",
+                    }}
+                  >
+                    <Link
+                      href={`/account/projects/${project.project_id}`}
+                      aria-label={`打开学习项目 ${project.name}`}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "var(--space-3)",
+                        flex: 1,
+                        minWidth: 0,
+                        minHeight: "var(--target-size)",
+                        padding: "var(--space-3) var(--space-4)",
+                        textDecoration: "none",
+                        borderRadius: "var(--radius-md)",
+                      }}
+                    >
+                      <span
+                        style={{ color: "var(--color-text-tertiary)", flexShrink: 0, display: "inline-flex" }}
+                      >
+                        <Icon name="learningProject" size={22} aria-hidden />
+                      </span>
+                      <span style={{ minWidth: 0, flex: 1 }}>
+                        <span
+                          style={{
+                            display: "block",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            fontWeight: 500,
+                            color: "var(--color-text-primary)",
+                          }}
+                        >
+                          {project.name}
+                        </span>
+                        <span
+                          style={{
+                            display: "block",
+                            marginTop: "2px",
+                            fontSize: "var(--text-xs)",
+                            color: "var(--color-text-tertiary)",
+                          }}
+                        >
+                          {project.conversation_count} 个对话 · {project.file_count} 个文件 ·{" "}
+                          <span title={formatAbsoluteTime(project.updated_at)}>
+                            更新于 {formatRelativeTime(project.updated_at)}
+                          </span>
+                        </span>
+                      </span>
+                    </Link>
+                    <div style={{ flexShrink: 0, paddingRight: "var(--space-2)" }}>
+                      <Menu
+                        trigger={<Icon name="more" size={20} aria-hidden />}
+                        ariaLabel={`项目操作：${project.name}`}
+                        items={rowMenuItems(project)}
+                      />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       </section>
 
-      <section aria-labelledby="active-projects-title">
-        <h2 id="active-projects-title" className="sc-section-title">
-          活跃项目
-        </h2>
-        {isLoading ? (
-          <LoadingStatus message="正在加载项目列表…" />
-        ) : (
-          <ProjectList projects={active} emptyMessage="暂无活跃项目。创建一个新项目开始科学学习与表达。" />
-        )}
-      </section>
+      {dialog?.kind === "create" && (
+        <LearningProjectFormDialog
+          mode="create"
+          busy={busy}
+          error={dialogError}
+          onSubmit={(values) => void doCreate(values)}
+          onClose={() => setDialog(null)}
+        />
+      )}
 
-      {archived.length > 0 && (
-        <section aria-labelledby="archived-projects-title">
-          <h2 id="archived-projects-title" className="sc-section-title">
-            已归档项目
-          </h2>
-          <ProjectList projects={archived} emptyMessage="" />
-        </section>
+      {dialog?.kind === "rename" && (
+        <LearningProjectFormDialog
+          mode="rename"
+          initialName={dialog.project.name}
+          initialDescription={dialog.project.description}
+          busy={busy}
+          error={dialogError}
+          onSubmit={(values) => void doRename(dialog.project, values)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+
+      {dialog?.kind === "delete" && (
+        <LearningProjectDeleteDialog
+          projectName={dialog.project.name}
+          busy={busy}
+          error={dialogError}
+          onConfirm={(contents) => void doDelete(dialog.project, contents)}
+          onClose={() => setDialog(null)}
+        />
       )}
     </MainContent>
   );

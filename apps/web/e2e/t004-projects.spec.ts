@@ -1,20 +1,24 @@
 import { expect, test } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { createProject } from "./helpers/projects";
 
+/**
+ * T004 — 创建带对象归属的科学项目空间（legacy 工作台 /projects/{id}）。
+ *
+ * Issue 19 后 /account/projects 改为「学习项目」文件夹列表，旧的页面内
+ * 创建表单退场；科学项目空间仍由 POST /api/projects 提供，因此用例统一
+ * 经 API 创建（见 helpers/projects.ts）再断言工作台投影。
+ */
 test.describe("T004 — 创建带对象归属的科学项目空间", () => {
-  test("认证用户创建项目并在列表中选择项目", async ({ page }) => {
+  test("认证用户创建项目并进入项目工作台", async ({ page }) => {
     const creds = uniqueCredentials("t004-create");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
-    await page.goto("/account/projects");
-    await expect(page.getByRole("heading", { name: "学习项目" })).toBeVisible();
-
     const projectName = `测试项目 ${Date.now()}`;
-    await page.getByLabel("项目名称").fill(projectName);
-    await page.getByRole("button", { name: "创建项目" }).click();
+    const projectId = await createProject(page, projectName);
 
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
+    await expect(page).toHaveURL(`/projects/${projectId}`);
     await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
     await expect(page.getByText("对象域：个人保险库")).toBeVisible();
     await expect(page.getByText("角色：所有者")).toBeVisible();
@@ -24,12 +28,8 @@ test.describe("T004 — 创建带对象归属的科学项目空间", () => {
     const creds = uniqueCredentials("t004-deep");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
-    await page.goto("/account/projects");
     const projectName = `深链项目 ${Date.now()}`;
-    await page.getByLabel("项目名称").fill(projectName);
-    await page.getByRole("button", { name: "创建项目" }).click();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
-
+    await createProject(page, projectName);
     const deepUrl = page.url();
 
     await page.reload();
@@ -44,33 +44,27 @@ test.describe("T004 — 创建带对象归属的科学项目空间", () => {
     const creds = uniqueCredentials("t004-history");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
-    await page.goto("/account/projects");
     const projectName = `历史项目 ${Date.now()}`;
-    await page.getByLabel("项目名称").fill(projectName);
-    await page.getByRole("button", { name: "创建项目" }).click();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
+    const projectId = await createProject(page, projectName);
 
     const learningTab = page.getByTestId("main-content").getByRole("link", { name: "学习实验室" });
     await learningTab.click();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+\/learning/);
+    await page.waitForURL(`/projects/${projectId}/learning`);
 
     await page.goBack();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+$/);
+    await page.waitForURL(`/projects/${projectId}`);
     await expect(page.getByRole("heading", { name: projectName })).toBeVisible();
 
     await page.goForward();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+\/learning/);
+    await page.waitForURL(`/projects/${projectId}/learning`);
   });
 
   test("账户首页显示最近创建的项目", async ({ page }) => {
     const creds = uniqueCredentials("t004-dashboard");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
-    await page.goto("/account/projects");
     const projectName = `仪表项目 ${Date.now()}`;
-    await page.getByLabel("项目名称").fill(projectName);
-    await page.getByRole("button", { name: "创建项目" }).click();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
+    await createProject(page, projectName);
 
     await page.goto("/account");
     await expect(page.getByRole("heading", { name: "学习项目" })).toBeVisible();
@@ -82,11 +76,8 @@ test.describe("T004 — 创建带对象归属的科学项目空间", () => {
     const bob = uniqueCredentials("t004-bob");
 
     await signUp(page, alice.username, alice.qqEmail, "correct-horse-12");
-    await page.goto("/account/projects");
     const projectName = `Alice 私有项目 ${Date.now()}`;
-    await page.getByLabel("项目名称").fill(projectName);
-    await page.getByRole("button", { name: "创建项目" }).click();
-    await page.waitForURL(/\/projects\/[A-Za-z0-9_-]+/);
+    await createProject(page, projectName);
     const deepUrl = page.url();
 
     const bobContext = await browser.newContext();

@@ -39,6 +39,10 @@ export type ChatMode = components["schemas"]["ChatMode"];
 export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
 export type ChatModeSwitchResponse = components["schemas"]["ChatModeSwitchResponse"];
 export type ChatThinkingSummary = components["schemas"]["ChatThinkingSummary"];
+export type LearningProjectSummary = components["schemas"]["LearningProjectSummary"];
+export type LearningProjectDetail = components["schemas"]["LearningProjectDetail"];
+export type LearningProjectConversation = components["schemas"]["LearningProjectConversation"];
+export type LearningProjectFile = components["schemas"]["LearningProjectFile"];
 export type Project = components["schemas"]["Project"];
 export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
 export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
@@ -1257,6 +1261,173 @@ export async function deleteKnowledgeBaseMaterial(objectId: string): Promise<voi
     { method: "DELETE", credentials: "same-origin" }
   );
   if (!res.ok) throw await parseApiError(res);
+}
+
+// ---------------------------------------------------------------------------
+// Issue 19：文件夹式学习项目
+// ---------------------------------------------------------------------------
+
+/** 当前账户的学习项目列表（按最近更新倒序）。 */
+export async function listLearningProjects(
+  options?: { signal?: AbortSignal }
+): Promise<LearningProjectSummary[]> {
+  const res = await fetch(`${API_BASE}/learning-projects`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    signal: options?.signal,
+  });
+  if (!res.ok) throw await parseApiError(res);
+  const projection: { projects?: LearningProjectSummary[] } = await res.json();
+  return projection.projects ?? [];
+}
+
+/** 新建学习项目；名称必填，描述可选。 */
+export async function createLearningProject(
+  name: string,
+  description?: string
+): Promise<LearningProjectSummary> {
+  const res = await fetch(`${API_BASE}/learning-projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ name, description: description ?? null }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 单个学习项目详情（含归属对话列表）。 */
+export async function getLearningProject(projectId: string): Promise<LearningProjectDetail> {
+  const res = await fetch(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 更新学习项目名称或描述；字段缺省保持不变，
+ * ``description`` 显式传 null 表示清空描述。
+ */
+export async function updateLearningProject(
+  projectId: string,
+  update: { name?: string; description?: string | null }
+): Promise<LearningProjectSummary> {
+  const body: Record<string, unknown> = {};
+  if (update.name !== undefined) body.name = update.name;
+  if (update.description !== undefined) body.description = update.description;
+  const res = await fetch(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(body),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 删除学习项目：``keep`` 保留对话为独立对话（项目文件随项目删除），
+ * ``delete`` 一并删除对话（含附件）与项目文件；
+ * 生成中返回 409 generation_in_progress。
+ */
+export async function deleteLearningProject(
+  projectId: string,
+  contents: "keep" | "delete"
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}?contents=${contents}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+}
+
+/** 项目文件列表（最新上传在前）。 */
+export async function listLearningProjectFiles(
+  projectId: string,
+  options?: { signal?: AbortSignal }
+): Promise<LearningProjectFile[]> {
+  const res = await fetch(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files`,
+    { credentials: "same-origin", cache: "no-store", signal: options?.signal }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  const projection: { files?: LearningProjectFile[] } = await res.json();
+  return projection.files ?? [];
+}
+
+/**
+ * 上传项目文件：与知识库材料共用 uploadRawBytes（XHR 进度 + 取消）；
+ * 201 新建 / 200 幂等复用，均按成功处理。
+ */
+export function uploadLearningProjectFile(
+  projectId: string,
+  file: File,
+  uploadId: string,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<LearningProjectFile> {
+  return uploadRawBytes<LearningProjectFile>(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files`,
+    file,
+    uploadId,
+    onProgress,
+    signal
+  );
+}
+
+/** 下载项目文件原始内容（与知识库材料下载同一模式）。 */
+export async function downloadLearningProjectFile(
+  projectId: string,
+  objectId: string,
+  originalFilename: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(objectId)}/download`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = originalFilename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+/** 删除项目文件（处理中返回 409 material_processing）。 */
+export async function deleteLearningProjectFile(
+  projectId: string,
+  objectId: string
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(objectId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+}
+
+/**
+ * 变更对话的学习项目归属：传入项目标识移入项目，
+ * 显式传 null 移出项目（保留为独立对话，历史消息与附件不变）。
+ */
+export async function updateChatConversationProject(
+  conversationId: string,
+  projectId: string | null
+): Promise<ChatConversationProjection> {
+  const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ project_id: projectId }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 export function statusText(status: HealthStatus): string {

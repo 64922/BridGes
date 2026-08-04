@@ -33,6 +33,7 @@ from bridges.api import (
     ingestion,
     institution,
     knowledge_base,
+    learning_projects,
     projects,
     science,
     scope,
@@ -100,6 +101,7 @@ from bridges.learning import (
     TeachingService,
 )
 from bridges.learning.api import router as learning_router
+from bridges.learning_projects import LearningProjectService
 from bridges.media import (
     AccessibilityService,
     InMemoryAudioStorage,
@@ -836,6 +838,13 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 object_repository,
                 app.state.ingestion_service,
             )
+            # Issue 19: 文件夹式学习项目（对话归属 + 项目级文件，复用摄取状态机）。
+            app.state.learning_project_service = LearningProjectService(
+                bridges_database,
+                object_repository,
+                app.state.ingestion_service,
+                ConversationRepository(bridges_database),
+            )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1165,6 +1174,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(ingestion.router)
     app.include_router(knowledge_base.router)
+    app.include_router(learning_projects.router)
     app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)

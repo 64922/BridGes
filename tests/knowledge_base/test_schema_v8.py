@@ -77,7 +77,7 @@ def test_upgrade_from_v7_preserves_rows_and_rebuilds_table(tmp_path: Path) -> No
         _seed_v7_rows(connection)
 
     database = BridgesDatabase(path)
-    assert database.initialize() == SCHEMA_VERSION == 8
+    assert database.initialize() == SCHEMA_VERSION == 9
     assert database.initialize() == SCHEMA_VERSION  # 重复启动幂等
 
     row = database.connection.execute(
