@@ -15,11 +15,13 @@ from bridges.contracts.profiles import (
     CandidateStabilityState,
     DecisionType,
     HumanDecision,
+    ManualAssertionCreateRequest,
     ObservationStatus,
     ProfileAssertion,
     ProfileAssertionHistory,
     ProfileAssertionVersion,
     ProfileCandidate,
+    ProfileDimension,
     ProfileExport,
     ProfileExportAssertion,
     ProfileObservation,
@@ -29,6 +31,7 @@ from bridges.contracts.profiles import (
     ProfileSlice,
     ProfileSliceCompileRequest,
     ProfileSliceItem,
+    ProfileSourceType,
     RejectedSliceItem,
     SliceStatus,
     UnusedSliceItem,
@@ -49,6 +52,21 @@ _AUTO_DISCARD_SIGNAL_KINDS: set[ProfileSignalKind] = {
 
 _PROHIBITED_SENSITIVITY: set[ProfileSensitivityClass] = {
     ProfileSensitivityClass.PROHIBITED,
+}
+
+#: Signal kind used for each dimension when the user manually declares a record.
+#: All mapped kinds are outside the auto-discard set so user-declared records are
+#: never silently discarded as transient signals.
+_DIMENSION_TO_SIGNAL_KIND: dict[ProfileDimension, ProfileSignalKind] = {
+    ProfileDimension.BASIC_INFORMATION: ProfileSignalKind.OTHER,
+    ProfileDimension.STAGE_GOAL: ProfileSignalKind.GOAL,
+    ProfileDimension.INTEREST_PREFERENCE: ProfileSignalKind.PREFERENCE,
+    ProfileDimension.EXPRESSION_HABIT: ProfileSignalKind.STYLE,
+    ProfileDimension.KNOWLEDGE_STATE: ProfileSignalKind.PRIOR_KNOWLEDGE,
+    ProfileDimension.EMOTION_TREND: ProfileSignalKind.OTHER,
+    ProfileDimension.IMPORTANT_EXPERIENCE: ProfileSignalKind.OTHER,
+    ProfileDimension.CURRENT_PROBLEM: ProfileSignalKind.OTHER,
+    ProfileDimension.AUTHORIZATION_SCOPE: ProfileSignalKind.OTHER,
 }
 
 
@@ -298,6 +316,17 @@ class ProfileService:
         else:
             raise ProfileError("未知决定类型。")
 
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_CANDIDATE_DECISION,
+            result=AuditResult.SUCCESS,
+            object_refs=[candidate_id],
+            reason=decision.reason,
+            details={
+                "decision": decision.decision.value,
+                "dimension": candidate.canonical_dimension,
+            },
+        )
         return self._repository.save_candidate(candidate)
 
     def list_assertions(self, account_id: str) -> list[ProfileAssertion]:
@@ -322,6 +351,12 @@ class ProfileService:
         reason: str,
         changed_by: str,
     ) -> ProfileAssertionVersion:
+        """Snapshot an assertion before any state transition.
+
+        ``changed_by`` distinguishes user operations ("user") from future
+        candidate-triggered changes ("candidate") so the history view can say
+        who caused each version. All current transitions are user-driven.
+        """
         return ProfileAssertionVersion(
             version_id=_new_id(),
             assertion_id=assertion.assertion_id,
@@ -400,34 +435,115 @@ class ProfileService:
             return sensitivity != ProfileSensitivityClass.PROHIBITED
         return sensitivity in allowed
 
-    def freeze_assertion(
-        self, account_id: str, assertion_id: str, reason: str
+    def manual_create_assertion(
+        self, account_id: str, request: ManualAssertionCreateRequest
     ) -> ProfileAssertion:
-        """Freeze a profile assertion so it is no longer recalled for new runs.
+        """Create a governed profile record directly from a user declaration.
 
-        Freezing creates a version snapshot and emits an audit event. Existing
-        compiled slices that contain the assertion are revoked so models cannot
-        continue using it.
+        The user is the declarer, so no separate confirmation step is needed:
+        the record is promoted immediately through the regular observation →
+        candidate → accept path so its provenance stays traceable. The account
+        audit records the creation with the declared source note.
+        """
+        observation = self.record_observation(
+            ProfileObservationCreateRequest(
+                owner_account_id=account_id,
+                source_type=ProfileSourceType.EXPLICIT_STATEMENT,
+                source_ref=request.source_note,
+                source_span_or_event="manual",
+                scene="用户手动新增画像记录",
+                purpose="用户主动声明画像事实",
+                observed_content=request.value_or_rule,
+                signal_kind=_DIMENSION_TO_SIGNAL_KIND[request.dimension],
+                extractor_and_version="manual-1.0",
+                sensitivity_class=request.sensitivity_class,
+                retention_policy="user-managed",
+            )
+        )
+        candidate = self.propose_candidate(
+            account_id,
+            canonical_dimension=request.dimension.value,
+            value_or_rule=request.value_or_rule,
+            applicable_scenes=request.applicable_scenes,
+            supporting_observation_ids=[observation.observation_id],
+            evidence_summary="用户手动声明",
+            authorization_scope=request.authorization_scope,
+            sensitivity_class=request.sensitivity_class,
+        )
+        self.decide_candidate(
+            account_id,
+            candidate.candidate_id,
+            CandidateDecision(
+                decision=DecisionType.ACCEPT,
+                reason="用户手动确认新增画像记录",
+            ),
+        )
+        assertion = next(
+            (
+                a
+                for a in self._repository.list_assertions(account_id)
+                if a.promoted_from_candidate_id == candidate.candidate_id
+            ),
+            None,
+        )
+        if assertion is None:
+            raise ProfileError("画像记录创建失败，请稍后重试。")
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.PROFILE_CREATE,
+            result=AuditResult.SUCCESS,
+            object_refs=[assertion.assertion_id],
+            reason=request.source_note,
+            details={
+                "dimension": request.dimension.value,
+                "observation_id": observation.observation_id,
+                "candidate_id": candidate.candidate_id,
+                "content_hash": self._hash_assertion_value(
+                    assertion.value_or_rule, assertion.applicable_scenes
+                ),
+            },
+        )
+        return assertion
+
+    def _transition_status(
+        self,
+        account_id: str,
+        assertion_id: str,
+        *,
+        target_status: AssertionStatus,
+        allowed_statuses: set[AssertionStatus],
+        failure_message: str,
+        audit_action: AuditAction,
+        revoke_slices: bool,
+        reason: str,
+    ) -> ProfileAssertion:
+        """Snapshot and transition an assertion with an unambiguous audit event.
+
+        Shared by freeze/withdraw/unfreeze: each snapshots the current value
+        (changed_by="user"), bumps the version, emits its own audit action and
+        optionally revokes slices that used the assertion.
         """
         assertion = self._repository.get_assertion(account_id, assertion_id)
-        if assertion.status != AssertionStatus.ACTIVE:
-            raise ProfileError("只能冻结处于活跃状态的画像断言。")
+        if assertion.status not in allowed_statuses:
+            raise ProfileError(failure_message)
 
         previous_version = assertion.version
         self._repository.save_assertion_version(
-            self._snapshot_assertion(assertion, reason, account_id)
+            self._snapshot_assertion(assertion, reason, "user")
         )
-        assertion.status = AssertionStatus.FROZEN
+        assertion.status = target_status
         assertion.version = previous_version + 1
         assertion.updated_at = _now()
         self._repository.save_assertion(assertion)
 
-        invalidated_slices = self._invalidate_slices_for_assertion(
-            account_id, assertion_id, f"assertion frozen: {reason}"
-        )
+        invalidated_slices: list[str] = []
+        if revoke_slices:
+            invalidated_slices = self._invalidate_slices_for_assertion(
+                account_id, assertion_id, f"assertion {target_status.value}: {reason}"
+            )
         self._audit(
             account_id=account_id,
-            action=AuditAction.PROFILE_FREEZE,
+            action=audit_action,
             result=AuditResult.SUCCESS,
             object_refs=[assertion_id],
             reason=reason,
@@ -440,6 +556,66 @@ class ProfileService:
             },
         )
         return assertion
+
+    def freeze_assertion(
+        self, account_id: str, assertion_id: str, reason: str
+    ) -> ProfileAssertion:
+        """Freeze an active assertion so it stops being recalled for new runs.
+
+        Freezing creates a version snapshot and emits an audit event; existing
+        slices that contain the assertion are revoked. From Issue 26 frozen
+        assertions additionally refuse automatic updates.
+        """
+        return self._transition_status(
+            account_id,
+            assertion_id,
+            target_status=AssertionStatus.FROZEN,
+            allowed_statuses={AssertionStatus.ACTIVE},
+            failure_message="只能冻结处于活跃状态的画像断言。",
+            audit_action=AuditAction.PROFILE_FREEZE,
+            revoke_slices=True,
+            reason=reason,
+        )
+
+    def withdraw_assertion(
+        self, account_id: str, assertion_id: str, reason: str
+    ) -> ProfileAssertion:
+        """Withdraw an active assertion: it stops being used in answers.
+
+        Withdrawal keeps the auditable history and version snapshots; existing
+        slices that included the assertion are revoked so models cannot keep
+        using it. The record can later be restored with ``unfreeze_assertion``.
+        """
+        return self._transition_status(
+            account_id,
+            assertion_id,
+            target_status=AssertionStatus.WITHDRAWN,
+            allowed_statuses={AssertionStatus.ACTIVE},
+            failure_message="只能撤回处于活跃状态的画像断言。",
+            audit_action=AuditAction.PROFILE_WITHDRAW,
+            revoke_slices=True,
+            reason=reason,
+        )
+
+    def unfreeze_assertion(
+        self, account_id: str, assertion_id: str, reason: str
+    ) -> ProfileAssertion:
+        """Restore a frozen or withdrawn assertion back to active use.
+
+        Unfreezing creates a version snapshot recording the restoration; the
+        record becomes usable in new slices again. Automatic updates stay gated
+        by the category-level permissions (Issue 26), not by this operation.
+        """
+        return self._transition_status(
+            account_id,
+            assertion_id,
+            target_status=AssertionStatus.ACTIVE,
+            allowed_statuses={AssertionStatus.FROZEN, AssertionStatus.WITHDRAWN},
+            failure_message="只能解冻已冻结或已撤回的画像断言。",
+            audit_action=AuditAction.PROFILE_UNFREEZE,
+            revoke_slices=False,
+            reason=reason,
+        )
 
     def modify_assertion(
         self,
@@ -460,7 +636,7 @@ class ProfileService:
 
         previous_version = assertion.version
         self._repository.save_assertion_version(
-            self._snapshot_assertion(assertion, reason, account_id)
+            self._snapshot_assertion(assertion, reason, "user")
         )
         assertion.value_or_rule = value_or_rule
         assertion.applicable_scenes = list(applicable_scenes)
@@ -502,7 +678,7 @@ class ProfileService:
 
         previous_version = assertion.version
         self._repository.save_assertion_version(
-            self._snapshot_assertion(assertion, reason, account_id)
+            self._snapshot_assertion(assertion, reason, "user")
         )
         assertion.status = AssertionStatus.DELETED
         assertion.version = previous_version + 1
@@ -556,8 +732,8 @@ class ProfileService:
         assertion = self._repository.get_assertion(account_id, assertion_id)
         if assertion.status == AssertionStatus.DELETED:
             raise ProfileError("已删除的画像断言不能回滚。")
-        if assertion.status == AssertionStatus.FROZEN:
-            raise ProfileError("已冻结的画像断言不能回滚。")
+        if assertion.status in {AssertionStatus.FROZEN, AssertionStatus.WITHDRAWN}:
+            raise ProfileError("已冻结或已撤回的画像断言不能回滚，请先解冻。")
 
         history = self._repository.list_assertion_versions(account_id, assertion_id)
         target = next((v for v in history if v.version == to_version), None)
@@ -566,7 +742,7 @@ class ProfileService:
 
         previous_version = assertion.version
         self._repository.save_assertion_version(
-            self._snapshot_assertion(assertion, reason, account_id)
+            self._snapshot_assertion(assertion, reason, "user")
         )
         assertion.value_or_rule = target.value_or_rule
         assertion.applicable_scenes = list(target.applicable_scenes)
@@ -594,6 +770,25 @@ class ProfileService:
             },
         )
         return assertion
+
+    def get_assertion_history(
+        self, account_id: str, assertion_id: str
+    ) -> ProfileAssertionHistory:
+        """Return the version history of one account-owned assertion.
+
+        The history exposes who changed each version (user operation vs.
+        candidate promotion) so the profile center can explain provenance
+        without overwriting old values.
+        """
+        assertion = self._repository.get_assertion(account_id, assertion_id)
+        return ProfileAssertionHistory(
+            assertion_id=assertion.assertion_id,
+            owner_account_id=assertion.owner_account_id,
+            current_version=assertion.version,
+            versions=self._repository.list_assertion_versions(
+                account_id, assertion_id
+            ),
+        )
 
     def export_profile_data(self, account_id: str) -> ProfileExport:
         """Export a structured, account-scoped view of the user's profile.
@@ -632,6 +827,7 @@ class ProfileService:
                         assertion.value_or_rule, assertion.applicable_scenes
                     ),
                     promoted_from_candidate_id=assertion.promoted_from_candidate_id,
+                    last_used_at=assertion.last_used_at,
                     created_at=assertion.created_at,
                     updated_at=assertion.updated_at,
                     deleted_at=(
@@ -645,7 +841,11 @@ class ProfileService:
         audit_event_refs: list[str] = []
         if self._observability_service is not None:
             for action in {
+                AuditAction.PROFILE_CREATE,
+                AuditAction.PROFILE_CANDIDATE_DECISION,
                 AuditAction.PROFILE_FREEZE,
+                AuditAction.PROFILE_WITHDRAW,
+                AuditAction.PROFILE_UNFREEZE,
                 AuditAction.PROFILE_MODIFY,
                 AuditAction.PROFILE_DELETE,
                 AuditAction.PROFILE_ROLLBACK,
@@ -746,6 +946,10 @@ class ProfileService:
                         expires_at=assertion.expires_at,
                     )
                 )
+                # Record when the assertion was last used for an answer so the
+                # profile center can show "最近使用" per record.
+                assertion.last_used_at = now
+                self._repository.save_assertion(assertion)
             else:
                 unused.append(
                     UnusedSliceItem(

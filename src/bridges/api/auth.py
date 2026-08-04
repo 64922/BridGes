@@ -465,6 +465,29 @@ async def get_avatar(
     )
 
 
+@router.delete(
+    "/profile/avatar",
+    response_model=Account,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
+        status.HTTP_404_NOT_FOUND: {"model": AuthError},
+    },
+)
+async def remove_avatar(
+    service: IdentityServiceDep,
+    subject: SubjectDep,
+) -> Account:
+    """Remove the current owner's uploaded avatar and fall back to static choice."""
+    try:
+        return service.remove_avatar(subject.account_id)
+    except IdentityError as exc:
+        raise _auth_error(
+            status.HTTP_404_NOT_FOUND,
+            "avatar_not_found",
+            str(exc),
+        ) from exc
+
+
 @router.post(
     "/reauthenticate",
     status_code=status.HTTP_204_NO_CONTENT,

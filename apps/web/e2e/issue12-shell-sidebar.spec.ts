@@ -185,12 +185,6 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       { name: "学习项目", url: "/account/projects", heading: "学习项目" },
       { name: "任务安排", url: "/tasks", heading: "任务安排", emptyText: "当前账户还没有任务" },
       { name: "插件", url: "/plugins", heading: "插件", emptyText: "当前账户没有可用插件" },
-      {
-        name: "用户画像",
-        url: "/account/profile",
-        heading: "用户画像",
-        emptyText: "当前账户还没有画像内容",
-      },
     ];
 
     for (const item of cases) {
@@ -205,8 +199,17 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       }
     }
 
-    // 返回新聊天是真实导航
-    await page.getByRole("button", { name: "返回新聊天" }).click();
+    // Issue 25：用户画像已是完整治理页面（非空占位），九类分区面板内的空态
+    // 提供「该类别还没有记录」与真实导航的返回新聊天链接。
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "用户画像" }).click();
+    await page.waitForURL("/account/profile");
+    await expect(page.getByRole("heading", { name: "数字分身画像" })).toBeVisible();
+    await expect(page.locator("body")).not.toContainText("将在这里呈现");
+    await expect(page.getByTestId("state-empty")).toContainText("该类别还没有记录");
+    await expect(page.getByRole("link", { name: "返回新聊天" })).toBeVisible();
+
+    // 返回新聊天是真实导航（画像中心顶部为链接形式）
+    await page.getByRole("link", { name: "返回新聊天" }).click();
     await page.waitForURL("/");
     await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
     await expect(sidebar).toBeVisible();

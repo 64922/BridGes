@@ -9,7 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from bridges.api.auth import SubjectDep
 from bridges.contracts.profiles import (
     CandidateDecision,
+    ManualAssertionCreateRequest,
     ProfileAssertion,
+    ProfileAssertionHistory,
     ProfileAssertionModifyRequest,
     ProfileAssertionRollbackRequest,
     ProfileCandidate,
@@ -43,6 +45,18 @@ def _profile_error(status_code: int, error: str, message: str) -> HTTPException:
     return HTTPException(
         status_code=status_code,
         detail=ProfileError(error=error, message=message).model_dump(),
+    )
+
+
+def _assertion_error(exc: ProfileAdapterError, failure_code: str) -> HTTPException:
+    """Map account-scoped assertion failures to 404 or 422 without leaking state."""
+    message = str(exc)
+    if "访问权限" in message or "不存在" in message:
+        return _profile_error(
+            status.HTTP_404_NOT_FOUND, "assertion_not_found", message
+        )
+    return _profile_error(
+        status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message
     )
 
 
@@ -406,6 +420,36 @@ async def get_assertion(
 
 
 @router.post(
+    "/assertions/manual",
+    response_model=ProfileAssertion,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def create_manual_assertion(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    request: ManualAssertionCreateRequest,
+) -> ProfileAssertion:
+    """Manually create a governed profile record declared by the current account.
+
+    The user declares the fact together with its applicable scenes, sensitivity
+    and authorization scope; the record is promoted immediately with a
+    traceable observation and candidate chain.
+    """
+    try:
+        return service.manual_create_assertion(subject.account_id, request)
+    except ProfileAdapterError as exc:
+        raise _profile_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "assertion_manual_create_failed",
+            str(exc),
+        ) from exc
+
+
+@router.post(
     "/assertions/{assertion_id}/freeze",
     response_model=ProfileAssertion,
     responses={
@@ -426,18 +470,55 @@ async def freeze_assertion(
             subject.account_id, assertion_id, request.reason
         )
     except ProfileAdapterError as exc:
-        msg = str(exc)
-        if "访问权限" in msg or "不存在" in msg:
-            raise _profile_error(
-                status.HTTP_404_NOT_FOUND,
-                "assertion_not_found",
-                msg,
-            ) from exc
-        raise _profile_error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "assertion_freeze_failed",
-            msg,
-        ) from exc
+        raise _assertion_error(exc, "assertion_freeze_failed") from exc
+
+
+@router.post(
+    "/assertions/{assertion_id}/withdraw",
+    response_model=ProfileAssertion,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def withdraw_assertion(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    assertion_id: str,
+    request: ProfileFreezeRequest,
+) -> ProfileAssertion:
+    """Withdraw a profile assertion so it is no longer used in answers."""
+    try:
+        return service.withdraw_assertion(
+            subject.account_id, assertion_id, request.reason
+        )
+    except ProfileAdapterError as exc:
+        raise _assertion_error(exc, "assertion_withdraw_failed") from exc
+
+
+@router.post(
+    "/assertions/{assertion_id}/unfreeze",
+    response_model=ProfileAssertion,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def unfreeze_assertion(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    assertion_id: str,
+    request: ProfileFreezeRequest,
+) -> ProfileAssertion:
+    """Restore a frozen or withdrawn profile assertion to active use."""
+    try:
+        return service.unfreeze_assertion(
+            subject.account_id, assertion_id, request.reason
+        )
+    except ProfileAdapterError as exc:
+        raise _assertion_error(exc, "assertion_unfreeze_failed") from exc
 
 
 @router.post(
@@ -465,18 +546,7 @@ async def modify_assertion(
             request.reason,
         )
     except ProfileAdapterError as exc:
-        msg = str(exc)
-        if "访问权限" in msg or "不存在" in msg:
-            raise _profile_error(
-                status.HTTP_404_NOT_FOUND,
-                "assertion_not_found",
-                msg,
-            ) from exc
-        raise _profile_error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "assertion_modify_failed",
-            msg,
-        ) from exc
+        raise _assertion_error(exc, "assertion_modify_failed") from exc
 
 
 @router.post(
@@ -500,18 +570,7 @@ async def rollback_assertion(
             subject.account_id, assertion_id, request.to_version, request.reason
         )
     except ProfileAdapterError as exc:
-        msg = str(exc)
-        if "访问权限" in msg or "不存在" in msg:
-            raise _profile_error(
-                status.HTTP_404_NOT_FOUND,
-                "assertion_not_found",
-                msg,
-            ) from exc
-        raise _profile_error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "assertion_rollback_failed",
-            msg,
-        ) from exc
+        raise _assertion_error(exc, "assertion_rollback_failed") from exc
 
 
 @router.post(
@@ -535,18 +594,32 @@ async def delete_assertion(
             subject.account_id, assertion_id, request.reason
         )
     except ProfileAdapterError as exc:
-        msg = str(exc)
-        if "访问权限" in msg or "不存在" in msg:
-            raise _profile_error(
-                status.HTTP_404_NOT_FOUND,
-                "assertion_not_found",
-                msg,
-            ) from exc
-        raise _profile_error(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "assertion_delete_failed",
-            msg,
-        ) from exc
+        raise _assertion_error(exc, "assertion_delete_failed") from exc
+
+
+@router.get(
+    "/assertions/{assertion_id}/history",
+    response_model=ProfileAssertionHistory,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def get_assertion_history(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    assertion_id: str,
+) -> ProfileAssertionHistory:
+    """Return the version history of one profile assertion.
+
+    The history lets the user compare versions and see whether a change was
+    made by a user operation or by a candidate promotion, without erasing
+    provenance on overwrite.
+    """
+    try:
+        return service.get_assertion_history(subject.account_id, assertion_id)
+    except ProfileAdapterError as exc:
+        raise _assertion_error(exc, "assertion_history_failed") from exc
 
 
 @router.get(

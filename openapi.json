@@ -427,6 +427,74 @@
             }
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "authentication"
+        ],
+        "summary": "Remove Avatar",
+        "description": "Remove the current owner's uploaded avatar and fall back to static choice.",
+        "operationId": "remove_avatar_auth_profile_avatar_delete",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Account"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/auth/reauthenticate": {
@@ -12623,6 +12691,76 @@
         }
       }
     },
+    "/profiles/assertions/manual": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Create Manual Assertion",
+        "description": "Manually create a governed profile record declared by the current account.\n\nThe user declares the fact together with its applicable scenes, sensitivity\nand authorization scope; the record is promoted immediately with a\ntraceable observation and candidate chain.",
+        "operationId": "create_manual_assertion_profiles_assertions_manual_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ManualAssertionCreateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/profiles/assertions/{assertion_id}/freeze": {
       "post": {
         "tags": [
@@ -12631,6 +12769,184 @@
         "summary": "Freeze Assertion",
         "description": "Freeze a profile assertion so it is no longer used in new runs.",
         "operationId": "freeze_assertion_profiles_assertions__assertion_id__freeze_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileFreezeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/withdraw": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Withdraw Assertion",
+        "description": "Withdraw a profile assertion so it is no longer used in answers.",
+        "operationId": "withdraw_assertion_profiles_assertions__assertion_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileFreezeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertion"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/unfreeze": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Unfreeze Assertion",
+        "description": "Restore a frozen or withdrawn profile assertion to active use.",
+        "operationId": "unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post",
         "parameters": [
           {
             "name": "assertion_id",
@@ -12975,6 +13291,85 @@
               }
             },
             "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/history": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Assertion History",
+        "description": "Return the version history of one profile assertion.\n\nThe history lets the user compare versions and see whether a change was\nmade by a user operation or by a candidate promotion, without erasing\nprovenance on overwrite.",
+        "operationId": "get_assertion_history_profiles_assertions__assertion_id__history_get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileAssertionHistory"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -22509,11 +22904,12 @@
         "enum": [
           "active",
           "frozen",
+          "withdrawn",
           "stale",
           "deleted"
         ],
         "title": "AssertionStatus",
-        "description": "Lifecycle status of a promoted profile assertion."
+        "description": "Lifecycle status of a promoted profile assertion.\n\n``WITHDRAWN`` stops further answer use while keeping the auditable history;\n``FROZEN`` additionally prevents automatic updates (enforced from Issue 26)."
       },
       "AssetRegion": {
         "properties": {
@@ -33238,6 +33634,53 @@
         "title": "LoginCredential",
         "description": "Request to authenticate with the current username or QQ mailbox."
       },
+      "ManualAssertionCreateRequest": {
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/ProfileDimension",
+            "description": "One of the nine profile dimensions."
+          },
+          "value_or_rule": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Value Or Rule",
+            "description": "The declared value or rule."
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes"
+          },
+          "sensitivity_class": {
+            "$ref": "#/components/schemas/ProfileSensitivityClass",
+            "description": "Sensitivity classification governing slice inclusion.",
+            "default": "preference"
+          },
+          "authorization_scope": {
+            "type": "string",
+            "title": "Authorization Scope",
+            "description": "Authorization scope; set by the user, never inferred.",
+            "default": "general"
+          },
+          "source_note": {
+            "type": "string",
+            "maxLength": 500,
+            "title": "Source Note",
+            "description": "User-declared provenance note for the record.",
+            "default": "用户手动记录"
+          }
+        },
+        "type": "object",
+        "required": [
+          "dimension",
+          "value_or_rule"
+        ],
+        "title": "ManualAssertionCreateRequest",
+        "description": "Request to manually create a governed profile record.\n\nThe user declares the fact, its applicable scenes, sensitivity, authorization\nscope and a source note; the record is promoted immediately because the\ndeclarer is the owner, and every field is retained for audit."
+      },
       "MediaAssetKind": {
         "type": "string",
         "enum": [
@@ -35446,6 +35889,19 @@
             "description": "Optimistic concurrency version.",
             "default": 1
           },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At",
+            "description": "When the assertion was last included in an answer slice."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -35895,6 +36351,22 @@
         "title": "ProfileDeleteRequest",
         "description": "Request to delete a profile assertion."
       },
+      "ProfileDimension": {
+        "type": "string",
+        "enum": [
+          "basic_information",
+          "stage_goal",
+          "interest_preference",
+          "expression_habit",
+          "knowledge_state",
+          "emotion_trend",
+          "important_experience",
+          "current_problem",
+          "authorization_scope"
+        ],
+        "title": "ProfileDimension",
+        "description": "The nine governable profile dimensions of the digital twin center.\n\nIssue 25: each dimension is a separately governed record category with its\nown assertions, authorization and history, rather than a merged long text."
+      },
       "ProfileError": {
         "properties": {
           "error": {
@@ -36030,6 +36502,19 @@
             ],
             "title": "Promoted From Candidate Id"
           },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At",
+            "description": "When the assertion was last included in an answer slice."
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -36073,7 +36558,7 @@
           "reason": {
             "type": "string",
             "title": "Reason",
-            "description": "Human-readable reason for freezing."
+            "description": "Human-readable reason for the operation."
           }
         },
         "type": "object",
@@ -36081,7 +36566,7 @@
           "reason"
         ],
         "title": "ProfileFreezeRequest",
-        "description": "Request to freeze a profile assertion."
+        "description": "Request carrying a reason for freeze / withdraw / unfreeze operations."
       },
       "ProfileObservation": {
         "properties": {

@@ -106,7 +106,11 @@ export interface paths {
          */
         put: operations["upload_avatar_auth_profile_avatar_put"];
         post?: never;
-        delete?: never;
+        /**
+         * Remove Avatar
+         * @description Remove the current owner's uploaded avatar and fall back to static choice.
+         */
+        delete: operations["remove_avatar_auth_profile_avatar_delete"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2623,6 +2627,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/assertions/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Manual Assertion
+         * @description Manually create a governed profile record declared by the current account.
+         *
+         *     The user declares the fact together with its applicable scenes, sensitivity
+         *     and authorization scope; the record is promoted immediately with a
+         *     traceable observation and candidate chain.
+         */
+        post: operations["create_manual_assertion_profiles_assertions_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/assertions/{assertion_id}/freeze": {
         parameters: {
             query?: never;
@@ -2637,6 +2665,46 @@ export interface paths {
          * @description Freeze a profile assertion so it is no longer used in new runs.
          */
         post: operations["freeze_assertion_profiles_assertions__assertion_id__freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Assertion
+         * @description Withdraw a profile assertion so it is no longer used in answers.
+         */
+        post: operations["withdraw_assertion_profiles_assertions__assertion_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/unfreeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unfreeze Assertion
+         * @description Restore a frozen or withdrawn profile assertion to active use.
+         */
+        post: operations["unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2697,6 +2765,30 @@ export interface paths {
          * @description Delete a profile assertion and propagate the deletion downstream.
          */
         post: operations["delete_assertion_profiles_assertions__assertion_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Assertion History
+         * @description Return the version history of one profile assertion.
+         *
+         *     The history lets the user compare versions and see whether a change was
+         *     made by a user operation or by a candidate promotion, without erasing
+         *     provenance on overwrite.
+         */
+        get: operations["get_assertion_history_profiles_assertions__assertion_id__history_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -5270,9 +5362,12 @@ export interface components {
         /**
          * AssertionStatus
          * @description Lifecycle status of a promoted profile assertion.
+         *
+         *     ``WITHDRAWN`` stops further answer use while keeping the auditable history;
+         *     ``FROZEN`` additionally prevents automatic updates (enforced from Issue 26).
          * @enum {string}
          */
-        AssertionStatus: "active" | "frozen" | "stale" | "deleted";
+        AssertionStatus: "active" | "frozen" | "withdrawn" | "stale" | "deleted";
         /**
          * AssetRegion
          * @description A detected region inside an image or scan.
@@ -11983,6 +12078,42 @@ export interface components {
             password: string;
         };
         /**
+         * ManualAssertionCreateRequest
+         * @description Request to manually create a governed profile record.
+         *
+         *     The user declares the fact, its applicable scenes, sensitivity, authorization
+         *     scope and a source note; the record is promoted immediately because the
+         *     declarer is the owner, and every field is retained for audit.
+         */
+        ManualAssertionCreateRequest: {
+            /** @description One of the nine profile dimensions. */
+            dimension: components["schemas"]["ProfileDimension"];
+            /**
+             * Value Or Rule
+             * @description The declared value or rule.
+             */
+            value_or_rule: string;
+            /** Applicable Scenes */
+            applicable_scenes?: string[];
+            /**
+             * @description Sensitivity classification governing slice inclusion.
+             * @default preference
+             */
+            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
+            /**
+             * Authorization Scope
+             * @description Authorization scope; set by the user, never inferred.
+             * @default general
+             */
+            authorization_scope: string;
+            /**
+             * Source Note
+             * @description User-declared provenance note for the record.
+             * @default 用户手动记录
+             */
+            source_note: string;
+        };
+        /**
          * MediaAssetKind
          * @description Kind of derived media asset.
          * @enum {string}
@@ -13245,6 +13376,11 @@ export interface components {
              */
             version: number;
             /**
+             * Last Used At
+             * @description When the assertion was last included in an answer slice.
+             */
+            last_used_at?: string | null;
+            /**
              * Created At
              * Format: date-time
              * @description Creation timestamp.
@@ -13546,6 +13682,15 @@ export interface components {
             reason: string;
         };
         /**
+         * ProfileDimension
+         * @description The nine governable profile dimensions of the digital twin center.
+         *
+         *     Issue 25: each dimension is a separately governed record category with its
+         *     own assertions, authorization and history, rather than a merged long text.
+         * @enum {string}
+         */
+        ProfileDimension: "basic_information" | "stage_goal" | "interest_preference" | "expression_habit" | "knowledge_state" | "emotion_trend" | "important_experience" | "current_problem" | "authorization_scope";
+        /**
          * ProfileError
          * @description Uniform profile error response.
          */
@@ -13648,6 +13793,11 @@ export interface components {
             /** Promoted From Candidate Id */
             promoted_from_candidate_id?: string | null;
             /**
+             * Last Used At
+             * @description When the assertion was last included in an answer slice.
+             */
+            last_used_at?: string | null;
+            /**
              * Created At
              * Format: date-time
              * @description When the assertion was first promoted.
@@ -13664,12 +13814,12 @@ export interface components {
         };
         /**
          * ProfileFreezeRequest
-         * @description Request to freeze a profile assertion.
+         * @description Request carrying a reason for freeze / withdraw / unfreeze operations.
          */
         ProfileFreezeRequest: {
             /**
              * Reason
-             * @description Human-readable reason for freezing.
+             * @description Human-readable reason for the operation.
              */
             reason: string;
         };
@@ -19663,6 +19813,55 @@ export interface operations {
             };
             /** @description Request Entity Too Large */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_avatar_auth_profile_avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -27794,7 +27993,161 @@ export interface operations {
             };
         };
     };
+    create_manual_assertion_profiles_assertions_manual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ManualAssertionCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
     freeze_assertion_profiles_assertions__assertion_id__freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    withdraw_assertion_profiles_assertions__assertion_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileFreezeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post: {
         parameters: {
             query?: never;
             header?: never;
@@ -28010,6 +28363,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    get_assertion_history_profiles_assertions__assertion_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileAssertionHistory"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

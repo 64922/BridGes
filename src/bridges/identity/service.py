@@ -525,6 +525,30 @@ class IdentityService:
             self._delete_avatar_object(account_id, old_avatar.object_id)
         return stored.account
 
+    def remove_avatar(self, account_id: str) -> Account:
+        """Remove the uploaded avatar object and fall back to a static choice.
+
+        Only the owning account can remove its avatar; the uploaded object is
+        deleted from the encrypted object store so it is no longer recoverable.
+        """
+        stored = self._accounts.get(account_id)
+        if stored is None:
+            raise IdentityError("账户不存在或没有访问权限。")
+        avatar = self._avatars.get(account_id)
+        if avatar is None:
+            raise IdentityError("该账户尚未上传头像。")
+
+        self._delete_avatar_object(account_id, avatar.object_id)
+        del self._avatars[account_id]
+        now = self._now()
+        stored.account.has_uploaded_avatar = False
+        stored.account.avatar_updated_at = now
+        if stored.account.avatar_choice == AvatarChoice.UPLOADED:
+            stored.account.avatar_choice = AvatarChoice.INITIALS
+        stored.account.updated_at = now
+        self._persist()
+        return stored.account
+
     def get_avatar(self, account_id: str) -> AvatarContent:
         """Return avatar bytes only when they belong to the authorized account."""
         if account_id not in self._accounts:

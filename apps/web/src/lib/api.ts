@@ -88,6 +88,19 @@ export type PackRollbackStatus = components["schemas"]["PackRollbackStatus"];
 export type SearchResponse = components["schemas"]["SearchResponse"];
 export type SearchResultItem = components["schemas"]["SearchResultItem"];
 export type SearchSegment = components["schemas"]["SearchSegment"];
+export type ProfileAssertion = components["schemas"]["ProfileAssertion"];
+export type ProfileAssertionVersion = components["schemas"]["ProfileAssertionVersion"];
+export type ProfileAssertionHistory = components["schemas"]["ProfileAssertionHistory"];
+export type ProfileCandidate = components["schemas"]["ProfileCandidate"];
+export type ProfileCandidateCreateRequest = components["schemas"]["ProfileCandidateCreateRequest"];
+export type ProfileExport = components["schemas"]["ProfileExport"];
+export type ProfileDimension = components["schemas"]["ProfileDimension"];
+export type ProfileSensitivityClass = components["schemas"]["ProfileSensitivityClass"];
+export type AssertionStatus = components["schemas"]["AssertionStatus"];
+export type CandidateReviewStatus = components["schemas"]["CandidateReviewStatus"];
+export type ManualAssertionCreateRequest = components["schemas"]["ManualAssertionCreateRequest"];
+export type ProfileAssertionModifyRequest = components["schemas"]["ProfileAssertionModifyRequest"];
+export type ProfileError = components["schemas"]["ProfileError"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -1541,4 +1554,164 @@ export function statusText(status: HealthStatus): string {
     default:
       return String(status);
   }
+}
+
+// ---------- 画像中心（Issue 25） ----------
+
+export async function listProfileAssertions(): Promise<ProfileAssertion[]> {
+  const res = await fetch(`${API_BASE}/profiles/assertions`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function listProfileCandidates(): Promise<ProfileCandidate[]> {
+  const res = await fetch(`${API_BASE}/profiles/candidates`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function createManualAssertion(
+  request: ManualAssertionCreateRequest
+): Promise<ProfileAssertion> {
+  const res = await fetch(`${API_BASE}/profiles/assertions/manual`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+async function postAssertionAction(
+  assertionId: string,
+  action: string,
+  reason: string
+): Promise<ProfileAssertion> {
+  const res = await fetch(
+    `${API_BASE}/profiles/assertions/${encodeURIComponent(assertionId)}/${action}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ reason }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export function withdrawProfileAssertion(assertionId: string, reason: string): Promise<ProfileAssertion> {
+  return postAssertionAction(assertionId, "withdraw", reason);
+}
+
+export function freezeProfileAssertion(assertionId: string, reason: string): Promise<ProfileAssertion> {
+  return postAssertionAction(assertionId, "freeze", reason);
+}
+
+export function unfreezeProfileAssertion(assertionId: string, reason: string): Promise<ProfileAssertion> {
+  return postAssertionAction(assertionId, "unfreeze", reason);
+}
+
+export function deleteProfileAssertion(assertionId: string, reason: string): Promise<ProfileAssertion> {
+  return postAssertionAction(assertionId, "delete", reason);
+}
+
+export async function modifyProfileAssertion(
+  assertionId: string,
+  request: ProfileAssertionModifyRequest
+): Promise<ProfileAssertion> {
+  const res = await fetch(
+    `${API_BASE}/profiles/assertions/${encodeURIComponent(assertionId)}/modify`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function getProfileAssertionHistory(
+  assertionId: string
+): Promise<ProfileAssertionHistory> {
+  const res = await fetch(
+    `${API_BASE}/profiles/assertions/${encodeURIComponent(assertionId)}/history`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function exportProfile(): Promise<ProfileExport> {
+  const res = await fetch(`${API_BASE}/profiles/export`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function decideCandidate(
+  candidateId: string,
+  decision: "accept" | "reject" | "modify",
+  reason: string
+): Promise<ProfileCandidate> {
+  const res = await fetch(
+    `${API_BASE}/profiles/candidates/${encodeURIComponent(candidateId)}/decision`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ decision, reason }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function removeAvatar(): Promise<Account> {
+  const res = await fetch(`${API_BASE}/auth/profile/avatar`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function rollbackProfileAssertion(
+  assertionId: string,
+  toVersion: number,
+  reason: string
+): Promise<ProfileAssertion> {
+  const res = await fetch(
+    `${API_BASE}/profiles/assertions/${encodeURIComponent(assertionId)}/rollback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ to_version: toVersion, reason }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function listProfileObservations(): Promise<
+  components["schemas"]["ProfileObservation"][]
+> {
+  const res = await fetch(`${API_BASE}/profiles/observations`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }

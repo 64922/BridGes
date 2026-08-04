@@ -16,6 +16,47 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
+class ProfileDimension(StrEnum):
+    """The nine governable profile dimensions of the digital twin center.
+
+    Issue 25: each dimension is a separately governed record category with its
+    own assertions, authorization and history, rather than a merged long text.
+    """
+
+    BASIC_INFORMATION = "basic_information"
+    STAGE_GOAL = "stage_goal"
+    INTEREST_PREFERENCE = "interest_preference"
+    EXPRESSION_HABIT = "expression_habit"
+    KNOWLEDGE_STATE = "knowledge_state"
+    EMOTION_TREND = "emotion_trend"
+    IMPORTANT_EXPERIENCE = "important_experience"
+    CURRENT_PROBLEM = "current_problem"
+    AUTHORIZATION_SCOPE = "authorization_scope"
+
+
+PROFILE_DIMENSION_LABELS: dict[ProfileDimension, str] = {
+    ProfileDimension.BASIC_INFORMATION: "基本情况",
+    ProfileDimension.STAGE_GOAL: "阶段目标",
+    ProfileDimension.INTEREST_PREFERENCE: "兴趣偏好",
+    ProfileDimension.EXPRESSION_HABIT: "表达习惯",
+    ProfileDimension.KNOWLEDGE_STATE: "知识状态",
+    ProfileDimension.EMOTION_TREND: "情绪变化趋势",
+    ProfileDimension.IMPORTANT_EXPERIENCE: "重要经历",
+    ProfileDimension.CURRENT_PROBLEM: "正在面对的问题",
+    ProfileDimension.AUTHORIZATION_SCOPE: "授权范围",
+}
+
+#: Dimensions whose records are user-confirmed by design (ADR-0002): they may
+#: only be written after explicit confirmation, never by silent inference.
+USER_CONFIRMED_DIMENSIONS: frozenset[ProfileDimension] = frozenset(
+    {
+        ProfileDimension.EMOTION_TREND,
+        ProfileDimension.IMPORTANT_EXPERIENCE,
+        ProfileDimension.CURRENT_PROBLEM,
+    }
+)
+
+
 class ProfileSourceType(StrEnum):
     """How the observation originated."""
 
@@ -92,10 +133,15 @@ class DecisionType(StrEnum):
 
 
 class AssertionStatus(StrEnum):
-    """Lifecycle status of a promoted profile assertion."""
+    """Lifecycle status of a promoted profile assertion.
+
+    ``WITHDRAWN`` stops further answer use while keeping the auditable history;
+    ``FROZEN`` additionally prevents automatic updates (enforced from Issue 26).
+    """
 
     ACTIVE = "active"
     FROZEN = "frozen"
+    WITHDRAWN = "withdrawn"
     STALE = "stale"
     DELETED = "deleted"
 
@@ -303,6 +349,10 @@ class ProfileAssertion(BaseModel):
         description="Candidate from which this assertion was promoted.",
     )
     version: int = Field(default=1, description="Optimistic concurrency version.")
+    last_used_at: datetime | None = Field(
+        default=None,
+        description="When the assertion was last included in an answer slice.",
+    )
     created_at: datetime = Field(description="Creation timestamp.")
     updated_at: datetime = Field(description="Last update timestamp.")
 
@@ -499,6 +549,36 @@ class ProfileAssertionModifyRequest(BaseModel):
     reason: str = Field(description="Human-readable reason for the change.")
 
 
+class ManualAssertionCreateRequest(BaseModel):
+    """Request to manually create a governed profile record.
+
+    The user declares the fact, its applicable scenes, sensitivity, authorization
+    scope and a source note; the record is promoted immediately because the
+    declarer is the owner, and every field is retained for audit.
+    """
+
+    dimension: ProfileDimension = Field(description="One of the nine profile dimensions.")
+    value_or_rule: str = Field(
+        description="The declared value or rule.",
+        min_length=1,
+        max_length=1000,
+    )
+    applicable_scenes: list[str] = Field(default_factory=list)
+    sensitivity_class: ProfileSensitivityClass = Field(
+        default=ProfileSensitivityClass.PREFERENCE,
+        description="Sensitivity classification governing slice inclusion.",
+    )
+    authorization_scope: str = Field(
+        default="general",
+        description="Authorization scope; set by the user, never inferred.",
+    )
+    source_note: str = Field(
+        default="用户手动记录",
+        description="User-declared provenance note for the record.",
+        max_length=500,
+    )
+
+
 class ProfileAssertionRollbackRequest(BaseModel):
     """Request to roll an assertion back to a previous version."""
 
@@ -507,9 +587,9 @@ class ProfileAssertionRollbackRequest(BaseModel):
 
 
 class ProfileFreezeRequest(BaseModel):
-    """Request to freeze a profile assertion."""
+    """Request carrying a reason for freeze / withdraw / unfreeze operations."""
 
-    reason: str = Field(description="Human-readable reason for freezing.")
+    reason: str = Field(description="Human-readable reason for the operation.")
 
 
 class ProfileDeleteRequest(BaseModel):
@@ -532,6 +612,10 @@ class ProfileExportAssertion(BaseModel):
     version: int = Field(description="Current optimistic concurrency version.")
     content_hash: str = Field(description="SHA-256 hash of current value and scenes.")
     promoted_from_candidate_id: str | None = Field(default=None)
+    last_used_at: datetime | None = Field(
+        default=None,
+        description="When the assertion was last included in an answer slice.",
+    )
     created_at: datetime = Field(description="When the assertion was first promoted.")
     updated_at: datetime = Field(description="When the assertion was last changed.")
     deleted_at: datetime | None = Field(default=None)
