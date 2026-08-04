@@ -14,6 +14,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.web_search.contracts import WebSearchProjection
@@ -274,6 +275,7 @@ class ChatStreamEventKind(StrEnum):
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
+    PROFILE = "profile"
 
 
 class ChatStreamStartedData(BaseModel):
@@ -345,6 +347,20 @@ class ChatStreamDoneData(BaseModel):
     )
 
 
+class ChatStreamProfileData(BaseModel):
+    """profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。
+
+    通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条
+    自动写入通知携带一键撤回入口。
+    """
+
+    kind: Literal["profile"] = "profile"
+    message_id: str = Field(description="本轮用户消息标识。")
+    notifications: list[ProfileNotification] = Field(
+        default_factory=list, description="本轮产生的画像通知。"
+    )
+
+
 class ChatStreamEvent(BaseModel):
     """一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
 
@@ -355,6 +371,10 @@ class ChatStreamEvent(BaseModel):
 
     event: ChatStreamEventKind = Field(description="事件名（SSE 帧头）。")
     data: Annotated[
-        ChatStreamStartedData | ChatStreamDeltaData | ChatStreamErrorData | ChatStreamDoneData,
+        ChatStreamStartedData
+        | ChatStreamDeltaData
+        | ChatStreamErrorData
+        | ChatStreamDoneData
+        | ChatStreamProfileData,
         Field(discriminator="kind", description="事件载荷。"),
     ] = Field(description="事件载荷。")

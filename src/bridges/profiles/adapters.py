@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from bridges.contracts.profiles import (
     ProfileAssertion,
     ProfileAssertionVersion,
     ProfileCandidate,
+    ProfileDimension,
+    ProfileNotification,
     ProfileObservation,
+    ProfilePermission,
     ProfileSlice,
 )
 from bridges.profiles.ports import ProfileRepository
@@ -29,6 +34,8 @@ class InMemoryProfileRepository(ProfileRepository):
         self._assertions: dict[str, ProfileAssertion] = {}
         self._slices: dict[str, ProfileSlice] = {}
         self._assertion_versions: dict[str, list[ProfileAssertionVersion]] = {}
+        self._permissions: dict[str, ProfilePermission] = {}
+        self._notifications: dict[str, ProfileNotification] = {}
 
     def _key(self, owner_id: str, object_id: str) -> str:
         return f"{owner_id}:{object_id}"
@@ -143,3 +150,97 @@ class InMemoryProfileRepository(ProfileRepository):
         ]
         slices.sort(key=lambda s: s.compiled_at, reverse=True)
         return slices
+
+    def list_permissions(self, owner_id: str) -> list[ProfilePermission]:
+        permissions = [
+            permission
+            for permission in self._permissions.values()
+            if permission.account_id == owner_id
+        ]
+        permissions.sort(key=lambda p: (p.dimension.value, p.scene))
+        return permissions
+
+    def set_permission(
+        self,
+        owner_id: str,
+        dimension: str,
+        scene: str,
+        enabled: bool,
+        updated_at: datetime,
+    ) -> ProfilePermission:
+        permission = ProfilePermission(
+            account_id=owner_id,
+            dimension=ProfileDimension(dimension),
+            scene=scene,
+            enabled=enabled,
+            updated_at=updated_at,
+        )
+        self._permissions[self._key(owner_id, f"{dimension}:{scene}")] = permission
+        return permission
+
+    def find_assertion_by_value(
+        self, owner_id: str, dimension: str, value: str
+    ) -> ProfileAssertion | None:
+        for assertion in self._assertions.values():
+            if (
+                assertion.owner_account_id == owner_id
+                and assertion.canonical_dimension == dimension
+                and assertion.value_or_rule == value
+                and assertion.status.value in {"active", "frozen", "withdrawn"}
+            ):
+                return assertion
+        return None
+
+    def find_discarded_observation(
+        self, owner_id: str, content_hash: str
+    ) -> ProfileObservation | None:
+        for observation in self._observations.values():
+            if (
+                observation.owner_account_id == owner_id
+                and observation.content_hash == content_hash
+                and observation.status.value == "discarded"
+            ):
+                return observation
+        return None
+
+    def find_observation_by_source(
+        self, owner_id: str, content_hash: str, source_ref: str
+    ) -> ProfileObservation | None:
+        for observation in self._observations.values():
+            if (
+                observation.owner_account_id == owner_id
+                and observation.content_hash == content_hash
+                and observation.source_ref == source_ref
+            ):
+                return observation
+        return None
+
+    def save_notification(self, notification: ProfileNotification) -> ProfileNotification:
+        self._notifications[
+            self._key(notification.owner_account_id, notification.notification_id)
+        ] = notification
+        return notification
+
+    def get_notification(
+        self, owner_id: str, notification_id: str
+    ) -> ProfileNotification:
+        notification = self._notifications.get(self._key(owner_id, notification_id))
+        if notification is None:
+            raise ProfileError("对象不存在或没有访问权限。")
+        return notification
+
+    def list_notifications(self, owner_id: str) -> list[ProfileNotification]:
+        notifications = [
+            notification
+            for notification in self._notifications.values()
+            if notification.owner_account_id == owner_id
+        ]
+        notifications.sort(key=lambda n: n.created_at, reverse=True)
+        return notifications
+
+    def mark_notification_read(
+        self, owner_id: str, notification_id: str, read_at: datetime
+    ) -> ProfileNotification:
+        notification = self.get_notification(owner_id, notification_id)
+        notification.read_at = read_at
+        return notification

@@ -8,6 +8,7 @@ error / stopped）、用户级重试（每次重试新建助手尝试，历史�
 
 from __future__ import annotations
 
+import contextlib
 import re
 import secrets
 import time
@@ -39,6 +40,7 @@ from bridges.contracts.chat import (
     ChatModeEventProjection,
     ChatThinkingSummary,
 )
+from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import (
     CitationProjection,
     RetrievalLayerStatus,
@@ -48,6 +50,7 @@ from bridges.contracts.retrieval import (
 from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
+from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
@@ -261,6 +264,7 @@ class ChatService:
         web_search_service: WebSearchService | None = None,
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
+        profile_service: ProfileService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -273,6 +277,8 @@ class ChatService:
         self._arxiv_search = arxiv_search_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
+        #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
+        self._profiles = profile_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -627,6 +633,19 @@ class ChatService:
         if not record.title:
             title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
             self._repo.set_conversation_title(account_id, conversation_id, title, now)
+
+        # Issue 26：确定性记忆意图处理（明确记住/不记/仅会话、许可内自动
+        # 写入、敏感候选、单次情绪提示）。画像处理失败绝不阻断聊天主流程：
+        # 记忆能力独立于回答生成，通知留待重试轮次补发。
+        if self._profiles is not None:
+            with contextlib.suppress(Exception):  # noqa: BLE001 - 辅助路径静默降级
+                self._profiles.process_conversation_message(
+                    account_id,
+                    message_id=user_message.message_id,
+                    conversation_id=conversation_id,
+                    content=content,
+                    mode=mode.value,
+                )
 
         return (
             self._project_message(user_message),
@@ -1432,6 +1451,23 @@ class ChatService:
             self._project_message(owner),
             self._project_message(new_attempt),
         )
+
+    def profile_notifications_for_message(
+        self, account_id: str, conversation_id: str, message_id: str
+    ) -> list[ProfileNotification]:
+        """返回本轮用户消息触发的画像通知（供 SSE profile 事件即时展示）。
+
+        通知在 ``start_generation`` 时已持久化并按账户隔离；重试轮次读取
+        同一份来源，不会重复写入。
+        """
+        if self._profiles is None:
+            return []
+        source_ref = f"{conversation_id}:{message_id}"
+        return [
+            notification
+            for notification in self._profiles.list_notifications(account_id)
+            if notification.source_ref == source_ref
+        ]
 
     def message_projection(
         self, account_id: str, message_id: str

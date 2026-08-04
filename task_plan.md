@@ -2,6 +2,63 @@
 
 状态：进行中（2026-08-04）
 
+## Issue 26 实施计划（画像候选与分级许可更新）
+
+状态：实施中（2026-08-05）。
+
+### 目标
+把聊天观察转化为可治理的画像候选与更新流程：明确"记住/不要记住/只在
+本对话使用"意图按可见类别/范围/证据确定性映射；低风险目标/兴趣/表达
+习惯仅在用户预开的类别×场景许可内自动写入（默认关闭、模型不能代开），
+每次写入有中文通知、来源与一键撤回；情绪趋势/重要经历/当前问题与敏感
+推断只进候选箱，未确认不得跨会话使用；单次情绪仅作为会话情境信号；
+冻结类别拒绝自动写入、撤回许可只停未来更新；稳定去重与证据合并；
+全部按账户隔离并写入审计；画像/许可/通知 SQLite 持久化，重启可追溯。
+
+### 新增模块
+1. `profiles/extraction.py` — 确定性记忆意图提取器（记住/不记/仅会话/
+   低风险观察/单次情绪；类别关键词表；显式意图优先、否定式防护、
+   无类别不猜测）
+2. `profiles/sqlite_repository.py` — 全端口 SQLite 实现（观察/候选/断言/
+   版本/切片/许可/通知，scoped() 账户强制隔离）
+3. `contracts/profiles.py` — ProfilePermission / ProfileNotification /
+   AUTO_WRITABLE_DIMENSIONS / 批量决策契约
+4. `contracts/chat.py` — ChatStreamEventKind.PROFILE + ChatStreamProfileData
+5. `contracts/observability.py` — 6 个新审计动作（许可开关/自动写入/
+   一键撤回/意图/候选提出）
+6. `storage/database.py` — SCHEMA_VERSION 14：7 张 profile_* 表
+
+### 修改
+7. `profiles/service.py` — 许可门/冻结门/去重门、process_conversation_message
+   管线、一键撤回（幂等）、批量决策（幂等）、通知读写
+8. `chat/service.py` — start_generation 挂载画像处理（失败静默不阻断）、
+   profile_notifications_for_message 透传
+9. `api/chat.py` — started 后下发 profile SSE 事件
+10. `api/main.py` — 有数据库时挂 SQLite 画像仓库；ChatService 接入
+11. `profiles/api.py` — 许可 GET/PUT、通知 GET/read/recall/unread-count、
+   候选 batch-decision
+
+### 前端
+12. api.ts 新函数 + 类型导出；ProfilePermissionPanel（开关网格，乐观更新
+    失败回滚）；ProfileNotificationList（未读/已读/一键撤回/标记已读）；
+    ProfileCenter 候选卡增强（为何提出/来源消息/适用范围/编辑后确认/
+    复选框批量确认拒绝）；ChatProfileNotificationCards（聊天内即时通知
+    + 一键撤回 + 错误恢复）；chat.module.css / ProfileCenter.module.css
+13. openapi.json + generated.ts 再生成；npm typecheck/build
+
+### 测试
+14. `tests/profiles/test_memory_intent.py` — 35 条：标注对话集（明确记忆/
+    低风险许可/敏感候选/单次情绪/禁止推断授权）、幂等去重、冻结门、
+    许可撤回、一键撤回、批量决策、跨账户、SQLite 重启持久化
+15. `tests/chat/test_profile_intent_chat.py` — 5 条：聊天集成、失败不阻断
+16. E2E issue26 — 5 条：许可开关持久化、候选卡增强与编辑后确认、
+    批量拒绝、通知空态+聊天内通知+一键撤回错误恢复、单次情绪提示
+
+### 收尾
+17. 全量 pytest / mypy / ruff / npm typecheck+build / E2E 全量；
+    code-review 双轴审查并修复；更新 Issue 26 验收状态；提交
+
+
 ## Issue 20 实施计划（分层本地检索、融合排序与引用）
 
 状态：已完成（2026-08-04）。全量验证：1335 pytest（+81）、E2E 143 通过

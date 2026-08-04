@@ -13434,6 +13434,430 @@
         }
       }
     },
+    "/profiles/permissions": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Permissions",
+        "description": "List low-risk automatic-update permissions for the current account.",
+        "operationId": "list_permissions_profiles_permissions_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfilePermission"
+                  },
+                  "title": "Response List Permissions Profiles Permissions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Update Permission",
+        "description": "Enable or disable one low-risk automatic-update permission.\n\nOnly the authenticated user can change permissions; the model or any\nbackground task has no path to grant authorization (ADR-0002).",
+        "operationId": "update_permission_profiles_permissions_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfilePermissionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfilePermission"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/notifications": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Notifications",
+        "description": "List profile notifications for the current account, newest first.",
+        "operationId": "list_notifications_profiles_notifications_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ProfileNotification"
+                  },
+                  "title": "Response List Notifications Profiles Notifications Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/notifications/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Mark Notification Read",
+        "description": "Mark one profile notification as read.",
+        "operationId": "mark_notification_read_profiles_notifications__notification_id__read_post",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Notification Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileNotification"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/notifications/{notification_id}/recall": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Recall Notification",
+        "description": "One-click recall of an auto-written profile record.\n\nThe recall withdraws the record (auditable history is kept), blocks\nfuture automatic writes of the same fact, and is idempotent so a failed\nretry does not duplicate anything.",
+        "operationId": "recall_notification_profiles_notifications__notification_id__recall_post",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Notification Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileNotification"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/profiles/candidates/batch-decision": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Batch Decide Candidates",
+        "description": "Apply one decision to multiple candidates (idempotent, retry-safe).\n\nCandidates already in the target state are reported as ``already_decided``\nrather than failed, so a failed batch can be retried safely without\nduplicate writes.",
+        "operationId": "batch_decide_candidates_profiles_candidates_batch_decision_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileBatchCandidateDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileBatchCandidateResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
     "/projects/{project_id}/work-orders": {
       "post": {
         "tags": [
@@ -24634,6 +25058,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatStreamDoneData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamProfileData"
               }
             ],
             "title": "Data",
@@ -24644,6 +25071,7 @@
                 "delta": "#/components/schemas/ChatStreamDeltaData",
                 "done": "#/components/schemas/ChatStreamDoneData",
                 "error": "#/components/schemas/ChatStreamErrorData",
+                "profile": "#/components/schemas/ChatStreamProfileData",
                 "started": "#/components/schemas/ChatStreamStartedData"
               }
             }
@@ -24663,10 +25091,40 @@
           "started",
           "delta",
           "error",
-          "done"
+          "done",
+          "profile"
         ],
         "title": "ChatStreamEventKind",
         "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"
+      },
+      "ChatStreamProfileData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "profile",
+            "title": "Kind",
+            "default": "profile"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "本轮用户消息标识。"
+          },
+          "notifications": {
+            "items": {
+              "$ref": "#/components/schemas/ProfileNotification"
+            },
+            "type": "array",
+            "title": "Notifications",
+            "description": "本轮产生的画像通知。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id"
+        ],
+        "title": "ChatStreamProfileData",
+        "description": "profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。\n\n通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条\n自动写入通知携带一键撤回入口。"
       },
       "ChatStreamStartedData": {
         "properties": {
@@ -36111,6 +36569,100 @@
         "title": "ProfileAssertionVersion",
         "description": "Immutable snapshot of a profile assertion at a point in its history.\n\nRollback creates a new active version from a prior snapshot without erasing\nthe audit chain. Each version stores the value and metadata at that point so\nthat rollback is possible, but audit events and exports retain only the\ncontent hash rather than the full value, ensuring deleted content body is not\npreserved in the governance audit trail."
       },
+      "ProfileBatchCandidateDecisionRequest": {
+        "properties": {
+          "candidate_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Candidate Ids",
+            "description": "Candidate identifiers to decide (owned by the account)."
+          },
+          "decision": {
+            "$ref": "#/components/schemas/DecisionType",
+            "description": "Decision applied to each candidate."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Shared human-readable rationale recorded for each decision."
+          },
+          "modified_value_or_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Value Or Rule",
+            "description": "Modified value when decision is 'modify'."
+          },
+          "modified_applicable_scenes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Modified Applicable Scenes",
+            "description": "Modified applicable scenes when decision is 'modify' (mirrors the single-decision contract)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "candidate_ids",
+          "decision",
+          "reason"
+        ],
+        "title": "ProfileBatchCandidateDecisionRequest",
+        "description": "Request to apply one decision to multiple candidates at once.\n\nBatch decisions are idempotent: already-decided candidates whose status\nalready reflects the requested decision are reported as succeeded, so a\nfailed batch can be safely retried without duplicate writes."
+      },
+      "ProfileBatchCandidateResult": {
+        "properties": {
+          "succeeded": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Succeeded",
+            "description": "Candidate ids successfully decided."
+          },
+          "already_decided": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Already Decided",
+            "description": "Candidate ids already in the target state (idempotent retry)."
+          },
+          "failed": {
+            "items": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "type": "array",
+            "title": "Failed",
+            "description": "Failed candidate ids with a safe Chinese reason."
+          }
+        },
+        "type": "object",
+        "title": "ProfileBatchCandidateResult",
+        "description": "Result of a batch candidate decision."
+      },
       "ProfileCandidate": {
         "properties": {
           "candidate_id": {
@@ -36568,6 +37120,153 @@
         "title": "ProfileFreezeRequest",
         "description": "Request carrying a reason for freeze / withdraw / unfreeze operations."
       },
+      "ProfileNotification": {
+        "properties": {
+          "notification_id": {
+            "type": "string",
+            "title": "Notification Id",
+            "description": "Stable notification identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Owning account identifier."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ProfileNotificationKind",
+            "description": "Notification kind."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "Short Chinese title."
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Chinese message body."
+          },
+          "source_ref": {
+            "type": "string",
+            "title": "Source Ref",
+            "description": "Reference to the source, e.g. '<conversation_id>:<message_id>'."
+          },
+          "source_text": {
+            "type": "string",
+            "title": "Source Text",
+            "description": "Source message text the notification refers to."
+          },
+          "dimension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProfileDimension"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Profile dimension the notification refers to."
+          },
+          "scene": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scene",
+            "description": "Applicable scene."
+          },
+          "assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assertion Id",
+            "description": "Target assertion for one-click recall."
+          },
+          "candidate_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate Id",
+            "description": "Target candidate, when proposed."
+          },
+          "recallable": {
+            "type": "boolean",
+            "title": "Recallable",
+            "description": "Whether one-click recall applies.",
+            "default": false
+          },
+          "recalled_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recalled At",
+            "description": "When the record was recalled, if ever."
+          },
+          "read_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Read At",
+            "description": "When the user marked the notification read."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Creation timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "notification_id",
+          "owner_account_id",
+          "kind",
+          "title",
+          "message",
+          "source_ref",
+          "source_text",
+          "created_at"
+        ],
+        "title": "ProfileNotification",
+        "description": "Visible, source-backed notification produced by profile processing.\n\n``recallable`` is true for auto-written records so the user can recall them\nwith one click; the recall withdraws the record and blocks re-writing the\nsame fact automatically."
+      },
+      "ProfileNotificationKind": {
+        "type": "string",
+        "enum": [
+          "auto_write",
+          "candidate_proposed",
+          "intent_recorded",
+          "transient_emotion"
+        ],
+        "title": "ProfileNotificationKind",
+        "description": "Kind of a profile notification delivered to the user."
+      },
       "ProfileObservation": {
         "properties": {
           "observation_id": {
@@ -36816,6 +37515,71 @@
         ],
         "title": "ProfileObservationCreateRequest",
         "description": "Request to record a new profile observation."
+      },
+      "ProfilePermission": {
+        "properties": {
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "Owning account identifier."
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/ProfileDimension",
+            "description": "Auto-writable category (AUTO_WRITABLE_DIMENSIONS)."
+          },
+          "scene": {
+            "type": "string",
+            "title": "Scene",
+            "description": "Applicable scene, e.g. 'companion' or 'study'."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Whether automatic updates are permitted."
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "Last change timestamp."
+          }
+        },
+        "type": "object",
+        "required": [
+          "account_id",
+          "dimension",
+          "scene",
+          "enabled",
+          "updated_at"
+        ],
+        "title": "ProfilePermission",
+        "description": "User-granted permission for low-risk automatic profile updates.\n\nIssue 26 (ADR-0002): a permission is bound to one auto-writable category and\none applicable scene, defaults to off, and can only be set by the user\nthrough the account-scoped API — never inferred from silence, tone or past\nbehavior."
+      },
+      "ProfilePermissionUpdateRequest": {
+        "properties": {
+          "dimension": {
+            "$ref": "#/components/schemas/ProfileDimension",
+            "description": "Auto-writable category (AUTO_WRITABLE_DIMENSIONS)."
+          },
+          "scene": {
+            "type": "string",
+            "title": "Scene",
+            "description": "Applicable scene, e.g. 'companion' or 'study'."
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "True to enable, False to disable."
+          }
+        },
+        "type": "object",
+        "required": [
+          "dimension",
+          "scene",
+          "enabled"
+        ],
+        "title": "ProfilePermissionUpdateRequest",
+        "description": "Request to enable or disable one low-risk automatic-update permission."
       },
       "ProfileSensitivityClass": {
         "type": "string",

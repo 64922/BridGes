@@ -101,6 +101,13 @@ export type CandidateReviewStatus = components["schemas"]["CandidateReviewStatus
 export type ManualAssertionCreateRequest = components["schemas"]["ManualAssertionCreateRequest"];
 export type ProfileAssertionModifyRequest = components["schemas"]["ProfileAssertionModifyRequest"];
 export type ProfileError = components["schemas"]["ProfileError"];
+export type ProfileObservation = components["schemas"]["ProfileObservation"];
+export type ProfilePermission = components["schemas"]["ProfilePermission"];
+export type ProfilePermissionUpdateRequest = components["schemas"]["ProfilePermissionUpdateRequest"];
+export type ProfileNotification = components["schemas"]["ProfileNotification"];
+export type ProfileNotificationKind = components["schemas"]["ProfileNotificationKind"];
+export type ProfileBatchCandidateDecisionRequest = components["schemas"]["ProfileBatchCandidateDecisionRequest"];
+export type ProfileBatchCandidateResult = components["schemas"]["ProfileBatchCandidateResult"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -1663,7 +1670,9 @@ export async function exportProfile(): Promise<ProfileExport> {
 export async function decideCandidate(
   candidateId: string,
   decision: "accept" | "reject" | "modify",
-  reason: string
+  reason: string,
+  modifiedValue?: string,
+  modifiedScenes?: string[]
 ): Promise<ProfileCandidate> {
   const res = await fetch(
     `${API_BASE}/profiles/candidates/${encodeURIComponent(candidateId)}/decision`,
@@ -1671,7 +1680,12 @@ export async function decideCandidate(
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "same-origin",
-      body: JSON.stringify({ decision, reason }),
+      body: JSON.stringify({
+        decision,
+        reason,
+        modified_value_or_rule: modifiedValue,
+        modified_applicable_scenes: modifiedScenes,
+      }),
     }
   );
   if (!res.ok) throw await parseApiError(res);
@@ -1711,6 +1725,74 @@ export async function listProfileObservations(): Promise<
   const res = await fetch(`${API_BASE}/profiles/observations`, {
     credentials: "same-origin",
     cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+// ---------- 画像记忆中心（Issue 26：许可、通知、批量决策） ----------
+
+export async function listProfilePermissions(): Promise<ProfilePermission[]> {
+  const res = await fetch(`${API_BASE}/profiles/permissions`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function updateProfilePermission(
+  request: ProfilePermissionUpdateRequest
+): Promise<ProfilePermission> {
+  const res = await fetch(`${API_BASE}/profiles/permissions`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function listProfileNotifications(): Promise<ProfileNotification[]> {
+  const res = await fetch(`${API_BASE}/profiles/notifications`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function markProfileNotificationRead(
+  notificationId: string
+): Promise<ProfileNotification> {
+  const res = await fetch(
+    `${API_BASE}/profiles/notifications/${encodeURIComponent(notificationId)}/read`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function recallProfileNotification(
+  notificationId: string
+): Promise<ProfileNotification> {
+  const res = await fetch(
+    `${API_BASE}/profiles/notifications/${encodeURIComponent(notificationId)}/recall`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function decideCandidatesBatch(
+  request: ProfileBatchCandidateDecisionRequest
+): Promise<ProfileBatchCandidateResult> {
+  const res = await fetch(`${API_BASE}/profiles/candidates/batch-decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();

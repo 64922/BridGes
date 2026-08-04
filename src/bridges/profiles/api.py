@@ -14,14 +14,19 @@ from bridges.contracts.profiles import (
     ProfileAssertionHistory,
     ProfileAssertionModifyRequest,
     ProfileAssertionRollbackRequest,
+    ProfileBatchCandidateDecisionRequest,
+    ProfileBatchCandidateResult,
     ProfileCandidate,
     ProfileCandidateCreateRequest,
     ProfileDeleteRequest,
     ProfileError,
     ProfileExport,
     ProfileFreezeRequest,
+    ProfileNotification,
     ProfileObservation,
     ProfileObservationCreateRequest,
+    ProfilePermission,
+    ProfilePermissionUpdateRequest,
     ProfileSensitivityClass,
     ProfileSlice,
 )
@@ -635,4 +640,152 @@ async def export_profile(
 ) -> ProfileExport:
     """Export the current account's profile assertions and governance history."""
     return service.export_profile_data(subject.account_id)
+
+
+@router.get(
+    "/permissions",
+    response_model=list[ProfilePermission],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+    },
+)
+async def list_permissions(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+) -> list[ProfilePermission]:
+    """List low-risk automatic-update permissions for the current account."""
+    return service.list_permissions(subject.account_id)
+
+
+@router.put(
+    "/permissions",
+    response_model=ProfilePermission,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def update_permission(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    request: ProfilePermissionUpdateRequest,
+) -> ProfilePermission:
+    """Enable or disable one low-risk automatic-update permission.
+
+    Only the authenticated user can change permissions; the model or any
+    background task has no path to grant authorization (ADR-0002).
+    """
+    try:
+        return service.set_permission(subject.account_id, request)
+    except ProfileAdapterError as exc:
+        raise _profile_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "permission_update_failed",
+            str(exc),
+        ) from exc
+
+
+@router.get(
+    "/notifications",
+    response_model=list[ProfileNotification],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+    },
+)
+async def list_notifications(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+) -> list[ProfileNotification]:
+    """List profile notifications for the current account, newest first."""
+    return service.list_notifications(subject.account_id)
+
+
+@router.post(
+    "/notifications/{notification_id}/read",
+    response_model=ProfileNotification,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def mark_notification_read(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    notification_id: str,
+) -> ProfileNotification:
+    """Mark one profile notification as read."""
+    try:
+        return service.mark_notification_read(subject.account_id, notification_id)
+    except ProfileAdapterError as exc:
+        raise _profile_error(
+            status.HTTP_404_NOT_FOUND,
+            "notification_not_found",
+            str(exc),
+        ) from exc
+
+
+@router.post(
+    "/notifications/{notification_id}/recall",
+    response_model=ProfileNotification,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def recall_notification(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    notification_id: str,
+) -> ProfileNotification:
+    """One-click recall of an auto-written profile record.
+
+    The recall withdraws the record (auditable history is kept), blocks
+    future automatic writes of the same fact, and is idempotent so a failed
+    retry does not duplicate anything.
+    """
+    try:
+        return service.recall_auto_write(subject.account_id, notification_id)
+    except ProfileAdapterError as exc:
+        msg = str(exc)
+        if "访问权限" in msg or "不存在" in msg:
+            raise _profile_error(
+                status.HTTP_404_NOT_FOUND,
+                "notification_not_found",
+                msg,
+            ) from exc
+        raise _profile_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "notification_recall_failed",
+            msg,
+        ) from exc
+
+
+@router.post(
+    "/candidates/batch-decision",
+    response_model=ProfileBatchCandidateResult,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def batch_decide_candidates(
+    service: ProfileServiceDep,
+    subject: SubjectDep,
+    request: ProfileBatchCandidateDecisionRequest,
+) -> ProfileBatchCandidateResult:
+    """Apply one decision to multiple candidates (idempotent, retry-safe).
+
+    Candidates already in the target state are reported as ``already_decided``
+    rather than failed, so a failed batch can be retried safely without
+    duplicate writes.
+    """
+    try:
+        return service.decide_candidates_batch(subject.account_id, request)
+    except ProfileAdapterError as exc:
+        raise _profile_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "candidate_batch_decision_failed",
+            str(exc),
+        ) from exc
 

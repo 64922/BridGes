@@ -181,13 +181,13 @@ test("候选确认后进入画像记录", async ({ page }) => {
 
   // 待确认候选区块。
   await expect(page.getByText("待确认候选")).toBeVisible();
-  await expect(page.getByText("喜欢阅读科学史书籍")).toBeVisible();
+  await expect(page.getByText("喜欢阅读科学史书籍", { exact: true })).toBeVisible();
 
   // 确认后进入兴趣偏好类别。
-  await page.getByRole("button", { name: "确认" }).click();
+  await page.getByRole("button", { name: "确认", exact: true }).click();
   await expect(page.getByText("待确认候选")).not.toBeVisible();
   await page.getByRole("tab", { name: /兴趣偏好/ }).click();
-  await expect(page.getByText("喜欢阅读科学史书籍")).toBeVisible();
+  await expect(page.getByText("喜欢阅读科学史书籍", { exact: true })).toBeVisible();
 });
 
 test("导出下载可读画像与授权历史", async ({ page }) => {

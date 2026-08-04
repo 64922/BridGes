@@ -2,8 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { CandidateEditDialog } from "@/components/account/profile/CandidateEditDialog";
 import { ProfileAvatarCard } from "@/components/account/profile/ProfileAvatarCard";
 import { ProfileHistoryDialog } from "@/components/account/profile/ProfileHistoryDialog";
+import { ProfileNotificationList } from "@/components/account/profile/ProfileNotificationList";
+import { ProfilePermissionPanel } from "@/components/account/profile/ProfilePermissionPanel";
 import { ProfileRecordCard } from "@/components/account/profile/ProfileRecordCard";
 import { ReasonConfirmDialog } from "@/components/account/profile/ReasonConfirmDialog";
 import { RecordFormDialog } from "@/components/account/profile/RecordFormDialog";
@@ -13,6 +16,7 @@ import { StateBlock } from "@/components/bridges/StateBlock";
 import {
   classifyApiError,
   createManualAssertion,
+  decideCandidatesBatch,
   decideCandidate,
   deleteProfileAssertion,
   exportProfile,
@@ -50,7 +54,13 @@ const CONFIRMED_DIMENSIONS = new Set([
   "current_problem",
 ]);
 
-type ConfirmAction = "withdraw" | "freeze" | "unfreeze" | "delete" | "reject-candidate";
+type ConfirmAction =
+  | "withdraw"
+  | "freeze"
+  | "unfreeze"
+  | "delete"
+  | "reject-candidate"
+  | "reject-batch";
 
 const confirmConfig: Record<
   ConfirmAction,
@@ -86,11 +96,18 @@ const confirmConfig: Record<
     confirmLabel: "确认拒绝",
     danger: true,
   },
+  "reject-batch": {
+    title: "拒绝所选候选画像？",
+    description: "所选候选将全部标记为拒绝，不会成为稳定画像，也不会用于跨会话回答。",
+    confirmLabel: "批量拒绝",
+    danger: true,
+  },
 };
 
 interface ConfirmState {
   action: ConfirmAction;
-  target: ProfileAssertion | ProfileCandidate;
+  /** 操作目标；批量操作（reject-batch）不需要具体对象，为 null。 */
+  target: ProfileAssertion | ProfileCandidate | null;
 }
 
 /** 数字分身画像中心：九类画像记录、候选确认、历史、导出与静态头像。 */
@@ -98,6 +115,8 @@ export function ProfileCenter() {
   const [assertions, setAssertions] = useState<ProfileAssertion[] | null>(null);
   const [candidates, setCandidates] = useState<ProfileCandidate[]>([]);
   const [observationSources, setObservationSources] = useState<Record<string, string>>({});
+  // Issue 26：观察 → 来源消息全文（候选"为何提出/来源消息"展示）
+  const [observationContents, setObservationContents] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileDimension>("basic_information");
@@ -107,6 +126,10 @@ export function ProfileCenter() {
   const [confirmState, setConfirmState] = useState<ConfirmState | null>(null);
   const [historyRecord, setHistoryRecord] = useState<ProfileAssertion | null>(null);
   const [exporting, setExporting] = useState(false);
+  // Issue 26：批量处理候选（复选框 + 批量确认/拒绝）
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
+  const [editCandidate, setEditCandidate] = useState<ProfileCandidate | null>(null);
+  const [batchBusy, setBatchBusy] = useState<"accept" | "reject" | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,14 +143,21 @@ export function ProfileCenter() {
       setCandidates(
         candidatesResult.filter((candidate) => candidate.review_status === "proposed")
       );
-      // 观察来源用于展示每条记录的来源证据（手动新增的观察以用户填写的
-      // 来源说明为 source_ref）。
+      // 观察来源与来源消息全文用于展示每条记录的来源证据与候选的"为何提出"。
       const observations = await listProfileObservations().catch(() => []);
       setObservationSources(
         Object.fromEntries(
           observations.map((observation) => [
             observation.observation_id,
             observation.source_ref,
+          ])
+        )
+      );
+      setObservationContents(
+        Object.fromEntries(
+          observations.map((observation) => [
+            observation.observation_id,
+            observation.observed_content,
           ])
         )
       );
@@ -181,16 +211,61 @@ export function ProfileCenter() {
   const handleConfirm = async (reason: string) => {
     if (!confirmState) return;
     const { action, target } = confirmState;
-    if ("assertion_id" in target) {
+    if (target && "assertion_id" in target) {
       const id = target.assertion_id;
       if (action === "withdraw") await withdrawProfileAssertion(id, reason);
       else if (action === "freeze") await freezeProfileAssertion(id, reason);
       else if (action === "unfreeze") await unfreezeProfileAssertion(id, reason);
       else if (action === "delete") await deleteProfileAssertion(id, reason);
-    } else if (action === "reject-candidate") {
+    } else if (target && action === "reject-candidate") {
       await decideCandidate(target.candidate_id, "reject", reason);
+    } else if (action === "reject-batch") {
+      await runBatch("reject", reason);
     }
     await refresh();
+  };
+
+  // Issue 26：批量决策（幂等，失败可安全重试；不重复写入）
+  const runBatch = async (decision: "accept" | "reject", reason: string) => {
+    const ids = Array.from(selectedCandidateIds);
+    if (ids.length === 0) return;
+    setBatchBusy(decision);
+    setError(null);
+    try {
+      const result = await decideCandidatesBatch({
+        candidate_ids: ids,
+        decision,
+        reason: reason || (decision === "accept" ? "用户批量确认候选画像" : "用户批量拒绝候选画像"),
+      });
+      if ((result.failed ?? []).length > 0) {
+        setError(
+          `${(result.failed ?? []).length} 条候选处理失败，请重试；已成功的不会重复写入。`
+        );
+      }
+      setSelectedCandidateIds(new Set());
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "批量处理失败，请稍后重试。");
+    } finally {
+      setBatchBusy(null);
+    }
+  };
+
+  // 候选"编辑后确认"：以 MODIFY 决策提交修改后的值与适用范围
+  const handleEditCandidate = async (value: string, scenes: string[]) => {
+    if (!editCandidate) return;
+    await decideCandidate(editCandidate.candidate_id, "modify", "用户编辑后确认", value, scenes);
+    setEditCandidate(null);
+    await refresh();
+  };
+
+  const toggleCandidateSelection = (candidateId: string) => {
+    setSelectedCandidateIds((current) => {
+      const next = new Set(current);
+      if (next.has(candidateId)) next.delete(candidateId);
+      else next.add(candidateId);
+      return next;
+    });
   };
 
   const handleRollback = async (toVersion: number) => {
@@ -278,6 +353,36 @@ export function ProfileCenter() {
         <div className={styles.stack}>
           <ProfileAvatarCard />
 
+          <section className={styles.card} aria-labelledby="profile-permissions-title">
+            <div className={styles.cardHeader}>
+              <div>
+                <h2 id="profile-permissions-title" className={styles.cardTitle}>
+                  自动更新许可
+                </h2>
+                <p className={styles.cardDescription}>
+                  开启后，聊天中低风险的目标、兴趣偏好与表达习惯会自动写入画像；
+                  每次写入都有中文通知、来源与一键撤回。默认全部关闭。
+                </p>
+              </div>
+            </div>
+            <ProfilePermissionPanel />
+          </section>
+
+          <section className={styles.card} aria-labelledby="profile-notifications-title">
+            <div className={styles.cardHeader}>
+              <div>
+                <h2 id="profile-notifications-title" className={styles.cardTitle}>
+                  记忆与写入通知
+                </h2>
+                <p className={styles.cardDescription}>
+                  明确说“记住…”、许可内自动写入、敏感候选与单次情绪提示都会
+                  在这里留痕；自动写入记录可一键撤回。
+                </p>
+              </div>
+            </div>
+            <ProfileNotificationList />
+          </section>
+
           {candidates.length > 0 && (
             <section className={styles.card} aria-labelledby="profile-candidates-title">
               <div className={styles.cardHeader}>
@@ -287,46 +392,118 @@ export function ProfileCenter() {
                   </h2>
                   <p className={styles.cardDescription}>
                     智能体提出的画像候选需要你确认后才能跨会话使用；情绪趋势、
-                    重要经历与当前问题等敏感候选未经确认不会生效。
+                    重要经历与当前问题等敏感候选未经确认不会生效。可勾选多条
+                    批量确认或拒绝；确认前可先编辑内容与适用范围。
                   </p>
                 </div>
               </div>
+              {selectedCandidateIds.size > 0 && (
+                <div className={styles.candidateBatchBar} role="region" aria-label="批量操作">
+                  <span className={styles.candidateBatchCount}>
+                    已选 {selectedCandidateIds.size} 条
+                  </span>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    isLoading={batchBusy === "accept"}
+                    disabled={batchBusy !== null}
+                    onClick={() => void runBatch("accept", "用户批量确认候选画像")}
+                  >
+                    批量确认
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    isLoading={batchBusy === "reject"}
+                    disabled={batchBusy !== null}
+                    onClick={() => setConfirmState({ action: "reject-batch", target: null })}
+                  >
+                    批量拒绝
+                  </Button>
+                </div>
+              )}
               <div className={styles.candidateList}>
-                {candidates.map((candidate) => (
-                  <div key={candidate.candidate_id} className={styles.candidateItem}>
-                    <p className={styles.candidateValue}>{candidate.value_or_rule}</p>
-                    <div className={styles.candidateMeta}>
-                      <span>
-                        类别：{DIMENSIONS.find((d) => d.value === candidate.canonical_dimension)?.label || candidate.canonical_dimension}
-                      </span>
-                      <span>
-                        证据：{(candidate.supporting_observation_ids || []).length} 条观察
-                      </span>
-                      <span>授权范围：{candidate.authorization_scope}</span>
+                {candidates.map((candidate) => {
+                  const sourceIds = candidate.supporting_observation_ids || [];
+                  const sourceTexts = sourceIds
+                    .map((observationId) => observationContents[observationId])
+                    .filter(Boolean);
+                  const scenes = candidate.applicable_scenes || [];
+                  return (
+                    <div
+                      key={candidate.candidate_id}
+                      className={`${styles.candidateItem} ${
+                        selectedCandidateIds.has(candidate.candidate_id)
+                          ? styles.candidateItemSelected
+                          : ""
+                      }`}
+                    >
+                      <label className={styles.candidateCheck}>
+                        <input
+                          type="checkbox"
+                          checked={selectedCandidateIds.has(candidate.candidate_id)}
+                          onChange={() => toggleCandidateSelection(candidate.candidate_id)}
+                          aria-label={`选择候选：${candidate.value_or_rule}`}
+                        />
+                        <span aria-hidden="true" />
+                      </label>
+                      <div className={styles.candidateBody}>
+                        <p className={styles.candidateValue}>{candidate.value_or_rule}</p>
+                        <div className={styles.candidateMeta}>
+                          <span>
+                            类别：
+                            {DIMENSIONS.find((d) => d.value === candidate.canonical_dimension)
+                              ?.label || candidate.canonical_dimension}
+                          </span>
+                          <span>
+                            为何提出：{candidate.evidence_summary || "由对话观察归纳"}
+                          </span>
+                          <span>
+                            将适用范围：
+                            {scenes.length > 0 ? scenes.join("、") : "通用"}
+                          </span>
+                          {sourceTexts.length > 0 && (
+                            <span className={styles.candidateSource}>
+                              来源消息：“{sourceTexts[0]}”
+                            </span>
+                          )}
+                        </div>
+                        <div className={styles.candidateActions}>
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={async () => {
+                              await decideCandidate(
+                                candidate.candidate_id,
+                                "accept",
+                                "用户确认候选画像"
+                              );
+                              await refresh();
+                            }}
+                          >
+                            确认
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setEditCandidate(candidate)}
+                          >
+                            编辑后确认
+                          </Button>
+                          <Button
+                            variant="danger"
+                            size="sm"
+                            onClick={() =>
+                              setConfirmState({ action: "reject-candidate", target: candidate })
+                            }
+                          >
+                            拒绝
+                          </Button>
+                        </div>
+                      </div>
                     </div>
-                    <div className={styles.candidateActions}>
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={async () => {
-                          await decideCandidate(candidate.candidate_id, "accept", "用户确认候选画像");
-                          await refresh();
-                        }}
-                      >
-                        确认
-                      </Button>
-                      <Button
-                        variant="danger"
-                        size="sm"
-                        onClick={() =>
-                          setConfirmState({ action: "reject-candidate", target: candidate })
-                        }
-                      >
-                        拒绝
-                      </Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           )}
@@ -474,6 +651,13 @@ export function ProfileCenter() {
         record={historyRecord}
         onRollback={handleRollback}
         onClose={() => setHistoryRecord(null)}
+      />
+
+      <CandidateEditDialog
+        open={editCandidate !== null}
+        candidate={editCandidate}
+        onSubmit={handleEditCandidate}
+        onClose={() => setEditCandidate(null)}
       />
     </div>
   );

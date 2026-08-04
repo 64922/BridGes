@@ -49,6 +49,7 @@ from bridges.contracts.chat import (
     ChatStreamErrorDetail,
     ChatStreamEvent,
     ChatStreamEventKind,
+    ChatStreamProfileData,
     ChatStreamStartedData,
     ChatThinkingSummary,
 )
@@ -328,6 +329,19 @@ def _generation_events(
             teaching=assistant_message.teaching,
         ),
     )
+    # Issue 26：画像通知（明确记忆/自动写入/候选/单次情绪）在 started 后
+    # 立即下发，聊天内即时展示来源与一键撤回；通知按账户隔离持久化。
+    profile_notifications = service.profile_notifications_for_message(
+        subject.account_id, conversation_id, user_message.message_id
+    )
+    if profile_notifications:
+        yield ChatStreamEvent(
+            event=ChatStreamEventKind.PROFILE,
+            data=ChatStreamProfileData(
+                message_id=user_message.message_id,
+                notifications=profile_notifications,
+            ),
+        )
     terminated = False
     for event in service.stream_generation(
         subject.account_id,

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from datetime import datetime
 
 from bridges.contracts.profiles import (
     ProfileAssertion,
     ProfileAssertionVersion,
     ProfileCandidate,
+    ProfileNotification,
     ProfileObservation,
+    ProfilePermission,
     ProfileSlice,
 )
 
@@ -97,3 +100,66 @@ class ProfileRepository(ABC):
         self, owner_id: str, assertion_id: str
     ) -> list[ProfileSlice]:
         """Return slices that include the assertion in their included items."""
+
+    @abstractmethod
+    def list_permissions(self, owner_id: str) -> list[ProfilePermission]:
+        """Return automatic-update permissions for the owner."""
+
+    @abstractmethod
+    def set_permission(
+        self,
+        owner_id: str,
+        dimension: str,
+        scene: str,
+        enabled: bool,
+        updated_at: datetime,
+    ) -> ProfilePermission:
+        """Create or replace one automatic-update permission row."""
+
+    @abstractmethod
+    def find_assertion_by_value(
+        self, owner_id: str, dimension: str, value: str
+    ) -> ProfileAssertion | None:
+        """Return an active/frozen assertion matching dimension and value, if any."""
+
+    @abstractmethod
+    def find_discarded_observation(
+        self, owner_id: str, content_hash: str
+    ) -> ProfileObservation | None:
+        """Return a discarded observation with the same content hash, if any.
+
+        Discarded observations act as deterministic blockers: a user's
+        "不要记住" / "只在本对话使用" / one-click recall prevents later
+        automatic writes of the same content.
+        """
+
+    @abstractmethod
+    def find_observation_by_source(
+        self, owner_id: str, content_hash: str, source_ref: str
+    ) -> ProfileObservation | None:
+        """Return an existing observation with the same content key and source.
+
+        Chat retry rounds re-process the same user message; this lookup lets
+        the pipeline reuse the already-persisted observation instead of
+        duplicating it, so retries never accumulate observation rows.
+        """
+
+    @abstractmethod
+    def save_notification(self, notification: ProfileNotification) -> ProfileNotification:
+        """Persist a profile notification."""
+
+    @abstractmethod
+    def get_notification(
+        self, owner_id: str, notification_id: str
+    ) -> ProfileNotification:
+        """Return a profile notification or raise a domain error."""
+
+    @abstractmethod
+    def list_notifications(self, owner_id: str) -> list[ProfileNotification]:
+        """List notifications for the owner, most recent first."""
+
+    @abstractmethod
+    def mark_notification_read(
+        self, owner_id: str, notification_id: str, read_at: datetime
+    ) -> ProfileNotification:
+        """Mark a notification read; raises when it does not exist."""

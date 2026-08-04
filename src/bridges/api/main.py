@@ -126,6 +126,7 @@ from bridges.persistence import (
 )
 from bridges.profiles import InMemoryProfileRepository, ProfileService
 from bridges.profiles.api import router as profiles_router
+from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.science import (
@@ -734,13 +735,21 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     app.state.credential_store = credential_store
 
-    # T018/T020: attach the in-memory profile service. Candidate profiles cannot be
+    # T018/T020: attach the profile service. Candidate profiles cannot be
     # treated as stable facts until the user accepts them through the human
     # decision loop; accepted candidates are promoted to active assertions. At
     # T020 the service also freezes, deletes, rolls back and exports assertions
     # while propagating invalidations to slices, cache, index and runs.
+    # Issue 26: 配置持久化数据目录时改用 SQLite 仓库，画像、许可与通知在
+    # 重启后仍可追溯；未配置（内存模式，仅测试/E2E）时保持进程内仓库。
+    profile_database = getattr(app.state, "bridges_database", None)
+    profile_repository = (
+        SqliteProfileRepository(profile_database)
+        if profile_database is not None
+        else InMemoryProfileRepository()
+    )
     app.state.profile_service = ProfileService(
-        repository=InMemoryProfileRepository(),
+        repository=profile_repository,
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
         observability_service=app.state.observability_service,
@@ -893,6 +902,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             retrieval_service=getattr(app.state, "retrieval_service", None),
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
+            profile_service=getattr(app.state, "profile_service", None),
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

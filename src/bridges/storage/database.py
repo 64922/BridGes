@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 13
+SCHEMA_VERSION = 14
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -687,6 +687,179 @@ MIGRATIONS: dict[int, list[str]] = {
     13: [
         """
         ALTER TABLE messages ADD COLUMN teaching TEXT
+        """,
+    ],
+    # Issue 26：画像观察-候选-断言与许可/通知的持久化。账户列统一命名为
+    # account_id，仓库层使用 scoped() 查询面让跨账户访问在 SQL 层被强制
+    # 拒绝（后台任务不能串号）。通知表承载自动写入通知与一键撤回入口。
+    14: [
+        """
+        CREATE TABLE profile_observations (
+            observation_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            project_id TEXT,
+            source_type TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            source_span_or_event TEXT NOT NULL,
+            scene TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            observed_content TEXT NOT NULL,
+            signal_kind TEXT NOT NULL,
+            extractor_and_version TEXT NOT NULL,
+            model_rationale TEXT,
+            reliability_factors_json TEXT NOT NULL DEFAULT '[]',
+            sensitivity_class TEXT NOT NULL,
+            retention_policy TEXT NOT NULL,
+            authorization_version TEXT NOT NULL DEFAULT 'authz-1.0',
+            content_hash TEXT NOT NULL,
+            status TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_observations_account
+        ON profile_observations(account_id, created_at DESC)
+        """,
+        """
+        CREATE INDEX idx_profile_observations_blocker
+        ON profile_observations(account_id, content_hash, status)
+        """,
+        """
+        CREATE TABLE profile_candidates (
+            candidate_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            canonical_dimension TEXT NOT NULL,
+            value_or_rule TEXT NOT NULL,
+            applicable_scenes_json TEXT NOT NULL DEFAULT '[]',
+            non_applicable_scenes_json TEXT NOT NULL DEFAULT '[]',
+            supporting_observation_ids_json TEXT NOT NULL DEFAULT '[]',
+            contradicting_observation_ids_json TEXT NOT NULL DEFAULT '[]',
+            evidence_summary TEXT NOT NULL DEFAULT '',
+            authorization_scope TEXT NOT NULL DEFAULT 'general',
+            promotion_policy_version TEXT NOT NULL DEFAULT 'promotion-1.0',
+            review_status TEXT NOT NULL,
+            stability_state TEXT NOT NULL DEFAULT 'candidate',
+            sensitivity_class TEXT NOT NULL DEFAULT 'preference',
+            proposed_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            expires_at TEXT,
+            human_decision_json TEXT
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_candidates_account
+        ON profile_candidates(account_id, proposed_at DESC)
+        """,
+        """
+        CREATE TABLE profile_assertions (
+            assertion_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            canonical_dimension TEXT NOT NULL,
+            value_or_rule TEXT NOT NULL,
+            applicable_scenes_json TEXT NOT NULL DEFAULT '[]',
+            supporting_observation_ids_json TEXT NOT NULL DEFAULT '[]',
+            contradicting_observation_ids_json TEXT NOT NULL DEFAULT '[]',
+            authorization_scope TEXT NOT NULL DEFAULT 'general',
+            status TEXT NOT NULL,
+            sensitivity_class TEXT NOT NULL DEFAULT 'preference',
+            expires_at TEXT,
+            promoted_from_candidate_id TEXT,
+            version INTEGER NOT NULL DEFAULT 1,
+            last_used_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_assertions_account
+        ON profile_assertions(account_id, created_at DESC)
+        """,
+        """
+        CREATE INDEX idx_profile_assertions_dedup
+        ON profile_assertions(account_id, canonical_dimension, status)
+        """,
+        """
+        CREATE TABLE profile_assertion_versions (
+            version_id TEXT PRIMARY KEY,
+            assertion_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            canonical_dimension TEXT NOT NULL,
+            value_or_rule TEXT NOT NULL,
+            applicable_scenes_json TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL,
+            sensitivity_class TEXT NOT NULL DEFAULT 'preference',
+            promoted_from_candidate_id TEXT,
+            content_hash TEXT NOT NULL,
+            changed_at TEXT NOT NULL,
+            changed_by TEXT NOT NULL,
+            change_reason TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_assertion_versions
+        ON profile_assertion_versions(account_id, assertion_id, version)
+        """,
+        """
+        CREATE TABLE profile_slices (
+            slice_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            purpose TEXT NOT NULL,
+            project_id TEXT,
+            included_items_json TEXT NOT NULL DEFAULT '[]',
+            unused_items_json TEXT NOT NULL DEFAULT '[]',
+            excluded_candidate_ids_json TEXT NOT NULL DEFAULT '[]',
+            exclusion_reasons_json TEXT NOT NULL DEFAULT '{}',
+            rejected_items_json TEXT NOT NULL DEFAULT '[]',
+            authorization_snapshot TEXT NOT NULL DEFAULT 'authz-1.0',
+            key_epoch TEXT NOT NULL DEFAULT 'epoch-0',
+            expires_at TEXT,
+            sensitivity_classes_allowed_json TEXT NOT NULL DEFAULT '[]',
+            compiled_policy_version TEXT NOT NULL DEFAULT 'slice-1.0',
+            status TEXT NOT NULL DEFAULT 'active',
+            invalidated_at TEXT,
+            invalidation_reason TEXT,
+            compiled_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_slices_account_run
+        ON profile_slices(account_id, run_id, compiled_at DESC)
+        """,
+        """
+        CREATE TABLE profile_permissions (
+            account_id TEXT NOT NULL,
+            dimension TEXT NOT NULL,
+            scene TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, dimension, scene)
+        )
+        """,
+        """
+        CREATE TABLE profile_notifications (
+            notification_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            title TEXT NOT NULL,
+            message TEXT NOT NULL,
+            source_ref TEXT NOT NULL,
+            source_text TEXT NOT NULL,
+            dimension TEXT,
+            scene TEXT,
+            assertion_id TEXT,
+            candidate_id TEXT,
+            recallable INTEGER NOT NULL DEFAULT 0,
+            recalled_at TEXT,
+            read_at TEXT,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_notifications_account
+        ON profile_notifications(account_id, created_at DESC)
         """,
     ],
 }

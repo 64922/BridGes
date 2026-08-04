@@ -56,6 +56,17 @@ USER_CONFIRMED_DIMENSIONS: frozenset[ProfileDimension] = frozenset(
     }
 )
 
+#: Low-risk dimensions that may be auto-written only under a user-granted
+#: permission for the matching category and applicable scene (ADR-0002 /
+#: Issue 26). Permissions default off and can never be granted by a model.
+AUTO_WRITABLE_DIMENSIONS: frozenset[ProfileDimension] = frozenset(
+    {
+        ProfileDimension.STAGE_GOAL,
+        ProfileDimension.INTEREST_PREFERENCE,
+        ProfileDimension.EXPRESSION_HABIT,
+    }
+)
+
 
 class ProfileSourceType(StrEnum):
     """How the observation originated."""
@@ -642,6 +653,127 @@ class ProfileExport(BaseModel):
     audit_event_refs: list[str] = Field(
         default_factory=list,
         description="References to governance audit events included in this export.",
+    )
+
+
+class ProfilePermission(BaseModel):
+    """User-granted permission for low-risk automatic profile updates.
+
+    Issue 26 (ADR-0002): a permission is bound to one auto-writable category and
+    one applicable scene, defaults to off, and can only be set by the user
+    through the account-scoped API — never inferred from silence, tone or past
+    behavior.
+    """
+
+    account_id: str = Field(description="Owning account identifier.")
+    dimension: ProfileDimension = Field(
+        description="Auto-writable category (AUTO_WRITABLE_DIMENSIONS)."
+    )
+    scene: str = Field(description="Applicable scene, e.g. 'companion' or 'study'.")
+    enabled: bool = Field(description="Whether automatic updates are permitted.")
+    updated_at: datetime = Field(description="Last change timestamp.")
+
+
+class ProfilePermissionUpdateRequest(BaseModel):
+    """Request to enable or disable one low-risk automatic-update permission."""
+
+    dimension: ProfileDimension = Field(
+        description="Auto-writable category (AUTO_WRITABLE_DIMENSIONS)."
+    )
+    scene: str = Field(description="Applicable scene, e.g. 'companion' or 'study'.")
+    enabled: bool = Field(description="True to enable, False to disable.")
+
+
+class ProfileNotificationKind(StrEnum):
+    """Kind of a profile notification delivered to the user."""
+
+    AUTO_WRITE = "auto_write"
+    CANDIDATE_PROPOSED = "candidate_proposed"
+    INTENT_RECORDED = "intent_recorded"
+    TRANSIENT_EMOTION = "transient_emotion"
+
+
+class ProfileNotification(BaseModel):
+    """Visible, source-backed notification produced by profile processing.
+
+    ``recallable`` is true for auto-written records so the user can recall them
+    with one click; the recall withdraws the record and blocks re-writing the
+    same fact automatically.
+    """
+
+    notification_id: str = Field(description="Stable notification identifier.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    kind: ProfileNotificationKind = Field(description="Notification kind.")
+    title: str = Field(description="Short Chinese title.")
+    message: str = Field(description="Chinese message body.")
+    source_ref: str = Field(
+        description="Reference to the source, e.g. '<conversation_id>:<message_id>'."
+    )
+    source_text: str = Field(description="Source message text the notification refers to.")
+    dimension: ProfileDimension | None = Field(
+        default=None, description="Profile dimension the notification refers to."
+    )
+    scene: str | None = Field(default=None, description="Applicable scene.")
+    assertion_id: str | None = Field(
+        default=None, description="Target assertion for one-click recall."
+    )
+    candidate_id: str | None = Field(
+        default=None, description="Target candidate, when proposed."
+    )
+    recallable: bool = Field(default=False, description="Whether one-click recall applies.")
+    recalled_at: datetime | None = Field(
+        default=None, description="When the record was recalled, if ever."
+    )
+    read_at: datetime | None = Field(
+        default=None, description="When the user marked the notification read."
+    )
+    created_at: datetime = Field(description="Creation timestamp.")
+
+
+
+class ProfileBatchCandidateDecisionRequest(BaseModel):
+    """Request to apply one decision to multiple candidates at once.
+
+    Batch decisions are idempotent: already-decided candidates whose status
+    already reflects the requested decision are reported as succeeded, so a
+    failed batch can be safely retried without duplicate writes.
+    """
+
+    candidate_ids: list[str] = Field(
+        min_length=1,
+        max_length=50,
+        description="Candidate identifiers to decide (owned by the account).",
+    )
+    decision: DecisionType = Field(description="Decision applied to each candidate.")
+    reason: str = Field(
+        min_length=1,
+        max_length=200,
+        description="Shared human-readable rationale recorded for each decision.",
+    )
+    modified_value_or_rule: str | None = Field(
+        default=None,
+        description="Modified value when decision is 'modify'.",
+    )
+    modified_applicable_scenes: list[str] | None = Field(
+        default=None,
+        description="Modified applicable scenes when decision is 'modify' "
+        "(mirrors the single-decision contract).",
+    )
+
+
+class ProfileBatchCandidateResult(BaseModel):
+    """Result of a batch candidate decision."""
+
+    succeeded: list[str] = Field(
+        default_factory=list, description="Candidate ids successfully decided."
+    )
+    already_decided: list[str] = Field(
+        default_factory=list,
+        description="Candidate ids already in the target state (idempotent retry).",
+    )
+    failed: list[dict[str, str]] = Field(
+        default_factory=list,
+        description="Failed candidate ids with a safe Chinese reason.",
     )
 
 

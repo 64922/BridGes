@@ -2815,6 +2815,121 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Permissions
+         * @description List low-risk automatic-update permissions for the current account.
+         */
+        get: operations["list_permissions_profiles_permissions_get"];
+        /**
+         * Update Permission
+         * @description Enable or disable one low-risk automatic-update permission.
+         *
+         *     Only the authenticated user can change permissions; the model or any
+         *     background task has no path to grant authorization (ADR-0002).
+         */
+        put: operations["update_permission_profiles_permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Notifications
+         * @description List profile notifications for the current account, newest first.
+         */
+        get: operations["list_notifications_profiles_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark Notification Read
+         * @description Mark one profile notification as read.
+         */
+        post: operations["mark_notification_read_profiles_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/notifications/{notification_id}/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Recall Notification
+         * @description One-click recall of an auto-written profile record.
+         *
+         *     The recall withdraws the record (auditable history is kept), blocks
+         *     future automatic writes of the same fact, and is idempotent so a failed
+         *     retry does not duplicate anything.
+         */
+        post: operations["recall_notification_profiles_notifications__notification_id__recall_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates/batch-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Batch Decide Candidates
+         * @description Apply one decision to multiple candidates (idempotent, retry-safe).
+         *
+         *     Candidates already in the target state are reported as ``already_decided``
+         *     rather than failed, so a failed batch can be retried safely without
+         *     duplicate writes.
+         */
+        post: operations["batch_decide_candidates_profiles_candidates_batch_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/work-orders": {
         parameters: {
             query?: never;
@@ -6408,14 +6523,38 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done";
+        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile";
+        /**
+         * ChatStreamProfileData
+         * @description profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。
+         *
+         *     通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条
+         *     自动写入通知携带一键撤回入口。
+         */
+        ChatStreamProfileData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "profile";
+            /**
+             * Message Id
+             * @description 本轮用户消息标识。
+             */
+            message_id: string;
+            /**
+             * Notifications
+             * @description 本轮产生的画像通知。
+             */
+            notifications?: components["schemas"]["ProfileNotification"][];
+        };
         /**
          * ChatStreamStartedData
          * @description started 事件载荷：消息已落库、生成开始，附带初始思考摘要。
@@ -13525,6 +13664,61 @@ export interface components {
             change_reason: string;
         };
         /**
+         * ProfileBatchCandidateDecisionRequest
+         * @description Request to apply one decision to multiple candidates at once.
+         *
+         *     Batch decisions are idempotent: already-decided candidates whose status
+         *     already reflects the requested decision are reported as succeeded, so a
+         *     failed batch can be safely retried without duplicate writes.
+         */
+        ProfileBatchCandidateDecisionRequest: {
+            /**
+             * Candidate Ids
+             * @description Candidate identifiers to decide (owned by the account).
+             */
+            candidate_ids: string[];
+            /** @description Decision applied to each candidate. */
+            decision: components["schemas"]["DecisionType"];
+            /**
+             * Reason
+             * @description Shared human-readable rationale recorded for each decision.
+             */
+            reason: string;
+            /**
+             * Modified Value Or Rule
+             * @description Modified value when decision is 'modify'.
+             */
+            modified_value_or_rule?: string | null;
+            /**
+             * Modified Applicable Scenes
+             * @description Modified applicable scenes when decision is 'modify' (mirrors the single-decision contract).
+             */
+            modified_applicable_scenes?: string[] | null;
+        };
+        /**
+         * ProfileBatchCandidateResult
+         * @description Result of a batch candidate decision.
+         */
+        ProfileBatchCandidateResult: {
+            /**
+             * Succeeded
+             * @description Candidate ids successfully decided.
+             */
+            succeeded?: string[];
+            /**
+             * Already Decided
+             * @description Candidate ids already in the target state (idempotent retry).
+             */
+            already_decided?: string[];
+            /**
+             * Failed
+             * @description Failed candidate ids with a safe Chinese reason.
+             */
+            failed?: {
+                [key: string]: string;
+            }[];
+        };
+        /**
          * ProfileCandidate
          * @description Explainable candidate profile awaiting human review.
          */
@@ -13824,6 +14018,93 @@ export interface components {
             reason: string;
         };
         /**
+         * ProfileNotification
+         * @description Visible, source-backed notification produced by profile processing.
+         *
+         *     ``recallable`` is true for auto-written records so the user can recall them
+         *     with one click; the recall withdraws the record and blocks re-writing the
+         *     same fact automatically.
+         */
+        ProfileNotification: {
+            /**
+             * Notification Id
+             * @description Stable notification identifier.
+             */
+            notification_id: string;
+            /**
+             * Owner Account Id
+             * @description Owning account identifier.
+             */
+            owner_account_id: string;
+            /** @description Notification kind. */
+            kind: components["schemas"]["ProfileNotificationKind"];
+            /**
+             * Title
+             * @description Short Chinese title.
+             */
+            title: string;
+            /**
+             * Message
+             * @description Chinese message body.
+             */
+            message: string;
+            /**
+             * Source Ref
+             * @description Reference to the source, e.g. '<conversation_id>:<message_id>'.
+             */
+            source_ref: string;
+            /**
+             * Source Text
+             * @description Source message text the notification refers to.
+             */
+            source_text: string;
+            /** @description Profile dimension the notification refers to. */
+            dimension?: components["schemas"]["ProfileDimension"] | null;
+            /**
+             * Scene
+             * @description Applicable scene.
+             */
+            scene?: string | null;
+            /**
+             * Assertion Id
+             * @description Target assertion for one-click recall.
+             */
+            assertion_id?: string | null;
+            /**
+             * Candidate Id
+             * @description Target candidate, when proposed.
+             */
+            candidate_id?: string | null;
+            /**
+             * Recallable
+             * @description Whether one-click recall applies.
+             * @default false
+             */
+            recallable: boolean;
+            /**
+             * Recalled At
+             * @description When the record was recalled, if ever.
+             */
+            recalled_at?: string | null;
+            /**
+             * Read At
+             * @description When the user marked the notification read.
+             */
+            read_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Creation timestamp.
+             */
+            created_at: string;
+        };
+        /**
+         * ProfileNotificationKind
+         * @description Kind of a profile notification delivered to the user.
+         * @enum {string}
+         */
+        ProfileNotificationKind: "auto_write" | "candidate_proposed" | "intent_recorded" | "transient_emotion";
+        /**
          * ProfileObservation
          * @description Traceable atomic signal that may support a candidate profile.
          */
@@ -13990,6 +14271,58 @@ export interface components {
              * @default authz-1.0
              */
             authorization_version: string;
+        };
+        /**
+         * ProfilePermission
+         * @description User-granted permission for low-risk automatic profile updates.
+         *
+         *     Issue 26 (ADR-0002): a permission is bound to one auto-writable category and
+         *     one applicable scene, defaults to off, and can only be set by the user
+         *     through the account-scoped API — never inferred from silence, tone or past
+         *     behavior.
+         */
+        ProfilePermission: {
+            /**
+             * Account Id
+             * @description Owning account identifier.
+             */
+            account_id: string;
+            /** @description Auto-writable category (AUTO_WRITABLE_DIMENSIONS). */
+            dimension: components["schemas"]["ProfileDimension"];
+            /**
+             * Scene
+             * @description Applicable scene, e.g. 'companion' or 'study'.
+             */
+            scene: string;
+            /**
+             * Enabled
+             * @description Whether automatic updates are permitted.
+             */
+            enabled: boolean;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description Last change timestamp.
+             */
+            updated_at: string;
+        };
+        /**
+         * ProfilePermissionUpdateRequest
+         * @description Request to enable or disable one low-risk automatic-update permission.
+         */
+        ProfilePermissionUpdateRequest: {
+            /** @description Auto-writable category (AUTO_WRITABLE_DIMENSIONS). */
+            dimension: components["schemas"]["ProfileDimension"];
+            /**
+             * Scene
+             * @description Applicable scene, e.g. 'companion' or 'study'.
+             */
+            scene: string;
+            /**
+             * Enabled
+             * @description True to enable, False to disable.
+             */
+            enabled: boolean;
         };
         /**
          * ProfileSensitivityClass
@@ -28454,6 +28787,276 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_permissions_profiles_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilePermission"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_permission_profiles_permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfilePermissionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfilePermission"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    list_notifications_profiles_notifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileNotification"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_notification_read_profiles_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileNotification"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recall_notification_profiles_notifications__notification_id__recall_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileNotification"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    batch_decide_candidates_profiles_candidates_batch_decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfileBatchCandidateDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileBatchCandidateResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
                 };
             };
         };
