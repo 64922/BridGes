@@ -12,6 +12,7 @@ from typing import Any
 
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
+from bridges.contracts.feedback import AnswerFeedback, FeedbackKind, FeedbackStatus
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 
@@ -58,6 +59,7 @@ class MessageRecord:
     web_search: dict[str, Any] | None = None
     arxiv_search: dict[str, Any] | None = None
     teaching: dict[str, Any] | None = None
+    context_note: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -288,8 +290,8 @@ class ConversationRepository:
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                    " web_search, arxiv_search, teaching)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " web_search, arxiv_search, teaching, context_note)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -309,6 +311,7 @@ class ConversationRepository:
                         _json_dumps(record.web_search) if record.web_search else None,
                         _json_dumps(record.arxiv_search) if record.arxiv_search else None,
                         _json_dumps(record.teaching) if record.teaching else None,
+                        _json_dumps(record.context_note) if record.context_note else None,
                     ),
                 )
         except StorageError:
@@ -331,8 +334,8 @@ class ConversationRepository:
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                        " web_search, arxiv_search, teaching)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " web_search, arxiv_search, teaching, context_note)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -352,6 +355,7 @@ class ConversationRepository:
                             _json_dumps(record.web_search) if record.web_search else None,
                             _json_dumps(record.arxiv_search) if record.arxiv_search else None,
                             _json_dumps(record.teaching) if record.teaching else None,
+                            _json_dumps(record.context_note) if record.context_note else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -391,7 +395,8 @@ class ConversationRepository:
         rows = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search, teaching"
+            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
+            " teaching, context_note"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -403,7 +408,8 @@ class ConversationRepository:
         row = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search, teaching"
+            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
+            " teaching, context_note"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -484,6 +490,26 @@ class ConversationRepository:
                 "UPDATE messages SET teaching = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(teaching), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_context_note(
+        self,
+        account_id: str,
+        message_id: str,
+        context_note: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """落库「本次上下文说明」披露快照（Issue 27）。
+
+        披露快照在生成中写入；终态后不变，历史回答保留当时切片版本。
+        只允许写入仍在生成的助手消息，避免覆盖终态披露。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET context_note = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(context_note), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -635,6 +661,133 @@ class ConversationRepository:
         ).fetchone()
         return int(row["n"]) if row is not None else 0
 
+    # -- answer feedback (Issue 27) ----------------------------------------
+
+    def save_feedback(self, feedback: AnswerFeedback) -> AnswerFeedback:
+        """持久化一条回答反馈；按账户隔离。"""
+        try:
+            with self._db.transaction():
+                self._db.scoped(feedback.account_id).execute(
+                    "INSERT INTO answer_feedback"
+                    "(feedback_id, account_id, conversation_id, message_id, kind,"
+                    " feedback_text, preference, assertion_id, status, resolution_note,"
+                    " created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        feedback.feedback_id,
+                        feedback.account_id,
+                        feedback.conversation_id,
+                        feedback.message_id,
+                        feedback.kind.value,
+                        feedback.feedback_text,
+                        feedback.preference,
+                        feedback.assertion_id,
+                        feedback.status.value,
+                        feedback.resolution_note,
+                        _iso(feedback.created_at),
+                        _iso(feedback.updated_at),
+                    ),
+                )
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError("保存反馈失败，请稍后重试。") from exc
+        return feedback
+
+    def find_duplicate_feedback(
+        self,
+        account_id: str,
+        message_id: str,
+        kind: FeedbackKind,
+        assertion_id: str | None,
+        feedback_text: str,
+    ) -> AnswerFeedback | None:
+        """幂等去重：同一账户对同一消息的相同反馈只保留一条。"""
+        row = self._db.scoped(account_id).execute(
+            "SELECT feedback_id, account_id, conversation_id, message_id, kind,"
+            " feedback_text, preference, assertion_id, status, resolution_note,"
+            " created_at, updated_at"
+            " FROM answer_feedback WHERE account_id = ? AND message_id = ?"
+            " AND kind = ? AND assertion_id IS ? AND feedback_text = ?"
+            " ORDER BY created_at DESC LIMIT 1",
+            (
+                account_id,
+                message_id,
+                kind.value,
+                assertion_id,
+                feedback_text,
+            ),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._feedback_from_row(row)
+
+    def list_feedback(
+        self, account_id: str, conversation_id: str
+    ) -> list[AnswerFeedback]:
+        """按对话列出该账户的反馈，最新在前（供前端恢复与闭环查看）。"""
+        rows = self._db.scoped(account_id).execute(
+            "SELECT feedback_id, account_id, conversation_id, message_id, kind,"
+            " feedback_text, preference, assertion_id, status, resolution_note,"
+            " created_at, updated_at"
+            " FROM answer_feedback WHERE account_id = ? AND conversation_id = ?"
+            " ORDER BY created_at DESC",
+            (account_id, conversation_id),
+        ).fetchall()
+        return [self._feedback_from_row(row) for row in rows]
+
+    def get_feedback(self, account_id: str, feedback_id: str) -> AnswerFeedback | None:
+        row = self._db.scoped(account_id).execute(
+            "SELECT feedback_id, account_id, conversation_id, message_id, kind,"
+            " feedback_text, preference, assertion_id, status, resolution_note,"
+            " created_at, updated_at"
+            " FROM answer_feedback WHERE feedback_id = ? AND account_id = ?",
+            (feedback_id, account_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._feedback_from_row(row)
+
+    def mark_feedback_status(
+        self,
+        account_id: str,
+        feedback_id: str,
+        status: FeedbackStatus,
+        resolution_note: str | None,
+        updated_at: datetime,
+    ) -> AnswerFeedback | None:
+        """更新反馈生命周期状态（resolved），返回更新后的记录。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE answer_feedback SET status = ?, resolution_note = ?,"
+                " updated_at = ? WHERE feedback_id = ? AND account_id = ?",
+                (status.value, resolution_note, _iso(updated_at), feedback_id, account_id),
+            )
+            if cursor.rowcount == 0:
+                return None
+        return self.get_feedback(account_id, feedback_id)
+
+    @staticmethod
+    def _feedback_from_row(row: Any) -> AnswerFeedback:
+        return AnswerFeedback(
+            feedback_id=str(row["feedback_id"]),
+            account_id=str(row["account_id"]),
+            conversation_id=str(row["conversation_id"]),
+            message_id=str(row["message_id"]),
+            kind=FeedbackKind(str(row["kind"])),
+            feedback_text=str(row["feedback_text"]),
+            preference=(
+                str(row["preference"]) if row["preference"] is not None else None
+            ),
+            assertion_id=(
+                str(row["assertion_id"]) if row["assertion_id"] is not None else None
+            ),
+            status=FeedbackStatus(str(row["status"])),
+            resolution_note=(
+                str(row["resolution_note"]) if row["resolution_note"] is not None else None
+            ),
+            created_at=_parse_iso(str(row["created_at"])),
+            updated_at=_parse_iso(str(row["updated_at"])),
+        )
+
     # -- model run locks ---------------------------------------------------
 
     def insert_run_lock(self, account_id: str, lock: ModelRunLock) -> None:
@@ -690,6 +843,7 @@ class ConversationRepository:
             web_search=_json_loads_any(row["web_search"]),
             arxiv_search=_json_loads_any(row["arxiv_search"]),
             teaching=_json_loads_any(row["teaching"]),
+            context_note=_json_loads_any(row["context_note"]),
         )
 
 

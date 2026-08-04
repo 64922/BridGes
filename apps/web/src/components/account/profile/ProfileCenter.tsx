@@ -192,6 +192,27 @@ export function ProfileCenter() {
     await load();
   };
 
+  // Issue 27：上下文说明「查看记录」深链 —— 携带 assertion query 时切到
+  // 对应维度并滚动高亮目标记录。
+  useEffect(() => {
+    if (!assertions) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetId = params.get("assertion");
+    if (!targetId) return;
+    const target = assertions.find((item) => item.assertion_id === targetId);
+    if (!target) return;
+    setActiveTab(target.canonical_dimension as ProfileDimension);
+    requestAnimationFrame(() => {
+      const element = document.getElementById(`assertion-${targetId}`);
+      if (!element) return;
+      element.scrollIntoView({ block: "center" });
+      element.style.outline = "2px solid var(--color-accent-primary)";
+      window.setTimeout(() => {
+        element.style.outline = "";
+      }, 2000);
+    });
+  }, [assertions]);
+
   const handleCreate = async (payload: ManualAssertionCreateRequest, reason: string) => {
     await createManualAssertion(payload);
     void reason;
@@ -592,8 +613,8 @@ export function ProfileCenter() {
                 ) : (
                   <div className={styles.recordList}>
                     {currentRecords.map((record) => (
+                      <div key={record.assertion_id} id={`assertion-${record.assertion_id}`}>
                       <ProfileRecordCard
-                        key={record.assertion_id}
                         record={record}
                         evidenceSourceLabel={evidenceSource(record)}
                         onEdit={(target) =>
@@ -613,6 +634,7 @@ export function ProfileCenter() {
                         }
                         onHistory={setHistoryRecord}
                       />
+                      </div>
                     ))}
                   </div>
                 )}

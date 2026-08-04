@@ -39,8 +39,23 @@ from bridges.contracts.chat import (
     ChatMode,
     ChatModeEventProjection,
     ChatThinkingSummary,
+    ContextNoteProfileItem,
+    ContextNoteProjection,
+    ContextNoteState,
 )
-from bridges.contracts.profiles import ProfileNotification
+from bridges.contracts.feedback import (
+    AnswerFeedback,
+    AnswerFeedbackRequest,
+    FeedbackKind,
+    FeedbackStatus,
+)
+from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.profiles import (
+    PROFILE_DIMENSION_LABELS,
+    ProfileDimension,
+    ProfileNotification,
+    ProfileSlice,
+)
 from bridges.contracts.retrieval import (
     CitationProjection,
     RetrievalLayerStatus,
@@ -50,6 +65,7 @@ from bridges.contracts.retrieval import (
 from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
+from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
@@ -265,6 +281,7 @@ class ChatService:
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
+        observability_service: ObservabilityService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -279,6 +296,8 @@ class ChatService:
         self._teaching = teaching_service or TeachingTurnService()
         #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
         self._profiles = profile_service
+        #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
+        self._observability = observability_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -660,15 +679,19 @@ class ChatService:
         run_context: RunContextEnvelope,
         until_user_message_id: str | None = None,
         use_knowledge_base: bool = True,
+        use_profile: bool = True,
     ) -> Iterator[StreamEvent]:
         """驱动一次生成：调用网关流式接口，边收边落库，结束时收敛状态。
 
         生成前执行一轮分层本地检索（Issue 20）：按「当前附件 → 当前项目
         文件 → 已授权全局知识库」确定候选作用域，把最终引用固化为消息的
         检索轮次，并注入最小上下文；关闭全局知识库时本轮不查询该层。
-        检索失败不阻断生成（本轮无引用，仍按无依据呈现）。事件经此处
-        原样透传给 API 层；停止信号（用户停止/切换账户导致的客户端断开）
-        都会把消息收敛到明确终态，绝不留 streaming 僵尸。
+        生成前还编译最小画像切片（Issue 27）：按当前模式只取任务相关的
+        已授权记录，注入最小上下文并落库「本次上下文说明」披露；用户
+        发送前关闭画像（``use_profile=False``）时本轮不编译、不注入，披露
+        与审计均不含任何画像内容。检索/切片失败都不阻断生成。
+        事件经此处原样透传给 API 层；停止信号（用户停止/切换账户导致的
+        客户端断开）都会把消息收敛到明确终态，绝不留 streaming 僵尸。
         """
         # 生成器惰性启动：若在启动前已被停止/收敛（例如停止接口先行完成），
         # 直接退出，绝不重新唤起一条已经终态的消息；同时校验消息归属
@@ -1115,6 +1138,24 @@ class ChatService:
                         "content": _teaching_context(teaching_projection),
                     },
                 )
+            # Issue 27：最小画像切片编译、注入与「本次上下文说明」披露。
+            # 只把当前模式相关、已授权、仍有效且未撤回/冻结的记录注入模型；
+            # 用户发送前关闭画像时本轮不编译、不注入，披露与审计都不含
+            # 画像内容。编译/披露失败一律静默降级（回答照常，披露 error
+            # 态可解释），绝不阻断生成。
+            context_note = self._compile_profile_slice(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                mode,
+                payload,
+                use_profile=use_profile,
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+            )
+            if context_note is not None:
+                thinking = _context_note_thinking(thinking, context_note)
             for event in self._gateway.stream(
                 CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
             ):
@@ -1479,6 +1520,348 @@ class ChatService:
         return self._project_message(message)
 
     # ------------------------------------------------------------------
+    # Issue 27：最小画像切片、披露与反馈闭环
+    # ------------------------------------------------------------------
+
+    def _compile_profile_slice(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        mode: ChatMode,
+        payload: dict[str, Any],
+        *,
+        use_profile: bool,
+        retrieval_round: RetrievalRoundProjection | None,
+        web_search_projection: WebSearchProjection | None,
+        arxiv_search_projection: ArxivSearchProjection | None,
+    ) -> ContextNoteProjection | None:
+        """编译本轮最小画像切片并落库上下文说明披露。
+
+        关闭画像（``use_profile=False``）时：不编译、不注入，披露为 off
+        态并审计记录 disabled，保证模型请求与审计均不含画像内容。启用时
+        只注入当前模式相关、已授权、仍有效的最小记录；编译或披露失败
+        一律降级为 error 态（回答照常，不向模型注入未经验证的内容）。
+        """
+        now = datetime.now(UTC)
+        material_categories = self._material_categories(
+            retrieval_round, web_search_projection, arxiv_search_projection
+        )
+        # 画像服务未挂载（退化环境）时无画像能力：不披露、不审计，聊天
+        # 行为与旧版一致（thinking 不追加画像说明）。
+        if self._profiles is None:
+            return None
+        if not use_profile:
+            self._audit_slice_usage(
+                account_id,
+                mode=mode.value,
+                enabled=False,
+                slice_id=None,
+                item_count=0,
+                excluded_count=0,
+                material_categories=material_categories,
+            )
+            return self._persist_context_note(
+                account_id,
+                assistant_message_id,
+                ContextNoteProjection(
+                    state=ContextNoteState.OFF,
+                    profile_enabled=False,
+                    mode=mode,
+                    used_at=now,
+                    material_categories=material_categories,
+                    excluded_count=0,
+                    note="本轮未使用你的画像记录（发送前已关闭）。回答不基于任何画像信息。",
+                ),
+            )
+        try:
+            profile_slice = self._profiles.compile_chat_slice(
+                account_id,
+                mode=mode.value,
+                run_id=assistant_message_id,
+                project_id=conversation_id,
+            )
+        except Exception:  # noqa: BLE001 - 切片编译失败只影响披露，不阻断回答
+            self._audit_slice_usage(
+                account_id,
+                mode=mode.value,
+                enabled=True,
+                slice_id=None,
+                item_count=0,
+                excluded_count=0,
+                material_categories=material_categories,
+                failed=True,
+            )
+            return self._persist_context_note(
+                account_id,
+                assistant_message_id,
+                ContextNoteProjection(
+                    state=ContextNoteState.ERROR,
+                    profile_enabled=True,
+                    mode=mode,
+                    used_at=now,
+                    material_categories=material_categories,
+                    excluded_count=0,
+                    note="本轮画像切片编译失败，回答已在不使用画像的情况下正常生成。",
+                ),
+            )
+        if profile_slice.included_items:
+            # 切片是唯一允许进入模型上下文的长期信息载体；只注入最小
+            # 记录（值已截断），绝不上传完整画像中心或未确认候选。
+            payload["messages"].insert(
+                1,
+                {
+                    "role": "system",
+                    "content": _profile_slice_context(profile_slice),
+                },
+            )
+        profile_items: list[ContextNoteProfileItem] = []
+        for item in profile_slice.included_items:
+            status = "active"
+            version = 1
+            applicable_scenes: list[str] = []
+            with contextlib.suppress(Exception):  # noqa: BLE001 - 披露项尽力而为
+                assertion = self._profiles.get_assertion(account_id, item.assertion_id)
+                status = assertion.status.value
+                version = assertion.version
+                applicable_scenes = list(assertion.applicable_scenes)
+            profile_items.append(
+                ContextNoteProfileItem(
+                    assertion_id=item.assertion_id,
+                    dimension=item.dimension,
+                    dimension_label=_dimension_label(item.dimension),
+                    value_summary=item.value_or_rule,
+                    inclusion_reason=item.inclusion_reason,
+                    used_at=now,
+                    status=status,
+                    version=version,
+                    applicable_scenes=applicable_scenes,
+                )
+            )
+        self._audit_slice_usage(
+            account_id,
+            mode=mode.value,
+            enabled=True,
+            slice_id=profile_slice.slice_id,
+            item_count=len(profile_slice.included_items),
+            excluded_count=len(profile_slice.unused_items)
+            + len(profile_slice.rejected_items),
+            material_categories=material_categories,
+        )
+        context_note = ContextNoteProjection(
+            state=(
+                ContextNoteState.READY
+                if profile_items
+                else ContextNoteState.EMPTY
+            ),
+            profile_enabled=True,
+            mode=mode,
+            used_at=now,
+            profile_items=profile_items,
+            material_categories=material_categories,
+            excluded_count=len(profile_slice.unused_items)
+            + len(profile_slice.rejected_items),
+            note=(
+                _context_note_ready_text(profile_items)
+                if profile_items
+                else "本轮没有与你当前任务相关的画像记录，因此没有使用画像信息。"
+            ),
+        )
+        return self._persist_context_note(
+            account_id, assistant_message_id, context_note
+        )
+
+    def _persist_context_note(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        context_note: ContextNoteProjection,
+    ) -> ContextNoteProjection:
+        """把披露快照固化到助手消息（历史回答保留当时切片版本）。"""
+        self._repo.update_message_context_note(
+            account_id,
+            assistant_message_id,
+            context_note.model_dump(mode="json"),
+            datetime.now(UTC),
+        )
+        return context_note
+
+    @staticmethod
+    def _material_categories(
+        retrieval_round: RetrievalRoundProjection | None,
+        web_search_projection: WebSearchProjection | None,
+        arxiv_search_projection: ArxivSearchProjection | None,
+    ) -> list[str]:
+        """本轮实际使用的材料类别（仅成功且非空的来源进入披露）。"""
+        categories: list[str] = []
+        if retrieval_round is not None:
+            for layer in retrieval_round.layers:
+                if layer.status == RetrievalLayerStatus.OK and layer.candidates > 0:
+                    categories.append(_LAYER_NAMES[layer.layer])
+        if (
+            web_search_projection is not None
+            and web_search_projection.status == WebSearchStatus.SUCCESS
+        ):
+            categories.append("公网搜索")
+        if (
+            arxiv_search_projection is not None
+            and arxiv_search_projection.status == ArxivSearchStatus.SUCCESS
+        ):
+            categories.append("arXiv 论文")
+        return categories
+
+    def _audit_slice_usage(
+        self,
+        account_id: str,
+        *,
+        mode: str,
+        enabled: bool,
+        slice_id: str | None,
+        item_count: int,
+        excluded_count: int,
+        material_categories: list[str],
+        failed: bool = False,
+    ) -> None:
+        """云端披露审计：只记类别、切片 ID、条目数与授权快照，不复制正文。"""
+        if self._observability is None:
+            return
+        details: dict[str, Any] = {
+            "mode": mode,
+            "profile_enabled": enabled,
+            "slice_id": slice_id,
+            "item_count": item_count,
+            "excluded_count": excluded_count,
+            "material_categories": material_categories,
+            "authorization_snapshot": "authz-1.0",
+        }
+        if failed:
+            details["result"] = "compilation_failed"
+        self._observability.log_audit(
+            actor_account_id=account_id,
+            action=AuditAction.PROFILE_SLICE_USED,
+            result=AuditResult.DEGRADED if failed else AuditResult.SUCCESS,
+            object_refs=[slice_id] if slice_id else None,
+            reason="本轮画像切片使用披露。",
+            details=details,
+        )
+
+    # -- 反馈闭环 -----------------------------------------------------------
+
+    def submit_feedback(
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        request: AnswerFeedbackRequest,
+    ) -> AnswerFeedback:
+        """记录一条回答反馈（幂等，失败重试不重复写入，不丢失反馈）。
+
+        ``answer_inappropriate`` 反馈针对回答本身；``profile_incorrect``
+        定位到上下文说明披露中的画像记录。反馈按账户隔离持久化。
+        """
+        message = self._repo.get_message(account_id, message_id)
+        if (
+            message is None
+            or message.conversation_id != conversation_id
+            or message.role != ChatMessageRole.ASSISTANT
+        ):
+            raise ChatDomainError(
+                "message_not_found", "消息不存在或没有访问权限。", 404
+            )
+        if request.kind == FeedbackKind.PROFILE_INCORRECT:
+            if request.assertion_id is None:
+                raise ChatDomainError(
+                    "assertion_required",
+                    "标记画像有误时请先选择对应的画像记录。",
+                    422,
+                )
+            if self._profiles is not None:
+                try:
+                    self._profiles.get_assertion(account_id, request.assertion_id)
+                except Exception as exc:  # noqa: BLE001 - 跨账户/不存在统一安全 404
+                    raise ChatDomainError(
+                        "assertion_not_found", "画像记录不存在或没有访问权限。", 404
+                    ) from exc
+        existing = self._repo.find_duplicate_feedback(
+            account_id,
+            message_id,
+            request.kind,
+            request.assertion_id,
+            request.feedback_text.strip(),
+        )
+        if existing is not None:
+            return existing
+        now = datetime.now(UTC)
+        feedback = AnswerFeedback(
+            feedback_id=secrets.token_urlsafe(16),
+            account_id=account_id,
+            conversation_id=conversation_id,
+            message_id=message_id,
+            kind=request.kind,
+            feedback_text=request.feedback_text.strip(),
+            preference=(
+                request.preference.strip() if request.preference is not None else None
+            ),
+            assertion_id=request.assertion_id,
+            status=FeedbackStatus.SUBMITTED,
+            created_at=now,
+            updated_at=now,
+        )
+        saved = self._repo.save_feedback(feedback)
+        if self._observability is not None:
+            self._observability.log_audit(
+                actor_account_id=account_id,
+                action=AuditAction.ANSWER_FEEDBACK,
+                result=AuditResult.SUCCESS,
+                object_refs=[message_id, feedback.feedback_id],
+                reason="用户提交回答反馈。",
+                details={
+                    "kind": request.kind.value,
+                    "assertion_id": request.assertion_id,
+                    "has_preference": request.preference is not None,
+                },
+            )
+        return saved
+
+    def list_feedback(
+        self, account_id: str, conversation_id: str
+    ) -> list[AnswerFeedback]:
+        """返回对话内该账户的反馈记录（最新在前，供恢复与闭环查看）。"""
+        return self._repo.list_feedback(account_id, conversation_id)
+
+    def resolve_feedback(
+        self,
+        account_id: str,
+        feedback_id: str,
+        resolution_note: str,
+    ) -> AnswerFeedback:
+        """把一条反馈标记为已处理并记录修正说明（幂等）。"""
+        feedback = self._repo.get_feedback(account_id, feedback_id)
+        if feedback is None:
+            raise ChatDomainError("feedback_not_found", "反馈不存在或没有访问权限。", 404)
+        if feedback.status == FeedbackStatus.RESOLVED:
+            return feedback
+        updated = self._repo.mark_feedback_status(
+            account_id,
+            feedback_id,
+            FeedbackStatus.RESOLVED,
+            resolution_note.strip(),
+            datetime.now(UTC),
+        )
+        if updated is None:
+            raise ChatDomainError("feedback_not_found", "反馈不存在或没有访问权限。", 404)
+        if self._observability is not None:
+            self._observability.log_audit(
+                actor_account_id=account_id,
+                action=AuditAction.FEEDBACK_RESOLVED,
+                result=AuditResult.SUCCESS,
+                object_refs=[feedback_id],
+                reason="回答反馈已按修正说明处理。",
+                details={"resolution_note": resolution_note.strip()},
+            )
+        return updated
+
+    # ------------------------------------------------------------------
     # 内部
     # ------------------------------------------------------------------
 
@@ -1623,6 +2006,12 @@ class ChatService:
                 if message.teaching is not None and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
+            context_note=(
+                ContextNoteProjection.model_validate(message.context_note)
+                if message.context_note is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
             error_code=message.error_code,
             error_message=message.error_message,
             duration_ms=message.duration_ms,
@@ -1712,6 +2101,71 @@ def _attempt_group(
         if in_group:
             group.append(message)
     return group
+
+
+# ---------------------------------------------------------------------------
+# 最小画像切片的思考摘要与上下文（Issue 27）
+# ---------------------------------------------------------------------------
+#
+# 切片是长期画像信息进入模型上下文的唯一载体：只包含当前模式相关、
+# 已授权、仍有效的记录（值截断），绝不注入完整画像中心或未确认候选。
+# 上下文说明披露只展示类别、用途、来源记录链接与使用时间，不暴露系统
+# 提示、隐藏提示或原始思维链。
+
+def _profile_slice_context(profile_slice: ProfileSlice) -> str:
+    """构造注入模型的最小画像切片上下文（固定格式，可测试）。
+
+    模型只能依据切片内提供的记录回答，不得推断更多画像信息；未确认
+    候选、已撤回/冻结/过期记录已由编译器排除，不在此上下文中。
+    """
+    lines = [
+        "以下是本轮为你使用的画像切片（仅包含你已授权且与当前任务相关的最小记录；"
+        "只能据此回答，不得推断或声称存在更多画像信息）："
+    ]
+    used = 0
+    for index, item in enumerate(profile_slice.included_items, start=1):
+        label = _dimension_label(item.dimension)
+        line = f"[{index}]（类别：{label}）{item.value_or_rule}。用途：{item.inclusion_reason}"
+        if used + len(line) > _CONTEXT_MAX_CHARS:
+            break
+        used += len(line)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _dimension_label(dimension: str) -> str:
+    """画像维度中文标签；未知维度直接回退原始值，不抛错。"""
+    try:
+        return PROFILE_DIMENSION_LABELS[ProfileDimension(dimension)]
+    except ValueError:
+        return dimension
+
+
+def _context_note_ready_text(items: list[ContextNoteProfileItem]) -> str:
+    """披露卡的中文一句话说明（ready 态）。"""
+    categories = "、".join(dict.fromkeys(item.dimension_label for item in items))
+    return (
+        f"本轮回答使用了 {len(items)} 条画像记录（{categories}），"
+        "仅包含与当前任务相关的最小切片。"
+    )
+
+
+def _context_note_thinking(
+    thinking: dict[str, list[str]], context_note: ContextNoteProjection
+) -> dict[str, list[str]]:
+    """把画像披露摘要并入可公开思考（不暴露隐藏提示或思维链）。"""
+    tools = thinking.get("tools", [])
+    if context_note.state == ContextNoteState.READY:
+        tools.append(
+            f"已使用 {len(context_note.profile_items)} 条画像记录（最小切片，仅限当前任务）"
+        )
+    elif context_note.state == ContextNoteState.OFF:
+        tools.append("本轮未使用画像记录（发送前已关闭）")
+    elif context_note.state == ContextNoteState.EMPTY:
+        tools.append("本轮没有与当前任务相关的画像记录")
+    elif context_note.state == ContextNoteState.ERROR:
+        tools.append("本轮画像切片不可用，回答未基于画像信息")
+    return {**thinking, "tools": tools}
 
 
 # ---------------------------------------------------------------------------

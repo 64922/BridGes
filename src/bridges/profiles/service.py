@@ -70,6 +70,32 @@ _PROHIBITED_SENSITIVITY: set[ProfileSensitivityClass] = {
     ProfileSensitivityClass.PROHIBITED,
 }
 
+#: 对话模式 → 可参与任务切片编译的画像维度（Issue 27，AC-08）。
+#: 学习模式使用阶段目标、知识状态与学习相关兴趣调整教学；日常模式只
+#: 使用必要偏好、表达习惯与基本情况，不强制教学结构。
+_CHAT_MODE_DIMENSIONS: dict[str, frozenset[ProfileDimension]] = {
+    "companion": frozenset(
+        {
+            ProfileDimension.INTEREST_PREFERENCE,
+            ProfileDimension.EXPRESSION_HABIT,
+            ProfileDimension.BASIC_INFORMATION,
+        }
+    ),
+    "study": frozenset(
+        {
+            ProfileDimension.STAGE_GOAL,
+            ProfileDimension.KNOWLEDGE_STATE,
+            ProfileDimension.INTEREST_PREFERENCE,
+        }
+    ),
+}
+
+#: 单维度切片条数上限与整卷切片总量上限（最小必要，防整卷画像注入）。
+_MAX_SLICE_ITEMS_PER_DIMENSION = 2
+_MAX_SLICE_ITEMS_TOTAL = 6
+#: 切片中单条值的摘要长度上限（披露与注入共用的截断长度）。
+_SLICE_VALUE_SUMMARY_MAX = 80
+
 #: Signal kind used for each dimension when the user manually declares a record.
 #: All mapped kinds are outside the auto-discard set so user-declared records are
 #: never silently discarded as transient signals.
@@ -92,6 +118,21 @@ def _now() -> datetime:
 
 def _new_id() -> str:
     return secrets.token_urlsafe(16)
+
+
+def _slice_value_summary(value: str, max_chars: int = _SLICE_VALUE_SUMMARY_MAX) -> str:
+    """切片值的摘要：超长截断，披露与注入共用同一截断长度。"""
+    if len(value) <= max_chars:
+        return value
+    return value[: max_chars - 1] + "…"
+
+
+def _dimension_label(dimension: str) -> str:
+    """画像维度中文标签；未知维度直接回退原始值，不抛错。"""
+    try:
+        return PROFILE_DIMENSION_LABELS[ProfileDimension(dimension)]
+    except ValueError:
+        return dimension
 
 
 def _hash_observation(request: ProfileObservationCreateRequest) -> str:
@@ -910,6 +951,173 @@ class ProfileService:
             history=history,
             audit_event_refs=audit_event_refs,
         )
+
+    def compile_chat_slice(
+        self,
+        account_id: str,
+        *,
+        mode: str,
+        run_id: str,
+        project_id: str | None = None,
+        sensitivity_classes: list[ProfileSensitivityClass] | None = None,
+    ) -> ProfileSlice:
+        """为一次对话轮次编译最小必要画像切片（Issue 27）。
+
+        在通用编译（场景/敏感度/有效期/状态过滤、未确认候选排除）之上
+        叠加两层任务级筛选：
+        1. 按对话模式限定可参与维度——学习模式只取目标/知识状态/学习
+           兴趣，日常模式只取偏好/表达习惯/基本情况，绝不把教学结构
+           强加给日常陪伴（模式即本轮任务类型，维度白名单是任务相关性
+           的可解释筛选代理，不依赖脆弱的文本关键词匹配）；
+        2. 最小化上限——单维度最多 2 条、整卷最多 6 条，超出按最近使用
+           优先保留，保证只注入当前任务所需的最小记录，而不是整份画像。
+        敏感度默认白名单为 public/preference/learning——SENSITIVE 与
+        PROHIBITED 记录默认不进聊天切片（可显式放宽）；授权范围只接受
+        ``general`` 或当前模式值；其余范围一律排除。``excluded_count``
+        统计被任务级过滤排除的记录数，供上下文说明披露。
+        """
+        # 聊天切片默认排除 SENSITIVE：敏感记录不随日常/学习对话进入模型
+        # 上下文，除非调用方显式指定白名单。
+        if sensitivity_classes is None:
+            sensitivity_classes = [
+                ProfileSensitivityClass.PUBLIC,
+                ProfileSensitivityClass.PREFERENCE,
+                ProfileSensitivityClass.LEARNING,
+            ]
+        allowed_dimensions = _CHAT_MODE_DIMENSIONS.get(mode, frozenset())
+        now = _now()
+        included: list[ProfileSliceItem] = []
+        unused: list[UnusedSliceItem] = []
+        excluded_count = 0
+        per_dimension: dict[str, int] = {}
+
+        def _record_excluded(
+            assertion: ProfileAssertion, reason: str
+        ) -> None:
+            nonlocal excluded_count
+            excluded_count += 1
+            unused.append(
+                UnusedSliceItem(
+                    assertion_id=assertion.assertion_id,
+                    dimension=assertion.canonical_dimension,
+                    value_or_rule=assertion.value_or_rule,
+                    exclusion_reason=reason,
+                )
+            )
+
+        assertions = sorted(
+            self._repository.list_assertions(account_id),
+            key=lambda a: (
+                a.last_used_at is not None,
+                a.last_used_at or datetime.min.replace(tzinfo=UTC),
+            ),
+            reverse=True,
+        )
+        for assertion in assertions:
+            dimension = assertion.canonical_dimension
+            if assertion.status != AssertionStatus.ACTIVE:
+                _record_excluded(
+                    assertion,
+                    f"记录状态为 {assertion.status.value}，禁止用于本轮。",
+                )
+                continue
+            if dimension not in allowed_dimensions:
+                _record_excluded(
+                    assertion,
+                    f"类别「{_dimension_label(dimension)}」"
+                    f"不属于{mode}模式可用范围。",
+                )
+                continue
+            if self._is_assertion_expired(assertion, now):
+                _record_excluded(assertion, "记录已过期。")
+                continue
+            if not self._is_sensitivity_allowed(
+                assertion.sensitivity_class, sensitivity_classes
+            ):
+                _record_excluded(
+                    assertion,
+                    f"敏感度「{assertion.sensitivity_class.value}」不允许进入本轮。",
+                )
+                continue
+            if assertion.authorization_scope not in {"", "general", mode}:
+                _record_excluded(
+                    assertion,
+                    f"授权范围「{assertion.authorization_scope}」与{mode}模式不匹配。",
+                )
+                continue
+            if (
+                assertion.applicable_scenes
+                and mode not in assertion.applicable_scenes
+            ):
+                _record_excluded(
+                    assertion,
+                    f"适用场景 {assertion.applicable_scenes} 不包含当前{mode}模式。",
+                )
+                continue
+            if per_dimension.get(dimension, 0) >= _MAX_SLICE_ITEMS_PER_DIMENSION:
+                _record_excluded(assertion, "该类别本轮切片已达单类别上限。")
+                continue
+            if len(included) >= _MAX_SLICE_ITEMS_TOTAL:
+                _record_excluded(assertion, "本轮切片已达总量上限。")
+                continue
+            per_dimension[dimension] = per_dimension.get(dimension, 0) + 1
+            included.append(
+                ProfileSliceItem(
+                    assertion_id=assertion.assertion_id,
+                    dimension=dimension,
+                    value_or_rule=_slice_value_summary(assertion.value_or_rule),
+                    inclusion_reason=(
+                        f"与{mode}模式相关且已授权的最小切片（类别："
+                        f"{_dimension_label(dimension)}）。"
+                    ),
+                    sensitivity_class=assertion.sensitivity_class,
+                    expires_at=assertion.expires_at,
+                )
+            )
+            assertion.last_used_at = now
+            self._repository.save_assertion(assertion)
+
+        rejected: list[RejectedSliceItem] = []
+        excluded_candidate_ids: list[str] = []
+        exclusion_reasons: dict[str, str] = {}
+        for candidate in self._repository.list_candidates(account_id):
+            if candidate.review_status not in {
+                CandidateReviewStatus.ACCEPTED,
+                CandidateReviewStatus.MODIFIED,
+            }:
+                excluded_candidate_ids.append(candidate.candidate_id)
+                reason = (
+                    f"候选状态 '{candidate.review_status.value}' 未经确认，"
+                    "不得作为稳定事实使用。"
+                )
+                exclusion_reasons[candidate.candidate_id] = reason
+                rejected.append(
+                    RejectedSliceItem(
+                        candidate_id=candidate.candidate_id,
+                        dimension=candidate.canonical_dimension,
+                        value_or_rule=candidate.value_or_rule,
+                        rejection_reason=reason,
+                    )
+                )
+
+        slice_ = ProfileSlice(
+            slice_id=_new_id(),
+            owner_account_id=account_id,
+            run_id=run_id,
+            purpose=mode,
+            project_id=project_id,
+            included_items=included,
+            unused_items=unused,
+            excluded_candidate_ids=excluded_candidate_ids,
+            exclusion_reasons=exclusion_reasons,
+            rejected_items=rejected,
+            authorization_snapshot="authz-1.0",
+            key_epoch="epoch-0",
+            expires_at=now + timedelta(seconds=3600),
+            sensitivity_classes_allowed=list(sensitivity_classes or []),
+            compiled_at=now,
+        )
+        return self._repository.save_slice(slice_)
 
     def compile_memory_slice(
         self,

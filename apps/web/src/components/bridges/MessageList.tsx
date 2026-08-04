@@ -9,6 +9,7 @@ import type {
   ChatAttachmentProjection,
   ChatMode,
   ChatModeEventProjection,
+  ContextNoteProjection,
   RetrievalRoundProjection,
   TeachingTurnProjection,
   WebSearchProjection,
@@ -16,6 +17,7 @@ import type {
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
+import { ContextNoteCard } from "./ContextNoteCard";
 import { RetrievalCard } from "./RetrievalCard";
 import { TeachingCard } from "./TeachingCard";
 import { WebSearchCard } from "./WebSearchCard";
@@ -62,6 +64,8 @@ export interface ChatMessage {
   arxivSearch?: ArxivSearchProjection | null;
   /** Issue 23：学习模式的教学目标、证据门与理解检查记录 */
   teaching?: TeachingTurnProjection | null;
+  /** Issue 27：本次上下文说明披露（画像切片/材料类别/用途）；无披露为 null */
+  contextNote?: ContextNoteProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -620,6 +624,19 @@ export function MessageList({
                       ))}
                     </ol>
                   </details>
+                )}
+
+                {/* Issue 27：本次上下文说明（画像切片/材料类别/用途披露）。
+                    生成中显示 loading 态；完成/关闭/失败按披露状态呈现；
+                    终态且无披露（历史消息/画像服务未挂载）不渲染卡片，
+                    避免永久 loading。 */}
+                {conversationId && (message.contextNote != null || message.status === "streaming") && (
+                  <ContextNoteCard
+                    note={message.contextNote ?? null}
+                    streaming={message.status === "streaming"}
+                    conversationId={conversationId}
+                    messageId={message.id}
+                  />
                 )}
 
                 {/* Issue 21：公网搜索过程与真实网页引用；Issue 20 本地检索

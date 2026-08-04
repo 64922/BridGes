@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 14
+SCHEMA_VERSION = 15
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -860,6 +860,38 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_profile_notifications_account
         ON profile_notifications(account_id, created_at DESC)
+        """,
+    ],
+    # Issue 27：上下文说明披露固化在助手消息上（快照含当时版本与状态，
+    # 修正后历史回答仍可回放差异）；answer_feedback 记录「回答不合适」与
+    # 「画像有误」反馈，按账户隔离、幂等去重、失败不丢反馈。
+    15: [
+        """
+        ALTER TABLE messages ADD COLUMN context_note TEXT
+        """,
+        """
+        CREATE TABLE answer_feedback (
+            feedback_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            feedback_text TEXT NOT NULL,
+            preference TEXT,
+            assertion_id TEXT,
+            status TEXT NOT NULL DEFAULT 'submitted',
+            resolution_note TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_answer_feedback_account
+        ON answer_feedback(account_id, created_at DESC)
+        """,
+        """
+        CREATE INDEX idx_answer_feedback_dedup
+        ON answer_feedback(account_id, message_id, kind, assertion_id)
         """,
     ],
 }

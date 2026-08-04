@@ -903,6 +903,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             profile_service=getattr(app.state, "profile_service", None),
+            observability_service=app.state.observability_service,
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

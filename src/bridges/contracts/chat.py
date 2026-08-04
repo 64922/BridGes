@@ -107,6 +107,65 @@ class ChatAttachmentProjection(BaseModel):
     updated_at: datetime = Field(description="最近更新时间。")
 
 
+class ContextNoteState(StrEnum):
+    """上下文说明的呈现状态（Issue 27）。
+
+    - ``ready``：本轮使用了画像切片，披露完整可用；
+    - ``empty``：启用画像但没有匹配的任务相关记录（合法空态，不表示错误）；
+    - ``off``：用户发送前关闭了画像使用，本轮无任何画像内容；
+    - ``error``：切片编译失败，本轮已安全降级为不注入画像（回答照常）。
+    """
+
+    READY = "ready"
+    EMPTY = "empty"
+    OFF = "off"
+    ERROR = "error"
+
+
+class ContextNoteProfileItem(BaseModel):
+    """上下文说明中的一条画像切片披露。
+
+    披露记录的是回答当时使用的快照（值摘要、状态与版本），修正后历史
+    回答保留此快照；``assertion_id`` 是来源记录链接，可跳转画像中心。
+    """
+
+    assertion_id: str = Field(description="来源画像记录标识（链接到画像中心）。")
+    dimension: str = Field(description="画像类别（ProfileDimension 值）。")
+    dimension_label: str = Field(description="画像类别中文标签。")
+    value_summary: str = Field(description="本次使用的值摘要（截断，不超长）。")
+    inclusion_reason: str = Field(description="用途：为什么本轮使用这条记录。")
+    used_at: datetime = Field(description="本次使用时间（切片编译时间）。")
+    status: str = Field(description="使用时的记录状态快照（active/frozen/...）。")
+    version: int = Field(description="使用时的记录版本快照（可对比当前版本）。")
+    applicable_scenes: list[str] = Field(
+        default_factory=list,
+        description="使用时的适用场景快照（修正时回传，不漂移授权范围）。",
+    )
+
+
+class ContextNoteProjection(BaseModel):
+    """「本次上下文说明」可展开披露（Issue 27，ADR-0015）。
+
+    回答展示使用的画像类别、材料类别、用途与来源链接；不暴露系统提示、
+    隐藏提示或原始思维链。画像正文不复制到审计日志，这里只披露摘要。
+    """
+
+    state: ContextNoteState = Field(description="披露状态（ready/empty/off/error）。")
+    profile_enabled: bool = Field(description="本轮是否启用了画像使用。")
+    mode: ChatMode = Field(description="回答时的对话模式。")
+    used_at: datetime = Field(description="披露生成时间。")
+    profile_items: list[ContextNoteProfileItem] = Field(
+        default_factory=list, description="本轮使用的画像切片披露列表。"
+    )
+    material_categories: list[str] = Field(
+        default_factory=list, description="本轮使用的材料类别（检索层/联网来源等中文名）。"
+    )
+    excluded_count: int = Field(
+        default=0, description="因范围/敏感/过期/冻结/撤回等排除的记录数。"
+    )
+    note: str = Field(description="面向用户的中文说明（含各状态的合法文案）。")
+
+
 class ChatMessageProjection(BaseModel):
     """单条消息的公开投影。
 
@@ -142,6 +201,10 @@ class ChatMessageProjection(BaseModel):
     teaching: TeachingTurnProjection | None = Field(
         default=None,
         description="本条学习模式消息的教学编排与证据门投影（Issue 23）。",
+    )
+    context_note: ContextNoteProjection | None = Field(
+        default=None,
+        description="本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。",
     )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
@@ -251,6 +314,8 @@ class ChatMessageCreateRequest(BaseModel):
 
     ``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用
     均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。
+    ``use_profile`` 为画像使用开关（Issue 27）：关闭后本轮模型请求、
+    审计与上下文说明均不含任何画像切片，回答不个性化。
     """
 
     content: str = Field(min_length=1, max_length=4000, description="用户消息正文。")
@@ -259,6 +324,9 @@ class ChatMessageCreateRequest(BaseModel):
     )
     use_knowledge_base: bool = Field(
         default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
+    )
+    use_profile: bool = Field(
+        default=True, description="本轮是否使用画像切片（可在发送前关闭）。"
     )
 
 

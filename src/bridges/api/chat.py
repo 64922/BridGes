@@ -54,6 +54,11 @@ from bridges.contracts.chat import (
     ChatThinkingSummary,
 )
 from bridges.contracts.credentials import ProbeStatus
+from bridges.contracts.feedback import (
+    AnswerFeedback,
+    AnswerFeedbackRequest,
+    FeedbackResolveRequest,
+)
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.teaching import TeachingTurnProjection
@@ -306,6 +311,7 @@ def _generation_events(
     assistant_message: ChatMessageProjection,
     run_context: RunContextEnvelope,
     use_knowledge_base: bool = True,
+    use_profile: bool = True,
 ) -> Iterator[ChatStreamEvent]:
     """发送/重试共用的 SSE 事件序列：started → delta* → done | error。
 
@@ -352,6 +358,7 @@ def _generation_events(
         # 重试路径为该轮所属用户消息（不含后续轮次，Issue 11 重试语义）。
         until_user_message_id=user_message.message_id,
         use_knowledge_base=use_knowledge_base,
+        use_profile=use_profile,
     ):
         if event.kind == "delta":
             yield ChatStreamEvent(
@@ -837,7 +844,9 @@ async def send_message(
     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭
     本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索
-    记录与引用均不包含知识库候选。
+    记录与引用均不包含知识库候选；也可关闭本轮画像使用
+    （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
+    说明均不含任何画像切片。
     """
     _ensure_chat_capability_ready(subject, credential_service)
     try:
@@ -860,6 +869,7 @@ async def send_message(
             assistant_message,
             run_context,
             use_knowledge_base=body.use_knowledge_base,
+            use_profile=body.use_profile,
         )
     )
 
@@ -973,6 +983,14 @@ async def retry_message(
     use_knowledge_base = (
         previous_round.use_knowledge_base if previous_round is not None else True
     )
+    # 画像使用开关同样沿用旧尝试轮次的披露快照（Issue 27）：用户发送前
+    # 的关闭选择不因重试被静默改变；无快照时回退默认开启。
+    previous_message = service.message_projection(subject.account_id, message_id)
+    use_profile = (
+        previous_message.context_note.profile_enabled
+        if previous_message is not None and previous_message.context_note is not None
+        else True
+    )
 
     run_context = _chat_run_context(
         subject.account_id, conversation_id, assistant_message.message_id
@@ -987,5 +1005,78 @@ async def retry_message(
             assistant_message,
             run_context,
             use_knowledge_base=use_knowledge_base,
+            use_profile=use_profile,
         )
     )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/feedback",
+    response_model=AnswerFeedback,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+    },
+)
+def submit_message_feedback(
+    conversation_id: str,
+    message_id: str,
+    body: AnswerFeedbackRequest,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> AnswerFeedback:
+    """提交对一条助手消息的回答反馈（Issue 27 反馈闭环入口）。
+
+    ``answer_inappropriate`` 标记「这次回答有问题」（可带偏好反馈）；
+    ``profile_incorrect`` 标记「画像记录有误」并定位到上下文说明披露中
+    的画像记录。反馈幂等持久化：失败重试不会重复写入，不丢失用户反馈；
+    画像修正由画像中心的 modify/freeze/withdraw 接口完成。
+    """
+    try:
+        return service.submit_feedback(
+            subject.account_id, conversation_id, message_id, body
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+
+
+@router.get(
+    "/conversations/{conversation_id}/feedback",
+    response_model=list[AnswerFeedback],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+    },
+)
+def list_conversation_feedback(
+    conversation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> list[AnswerFeedback]:
+    """列出对话内该账户的反馈（最新在前，供前端恢复与闭环查看）。"""
+    return service.list_feedback(subject.account_id, conversation_id)
+
+
+@router.post(
+    "/conversations/{conversation_id}/feedback/{feedback_id}/resolve",
+    response_model=AnswerFeedback,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+    },
+)
+def resolve_message_feedback(
+    conversation_id: str,
+    feedback_id: str,
+    body: FeedbackResolveRequest,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> AnswerFeedback:
+    """把一条反馈标记为已处理并记录修正说明（幂等）。"""
+    try:
+        return service.resolve_feedback(
+            subject.account_id, feedback_id, body.resolution_note
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc

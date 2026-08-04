@@ -60,6 +60,8 @@ export function buildThreadMessages(
       webSearch: latest.web_search ?? null,
       arxivSearch: latest.arxiv_search ?? null,
       teaching: latest.teaching ?? null,
+      // Issue 27：本次上下文说明披露；无披露为 null
+      contextNote: latest.context_note ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({

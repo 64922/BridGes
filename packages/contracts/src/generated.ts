@@ -542,7 +542,9 @@ export interface paths {
          *     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
          *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭
          *     本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索
-         *     记录与引用均不包含知识库候选。
+         *     记录与引用均不包含知识库候选；也可关闭本轮画像使用
+         *     （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
+         *     说明均不含任何画像切片。
          */
         post: operations["send_message_chat_conversations__conversation_id__messages_post"];
         delete?: never;
@@ -611,6 +613,71 @@ export interface paths {
          *     沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。
          */
         post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Message Feedback
+         * @description 提交对一条助手消息的回答反馈（Issue 27 反馈闭环入口）。
+         *
+         *     ``answer_inappropriate`` 标记「这次回答有问题」（可带偏好反馈）；
+         *     ``profile_incorrect`` 标记「画像记录有误」并定位到上下文说明披露中
+         *     的画像记录。反馈幂等持久化：失败重试不会重复写入，不丢失用户反馈；
+         *     画像修正由画像中心的 modify/freeze/withdraw 接口完成。
+         */
+        post: operations["submit_message_feedback_chat_conversations__conversation_id__messages__message_id__feedback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Conversation Feedback
+         * @description 列出对话内该账户的反馈（最新在前，供前端恢复与闭环查看）。
+         */
+        get: operations["list_conversation_feedback_chat_conversations__conversation_id__feedback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/feedback/{feedback_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Message Feedback
+         * @description 把一条反馈标记为已处理并记录修正说明（幂等）。
+         */
+        post: operations["resolve_message_feedback_chat_conversations__conversation_id__feedback__feedback_id__resolve_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5234,6 +5301,97 @@ export interface components {
          */
         AnswerEvaluatedState: "correct" | "partial" | "incorrect" | "needs_review";
         /**
+         * AnswerFeedback
+         * @description 一条已持久化的回答反馈（按账户隔离）。
+         */
+        AnswerFeedback: {
+            /**
+             * Feedback Id
+             * @description 稳定反馈标识。
+             */
+            feedback_id: string;
+            /**
+             * Account Id
+             * @description 提交反馈的账户标识。
+             */
+            account_id: string;
+            /**
+             * Conversation Id
+             * @description 反馈所属对话标识。
+             */
+            conversation_id: string;
+            /**
+             * Message Id
+             * @description 反馈针对的助手消息标识。
+             */
+            message_id: string;
+            /** @description 反馈类别。 */
+            kind: components["schemas"]["FeedbackKind"];
+            /**
+             * Feedback Text
+             * @description 反馈内容。
+             */
+            feedback_text: string;
+            /**
+             * Preference
+             * @description 偏好修正（可选）。
+             */
+            preference?: string | null;
+            /**
+             * Assertion Id
+             * @description 定位的画像记录（可选）。
+             */
+            assertion_id?: string | null;
+            /** @description 反馈生命周期状态。 */
+            status: components["schemas"]["FeedbackStatus"];
+            /**
+             * Resolution Note
+             * @description 已处理时的修正说明（可选）。
+             */
+            resolution_note?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 提交时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * AnswerFeedbackRequest
+         * @description 提交一条对某条助手消息的反馈。
+         *
+         *     ``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、
+         *     ``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时
+         *     ``assertion_id`` 定位到使用的画像记录（来自上下文说明披露）。
+         *     同一账户对同一消息的相同反馈（kind + assertion_id + 文本）幂等去重，
+         *     失败重试不会产生重复记录。
+         */
+        AnswerFeedbackRequest: {
+            /** @description 反馈类别。 */
+            kind: components["schemas"]["FeedbackKind"];
+            /**
+             * Feedback Text
+             * @description 反馈内容（中文说明问题所在或记录的错误之处）。
+             */
+            feedback_text: string;
+            /**
+             * Preference
+             * @description 回答不合适时的偏好修正（希望怎么回答）。
+             */
+            preference?: string | null;
+            /**
+             * Assertion Id
+             * @description 画像有误时定位的画像记录标识（来自上下文说明）。
+             */
+            assertion_id?: string | null;
+        };
+        /**
          * ApplyRevisionPatchRequest
          * @description Request to accept, reject or rewrite a revision patch.
          */
@@ -6232,6 +6390,8 @@ export interface components {
          *
          *     ``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用
          *     均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。
+         *     ``use_profile`` 为画像使用开关（Issue 27）：关闭后本轮模型请求、
+         *     审计与上下文说明均不含任何画像切片，回答不个性化。
          */
         ChatMessageCreateRequest: {
             /**
@@ -6250,6 +6410,12 @@ export interface components {
              * @default true
              */
             use_knowledge_base: boolean;
+            /**
+             * Use Profile
+             * @description 本轮是否使用画像切片（可在发送前关闭）。
+             * @default true
+             */
+            use_profile: boolean;
         };
         /**
          * ChatMessageProjection
@@ -6300,6 +6466,8 @@ export interface components {
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
             /** @description 本条学习模式消息的教学编排与证据门投影（Issue 23）。 */
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
+            /** @description 本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。 */
+            context_note?: components["schemas"]["ContextNoteProjection"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -7550,6 +7718,117 @@ export interface components {
          * @enum {string}
          */
         ContentAuthority: "device_local" | "server_replica" | "project_copy";
+        /**
+         * ContextNoteProfileItem
+         * @description 上下文说明中的一条画像切片披露。
+         *
+         *     披露记录的是回答当时使用的快照（值摘要、状态与版本），修正后历史
+         *     回答保留此快照；``assertion_id`` 是来源记录链接，可跳转画像中心。
+         */
+        ContextNoteProfileItem: {
+            /**
+             * Assertion Id
+             * @description 来源画像记录标识（链接到画像中心）。
+             */
+            assertion_id: string;
+            /**
+             * Dimension
+             * @description 画像类别（ProfileDimension 值）。
+             */
+            dimension: string;
+            /**
+             * Dimension Label
+             * @description 画像类别中文标签。
+             */
+            dimension_label: string;
+            /**
+             * Value Summary
+             * @description 本次使用的值摘要（截断，不超长）。
+             */
+            value_summary: string;
+            /**
+             * Inclusion Reason
+             * @description 用途：为什么本轮使用这条记录。
+             */
+            inclusion_reason: string;
+            /**
+             * Used At
+             * Format: date-time
+             * @description 本次使用时间（切片编译时间）。
+             */
+            used_at: string;
+            /**
+             * Status
+             * @description 使用时的记录状态快照（active/frozen/...）。
+             */
+            status: string;
+            /**
+             * Version
+             * @description 使用时的记录版本快照（可对比当前版本）。
+             */
+            version: number;
+            /**
+             * Applicable Scenes
+             * @description 使用时的适用场景快照（修正时回传，不漂移授权范围）。
+             */
+            applicable_scenes?: string[];
+        };
+        /**
+         * ContextNoteProjection
+         * @description 「本次上下文说明」可展开披露（Issue 27，ADR-0015）。
+         *
+         *     回答展示使用的画像类别、材料类别、用途与来源链接；不暴露系统提示、
+         *     隐藏提示或原始思维链。画像正文不复制到审计日志，这里只披露摘要。
+         */
+        ContextNoteProjection: {
+            /** @description 披露状态（ready/empty/off/error）。 */
+            state: components["schemas"]["ContextNoteState"];
+            /**
+             * Profile Enabled
+             * @description 本轮是否启用了画像使用。
+             */
+            profile_enabled: boolean;
+            /** @description 回答时的对话模式。 */
+            mode: components["schemas"]["ChatMode"];
+            /**
+             * Used At
+             * Format: date-time
+             * @description 披露生成时间。
+             */
+            used_at: string;
+            /**
+             * Profile Items
+             * @description 本轮使用的画像切片披露列表。
+             */
+            profile_items?: components["schemas"]["ContextNoteProfileItem"][];
+            /**
+             * Material Categories
+             * @description 本轮使用的材料类别（检索层/联网来源等中文名）。
+             */
+            material_categories?: string[];
+            /**
+             * Excluded Count
+             * @description 因范围/敏感/过期/冻结/撤回等排除的记录数。
+             * @default 0
+             */
+            excluded_count: number;
+            /**
+             * Note
+             * @description 面向用户的中文说明（含各状态的合法文案）。
+             */
+            note: string;
+        };
+        /**
+         * ContextNoteState
+         * @description 上下文说明的呈现状态（Issue 27）。
+         *
+         *     - ``ready``：本轮使用了画像切片，披露完整可用；
+         *     - ``empty``：启用画像但没有匹配的任务相关记录（合法空态，不表示错误）；
+         *     - ``off``：用户发送前关闭了画像使用，本轮无任何画像内容；
+         *     - ``error``：切片编译失败，本轮已安全降级为不注入画像（回答照常）。
+         * @enum {string}
+         */
+        ContextNoteState: "ready" | "empty" | "off" | "error";
         /**
          * ControlledContentAccessApproval
          * @description Single approval for a controlled content access request.
@@ -10108,6 +10387,35 @@ export interface components {
              */
             reason: string;
         };
+        /**
+         * FeedbackKind
+         * @description 用户对一次回答的反馈类别。
+         *
+         *     - ``answer_inappropriate``：这次回答有问题（携带偏好修正反馈）；
+         *     - ``profile_incorrect``：画像记录有误（定位到具体断言并修正）。
+         * @enum {string}
+         */
+        FeedbackKind: "answer_inappropriate" | "profile_incorrect";
+        /**
+         * FeedbackResolveRequest
+         * @description 把一条反馈标记为已处理并记录修正说明。
+         */
+        FeedbackResolveRequest: {
+            /**
+             * Resolution Note
+             * @description 修正说明（如「已将表达偏好更新为……」）。
+             */
+            resolution_note: string;
+        };
+        /**
+         * FeedbackStatus
+         * @description 一条反馈的生命周期状态。
+         *
+         *     - ``submitted``：已提交，等待处理；
+         *     - ``resolved``：已按反馈修正画像或调整策略。
+         * @enum {string}
+         */
+        FeedbackStatus: "submitted" | "resolved";
         /**
          * FigureElement
          * @description A labeled element in a scientific figure.
@@ -21697,6 +22005,160 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    submit_message_feedback_chat_conversations__conversation_id__messages__message_id__feedback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerFeedback"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    list_conversation_feedback_chat_conversations__conversation_id__feedback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerFeedback"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_message_feedback_chat_conversations__conversation_id__feedback__feedback_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                feedback_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackResolveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnswerFeedback"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };

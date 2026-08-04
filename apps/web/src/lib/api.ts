@@ -55,6 +55,13 @@ export type TeachingEvidenceGate = components["schemas"]["TeachingEvidenceGate"]
 export type TeachingEvidenceSource = components["schemas"]["TeachingEvidenceSource"];
 export type TeachingQuiz = components["schemas"]["TeachingQuiz"];
 export type TeachingAnswerEvidence = components["schemas"]["TeachingAnswerEvidence"];
+export type ContextNoteProjection = components["schemas"]["ContextNoteProjection"];
+export type ContextNoteState = components["schemas"]["ContextNoteState"];
+export type ContextNoteProfileItem = components["schemas"]["ContextNoteProfileItem"];
+export type AnswerFeedback = components["schemas"]["AnswerFeedback"];
+export type FeedbackKind = components["schemas"]["FeedbackKind"];
+export type FeedbackStatus = components["schemas"]["FeedbackStatus"];
+export type FeedbackResolveRequest = components["schemas"]["FeedbackResolveRequest"];
 export type CitationProjection = components["schemas"]["CitationProjection"];
 export type CitationDetailProjection = components["schemas"]["CitationDetailProjection"];
 export type CitationAccessStatus = components["schemas"]["CitationAccessStatus"];
@@ -1173,6 +1180,8 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
  * 触发回调序列：started → delta* → done | error。
  * ``useKnowledgeBase``（Issue 20）：本轮是否启用全局知识库层；关闭后
  * 本轮检索记录与引用均不包含知识库候选。
+ * ``useProfile``（Issue 27）：本轮是否使用画像切片；关闭后模型请求、
+ * 审计与上下文说明均不含任何画像内容。
  */
 export async function streamChatMessage(
   conversationId: string,
@@ -1180,7 +1189,8 @@ export async function streamChatMessage(
   onEvent: (event: ChatStreamEvent) => void,
   signal?: AbortSignal,
   attachmentIds: string[] = [],
-  useKnowledgeBase: boolean = true
+  useKnowledgeBase: boolean = true,
+  useProfile: boolean = true
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -1190,11 +1200,67 @@ export async function streamChatMessage(
       content,
       attachment_ids: attachmentIds,
       use_knowledge_base: useKnowledgeBase,
+      use_profile: useProfile,
     }),
     signal,
   });
   if (!res.ok) throw await parseApiError(res);
   await readSseStream(res, onEvent);
+}
+
+/** 提交一条回答反馈（Issue 27）：回答不合适或画像有误（幂等，不丢反馈）。 */
+export async function submitAnswerFeedback(
+  conversationId: string,
+  messageId: string,
+  request: {
+    kind: FeedbackKind;
+    feedback_text: string;
+    preference?: string | null;
+    assertion_id?: string | null;
+  }
+): Promise<AnswerFeedback> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/feedback`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 列出对话内反馈（最新在前，供前端恢复与闭环查看）。 */
+export async function listConversationFeedback(
+  conversationId: string
+): Promise<AnswerFeedback[]> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/feedback`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 把一条反馈标记为已处理并记录修正说明（幂等）。 */
+export async function resolveAnswerFeedback(
+  conversationId: string,
+  feedbackId: string,
+  resolutionNote: string
+): Promise<AnswerFeedback> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/feedback/${encodeURIComponent(feedbackId)}/resolve`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ resolution_note: resolutionNote }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 /** 重试失败的助手消息：创建新的助手尝试并流式生成。 */

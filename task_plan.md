@@ -1,10 +1,79 @@
 # Task Plan — 架构审查候选逐项修复（M01–M05 审查后深化）
 
-状态：进行中（2026-08-04）
+状态：进行中（2026-08-05）
+
+## Issue 27 实施计划（最小画像切片、披露与反馈闭环）
+
+状态：已完成（2026-08-05）。全量验证：1490 pytest（含新增 25 条，3 个
+CLI 编码 flake 为环境既有）、6 条 issue27 E2E、mypy 194 文件 0 错误、
+改动区域 ruff 干净、npm typecheck/build 通过。双轴 code-review 修复
+5 处缺陷后提交（详见提交信息）。
+
+### 目标
+为日常陪伴与学习模式建立任务级最小画像切片编译器：每轮只选择与当前
+任务相关、仍有效且授权范围匹配的记录；用户可在发送前关闭画像使用；
+发送到 Qwen 的上下文只含必要切片，不上传完整画像中心或未确认候选。
+回答提供可展开中文「本次上下文说明」（画像类别、材料类别、用途、来源
+记录链接、本次使用时间），不暴露隐藏提示或原始思维链。反馈入口区分
+「这次回答有问题」与「画像记录有误」，完成「回答—反馈—修正画像或
+策略—下一轮验证」的多轮闭环；历史回答保留当时切片版本，可回放修正
+前后差异；学习模式用目标/知识状态/学习证据调教教学，日常模式只用
+必要偏好与情境；多账户并发按稳定账户 ID 编译；披露与反馈流具备中文
+loading/empty/error/permission/recovery 状态，失败不丢失用户反馈。
+
+### 新增模块
+1. `contracts/feedback.py` — FeedbackKind / AnswerFeedbackRequest /
+   AnswerFeedback / FeedbackResolveRequest（回答反馈与画像修正闭环契约）
+2. `profiles/` 无新文件：在 `service.py` 新增 `compile_chat_slice`（模式
+   维度映射 _CHAT_MODE_DIMENSIONS：companion=兴趣/表达/基本情况，
+   study=阶段目标/知识状态/兴趣；授权范围 general|模式匹配；每维度
+   上限 2 条、总量上限 6 条的最小化；未确认候选/撤回/冻结/过期/敏感
+   排除全部复用既有过滤）
+
+### 修改
+3. `contracts/chat.py` — ChatMessageCreateRequest.use_profile 开关；
+   ContextNoteProfileItem + ContextNoteProjection（披露卡：维度中文标签/
+   值摘要/用途/来源 assertion_id/使用时间/快照状态与版本/材料类别/
+   排除数/state: ready|empty|off|error）；ChatMessageProjection.context_note
+4. `contracts/observability.py` — AuditAction.PROFILE_SLICE_USED（details
+   只含 slice_id/维度/条目数/授权快照，不含正文）与 ANSWER_FEEDBACK
+5. `storage/database.py` — SCHEMA_VERSION 15：messages 加 context_note 列；
+   answer_feedback 表（幂等去重键 account+message+kind+assertion+文本）
+6. `chat/repository.py` — update_message_context_note；feedback 读写
+7. `chat/service.py` — stream_generation(use_profile) 编译→注入最小切片
+   上下文（独立 system 块，固定格式）→披露落库→审计；编译失败静默
+   降级（披露 error 态，回答照常）；关闭画像不编译/不注入/披露 off 态
+   且审计记录 disabled；retry 沿用旧轮次开关（从旧尝试披露快照读取）；
+   submit_feedback（幂等）/ list_feedback / resolve_feedback
+8. `api/chat.py` — send/retry 透传 use_profile；feedback POST/GET/resolve
+   路由（失败返回可重试错误，前端保留草稿）
+9. openapi.json + generated.ts 再生成；npm typecheck/build
+
+### 前端
+10. Composer 发送前画像开关（与知识库开关平行，data-testid）；
+    ContextNoteCard 可展开披露卡（loading/empty/error/permission/recovery
+    中文状态）；回答反馈入口（回答不合适+偏好 / 画像有误+修正/冻结/
+    撤回）；修正后下一轮适配提示；失败不丢反馈（本地保留+重试）；
+    历史切片版本 vs 当前版本差异入口。先调 ui-ux-pro-max
+
+### 测试
+11. `tests/profiles/test_chat_slice_compiler.py` — 模式×场景矩阵、撤回/
+    冻结/过期/敏感/授权范围/未确认候选排除、最小化上限、账户隔离
+12. `tests/chat/test_profile_slice_chat.py` — 捕获模型适配器请求只含期望
+    切片；关闭画像后无任何画像内容；披露快照；「初始回答—用户纠正—
+    画像更新—后续回答改变」固定多轮回放；审计不含正文；失败不阻断
+13. 反馈 API 测试（幂等/账户隔离/关联消息）
+14. E2E issue27 — 上下文说明展开、回答反馈、画像修正、下一轮适配、
+    失败恢复
+
+### 收尾
+15. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；
+    code-review 双轴审查并修复；更新 Issue 27 验收状态；提交
+
 
 ## Issue 26 实施计划（画像候选与分级许可更新）
 
-状态：实施中（2026-08-05）。
+状态：已完成（2026-08-05）。
 
 ### 目标
 把聊天观察转化为可治理的画像候选与更新流程：明确"记住/不要记住/只在

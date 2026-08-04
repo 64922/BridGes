@@ -2362,7 +2362,7 @@
           "chat"
         ],
         "summary": "Send Message",
-        "description": "发送用户消息并流式接收真实 Qwen 回答（SSE）。\n\n事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；\n失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭\n本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索\n记录与引用均不包含知识库候选。",
+        "description": "发送用户消息并流式接收真实 Qwen 回答（SSE）。\n\n事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；\n失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭\n本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索\n记录与引用均不包含知识库候选；也可关闭本轮画像使用\n（``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文\n说明均不含任何画像切片。",
         "operationId": "send_message_chat_conversations__conversation_id__messages_post",
         "parameters": [
           {
@@ -2784,6 +2784,275 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/feedback": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Submit Message Feedback",
+        "description": "提交对一条助手消息的回答反馈（Issue 27 反馈闭环入口）。\n\n``answer_inappropriate`` 标记「这次回答有问题」（可带偏好反馈）；\n``profile_incorrect`` 标记「画像记录有误」并定位到上下文说明披露中\n的画像记录。反馈幂等持久化：失败重试不会重复写入，不丢失用户反馈；\n画像修正由画像中心的 modify/freeze/withdraw 接口完成。",
+        "operationId": "submit_message_feedback_chat_conversations__conversation_id__messages__message_id__feedback_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerFeedback"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/feedback": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Conversation Feedback",
+        "description": "列出对话内该账户的反馈（最新在前，供前端恢复与闭环查看）。",
+        "operationId": "list_conversation_feedback_chat_conversations__conversation_id__feedback_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AnswerFeedback"
+                  },
+                  "title": "Response List Conversation Feedback Chat Conversations  Conversation Id  Feedback Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/feedback/{feedback_id}/resolve": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Resolve Message Feedback",
+        "description": "把一条反馈标记为已处理并记录修正说明（幂等）。",
+        "operationId": "resolve_message_feedback_chat_conversations__conversation_id__feedback__feedback_id__resolve_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "feedback_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Feedback Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackResolveRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerFeedback"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -22943,6 +23212,152 @@
         "title": "AnswerEvaluatedState",
         "description": "Result of evaluating a single diagnostic answer."
       },
+      "AnswerFeedback": {
+        "properties": {
+          "feedback_id": {
+            "type": "string",
+            "title": "Feedback Id",
+            "description": "稳定反馈标识。"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "提交反馈的账户标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "反馈所属对话标识。"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "反馈针对的助手消息标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FeedbackKind",
+            "description": "反馈类别。"
+          },
+          "feedback_text": {
+            "type": "string",
+            "title": "Feedback Text",
+            "description": "反馈内容。"
+          },
+          "preference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preference",
+            "description": "偏好修正（可选）。"
+          },
+          "assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assertion Id",
+            "description": "定位的画像记录（可选）。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FeedbackStatus",
+            "description": "反馈生命周期状态。"
+          },
+          "resolution_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolution Note",
+            "description": "已处理时的修正说明（可选）。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "提交时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "feedback_id",
+          "account_id",
+          "conversation_id",
+          "message_id",
+          "kind",
+          "feedback_text",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AnswerFeedback",
+        "description": "一条已持久化的回答反馈（按账户隔离）。"
+      },
+      "AnswerFeedbackRequest": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FeedbackKind",
+            "description": "反馈类别。"
+          },
+          "feedback_text": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Feedback Text",
+            "description": "反馈内容（中文说明问题所在或记录的错误之处）。"
+          },
+          "preference": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 500
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Preference",
+            "description": "回答不合适时的偏好修正（希望怎么回答）。"
+          },
+          "assertion_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assertion Id",
+            "description": "画像有误时定位的画像记录标识（来自上下文说明）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "feedback_text"
+        ],
+        "title": "AnswerFeedbackRequest",
+        "description": "提交一条对某条助手消息的反馈。\n\n``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、\n``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时\n``assertion_id`` 定位到使用的画像记录（来自上下文说明披露）。\n同一账户对同一消息的相同反馈（kind + assertion_id + 文本）幂等去重，\n失败重试不会产生重复记录。"
+      },
       "ApplyRevisionPatchRequest": {
         "properties": {
           "action": {
@@ -24562,6 +24977,12 @@
             "title": "Use Knowledge Base",
             "description": "本轮是否启用全局知识库层（可在发送前关闭）。",
             "default": true
+          },
+          "use_profile": {
+            "type": "boolean",
+            "title": "Use Profile",
+            "description": "本轮是否使用画像切片（可在发送前关闭）。",
+            "default": true
           }
         },
         "type": "object",
@@ -24569,7 +24990,7 @@
           "content"
         ],
         "title": "ChatMessageCreateRequest",
-        "description": "发送一条用户消息。\n\n``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用\n均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。"
+        "description": "发送一条用户消息。\n\n``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用\n均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。\n``use_profile`` 为画像使用开关（Issue 27）：关闭后本轮模型请求、\n审计与上下文说明均不含任何画像切片，回答不个性化。"
       },
       "ChatMessageProjection": {
         "properties": {
@@ -24665,6 +25086,17 @@
               }
             ],
             "description": "本条学习模式消息的教学编排与证据门投影（Issue 23）。"
+          },
+          "context_note": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ContextNoteProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。"
           },
           "error_code": {
             "anyOf": [
@@ -26908,6 +27340,143 @@
         ],
         "title": "ContentAuthority",
         "description": "Where the authoritative plaintext of a vault object resides.\n\n- DEVICE_LOCAL: the full content is authoritative on the user's device. The\n  cloud only holds a control projection (hash and metadata).\n- SERVER_REPLICA: the server holds an encrypted replica for synchronization;\n  the device is not required for every read.\n- PROJECT_COPY: a minimized copy owned by a shared project, detached from the\n  personal vault original."
+      },
+      "ContextNoteProfileItem": {
+        "properties": {
+          "assertion_id": {
+            "type": "string",
+            "title": "Assertion Id",
+            "description": "来源画像记录标识（链接到画像中心）。"
+          },
+          "dimension": {
+            "type": "string",
+            "title": "Dimension",
+            "description": "画像类别（ProfileDimension 值）。"
+          },
+          "dimension_label": {
+            "type": "string",
+            "title": "Dimension Label",
+            "description": "画像类别中文标签。"
+          },
+          "value_summary": {
+            "type": "string",
+            "title": "Value Summary",
+            "description": "本次使用的值摘要（截断，不超长）。"
+          },
+          "inclusion_reason": {
+            "type": "string",
+            "title": "Inclusion Reason",
+            "description": "用途：为什么本轮使用这条记录。"
+          },
+          "used_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Used At",
+            "description": "本次使用时间（切片编译时间）。"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "使用时的记录状态快照（active/frozen/...）。"
+          },
+          "version": {
+            "type": "integer",
+            "title": "Version",
+            "description": "使用时的记录版本快照（可对比当前版本）。"
+          },
+          "applicable_scenes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applicable Scenes",
+            "description": "使用时的适用场景快照（修正时回传，不漂移授权范围）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "assertion_id",
+          "dimension",
+          "dimension_label",
+          "value_summary",
+          "inclusion_reason",
+          "used_at",
+          "status",
+          "version"
+        ],
+        "title": "ContextNoteProfileItem",
+        "description": "上下文说明中的一条画像切片披露。\n\n披露记录的是回答当时使用的快照（值摘要、状态与版本），修正后历史\n回答保留此快照；``assertion_id`` 是来源记录链接，可跳转画像中心。"
+      },
+      "ContextNoteProjection": {
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/ContextNoteState",
+            "description": "披露状态（ready/empty/off/error）。"
+          },
+          "profile_enabled": {
+            "type": "boolean",
+            "title": "Profile Enabled",
+            "description": "本轮是否启用了画像使用。"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "回答时的对话模式。"
+          },
+          "used_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Used At",
+            "description": "披露生成时间。"
+          },
+          "profile_items": {
+            "items": {
+              "$ref": "#/components/schemas/ContextNoteProfileItem"
+            },
+            "type": "array",
+            "title": "Profile Items",
+            "description": "本轮使用的画像切片披露列表。"
+          },
+          "material_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Material Categories",
+            "description": "本轮使用的材料类别（检索层/联网来源等中文名）。"
+          },
+          "excluded_count": {
+            "type": "integer",
+            "title": "Excluded Count",
+            "description": "因范围/敏感/过期/冻结/撤回等排除的记录数。",
+            "default": 0
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "面向用户的中文说明（含各状态的合法文案）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "state",
+          "profile_enabled",
+          "mode",
+          "used_at",
+          "note"
+        ],
+        "title": "ContextNoteProjection",
+        "description": "「本次上下文说明」可展开披露（Issue 27，ADR-0015）。\n\n回答展示使用的画像类别、材料类别、用途与来源链接；不暴露系统提示、\n隐藏提示或原始思维链。画像正文不复制到审计日志，这里只披露摘要。"
+      },
+      "ContextNoteState": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "empty",
+          "off",
+          "error"
+        ],
+        "title": "ContextNoteState",
+        "description": "上下文说明的呈现状态（Issue 27）。\n\n- ``ready``：本轮使用了画像切片，披露完整可用；\n- ``empty``：启用画像但没有匹配的任务相关记录（合法空态，不表示错误）；\n- ``off``：用户发送前关闭了画像使用，本轮无任何画像内容；\n- ``error``：切片编译失败，本轮已安全降级为不注入画像（回答照常）。"
       },
       "ControlledContentAccessApproval": {
         "properties": {
@@ -30878,6 +31447,41 @@
         ],
         "title": "FactLockViolation",
         "description": "沙箱修复过程中触犯事实锁的记录。"
+      },
+      "FeedbackKind": {
+        "type": "string",
+        "enum": [
+          "answer_inappropriate",
+          "profile_incorrect"
+        ],
+        "title": "FeedbackKind",
+        "description": "用户对一次回答的反馈类别。\n\n- ``answer_inappropriate``：这次回答有问题（携带偏好修正反馈）；\n- ``profile_incorrect``：画像记录有误（定位到具体断言并修正）。"
+      },
+      "FeedbackResolveRequest": {
+        "properties": {
+          "resolution_note": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Resolution Note",
+            "description": "修正说明（如「已将表达偏好更新为……」）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "resolution_note"
+        ],
+        "title": "FeedbackResolveRequest",
+        "description": "把一条反馈标记为已处理并记录修正说明。"
+      },
+      "FeedbackStatus": {
+        "type": "string",
+        "enum": [
+          "submitted",
+          "resolved"
+        ],
+        "title": "FeedbackStatus",
+        "description": "一条反馈的生命周期状态。\n\n- ``submitted``：已提交，等待处理；\n- ``resolved``：已按反馈修正画像或调整策略。"
       },
       "FigureElement": {
         "properties": {

@@ -328,7 +328,8 @@ export default function ChatConversationPage() {
     async (
       text: string,
       attachmentIds: string[] = [],
-      useKnowledgeBase: boolean = true
+      useKnowledgeBase: boolean = true,
+      useProfile: boolean = true
     ): Promise<boolean> => {
       setSendError(null);
       setProfileNotifications([]);
@@ -348,7 +349,9 @@ export default function ChatConversationPage() {
           controller.signal,
           attachmentIds,
           // Issue 20：本轮知识库开关（关闭后检索与引用不含知识库候选）
-          useKnowledgeBase
+          useKnowledgeBase,
+          // Issue 27：本轮画像使用开关（关闭后请求与披露均不含画像内容）
+          useProfile
         );
         return true;
       } catch (error) {
@@ -604,8 +607,8 @@ export default function ChatConversationPage() {
                     <ModeToggle value={currentMode} onChange={(mode) => void changeMode(mode)} />
                   </div>
                   <Composer
-                    onSend={(text, attachmentIds, _, useKnowledgeBase) =>
-                      sendMessage(text, attachmentIds, useKnowledgeBase)
+                    onSend={(text, attachmentIds, _, useKnowledgeBase, useProfile) =>
+                      sendMessage(text, attachmentIds, useKnowledgeBase, useProfile)
                     }
                     conversationId={conversationId}
                     generating={generating}
