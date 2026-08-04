@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 11
+SCHEMA_VERSION = 12
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -675,6 +675,13 @@ MIGRATIONS: dict[int, list[str]] = {
     11: [
         """
         ALTER TABLE messages ADD COLUMN web_search TEXT
+        """,
+    ],
+    # Issue 22：将 arXiv MCP 搜索状态与真实论文结果固化到助手消息，
+    # 刷新、失败、取消与重试都从同一份真实来源投影恢复。
+    12: [
+        """
+        ALTER TABLE messages ADD COLUMN arxiv_search TEXT
         """,
     ],
 }

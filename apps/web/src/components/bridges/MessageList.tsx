@@ -5,12 +5,14 @@ import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
 import type {
+  ArxivSearchProjection,
   ChatAttachmentProjection,
   ChatMode,
   ChatModeEventProjection,
   RetrievalRoundProjection,
   WebSearchProjection,
 } from "@/lib/api";
+import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
 import { RetrievalCard } from "./RetrievalCard";
@@ -54,6 +56,8 @@ export interface ChatMessage {
   retrieval?: RetrievalRoundProjection | null;
   /** Issue 21：本条助手消息绑定的公网搜索状态与真实引用 */
   webSearch?: WebSearchProjection | null;
+  /** Issue 22：本条助手消息绑定的 arXiv 搜索状态与真实论文引用 */
+  arxivSearch?: ArxivSearchProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -617,6 +621,15 @@ export function MessageList({
                 {/* Issue 20：本地检索轮次与引用（回答内容的证据卡）。
                     streaming 且无轮次时显示检索中加载态；终态无轮次（无
                     检索作用域）不渲染卡片。 */}
+                {conversationId && (
+                  <ArxivPaperSearchCard
+                    search={message.arxivSearch ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                    onCancel={onStop}
+                  />
+                )}
+
                 {conversationId && (
                   <WebSearchCard
                     search={message.webSearch ?? null}

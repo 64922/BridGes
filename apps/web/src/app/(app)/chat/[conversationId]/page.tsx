@@ -30,6 +30,7 @@ import {
   type ChatConversationProjection,
   type ChatAttachmentProjection,
   type ChatStreamEvent,
+  type ArxivSearchProjection,
   type WebSearchProjection,
 } from "@/lib/api";
 import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
@@ -45,6 +46,8 @@ interface ActiveRun {
   thinking: ChatThinking | null;
   /** 流式中的公网搜索状态与真实来源 */
   webSearch: WebSearchProjection | null;
+  /** 流式中的 arXiv 论文搜索状态与真实论文来源 */
+  arxivSearch: ArxivSearchProjection | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -211,6 +214,7 @@ export default function ChatConversationPage() {
                 }
               : null,
             webSearch: event.data.web_search ?? null,
+            arxivSearch: event.data.arxiv_search ?? null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -249,6 +253,7 @@ export default function ChatConversationPage() {
                   }
                 : null,
               webSearch: event.data.web_search ?? current?.webSearch ?? null,
+              arxivSearch: event.data.arxiv_search ?? current?.arxivSearch ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -437,6 +442,7 @@ export default function ChatConversationPage() {
       plainText: activeRun.content,
       thinking: activeRun.thinking ?? undefined,
       webSearch: activeRun.webSearch,
+      arxivSearch: activeRun.arxivSearch,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}

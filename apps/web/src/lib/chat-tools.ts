@@ -3,8 +3,8 @@ import type { IconName } from "@/components/design-system/Icon";
 /**
  * 聊天工具入口的结构化意图（Issue 13）：「+」菜单与空白态建议卡共享。
  *
- * 真实工具能力（arXiv 检索、Humanizer、生涯规划）由后续 Issue 接入；
- * 这里只定义预填前缀，不产生任何工具结果。
+ * 论文搜索已经接入真实 arXiv MCP 流程；其它意图目前只负责预填前缀，
+ * 不在前端伪造任何工具结果。
  */
 export interface ChatToolIntent {
   label: string;

@@ -19,6 +19,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
 from bridges.api.auth import SubjectDep
+from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.chat.attachments import (
     MAX_ATTACHMENT_BYTES,
     ChatAttachmentError,
@@ -275,6 +276,7 @@ def _stream_error_event(
     thinking: ChatThinkingSummary | None,
     duration_ms: int | None,
     web_search: WebSearchProjection | None = None,
+    arxiv_search: ArxivSearchProjection | None = None,
 ) -> ChatStreamEvent:
     """构造 error 终态事件（成功/停止/失败共用的补发路径）。"""
     return ChatStreamEvent(
@@ -287,6 +289,7 @@ def _stream_error_event(
             thinking=thinking,
             duration_ms=duration_ms,
             web_search=web_search,
+            arxiv_search=arxiv_search,
         ),
     )
 
@@ -318,6 +321,7 @@ def _generation_events(
             # 初始思考摘要：前端据此自动展开思考区域（不暴露原始思维链）
             thinking=assistant_message.thinking,
             web_search=assistant_message.web_search,
+            arxiv_search=assistant_message.arxiv_search,
         ),
     )
     terminated = False
@@ -353,6 +357,7 @@ def _generation_events(
                 thinking=final.thinking if final is not None else None,
                 duration_ms=final.duration_ms if final is not None else None,
                 web_search=final.web_search if final is not None else None,
+                arxiv_search=final.arxiv_search if final is not None else None,
             )
             return
         elif event.kind == "done":
@@ -394,6 +399,7 @@ def _generation_events(
             thinking=final.thinking,
             duration_ms=final.duration_ms,
             web_search=final.web_search,
+            arxiv_search=final.arxiv_search,
         )
         return
     yield _stream_error_event(
@@ -404,6 +410,7 @@ def _generation_events(
         thinking=final.thinking,
         duration_ms=final.duration_ms,
         web_search=final.web_search,
+        arxiv_search=final.arxiv_search,
     )
 
 

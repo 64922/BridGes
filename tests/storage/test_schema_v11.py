@@ -1,4 +1,4 @@
-"""Issue 21 数据库升级路径测试：v10 → v11 增加联网搜索投影列。"""
+"""Issue 21/22 数据库升级路径测试：v10 → v12 增加两类搜索投影列。"""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _build_v10_database(path: Path) -> None:
         )
 
 
-def test_upgrade_from_v10_adds_search_projection_and_preserves_messages(
+def test_upgrade_from_v10_adds_search_projections_and_preserves_messages(
     tmp_path: Path,
 ) -> None:
     path = tmp_path / "bridges.db"
@@ -51,9 +51,12 @@ def test_upgrade_from_v10_adds_search_projection_and_preserves_messages(
         for row in database.connection.execute("PRAGMA table_info(messages)").fetchall()
     }
     assert "web_search" in columns
+    assert "arxiv_search" in columns
     row = database.connection.execute(
-        "SELECT content, web_search FROM messages WHERE message_id = 'msg-1'"
+        "SELECT content, web_search, arxiv_search"
+        " FROM messages WHERE message_id = 'msg-1'"
     ).fetchone()
     assert row is not None
     assert str(row["content"]) == "存量消息"
     assert row["web_search"] is None
+    assert row["arxiv_search"] is None

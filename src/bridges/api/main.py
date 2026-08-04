@@ -43,6 +43,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api.media import router as media_router
+from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
 from bridges.config import get_settings
 from bridges.contracts.ai import (
@@ -680,6 +681,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.state.web_search_service = WebSearchService(
         observability=app.state.observability_service
     )
+    # Issue 22：固定版本、只读、受限的 arXiv MCP；只接收本地脱敏后的
+    # public_query_terms，不继承账户凭据或画像上下文。
+    app.state.arxiv_search_service = ArxivSearchService(
+        observability=app.state.observability_service
+    )
+    app.router.add_event_handler("shutdown", app.state.arxiv_search_service.close)
 
     # Issue 10: 账户级百炼凭据存储与固定能力探测。
     # 源码环境使用操作系统凭据库（keyring，Windows 兜底 DPAPI）；容器环境
@@ -881,6 +888,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             attachment_service=getattr(app.state, "chat_attachment_service", None),
             retrieval_service=getattr(app.state, "retrieval_service", None),
             web_search_service=getattr(app.state, "web_search_service", None),
+            arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

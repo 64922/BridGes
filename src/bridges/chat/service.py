@@ -17,6 +17,8 @@ from typing import Any, Protocol
 
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
+from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
+from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
@@ -182,6 +184,15 @@ _ERROR_MESSAGES: dict[str, str] = {
     "web_search_request": "公网搜索请求未完成，请重试。",
     "web_search_no_results": "没有找到可核实的公开网页结果，请修改问题后重试。",
     "web_search_citation_invalid": "联网回答缺少可核实引用，请重试。",
+    "arxiv_timeout": "arXiv 搜索超时，请重试。",
+    "arxiv_rate_limit": "arXiv 请求过于频繁，请稍后重试。",
+    "arxiv_offline": "当前无法连接 arXiv，请检查网络后重试。",
+    "arxiv_permission": "当前网络未允许访问 arXiv，请检查网络权限后重试。",
+    "arxiv_parse": "arXiv 返回内容损坏，无法解析，请重试。",
+    "arxiv_request": "arXiv 搜索请求未完成，请重试。",
+    "arxiv_startup": "arXiv 搜索服务启动失败，请重试。",
+    "arxiv_no_results": "没有找到匹配的 arXiv 论文，请调整领域或约束后重试。",
+    "arxiv_citation_invalid": "论文回答缺少可核实的 arXiv 引用，请重试。",
 }
 
 #: 用户点击重试后有望成功的错误码（限流/瞬时故障/断流/内部错误）。
@@ -199,6 +210,15 @@ _RETRYABLE_CODES = frozenset(
         "web_search_request",
         "web_search_no_results",
         "web_search_citation_invalid",
+        "arxiv_timeout",
+        "arxiv_rate_limit",
+        "arxiv_offline",
+        "arxiv_permission",
+        "arxiv_parse",
+        "arxiv_request",
+        "arxiv_startup",
+        "arxiv_no_results",
+        "arxiv_citation_invalid",
     }
 )
 
@@ -238,6 +258,7 @@ class ChatService:
         attachment_service: ChatAttachmentService | None = None,
         retrieval_service: LayeredRetrievalService | None = None,
         web_search_service: WebSearchService | None = None,
+        arxiv_search_service: ArxivSearchService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -246,6 +267,8 @@ class ChatService:
         self._retrieval = retrieval_service
         #: 明确联网/时效/核查请求的固定 DuckDuckGo 搜索（Issue 21）。
         self._web_search = web_search_service
+        #: 受限内置 arXiv MCP（Issue 22）；结果失败时不调用模型兜底。
+        self._arxiv_search = arxiv_search_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -539,6 +562,11 @@ class ChatService:
             if self._web_search is not None
             else None
         )
+        arxiv_search = (
+            self._arxiv_search.initial_projection(self._arxiv_search.plan(content, mode))
+            if self._arxiv_search is not None
+            else None
+        )
         user_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -573,6 +601,7 @@ class ChatService:
             created_at=now,
             updated_at=now,
             web_search=(web_search.model_dump(mode="json") if web_search else None),
+            arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
         )
         if attachment_ids:
             self._repo.insert_messages_with_attachments(
@@ -636,10 +665,85 @@ class ChatService:
             ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
         )
         web_search_projection: WebSearchProjection | None = None
+        arxiv_search_projection: ArxivSearchProjection | None = None
         try:
             history = self._model_history(
                 account_id, conversation_id, until_user_message_id
             )
+            # 论文型问题优先走固定、只读的 arXiv MCP；搜索失败时 fail closed，
+            # 不允许模型记忆替代真实论文结果。
+            if self._arxiv_search is not None:
+                messages = self._repo.list_messages(account_id, conversation_id)
+                owner = _owner_user_message(messages, assistant_message_id)
+                round_query = owner.content if owner is not None else ""
+                arxiv_plan = self._arxiv_search.plan(
+                    round_query,
+                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
+                )
+                if arxiv_plan.should_search:
+                    try:
+                        arxiv_search_projection = self._arxiv_search.search(
+                            account_id, arxiv_plan, stop_event=stop_event
+                        )
+                    except Exception:  # noqa: BLE001 - MCP 异常统一 fail closed
+                        arxiv_search_projection = ArxivSearchProjection(
+                            status=ArxivSearchStatus.ERROR,
+                            trigger_reason=arxiv_plan.reason,
+                            query_summary=arxiv_plan.query,
+                            error_code="arxiv_startup",
+                            error_message="arXiv 搜索服务启动失败，请重试。",
+                            can_retry=True,
+                        )
+                    if arxiv_search_projection is not None:
+                        self._repo.update_message_arxiv_search(
+                            account_id,
+                            assistant_message_id,
+                            arxiv_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        if arxiv_search_projection.status == ArxivSearchStatus.CANCELLED:
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.STOPPED,
+                                error_code=None,
+                                error_message=None,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_stopped_thinking(thinking),
+                                arxiv_search=arxiv_search_projection.model_dump(mode="json"),
+                            )
+                            return
+                        thinking = _arxiv_search_thinking(thinking, arxiv_search_projection)
+                        if arxiv_search_projection.status != ArxivSearchStatus.SUCCESS:
+                            error_code = arxiv_search_projection.error_code or "arxiv_no_results"
+                            error_message = (
+                                arxiv_search_projection.error_message
+                                or user_facing_error(error_code)
+                            )
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.ERROR,
+                                error_code=error_code,
+                                error_message=error_message,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_failed_thinking(thinking, error_code),
+                                arxiv_search=arxiv_search_projection.model_dump(mode="json"),
+                            )
+                            yield StreamEvent(
+                                kind="error",
+                                error_code=error_code,
+                                error_message=error_message,
+                            )
+                            return
             # 公网搜索只接收当前用户消息经本地规划器脱敏后的最小词组；搜索
             # 失败或证据为空时 fail closed，不让模型用记忆伪装成联网结论。
             if self._web_search is not None:
@@ -767,6 +871,14 @@ class ChatService:
                         "content": _web_search_context(web_search_projection),
                     },
                 )
+            if arxiv_search_projection is not None:
+                payload["messages"].insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": _arxiv_search_context(arxiv_search_projection),
+                    },
+                )
             for event in self._gateway.stream(
                 CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
             ):
@@ -856,6 +968,49 @@ class ChatService:
                             yield StreamEvent(
                                 kind="error",
                                 error_code="web_search_citation_invalid",
+                                error_message=citation_error,
+                                lock=event.lock,
+                            )
+                            return
+                    if arxiv_search_projection is not None:
+                        citation_error = _arxiv_citation_error(
+                            content, arxiv_search_projection
+                        )
+                        if citation_error is not None:
+                            invalid_projection = arxiv_search_projection.model_copy(
+                                update={
+                                    "status": ArxivSearchStatus.ERROR,
+                                    "error_code": "arxiv_citation_invalid",
+                                    "error_message": citation_error,
+                                    "can_retry": True,
+                                    "can_cancel": False,
+                                }
+                            )
+                            self._repo.update_message_arxiv_search(
+                                account_id,
+                                assistant_message_id,
+                                invalid_projection.model_dump(mode="json"),
+                                datetime.now(UTC),
+                            )
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.ERROR,
+                                error_code="arxiv_citation_invalid",
+                                error_message=citation_error,
+                                duration_ms=None,
+                                model_id=self._lock_model_id(event.lock),
+                                run_lock_id=self._lock_id(event.lock),
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_failed_thinking(
+                                    thinking, "arxiv_citation_invalid"
+                                ),
+                                arxiv_search=invalid_projection.model_dump(mode="json"),
+                            )
+                            yield StreamEvent(
+                                kind="error",
+                                error_code="arxiv_citation_invalid",
                                 error_message=citation_error,
                                 lock=event.lock,
                             )
@@ -956,6 +1111,7 @@ class ChatService:
             now=now,
             thinking=_stopped_thinking(message.thinking or _initial_thinking(CHAT_MODE)),
             web_search=_cancelled_web_search(message.web_search, now),
+            arxiv_search=_cancelled_arxiv_search(message.arxiv_search, now),
         )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
@@ -1011,6 +1167,13 @@ class ChatService:
             if self._web_search is not None
             else None
         )
+        arxiv_search = (
+            self._arxiv_search.initial_projection(
+                self._arxiv_search.plan(owner.content, mode), recovery=True
+            )
+            if self._arxiv_search is not None
+            else None
+        )
         new_attempt = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -1031,6 +1194,7 @@ class ChatService:
             created_at=owner.created_at,
             updated_at=now,
             web_search=(web_search.model_dump(mode="json") if web_search else None),
+            arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
         )
         self._repo.insert_message(new_attempt)
         self._repo.touch_conversation(account_id, conversation_id, now)
@@ -1112,6 +1276,7 @@ class ChatService:
         now: datetime,
         thinking: dict[str, list[str]] | None = None,
         web_search: dict[str, Any] | None = None,
+        arxiv_search: dict[str, Any] | None = None,
     ) -> None:
         """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。"""
         measured = max(1, int((time.monotonic() - started) * 1000))
@@ -1127,6 +1292,7 @@ class ChatService:
             updated_at=now,
             thinking=thinking,
             web_search=web_search,
+            arxiv_search=arxiv_search,
         )
 
     @staticmethod
@@ -1176,6 +1342,12 @@ class ChatService:
             web_search=(
                 WebSearchProjection(**message.web_search)
                 if message.web_search is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            arxiv_search=(
+                ArxivSearchProjection(**message.arxiv_search)
+                if message.arxiv_search is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
@@ -1411,6 +1583,72 @@ def _web_search_citation_error(content: str, result_count: int) -> str | None:
 
 
 # ---------------------------------------------------------------------------
+# arXiv 搜索的思考摘要与上下文（Issue 22）
+# ---------------------------------------------------------------------------
+
+def _arxiv_search_thinking(
+    thinking: dict[str, list[str]], projection: ArxivSearchProjection
+) -> dict[str, list[str]]:
+    """把论文搜索原因、真实论文与失败状态变成可公开进度。"""
+    tools = [
+        f"已触发 arXiv 论文搜索：{projection.trigger_reason}；"
+        f"查询主题：{projection.query_summary}"
+    ]
+    if projection.status == ArxivSearchStatus.SUCCESS:
+        evidence = [
+            f"{paper.title}（arXiv:{paper.arxiv_id}）" for paper in projection.papers
+        ]
+        tools.append(f"已返回 {len(projection.papers)} 篇真实 arXiv 论文")
+        return {
+            **thinking,
+            "evidence": [*thinking["evidence"], *evidence],
+            "tools": [*thinking["tools"], *tools],
+        }
+    if projection.status == ArxivSearchStatus.EMPTY:
+        tools.append("arXiv 没有返回匹配论文")
+    elif projection.status == ArxivSearchStatus.PERMISSION:
+        tools.append("arXiv 网络权限未通过")
+    else:
+        tools.append(projection.error_message or "arXiv 论文搜索未完成")
+    return {**thinking, "tools": [*thinking["tools"], *tools]}
+
+
+def _arxiv_search_context(projection: ArxivSearchProjection) -> str:
+    """只把真实 arXiv 元数据注入模型，并要求使用稳定引用编号。"""
+    lines = [
+        "以下是本轮 arXiv 返回的真实论文。只能依据这些论文回答论文部分，"
+        "引用时必须使用对应的 [arxiv-n]，不得编造论文、作者、标识符或链接："
+    ]
+    used = 0
+    for paper in projection.papers:
+        line = (
+            f"[{paper.citation_id}] arXiv:{paper.arxiv_id}\n"
+            f"标题：{paper.title}\n作者：{'、'.join(paper.authors)}\n"
+            f"发布日期：{paper.published_at.date().isoformat()}\n"
+            f"摘要链接：{paper.abs_url}\nPDF：{paper.pdf_url}\n"
+            f"摘要：{paper.abstract[:_EVIDENCE_SNIPPET_MAX]}"
+        )
+        if used + len(line) > _CONTEXT_MAX_CHARS:
+            break
+        used += len(line)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _arxiv_citation_error(
+    content: str, projection: ArxivSearchProjection
+) -> str | None:
+    """要求论文回答至少引用一个真实结果且不引用不存在的编号。"""
+    references = set(re.findall(r"\[arxiv-(\d+)\]", content))
+    if not references:
+        return "论文回答缺少可核实的 arXiv 引用，请重试。"
+    valid = {paper.citation_id.removeprefix("arxiv-") for paper in projection.papers}
+    if not references.issubset(valid):
+        return "论文回答引用了不存在的 arXiv 结果，请重试。"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 思考摘要（Issue 14）
 # ---------------------------------------------------------------------------
 #
@@ -1475,6 +1713,27 @@ def _cancelled_web_search(
             "searched_at": now.isoformat(),
             "error_code": None,
             "error_message": "已取消本轮联网搜索。",
+            "can_retry": False,
+            "can_cancel": False,
+        }
+    )
+    return cancelled
+
+
+def _cancelled_arxiv_search(
+    arxiv_search: dict[str, Any] | None, now: datetime
+) -> dict[str, Any] | None:
+    """把 arXiv 搜索与生成终态一起收敛为取消，避免卡片残留 loading。"""
+    if arxiv_search is None:
+        return None
+    cancelled = dict(arxiv_search)
+    cancelled.update(
+        {
+            "status": ArxivSearchStatus.CANCELLED.value,
+            "papers": [],
+            "searched_at": now.isoformat(),
+            "error_code": None,
+            "error_message": "已取消本轮论文搜索。",
             "can_retry": False,
             "can_cancel": False,
         }

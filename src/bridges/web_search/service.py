@@ -72,6 +72,12 @@ class LocalQueryPlanner:
     )
 
     def plan(self, content: str, mode: ChatMode = ChatMode.COMPANION) -> SearchPlan:
+        # 论文/文献请求交给 Issue 22 的固定 arXiv MCP，避免同一轮同时触发
+        # 通用网页搜索并把普通网页误呈现为论文证据。
+        if re.search(r"论文|文献|arxiv", content, re.IGNORECASE) and re.search(
+            r"搜索|搜|查|找|检索|推荐|综述", content
+        ):
+            return SearchPlan(False, "", "论文请求由 arXiv 论文搜索处理")
         explicit = bool(self._EXPLICIT.search(content))
         fresh = bool(self._FRESHNESS.search(content))
         fact_check = bool(self._FACT_CHECK.search(content))

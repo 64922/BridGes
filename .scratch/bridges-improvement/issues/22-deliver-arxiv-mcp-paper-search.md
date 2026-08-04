@@ -1,5 +1,5 @@
 # 22 — 交付受限内置 arXiv MCP 论文搜索
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: [10](./10-deliver-account-qwen-credentials-and-probes.md), [20](./20-deliver-layered-retrieval-and-citations.md)
 Covered requirements: EXT-02, CHAT-07, CHAT-09, BONUS-01, SCORE-02, DESKTOP-01
 ADRs: [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0010](../../../docs/adr/0010-declarative-skills-and-permissioned-mcp.md), [0015](../../../docs/adr/0015-minimum-cloud-disclosure.md), [0020](../../../docs/adr/0020-layered-retrieval-and-mandatory-teaching-search.md), [0023](../../../docs/adr/0023-desktop-only-deployment-and-use.md)
@@ -12,16 +12,16 @@ ADRs: [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0010](
 
 ## Acceptance criteria
 
-- [ ] 日常陪伴和学习模式的同一“+”菜单均显示带原创图标的“论文搜索”入口。
-- [ ] 用户以菜单或自然语言提出领域与约束后，界面显示确认后的查询主题和可取消的搜索过程。
-- [ ] 每个结果至少包含标题、作者、发布日期、arXiv 标识符、摘要链接或 PDF 链接、中文简介、相关依据和学习建议。
-- [ ] 结果链接与 arXiv 返回标识一致；不存在的论文、作者或链接不得由模型补造。
-- [ ] 最终回答中的论文主张使用可展开引用卡，并能回到对应 arXiv 页面。
-- [ ] MCP 权限清单仅声明必要 arXiv 网络访问，默认拒绝文件、进程、秘密凭据和未登记域名。
-- [ ] 传给 arXiv 的查询不含 QQ 邮箱、用户名、私人附件原文、完整画像或秘密凭据。
-- [ ] 超时、限流、无结果、响应损坏和 MCP 启动失败显示独立中文错误与重试入口，不以模型记忆替代真实结果。
-- [ ] 工具卡具有 loading、empty、error、permission 和 recovery 状态，刷新后保留已完成结果与真实来源。
-- [ ] 账户审计记录调用时间、权限、查询数据类别和结果状态，不额外保存敏感上下文正文。
+- [x] 日常陪伴和学习模式的同一“+”菜单均显示带原创图标的“论文搜索”入口。
+- [x] 用户以菜单或自然语言提出领域与约束后，界面显示确认后的查询主题和可取消的搜索过程。
+- [x] 每个结果至少包含标题、作者、发布日期、arXiv 标识符、摘要链接或 PDF 链接、中文简介、相关依据和学习建议。
+- [x] 结果链接与 arXiv 返回标识一致；不存在的论文、作者或链接不得由模型补造。
+- [x] 最终回答中的论文主张使用可展开引用卡，并能回到对应 arXiv 页面。
+- [x] MCP 权限清单仅声明必要 arXiv 网络访问，默认拒绝文件、进程、秘密凭据和未登记域名。
+- [x] 传给 arXiv 的查询不含 QQ 邮箱、用户名、私人附件原文、完整画像或秘密凭据。
+- [x] 超时、限流、无结果、响应损坏和 MCP 启动失败显示独立中文错误与重试入口，不以模型记忆替代真实结果。
+- [x] 工具卡具有 loading、empty、error、permission 和 recovery 状态，刷新后保留已完成结果与真实来源。
+- [x] 账户审计记录调用时间、权限、查询数据类别和结果状态，不额外保存敏感上下文正文。
 
 ## Verification
 
@@ -44,3 +44,13 @@ ADRs: [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0010](
 ## Comments
 
 arXiv MCP 是后续通用 MCP 治理的最小可信样板；它的内置身份不能绕过权限清单和审计。
+
+实现摘要：新增固定版本、只读、默认拒绝的 arXiv MCP worker，仅访问登记的
+`export.arxiv.org` 端点；本地规划器会删除邮箱、用户名、附件、画像、URL、代码和凭据，
+并把搜索状态、真实 Atom 元数据、中文简介、相关依据、学习建议和 `[arxiv-n]` 引用接入
+聊天 SSE、消息持久化、刷新恢复、重试、取消、权限/错误状态与审计。前端新增可展开引用卡，
+并以原有 SVG 图标和两种对话模式共用的“+”菜单呈现结果。
+
+代码审查修复：移除无效异常分支；应用关闭时回收受限 worker；补充 worker 固定命令/干净
+环境、数据库 v10→v12、脱敏、响应解析、状态、聊天 fail-closed、前端桌面 E2E 和真实
+arXiv 冒烟覆盖。全量回归在 `PYTHONIOENCODING=utf-8` 的确定性环境下通过。

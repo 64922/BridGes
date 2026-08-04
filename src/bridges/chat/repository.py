@@ -56,6 +56,7 @@ class MessageRecord:
     created_at: datetime
     updated_at: datetime
     web_search: dict[str, Any] | None = None
+    arxiv_search: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -285,8 +286,9 @@ class ConversationRepository:
                     "INSERT INTO messages"
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
-                    " duration_ms, model_id, run_lock_id, created_at, updated_at, web_search)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " duration_ms, model_id, run_lock_id, created_at, updated_at,"
+                    " web_search, arxiv_search)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -304,6 +306,7 @@ class ConversationRepository:
                         _iso(record.created_at),
                         _iso(record.updated_at),
                         _json_dumps(record.web_search) if record.web_search else None,
+                        _json_dumps(record.arxiv_search) if record.arxiv_search else None,
                     ),
                 )
         except StorageError:
@@ -325,8 +328,9 @@ class ConversationRepository:
                         "INSERT INTO messages"
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
-                        " duration_ms, model_id, run_lock_id, created_at, updated_at, web_search)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " duration_ms, model_id, run_lock_id, created_at, updated_at,"
+                        " web_search, arxiv_search)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -344,6 +348,7 @@ class ConversationRepository:
                             _iso(record.created_at),
                             _iso(record.updated_at),
                             _json_dumps(record.web_search) if record.web_search else None,
+                            _json_dumps(record.arxiv_search) if record.arxiv_search else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -383,7 +388,7 @@ class ConversationRepository:
         rows = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at, web_search"
+            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -395,7 +400,7 @@ class ConversationRepository:
         row = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at, web_search"
+            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -447,6 +452,22 @@ class ConversationRepository:
             )
             return cursor.rowcount
 
+    def update_message_arxiv_search(
+        self,
+        account_id: str,
+        message_id: str,
+        arxiv_search: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """流式更新 arXiv 搜索状态；仅当消息仍在生成时生效。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET arxiv_search = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(arxiv_search), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
     def finalize_message(
         self,
         account_id: str,
@@ -461,13 +482,48 @@ class ConversationRepository:
         updated_at: datetime,
         thinking: dict[str, list[str]] | None = None,
         web_search: dict[str, Any] | None = None,
+        arxiv_search: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
         ``thinking`` 为 None 时保留消息已有的思考摘要（陈旧收敛等不覆盖场景）。
         """
         with self._db.transaction():
-            if thinking is None and web_search is None:
+            if arxiv_search is not None:
+                assignments = [
+                    "status = ?",
+                    "error_code = ?",
+                    "error_message = ?",
+                    "duration_ms = ?",
+                    "model_id = ?",
+                    "run_lock_id = ?",
+                    "updated_at = ?",
+                ]
+                values: list[Any] = [
+                    status.value,
+                    error_code,
+                    error_message,
+                    duration_ms,
+                    model_id,
+                    run_lock_id,
+                    _iso(updated_at),
+                ]
+                if thinking is not None:
+                    assignments.append("thinking = ?")
+                    values.append(_json_dumps(thinking))
+                if web_search is not None:
+                    assignments.append("web_search = ?")
+                    values.append(_json_dumps(web_search))
+                assignments.append("arxiv_search = ?")
+                values.append(_json_dumps(arxiv_search))
+                values.extend([message_id, account_id])
+                cursor = self._db.scoped(account_id).execute(
+                    "UPDATE messages SET "
+                    + ", ".join(assignments)
+                    + " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                    values,
+                )
+            elif thinking is None and web_search is None:
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET status = ?, error_code = ?,"
                     " error_message = ?, duration_ms = ?, model_id = ?,"
@@ -606,6 +662,7 @@ class ConversationRepository:
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
             web_search=_json_loads_any(row["web_search"]),
+            arxiv_search=_json_loads_any(row["arxiv_search"]),
         )
 
 
