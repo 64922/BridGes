@@ -14,6 +14,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from bridges.contracts.retrieval import RetrievalRoundProjection
+from bridges.web_search.contracts import WebSearchProjection
 
 
 class ChatMessageRole(StrEnum):
@@ -126,6 +127,10 @@ class ChatMessageProjection(BaseModel):
     retrieval: RetrievalRoundProjection | None = Field(
         default=None,
         description="本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。",
+    )
+    web_search: WebSearchProjection | None = Field(
+        default=None,
+        description="本条助手消息绑定的公网搜索状态与真实引用（Issue 21）。",
     )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
@@ -272,6 +277,9 @@ class ChatStreamStartedData(BaseModel):
     thinking: ChatThinkingSummary | None = Field(
         default=None, description="初始可公开思考摘要；前端据此展开思考区域。"
     )
+    web_search: WebSearchProjection | None = Field(
+        default=None, description="公网搜索初始状态；无触发时为 None。"
+    )
 
 
 class ChatStreamDeltaData(BaseModel):
@@ -300,6 +308,9 @@ class ChatStreamErrorData(BaseModel):
         default=None, description="失败/停止时保留的已完成思考摘要。"
     )
     duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
+    web_search: WebSearchProjection | None = Field(
+        default=None, description="失败或取消时的公网搜索状态。"
+    )
 
 
 class ChatStreamDoneData(BaseModel):

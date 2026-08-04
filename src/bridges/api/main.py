@@ -153,6 +153,7 @@ from bridges.vault import (
     MemoryDeviceVaultPort,
     VaultService,
 )
+from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
 
 
@@ -674,6 +675,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # T010: attach the observability service early so downstream services can
     # emit privacy-preserving audit events.
     app.state.observability_service = ObservabilityService()
+    # Issue 21：固定 DuckDuckGo 公网搜索；不读取账户 Key，也不把私有上下文
+    # 传入客户端，搜索状态由聊天消息持久化并向桌面端公开。
+    app.state.web_search_service = WebSearchService(
+        observability=app.state.observability_service
+    )
 
     # Issue 10: 账户级百炼凭据存储与固定能力探测。
     # 源码环境使用操作系统凭据库（keyring，Windows 兜底 DPAPI）；容器环境
@@ -874,6 +880,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             gateway=model_gateway,
             attachment_service=getattr(app.state, "chat_attachment_service", None),
             retrieval_service=getattr(app.state, "retrieval_service", None),
+            web_search_service=getattr(app.state, "web_search_service", None),
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

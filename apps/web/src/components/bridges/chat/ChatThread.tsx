@@ -14,6 +14,7 @@ import styles from "./chat.module.css";
 interface ChatThreadProps {
   messages: (ChatMessage | ThreadModeEvent)[];
   onRetry?: (messageId: string) => void;
+  onStop?: () => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
   /** 附件摄取重试（Issue 17）：调用重试 API 并刷新对话 */
@@ -32,6 +33,7 @@ interface ChatThreadProps {
 export function ChatThread({
   messages,
   onRetry,
+  onStop,
   onDownloadAttachment,
   onDeleteAttachment,
   onRetryIngestion,
@@ -60,6 +62,7 @@ export function ChatThread({
         <MessageList
           messages={messages}
           onRetry={onRetry}
+          onStop={onStop}
           onDownloadAttachment={onDownloadAttachment}
           onDeleteAttachment={onDeleteAttachment}
           onRetryIngestion={onRetryIngestion}

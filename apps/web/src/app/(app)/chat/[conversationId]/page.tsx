@@ -30,6 +30,7 @@ import {
   type ChatConversationProjection,
   type ChatAttachmentProjection,
   type ChatStreamEvent,
+  type WebSearchProjection,
 } from "@/lib/api";
 import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -42,6 +43,8 @@ interface ActiveRun {
   kind: "send" | "retry";
   /** 流式中的可公开思考摘要（生成完成折叠后由服务端历史提供） */
   thinking: ChatThinking | null;
+  /** 流式中的公网搜索状态与真实来源 */
+  webSearch: WebSearchProjection | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -207,6 +210,7 @@ export default function ChatConversationPage() {
                   seconds: null,
                 }
               : null,
+            webSearch: event.data.web_search ?? null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -244,6 +248,7 @@ export default function ChatConversationPage() {
                     seconds: secondsOf(event.data.duration_ms),
                   }
                 : null,
+              webSearch: event.data.web_search ?? current?.webSearch ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -431,6 +436,7 @@ export default function ChatConversationPage() {
       role: "assistant",
       plainText: activeRun.content,
       thinking: activeRun.thinking ?? undefined,
+      webSearch: activeRun.webSearch,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -486,6 +492,7 @@ export default function ChatConversationPage() {
               <ChatThread
                 messages={threadMessages}
                 onRetry={(messageId) => void retry(messageId)}
+                onStop={() => void stop()}
                 onDownloadAttachment={(attachment) => void downloadAttachment(attachment)}
                 onDeleteAttachment={(messageId, attachment) =>
                   void deleteAttachment(messageId, attachment)

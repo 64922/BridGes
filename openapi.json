@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -526,7 +526,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -588,7 +588,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -1383,7 +1383,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1492,7 +1492,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1768,7 +1768,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1875,7 +1875,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -2387,7 +2387,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -3081,7 +3081,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -3741,7 +3741,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -4013,7 +4013,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -4242,7 +4242,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -7488,7 +7488,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -7712,7 +7712,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -7861,7 +7861,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8179,7 +8179,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8349,7 +8349,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8498,7 +8498,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8721,7 +8721,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8952,7 +8952,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9042,7 +9042,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9141,7 +9141,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9231,7 +9231,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9910,7 +9910,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -10152,7 +10152,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10231,7 +10231,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10422,7 +10422,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -10694,7 +10694,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10872,7 +10872,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11052,7 +11052,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11240,7 +11240,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11338,7 +11338,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11418,7 +11418,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11639,7 +11639,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11869,7 +11869,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12518,7 +12518,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12607,7 +12607,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12696,7 +12696,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12785,7 +12785,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12944,7 +12944,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13052,7 +13052,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13248,7 +13248,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13365,7 +13365,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13517,7 +13517,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13608,7 +13608,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13716,7 +13716,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13814,7 +13814,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14098,7 +14098,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14187,7 +14187,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -14338,7 +14338,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -14649,7 +14649,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14907,7 +14907,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14987,7 +14987,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15076,7 +15076,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15156,7 +15156,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -15807,7 +15807,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16054,7 +16054,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16152,7 +16152,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16241,7 +16241,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16330,7 +16330,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16514,7 +16514,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16594,7 +16594,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16683,7 +16683,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16763,7 +16763,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16931,7 +16931,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17020,7 +17020,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17171,7 +17171,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17241,7 +17241,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17408,7 +17408,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17467,7 +17467,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17909,7 +17909,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18096,7 +18096,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18511,7 +18511,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18727,7 +18727,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -18957,7 +18957,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -19183,7 +19183,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -23449,6 +23449,17 @@
             ],
             "description": "本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。"
           },
+          "web_search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息绑定的公网搜索状态与真实引用（Issue 21）。"
+          },
           "error_code": {
             "anyOf": [
               {
@@ -23752,6 +23763,17 @@
             ],
             "title": "Duration Ms",
             "description": "本次生成耗时（毫秒）。"
+          },
+          "web_search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败或取消时的公网搜索状态。"
           }
         },
         "type": "object",
@@ -23880,6 +23902,17 @@
               }
             ],
             "description": "初始可公开思考摘要；前端据此展开思考区域。"
+          },
+          "web_search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "公网搜索初始状态；无触发时为 None。"
           }
         },
         "type": "object",
@@ -43208,6 +43241,148 @@
         ],
         "title": "VisualObject",
         "description": "分镜场景中的一个视觉对象。"
+      },
+      "WebSearchProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/WebSearchStatus",
+            "description": "搜索状态。"
+          },
+          "trigger_reason": {
+            "type": "string",
+            "title": "Trigger Reason",
+            "description": "触发联网搜索的中文原因。"
+          },
+          "query_summary": {
+            "type": "string",
+            "title": "Query Summary",
+            "description": "本地脱敏后发送的最小查询概述。"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/WebSearchResult"
+            },
+            "type": "array",
+            "title": "Results"
+          },
+          "searched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Searched At",
+            "description": "搜索完成时间。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "搜索失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文提示。"
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "description": "本轮是否可以重试。",
+            "default": false
+          },
+          "can_cancel": {
+            "type": "boolean",
+            "title": "Can Cancel",
+            "description": "本轮是否可以取消。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "trigger_reason",
+          "query_summary"
+        ],
+        "title": "WebSearchProjection",
+        "description": "聊天消息与 SSE 使用的公网搜索状态投影。"
+      },
+      "WebSearchResult": {
+        "properties": {
+          "result_id": {
+            "type": "string",
+            "title": "Result Id",
+            "description": "本次搜索内稳定的结果编号。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "网页标题。"
+          },
+          "site": {
+            "type": "string",
+            "title": "Site",
+            "description": "网页站点。"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "供应商返回的真实网页地址。"
+          },
+          "snippet": {
+            "type": "string",
+            "title": "Snippet",
+            "description": "网页摘要。",
+            "default": ""
+          },
+          "accessed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accessed At",
+            "description": "本次访问时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result_id",
+          "title",
+          "site",
+          "url",
+          "accessed_at"
+        ],
+        "title": "WebSearchResult",
+        "description": "来自真实搜索响应的最小可引用结果。"
+      },
+      "WebSearchStatus": {
+        "type": "string",
+        "enum": [
+          "loading",
+          "success",
+          "empty",
+          "error",
+          "permission",
+          "recovery",
+          "cancelled"
+        ],
+        "title": "WebSearchStatus",
+        "description": "一次公网搜索的可见状态。"
       },
       "WordingStrength": {
         "type": "string",

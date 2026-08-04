@@ -9,10 +9,12 @@ import type {
   ChatMode,
   ChatModeEventProjection,
   RetrievalRoundProjection,
+  WebSearchProjection,
 } from "@/lib/api";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
 import { RetrievalCard } from "./RetrievalCard";
+import { WebSearchCard } from "./WebSearchCard";
 
 /** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
 export interface ThreadModeEvent extends ChatModeEventProjection {
@@ -50,6 +52,8 @@ export interface ChatMessage {
   attachments?: ChatAttachmentProjection[];
   /** Issue 20：本条助手消息绑定的分层检索轮次（含引用），无轮次为 null */
   retrieval?: RetrievalRoundProjection | null;
+  /** Issue 21：本条助手消息绑定的公网搜索状态与真实引用 */
+  webSearch?: WebSearchProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -61,6 +65,7 @@ export interface ChatMessage {
 interface MessageListProps {
   messages: (ChatMessage | ThreadModeEvent)[];
   onRetry?: (id: string) => void;
+  onStop?: () => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
   /** 附件摄取重试（Issue 17）：页面处理器调用重试 API 并刷新对话 */
@@ -493,6 +498,7 @@ export function MessageList({
   onDeleteAttachment,
   onRetryIngestion,
   conversationId,
+  onStop,
 }: MessageListProps) {
   return (
     <ol
@@ -606,9 +612,20 @@ export function MessageList({
                   </details>
                 )}
 
+                {/* Issue 21：公网搜索过程与真实网页引用；Issue 20 本地检索
+                    紧随其后展示，二者都不改变消息正文。 */}
                 {/* Issue 20：本地检索轮次与引用（回答内容的证据卡）。
                     streaming 且无轮次时显示检索中加载态；终态无轮次（无
                     检索作用域）不渲染卡片。 */}
+                {conversationId && (
+                  <WebSearchCard
+                    search={message.webSearch ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                    onCancel={onStop}
+                  />
+                )}
+
                 {conversationId && (
                   <RetrievalCard
                     retrieval={message.retrieval ?? null}

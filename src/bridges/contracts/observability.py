@@ -42,6 +42,7 @@ class AuditAction(str, Enum):
     KEY_SAVE = "key_save"
     KEY_DELETE = "key_delete"
     KEY_PROBE = "key_probe"
+    WEB_SEARCH = "web_search"
 
 
 class AuditResult(str, Enum):

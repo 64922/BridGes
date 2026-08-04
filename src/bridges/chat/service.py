@@ -8,6 +8,7 @@ error / stopped）、用户级重试（每次重试新建助手尝试，历史�
 
 from __future__ import annotations
 
+import re
 import secrets
 import time
 from collections.abc import Iterator
@@ -44,6 +45,8 @@ from bridges.contracts.retrieval import (
 )
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.retrieval.service import LayeredRetrievalService
+from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
+from bridges.web_search.service import WebSearchService
 
 #: 核心对话能力的固定绑定（ADR-0009 固定模型矩阵）。
 CHAT_CAPABILITY_NAME = "qwen_text_chat"
@@ -171,11 +174,32 @@ _ERROR_MESSAGES: dict[str, str] = {
     "no_adapter": "核心对话能力未就绪（缺少适配器），请检查服务配置。",
     "provider_rejected": "供应商拒绝了本次请求，请稍后重试。",
     "internal_error": "生成过程出现内部错误，请重试。",
+    "web_search_timeout": "联网搜索超时，请重试。",
+    "web_search_rate_limit": "公网搜索请求过于频繁，请稍后重试。",
+    "web_search_offline": "当前无法连接公网搜索，请检查网络后重试。",
+    "web_search_permission": "当前网络未允许访问公网搜索，请检查网络权限后重试。",
+    "web_search_parse": "搜索结果暂时无法解析，请重试。",
+    "web_search_request": "公网搜索请求未完成，请重试。",
+    "web_search_no_results": "没有找到可核实的公开网页结果，请修改问题后重试。",
+    "web_search_citation_invalid": "联网回答缺少可核实引用，请重试。",
 }
 
 #: 用户点击重试后有望成功的错误码（限流/瞬时故障/断流/内部错误）。
 _RETRYABLE_CODES = frozenset(
-    {"rate_limit", "transient", "region_error", "stream_interrupted", "internal_error"}
+    {
+        "rate_limit",
+        "transient",
+        "region_error",
+        "stream_interrupted",
+        "internal_error",
+        "web_search_timeout",
+        "web_search_rate_limit",
+        "web_search_offline",
+        "web_search_parse",
+        "web_search_request",
+        "web_search_no_results",
+        "web_search_citation_invalid",
+    }
 )
 
 
@@ -213,12 +237,15 @@ class ChatService:
         gateway: ModelGateway,
         attachment_service: ChatAttachmentService | None = None,
         retrieval_service: LayeredRetrievalService | None = None,
+        web_search_service: WebSearchService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
         self._attachments = attachment_service
         #: 分层本地检索（Issue 20）；未挂载时生成不检索、不产生引用。
         self._retrieval = retrieval_service
+        #: 明确联网/时效/核查请求的固定 DuckDuckGo 搜索（Issue 21）。
+        self._web_search = web_search_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -505,7 +532,13 @@ class ChatService:
             except ChatAttachmentError as exc:
                 raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
 
-        thinking = _initial_thinking(ChatMode(record.mode))
+        mode = ChatMode(record.mode)
+        thinking = _initial_thinking(mode)
+        web_search = (
+            self._web_search.initial_projection(self._web_search.plan(content, mode))
+            if self._web_search is not None
+            else None
+        )
         user_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -539,6 +572,7 @@ class ChatService:
             run_lock_id=None,
             created_at=now,
             updated_at=now,
+            web_search=(web_search.model_dump(mode="json") if web_search else None),
         )
         if attachment_ids:
             self._repo.insert_messages_with_attachments(
@@ -601,10 +635,97 @@ class ChatService:
         thinking = _initial_thinking(
             ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
         )
+        web_search_projection: WebSearchProjection | None = None
         try:
             history = self._model_history(
                 account_id, conversation_id, until_user_message_id
             )
+            # 公网搜索只接收当前用户消息经本地规划器脱敏后的最小词组；搜索
+            # 失败或证据为空时 fail closed，不让模型用记忆伪装成联网结论。
+            if self._web_search is not None:
+                messages = self._repo.list_messages(account_id, conversation_id)
+                owner = _owner_user_message(messages, assistant_message_id)
+                round_query = owner.content if owner is not None else ""
+                search_plan = self._web_search.plan(
+                    round_query,
+                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
+                )
+                if search_plan.should_search:
+                    web_search_projection = self._web_search.search(
+                        account_id, search_plan, stop_event=stop_event
+                    )
+                    if web_search_projection is not None:
+                        self._repo.update_message_web_search(
+                            account_id,
+                            assistant_message_id,
+                            web_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        if web_search_projection.status == WebSearchStatus.CANCELLED:
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.STOPPED,
+                                error_code=None,
+                                error_message=None,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_stopped_thinking(thinking),
+                                web_search=web_search_projection.model_dump(mode="json"),
+                            )
+                            return
+                        thinking = _web_search_thinking(thinking, web_search_projection)
+                        if web_search_projection.status != WebSearchStatus.SUCCESS:
+                            error_code = (
+                                web_search_projection.error_code or "web_search_no_results"
+                            )
+                            error_message = (
+                                web_search_projection.error_message
+                                or user_facing_error(error_code)
+                            )
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.ERROR,
+                                error_code=error_code,
+                                error_message=error_message,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_failed_thinking(thinking, error_code),
+                            )
+                            yield StreamEvent(
+                                kind="error",
+                                error_code=error_code,
+                                error_message=error_message,
+                            )
+                            return
+            if stop_event.is_set():
+                self._finalize_message(
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.STOPPED,
+                    error_code=None,
+                    error_message=None,
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=datetime.now(UTC),
+                    thinking=_stopped_thinking(thinking),
+                    web_search=_cancelled_web_search(
+                        web_search_projection.model_dump(mode="json")
+                        if web_search_projection is not None
+                        else current.web_search,
+                        datetime.now(UTC),
+                    ),
+                )
+                return
             # 生成前执行一轮分层检索：查询文本取所属用户消息正文；检索
             # 结果固化到消息投影（引用展示数据不漂移），并注入最小上下文。
             retrieval_round: RetrievalRoundProjection | None = None
@@ -638,6 +759,14 @@ class ChatService:
                         "content": _retrieval_context(retrieval_round.citations),
                     },
                 )
+            if web_search_projection is not None:
+                payload["messages"].insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": _web_search_context(web_search_projection),
+                    },
+                )
             for event in self._gateway.stream(
                 CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
             ):
@@ -654,6 +783,12 @@ class ChatService:
                         started=started,
                         now=datetime.now(UTC),
                         thinking=_stopped_thinking(thinking),
+                        web_search=_cancelled_web_search(
+                            web_search_projection.model_dump(mode="json")
+                            if web_search_projection is not None
+                            else current.web_search,
+                            datetime.now(UTC),
+                        ),
                     )
                     return
                 if event.kind == "delta":
@@ -682,6 +817,49 @@ class ChatService:
                     return
                 elif event.kind == "done":
                     self._persist_lock(account_id, event.lock)
+                    if web_search_projection is not None:
+                        citation_error = _web_search_citation_error(
+                            content, len(web_search_projection.results)
+                        )
+                        if citation_error is not None:
+                            invalid_projection = web_search_projection.model_copy(
+                                update={
+                                    "status": WebSearchStatus.ERROR,
+                                    "error_code": "web_search_citation_invalid",
+                                    "error_message": citation_error,
+                                    "can_retry": True,
+                                    "can_cancel": False,
+                                }
+                            )
+                            self._repo.update_message_web_search(
+                                account_id,
+                                assistant_message_id,
+                                invalid_projection.model_dump(mode="json"),
+                                datetime.now(UTC),
+                            )
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.ERROR,
+                                error_code="web_search_citation_invalid",
+                                error_message=citation_error,
+                                duration_ms=None,
+                                model_id=self._lock_model_id(event.lock),
+                                run_lock_id=self._lock_id(event.lock),
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_failed_thinking(
+                                    thinking, "web_search_citation_invalid"
+                                ),
+                                web_search=invalid_projection.model_dump(mode="json"),
+                            )
+                            yield StreamEvent(
+                                kind="error",
+                                error_code="web_search_citation_invalid",
+                                error_message=citation_error,
+                                lock=event.lock,
+                            )
+                            return
                     self._finalize_message(
                         account_id,
                         assistant_message_id,
@@ -777,6 +955,7 @@ class ChatService:
             started=started,
             now=now,
             thinking=_stopped_thinking(message.thinking or _initial_thinking(CHAT_MODE)),
+            web_search=_cancelled_web_search(message.web_search, now),
         )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
@@ -826,6 +1005,12 @@ class ChatService:
             default=0,
         )
         now = datetime.now(UTC)
+        mode = ChatMode(record.mode)
+        web_search = (
+            self._web_search.initial_projection(self._web_search.plan(owner.content, mode))
+            if self._web_search is not None
+            else None
+        )
         new_attempt = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -834,7 +1019,7 @@ class ChatService:
             attempt_number=max_attempt + 1,
             status=ChatMessageStatus.STREAMING,
             content="",
-            thinking=_initial_thinking(ChatMode(record.mode)),
+            thinking=_initial_thinking(mode),
             error_code=None,
             error_message=None,
             duration_ms=None,
@@ -845,6 +1030,7 @@ class ChatService:
             # 与模型上下文错配到后续轮次）。
             created_at=owner.created_at,
             updated_at=now,
+            web_search=(web_search.model_dump(mode="json") if web_search else None),
         )
         self._repo.insert_message(new_attempt)
         self._repo.touch_conversation(account_id, conversation_id, now)
@@ -925,6 +1111,7 @@ class ChatService:
         started: float,
         now: datetime,
         thinking: dict[str, list[str]] | None = None,
+        web_search: dict[str, Any] | None = None,
     ) -> None:
         """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。"""
         measured = max(1, int((time.monotonic() - started) * 1000))
@@ -939,6 +1126,7 @@ class ChatService:
             run_lock_id=run_lock_id,
             updated_at=now,
             thinking=thinking,
+            web_search=web_search,
         )
 
     @staticmethod
@@ -982,6 +1170,12 @@ class ChatService:
                     message.account_id, message.message_id
                 )
                 if self._retrieval is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            web_search=(
+                WebSearchProjection(**message.web_search)
+                if message.web_search is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
@@ -1158,6 +1352,65 @@ def _retrieval_context(citations: list[CitationProjection]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 公网搜索的思考摘要与上下文（Issue 21）
+# ---------------------------------------------------------------------------
+
+def _web_search_thinking(
+    thinking: dict[str, list[str]], projection: WebSearchProjection
+) -> dict[str, list[str]]:
+    """把搜索触发原因、结果与失败状态变成可公开进度。"""
+    tools = [f"已触发联网搜索：{projection.trigger_reason}；查询概述：{projection.query_summary}"]
+    if projection.status == WebSearchStatus.SUCCESS:
+        evidence = [f"{item.title}（{item.site}）" for item in projection.results]
+        tools.append(f"已返回 {len(projection.results)} 条公开网页结果")
+        return {
+            **thinking,
+            "evidence": [*thinking["evidence"], *evidence],
+            "tools": [*thinking["tools"], *tools],
+        }
+    if projection.status == WebSearchStatus.EMPTY:
+        tools.append("公网搜索没有返回可核实结果")
+    elif projection.status == WebSearchStatus.PERMISSION:
+        tools.append("公网搜索权限未通过")
+    else:
+        tools.append(projection.error_message or "公网搜索未完成")
+    return {**thinking, "tools": [*thinking["tools"], *tools]}
+
+
+def _web_search_context(projection: WebSearchProjection) -> str:
+    """只把真实返回的公开来源注入模型，并要求来源可追溯。"""
+    lines = [
+        "以下是本轮公网搜索返回的公开来源。只能依据这些真实来源回答联网部分，"
+        "引用时使用对应的 [web-n]，不得编造来源或 URL："
+    ]
+    used = 0
+    for index, result in enumerate(projection.results, start=1):
+        snippet = result.snippet[:_EVIDENCE_SNIPPET_MAX]
+        line = (
+            f"[web-{index}] {result.title}（{result.site}）\n"
+            f"URL：{result.url}\n摘要：{snippet}\n访问时间：{result.accessed_at.isoformat()}"
+        )
+        if used + len(line) > _CONTEXT_MAX_CHARS:
+            break
+        used += len(line)
+        lines.append(line)
+    return "\n".join(lines)
+
+
+_WEB_CITATION_RE = re.compile(r"\[web-(\d+)\]")
+
+
+def _web_search_citation_error(content: str, result_count: int) -> str | None:
+    """要求联网回答至少引用一个真实结果，且不能引用不存在的结果编号。"""
+    references = [int(match) for match in _WEB_CITATION_RE.findall(content)]
+    if not references:
+        return "联网回答缺少可核实引用，请重试。"
+    if any(reference < 1 or reference > result_count for reference in references):
+        return "联网回答引用了不存在的来源，请重试。"
+    return None
+
+
+# ---------------------------------------------------------------------------
 # 思考摘要（Issue 14）
 # ---------------------------------------------------------------------------
 #
@@ -1206,3 +1459,24 @@ def _stopped_thinking(thinking: dict[str, list[str]]) -> dict[str, list[str]]:
         **thinking,
         "quality": ["已停止生成，保留已生成内容。"],
     }
+
+
+def _cancelled_web_search(
+    web_search: dict[str, Any] | None, now: datetime
+) -> dict[str, Any] | None:
+    """把已触发的公网搜索与生成终态一起收敛为取消，避免卡片残留 loading。"""
+    if web_search is None:
+        return None
+    cancelled = dict(web_search)
+    cancelled.update(
+        {
+            "status": WebSearchStatus.CANCELLED.value,
+            "results": [],
+            "searched_at": now.isoformat(),
+            "error_code": None,
+            "error_message": "已取消本轮联网搜索。",
+            "can_retry": False,
+            "can_cancel": False,
+        }
+    )
+    return cancelled

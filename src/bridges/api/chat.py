@@ -59,6 +59,7 @@ from bridges.credentials.service import KeyCredentialService
 from bridges.ingestion.service import IngestionError, IngestionService
 from bridges.learning_projects import LearningProjectError, LearningProjectService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
+from bridges.web_search.contracts import WebSearchProjection
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -273,6 +274,7 @@ def _stream_error_event(
     retryable: bool,
     thinking: ChatThinkingSummary | None,
     duration_ms: int | None,
+    web_search: WebSearchProjection | None = None,
 ) -> ChatStreamEvent:
     """构造 error 终态事件（成功/停止/失败共用的补发路径）。"""
     return ChatStreamEvent(
@@ -284,6 +286,7 @@ def _stream_error_event(
             ),
             thinking=thinking,
             duration_ms=duration_ms,
+            web_search=web_search,
         ),
     )
 
@@ -314,6 +317,7 @@ def _generation_events(
             attempt_number=assistant_message.attempt_number,
             # 初始思考摘要：前端据此自动展开思考区域（不暴露原始思维链）
             thinking=assistant_message.thinking,
+            web_search=assistant_message.web_search,
         ),
     )
     terminated = False
@@ -348,6 +352,7 @@ def _generation_events(
                 # 失败/停止/断流时保留已完成思考摘要与真实耗时
                 thinking=final.thinking if final is not None else None,
                 duration_ms=final.duration_ms if final is not None else None,
+                web_search=final.web_search if final is not None else None,
             )
             return
         elif event.kind == "done":
@@ -388,6 +393,7 @@ def _generation_events(
             # 前端停止后的 error 态渲染不依赖重新加载的间隙。
             thinking=final.thinking,
             duration_ms=final.duration_ms,
+            web_search=final.web_search,
         )
         return
     yield _stream_error_event(
@@ -397,6 +403,7 @@ def _generation_events(
         retryable=error_is_retryable(final.error_code),
         thinking=final.thinking,
         duration_ms=final.duration_ms,
+        web_search=final.web_search,
     )
 
 

@@ -55,6 +55,7 @@ class MessageRecord:
     run_lock_id: str | None
     created_at: datetime
     updated_at: datetime
+    web_search: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -284,8 +285,8 @@ class ConversationRepository:
                     "INSERT INTO messages"
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
-                    " duration_ms, model_id, run_lock_id, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " duration_ms, model_id, run_lock_id, created_at, updated_at, web_search)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -302,6 +303,7 @@ class ConversationRepository:
                         record.run_lock_id,
                         _iso(record.created_at),
                         _iso(record.updated_at),
+                        _json_dumps(record.web_search) if record.web_search else None,
                     ),
                 )
         except StorageError:
@@ -323,8 +325,8 @@ class ConversationRepository:
                         "INSERT INTO messages"
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
-                        " duration_ms, model_id, run_lock_id, created_at, updated_at)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " duration_ms, model_id, run_lock_id, created_at, updated_at, web_search)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -341,6 +343,7 @@ class ConversationRepository:
                             record.run_lock_id,
                             _iso(record.created_at),
                             _iso(record.updated_at),
+                            _json_dumps(record.web_search) if record.web_search else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -380,7 +383,7 @@ class ConversationRepository:
         rows = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at"
+            " model_id, run_lock_id, created_at, updated_at, web_search"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -392,7 +395,7 @@ class ConversationRepository:
         row = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at"
+            " model_id, run_lock_id, created_at, updated_at, web_search"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -428,6 +431,22 @@ class ConversationRepository:
             )
             return cursor.rowcount
 
+    def update_message_web_search(
+        self,
+        account_id: str,
+        message_id: str,
+        web_search: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """流式更新公网搜索状态；仅当消息仍在生成时生效。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET web_search = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(web_search), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
     def finalize_message(
         self,
         account_id: str,
@@ -441,13 +460,14 @@ class ConversationRepository:
         run_lock_id: str | None,
         updated_at: datetime,
         thinking: dict[str, list[str]] | None = None,
+        web_search: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
         ``thinking`` 为 None 时保留消息已有的思考摘要（陈旧收敛等不覆盖场景）。
         """
         with self._db.transaction():
-            if thinking is None:
+            if thinking is None and web_search is None:
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET status = ?, error_code = ?,"
                     " error_message = ?, duration_ms = ?, model_id = ?,"
@@ -465,7 +485,27 @@ class ConversationRepository:
                         account_id,
                     ),
                 )
-            else:
+            elif thinking is None:
+                assert web_search is not None
+                cursor = self._db.scoped(account_id).execute(
+                    "UPDATE messages SET status = ?, error_code = ?,"
+                    " error_message = ?, duration_ms = ?, model_id = ?,"
+                    " run_lock_id = ?, updated_at = ?, web_search = ?"
+                    " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                    (
+                        status.value,
+                        error_code,
+                        error_message,
+                        duration_ms,
+                        model_id,
+                        run_lock_id,
+                        _iso(updated_at),
+                        _json_dumps(web_search),
+                        message_id,
+                        account_id,
+                    ),
+                )
+            elif web_search is None:
                 cursor = self._db.scoped(account_id).execute(
                     "UPDATE messages SET status = ?, error_code = ?,"
                     " error_message = ?, duration_ms = ?, model_id = ?,"
@@ -480,6 +520,26 @@ class ConversationRepository:
                         run_lock_id,
                         _iso(updated_at),
                         _json_dumps(thinking),
+                        message_id,
+                        account_id,
+                    ),
+                )
+            else:
+                cursor = self._db.scoped(account_id).execute(
+                    "UPDATE messages SET status = ?, error_code = ?,"
+                    " error_message = ?, duration_ms = ?, model_id = ?,"
+                    " run_lock_id = ?, updated_at = ?, thinking = ?, web_search = ?"
+                    " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                    (
+                        status.value,
+                        error_code,
+                        error_message,
+                        duration_ms,
+                        model_id,
+                        run_lock_id,
+                        _iso(updated_at),
+                        _json_dumps(thinking),
+                        _json_dumps(web_search),
                         message_id,
                         account_id,
                     ),
@@ -545,6 +605,7 @@ class ConversationRepository:
             ),
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
+            web_search=_json_loads_any(row["web_search"]),
         )
 
 
@@ -564,6 +625,18 @@ def _json_loads(value: Any) -> dict[str, list[str]] | None:
         if isinstance(items, list) and all(isinstance(item, str) for item in items):
             cleaned[str(key)] = items
     return cleaned if cleaned else None
+
+
+def _json_loads_any(value: Any) -> dict[str, Any] | None:
+    if value is None:
+        return None
+    try:
+        import json
+
+        parsed = json.loads(str(value))
+    except (ValueError, TypeError):
+        return None
+    return parsed if isinstance(parsed, dict) else None
 
 
 def _json_dumps(value: dict[str, Any]) -> str:

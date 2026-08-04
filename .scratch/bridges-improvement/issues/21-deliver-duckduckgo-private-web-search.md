@@ -1,5 +1,5 @@
 # 21 — 交付 DuckDuckGo 隐私联网搜索
-Status: ready-for-agent
+Status: done
 Blocked by: [20](./20-deliver-layered-retrieval-and-citations.md)
 Covered requirements: EXT-01, CHAT-09, BONUS-01, SCORE-02, MODEL-03, DESKTOP-01
 ADRs: [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0015](../../../docs/adr/0015-minimum-cloud-disclosure.md), [0020](../../../docs/adr/0020-layered-retrieval-and-mandatory-teaching-search.md), [0023](../../../docs/adr/0023-desktop-only-deployment-and-use.md)
@@ -12,16 +12,16 @@ ADRs: [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0015](
 
 ## Acceptance criteria
 
-- [ ] 日常陪伴模式仅在明确联网请求、时效性问题或事实核查需要时触发 DuckDuckGo，并向用户显示触发原因。
-- [ ] 本地查询规划器从问题中生成最小搜索词；测试证明私人附件原文、画像、账户标识和凭据不会进入请求。
-- [ ] DuckDuckGo 不需要在 `.env`、账户设置或部署参数中配置密钥。
-- [ ] 搜索中显示中文进度和搜索词概述；完成后显示来源标题、站点、URL、摘要和访问时间。
-- [ ] 最终回答中的联网主张可追溯到真实返回结果，点击引用打开对应网页，不伪造 URL 或来源。
-- [ ] 搜索结果回到本地后才与授权私人上下文组合，私人内容不反向发送给搜索服务。
-- [ ] 超时、限流、无结果、解析失败和断网分别显示可理解错误及重试入口，不被呈现为空白成功。
-- [ ] 搜索请求与审计仅记录必要元数据和数据类别，默认不额外复制保存敏感查询正文。
-- [ ] 用户可在本轮取消搜索；取消或重试不会重复发送用户消息或残留“正在搜索”状态。
-- [ ] 工具卡具有中文 loading、empty、error、permission 和 recovery 状态，并符合桌面键盘操作要求。
+- [x] 日常陪伴模式仅在明确联网请求、时效性问题或事实核查需要时触发 DuckDuckGo，并向用户显示触发原因。
+- [x] 本地查询规划器从问题中生成最小搜索词；测试证明私人附件原文、画像、账户标识和凭据不会进入请求。
+- [x] DuckDuckGo 不需要在 `.env`、账户设置或部署参数中配置密钥。
+- [x] 搜索中显示中文进度和搜索词概述；完成后显示来源标题、站点、URL、摘要和访问时间。
+- [x] 最终回答中的联网主张可追溯到真实返回结果，点击引用打开对应网页，不伪造 URL 或来源。
+- [x] 搜索结果回到本地后才与授权私人上下文组合，私人内容不反向发送给搜索服务。
+- [x] 超时、限流、无结果、解析失败和断网分别显示可理解错误及重试入口，不被呈现为空白成功。
+- [x] 搜索请求与审计仅记录必要元数据和数据类别，默认不额外复制保存敏感查询正文。
+- [x] 用户可在本轮取消搜索；取消或重试不会重复发送用户消息或残留“正在搜索”状态。
+- [x] 工具卡具有中文 loading、empty、error、permission 和 recovery 状态，并符合桌面键盘操作要求。
 
 ## Verification
 
@@ -43,3 +43,5 @@ ADRs: [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0015](
 ## Comments
 
 DuckDuckGo 是固定搜索供应商，不属于用户可更换模型；页面不得出现供应商选择器或 Key 输入框。
+
+实现验证：协议级后端与前端测试已覆盖触发、脱敏、结果引用、失败重试和取消；当前环境的 Chromium 启动因 `spawn EPERM` 被阻断，真实 DuckDuckGo 冒烟需显式设置 `BRIDGES_DDG_SMOKE=1` 且受网络环境影响。

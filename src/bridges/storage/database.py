@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -668,6 +668,13 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_message_citations_round
         ON message_citations(account_id, round_id)
+        """,
+    ],
+    # Issue 21：将公网搜索状态固化在助手消息上，保证刷新/重试/失败与引用
+    # 展示都读取同一份结果，不把私有查询正文写入审计或消息之外的记录。
+    11: [
+        """
+        ALTER TABLE messages ADD COLUMN web_search TEXT
         """,
     ],
 }
