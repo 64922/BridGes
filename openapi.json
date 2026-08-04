@@ -4573,6 +4573,195 @@
         }
       }
     },
+    "/search": {
+      "get": {
+        "tags": [
+          "search"
+        ],
+        "summary": "Unified Search",
+        "description": "跨内容统一搜索：空查询返回空结果；索引未就绪时结果照返并标记\n``index_ready=false``，由前端显示「索引尚未就绪」而非「没有结果」。",
+        "operationId": "unified_search_search_get",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Q"
+            }
+          },
+          {
+            "name": "types",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "结果类型筛选：chat/image/document/project，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。",
+              "title": "Types"
+            },
+            "description": "结果类型筛选：chat/image/document/project，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。"
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。",
+              "title": "Project Id"
+            },
+            "description": "限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。"
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "起始时间（ISO 8601，作用于结果最近更新时间）。",
+              "title": "From"
+            },
+            "description": "起始时间（ISO 8601，作用于结果最近更新时间）。"
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "截止时间（ISO 8601，作用于结果最近更新时间）。",
+              "title": "To"
+            },
+            "description": "截止时间（ISO 8601，作用于结果最近更新时间）。"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 50,
+              "minimum": 1,
+              "description": "合并结果上限，默认 10。",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "合并结果上限，默认 10。"
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Unified Search Search Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Unified Search Search Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 422 Unified Search Search Get"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Unified Search Search Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/auth/key-settings": {
       "get": {
         "tags": [
@@ -39707,6 +39896,43 @@
         "title": "SearchRequest",
         "description": "Scoped hybrid search request over scientific sources.\n\nThe search service compiles a ScopeEnvelope from the authenticated subject,\nproject, object domain and declared purpose before touching any index."
       },
+      "SearchResponse": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "title": "Query",
+            "description": "原始查询词（回显）。"
+          },
+          "index_ready": {
+            "type": "boolean",
+            "title": "Index Ready",
+            "description": "账户索引是否就绪；有待处理/处理中文档或索引未就绪时为 false，结果仍返回，由前端显示「索引尚未就绪」提示。"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/SearchResultItem"
+            },
+            "type": "array",
+            "title": "Results",
+            "description": "按最近更新倒序的合并结果（截断到 limit）。"
+          },
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Counts",
+            "description": "四类结果各自的总命中数（不受 limit 截断），用于筛选 tab 计数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "query",
+          "index_ready"
+        ],
+        "title": "SearchResponse",
+        "description": "统一搜索响应：查询回显、索引就绪信号、结果列表与分类计数。"
+      },
       "SearchResult": {
         "properties": {
           "query": {
@@ -39764,6 +39990,147 @@
         ],
         "title": "SearchResult",
         "description": "Result of a scoped hybrid search.\n\nCarries the compiled scope envelope so callers can audit the scope snapshot\nthat was enforced, and so downstream claim/evidence steps can bind the same\nscope. Coverage gaps are reported explicitly rather than silently dropping\nchannels."
+      },
+      "SearchResultItem": {
+        "properties": {
+          "result_type": {
+            "type": "string",
+            "enum": [
+              "chat",
+              "image",
+              "document",
+              "project"
+            ],
+            "title": "Result Type",
+            "description": "结果类型。"
+          },
+          "result_id": {
+            "type": "string",
+            "title": "Result Id",
+            "description": "类型内唯一的结果标识（跳转主键）。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "结果标题（会话/项目名、文档或图片名）。"
+          },
+          "snippet": {
+            "items": {
+              "$ref": "#/components/schemas/SearchSegment"
+            },
+            "type": "array",
+            "title": "Snippet",
+            "description": "真实命中片段；命中词段 matched=true。标题命中时片段取自标题。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "结果最近更新时间。"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "聊天结果的会话标识。"
+          },
+          "message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Id",
+            "description": "消息命中时的消息标识。"
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id",
+            "description": "图片/文档结果的对象标识。"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "项目标识（项目结果或归属项目）。"
+          },
+          "page_number": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Page Number",
+            "description": "文档命中分块的页码锚点。"
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title",
+            "description": "文档命中分块的章节标题锚点。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "result_type",
+          "result_id",
+          "title",
+          "updated_at"
+        ],
+        "title": "SearchResultItem",
+        "description": "单条搜索结果（扁平结构，代码生成友好）。\n\n``result_id`` 在类型内唯一：消息命中为消息标识，会话标题命中为会话\n标识，图片为对象标识，文档为文档标识，项目为项目标识。跳转锚点字段\n按类型填充，不适用时为 null。"
+      },
+      "SearchSegment": {
+        "properties": {
+          "text": {
+            "type": "string",
+            "title": "Text",
+            "description": "片段文字。"
+          },
+          "matched": {
+            "type": "boolean",
+            "title": "Matched",
+            "description": "是否为查询命中词（前端高亮）。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "text"
+        ],
+        "title": "SearchSegment",
+        "description": "结果片段的一段文字；``matched`` 标记该段是否为真实命中词。"
       },
       "SeatPolicy": {
         "properties": {

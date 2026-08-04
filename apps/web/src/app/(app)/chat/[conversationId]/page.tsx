@@ -114,6 +114,34 @@ export default function ChatConversationPage() {
     void load();
   }, [load]);
 
+  // Issue 24：统一搜索跳转的消息锚点。?message=<id> 时等消息渲染完成后
+  // 滚动到对应消息并短暂高亮（data-anchor-highlight，2s 后自动消退；
+  // 高亮过渡走 --motion-* 令牌，prefers-reduced-motion 下趋近即时）。
+  useEffect(() => {
+    if (loadState !== "ready") return;
+    const anchorId = new URLSearchParams(window.location.search).get("message");
+    if (!anchorId) return;
+    let clearHighlight: number | undefined;
+    const poll = window.setInterval(() => {
+      const element = document.getElementById(`msg-${anchorId}`);
+      if (!element) return;
+      window.clearInterval(poll);
+      element.scrollIntoView({ block: "center" });
+      element.setAttribute("data-anchor-highlight", "true");
+      clearHighlight = window.setTimeout(
+        () => element.removeAttribute("data-anchor-highlight"),
+        2000
+      );
+    }, 100);
+    // 兜底：消息始终未出现时停止轮询（如已被删除）。
+    const stop = window.setTimeout(() => window.clearInterval(poll), 5000);
+    return () => {
+      window.clearInterval(poll);
+      window.clearTimeout(stop);
+      if (clearHighlight !== undefined) window.clearTimeout(clearHighlight);
+    };
+  }, [loadState]);
+
   // 解析对话所属学习项目名称；项目已在别处删除（404）时清除 chip 并提示。
   const projectId = conversation?.project_id ?? null;
   useEffect(() => {

@@ -85,6 +85,9 @@ export type RevocationEvent = components["schemas"]["RevocationEvent"];
 export type RevalidationReport = components["schemas"]["RevalidationReport"];
 export type PackRollbackRecord = components["schemas"]["PackRollbackRecord"];
 export type PackRollbackStatus = components["schemas"]["PackRollbackStatus"];
+export type SearchResponse = components["schemas"]["SearchResponse"];
+export type SearchResultItem = components["schemas"]["SearchResultItem"];
+export type SearchSegment = components["schemas"]["SearchSegment"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -1471,6 +1474,60 @@ export async function updateChatConversationProject(
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Issue 24：跨内容统一桌面搜索
+// ---------------------------------------------------------------------------
+
+/** 统一搜索的结果类型筛选值（与契约 SearchResultItem.result_type 一致）。 */
+export type SearchResultType = SearchResultItem["result_type"];
+
+export interface UnifiedSearchParams {
+  q: string;
+  types?: SearchResultType[];
+  projectId?: string;
+  /** ISO 8601 起止时间（updated_at 过滤）。 */
+  from?: string;
+  to?: string;
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * 统一桌面搜索（GET /search）：``types`` 以重复查询参数传递，
+ * 错误统一走 parseApiError（401/403 由调用方经 classifyApiError 映射）。
+ */
+export async function searchUnified(params: UnifiedSearchParams): Promise<SearchResponse> {
+  const query = new URLSearchParams();
+  query.set("q", params.q);
+  for (const type of params.types ?? []) {
+    query.append("types", type);
+  }
+  if (params.projectId) query.set("project_id", params.projectId);
+  if (params.from) query.set("from", params.from);
+  if (params.to) query.set("to", params.to);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  const res = await fetch(`${API_BASE}/search?${query.toString()}`, {
+    credentials: "same-origin",
+    cache: "no-store",
+    signal: params.signal,
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 以 Blob 读取知识库材料原始字节（不触发浏览器下载）：
+ * 图片搜索结果的就地预览用它构造 object URL。
+ */
+export async function fetchKnowledgeBaseMaterialBlob(objectId: string): Promise<Blob> {
+  const res = await fetch(
+    `${API_BASE}/knowledge-base/materials/${encodeURIComponent(objectId)}/download`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.blob();
 }
 
 export function statusText(status: HealthStatus): string {

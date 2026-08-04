@@ -1,7 +1,7 @@
 import SearchPageClient from "./search-page-client";
 
 export const metadata = {
-  title: "搜索对话 — BridGes",
+  title: "搜索 — BridGes",
 };
 
 export default function SearchPage() {

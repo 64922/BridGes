@@ -37,6 +37,7 @@ from bridges.api import (
     projects,
     science,
     scope,
+    search,
     sharing,
     sync,
     vault,
@@ -138,6 +139,7 @@ from bridges.science.claims import (
 )
 from bridges.science.service import build_source_impact_resolver
 from bridges.scope import ScopeEnforcer
+from bridges.search import SearchService
 from bridges.sharing import SharingService
 from bridges.storage import (
     BridgesDatabase,
@@ -882,6 +884,8 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 ),
                 probe_service=CapabilityProbeService(state_store=state_store),
             )
+        # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
+        app.state.search_service = SearchService(bridges_database)
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1215,6 +1219,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(ingestion.router)
     app.include_router(knowledge_base.router)
     app.include_router(learning_projects.router)
+    app.include_router(search.router)
     app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)

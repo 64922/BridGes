@@ -212,28 +212,33 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
     await expect(sidebar).toBeVisible();
   });
 
-  test("搜索页覆盖空关键词、无匹配与结果跳转", async ({ page }) => {
+  test("搜索页覆盖空查询引导、无结果与结果跳转", async ({ page }) => {
     await freshAccount(page, "i12-search");
     await skipIfChatStorageDisabled(page);
 
     await page.goto("/search");
-    await expect(page.getByRole("heading", { name: "搜索对话" })).toBeVisible();
-    // 空关键词提示
-    await expect(page.getByText("输入关键词搜索你的对话。")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "搜索", exact: true })).toBeVisible();
+    // 空查询引导（Issue 24 统一搜索页）
+    await expect(page.getByTestId("state-empty")).toContainText(
+      "输入关键词，搜索聊天、图片、文档和学习项目"
+    );
 
-    // 无匹配空态
-    await page.getByLabel("关键词").fill("绝不存在的关键词xyz");
-    await expect(page.getByText("没有匹配的对话。")).toBeVisible();
+    // 无结果态
+    await page.getByTestId("search-input").fill("绝不存在的关键词xyz");
+    await expect(page.getByTestId("state-empty")).toContainText("没有找到");
 
-    // 通过真实 API 建立对话后可检索并跳转
+    // 通过真实 API 建立对话后可检索并跳转（会话标题命中）
     const conversationId = await createConversation(page, "光合作用笔记");
     await page.reload();
-    await page.getByLabel("关键词").fill("光合作用");
+    await page.getByTestId("search-input").fill("光合作用");
     // 侧栏最近对话同步出现该会话
     await expect(
       page.getByTestId("app-sidebar").getByRole("link", { name: "光合作用笔记" })
     ).toBeVisible();
-    const result = page.getByTestId("main-content").getByRole("link", { name: /光合作用笔记/ });
+    const result = page
+      .getByTestId("main-content")
+      .locator('[data-result-type="chat"]')
+      .first();
     await expect(result).toBeVisible();
     await result.click();
     await page.waitForURL(`/chat/${conversationId}`);
@@ -256,11 +261,7 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       await route.continue();
     });
 
-    await page.goto("/search");
-    // 搜索页：错误 + 重试（role=alert）
-    await expect(page.getByTestId("state-error")).toBeVisible();
-    await expect(page.getByText("没有匹配的对话")).toHaveCount(0);
-
+    await page.goto("/");
     // 侧栏最近对话：错误 + 重试，不显示空列表文案
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar.getByRole("alert")).toBeVisible();
@@ -293,8 +294,10 @@ test.describe("Issue 12 — 激活语义与键盘可达", () => {
       projectsSidebar.getByRole("link", { name: "学习项目" })
     ).toHaveAttribute("aria-current", "page");
 
-    // 对话页：仅该会话条目为当前页，模块均不标记
-    const conversationId = await createConversation(page, null);
+    // 对话页：仅该会话条目为当前页，模块均不标记。
+    // 注：Issue 15 起最近对话有意过滤「无标题且无消息」的空草稿会话，
+    // 因此这里创建带标题会话，保证它出现在侧边栏以断言激活语义。
+    const conversationId = await createConversation(page, "aria 测试会话");
     await page.goto(`/chat/${conversationId}`);
     const chatSidebar = page.getByTestId("app-sidebar");
     await expect(chatSidebar.locator('[aria-current="page"]')).toHaveCount(1);

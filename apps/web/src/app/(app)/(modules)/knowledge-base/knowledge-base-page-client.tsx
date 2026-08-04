@@ -296,11 +296,18 @@ export default function KnowledgeBasePageClient() {
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [actionError, setActionError] = useState("");
   const [dialog, setDialog] = useState<DialogState>(null);
+  // Issue 24：经 URL（?material=&page=&section=）打开详情时展示的页码/章节锚点说明
+  const [detailAnchor, setDetailAnchor] = useState<{
+    page: number | null;
+    section: string | null;
+  } | null>(null);
   const [dialogError, setDialogError] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const uploadControllersRef = useRef(new Map<string, AbortController>());
+  // Issue 24：?material= URL 定位只处理一次（避免轮询刷新重复打开对话框）
+  const urlAnchorHandledRef = useRef(false);
 
   const reload = useCallback(async (silent: boolean) => {
     try {
@@ -344,6 +351,28 @@ export default function KnowledgeBasePageClient() {
       controllers.clear();
     };
   }, []);
+
+  // Issue 24：统一搜索的文档跳转定位。?material=<object_id> 自动打开该
+  // 材料的详情对话框；带 &page=N 时在详情内展示页码锚点说明（详情不含
+  // 正文分块，锚点信息保证定位可见）。材料缺失时给出中文提示而非静默。
+  useEffect(() => {
+    if (urlAnchorHandledRef.current || materials === null) return;
+    urlAnchorHandledRef.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const objectId = params.get("material");
+    if (!objectId) return;
+    const target = materials.find((item) => item.object_id === objectId);
+    if (!target) {
+      setActionError("没有找到对应的材料，可能已被删除或属于其他账户。");
+      return;
+    }
+    const pageParam = Number.parseInt(params.get("page") ?? "", 10);
+    setDetailAnchor({
+      page: Number.isNaN(pageParam) ? null : pageParam,
+      section: params.get("section"),
+    });
+    setDialog({ kind: "detail", material: target });
+  }, [materials]);
 
   // -------------------------------------------------------------------------
   // 上传
@@ -498,6 +527,7 @@ export default function KnowledgeBasePageClient() {
 
   const openDialog = (kind: "detail" | "delete" | "rebuild", material: KnowledgeBaseMaterialProjection) => {
     setDialogError("");
+    setDetailAnchor(null);
     setDialog({ kind, material });
   };
 
@@ -662,6 +692,15 @@ export default function KnowledgeBasePageClient() {
     const stages = deriveStageStates(material);
     const degraded = isVectorDegraded(material);
     const retrying = busyAction === `retry:${material.object_id}`;
+    // 搜索定位锚点（页码与章节，与搜索结果行同一「第 N 页 · 章节」格式）
+    const anchorText = detailAnchor
+      ? [
+          detailAnchor.page != null ? `第 ${detailAnchor.page} 页` : "",
+          detailAnchor.section ?? "",
+        ]
+          .filter(Boolean)
+          .join(" · ")
+      : "";
     return (
       <Dialog
         open
@@ -669,6 +708,29 @@ export default function KnowledgeBasePageClient() {
         title={material.filename}
         description="材料的完整元数据与逐阶段处理状态。"
       >
+        {anchorText && (
+          <p
+            data-testid="kb-detail-anchor"
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "var(--space-2)",
+              marginBottom: "var(--space-3)",
+              padding: "var(--space-3)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-status-info)",
+              backgroundColor: "var(--color-status-info-bg)",
+              color: "var(--color-status-info)",
+              fontSize: "var(--text-sm)",
+            }}
+          >
+            <Icon name="info" size={18} aria-hidden />
+            <span>
+              来自搜索的定位锚点：{anchorText}（对应原文档位置）。
+              详情不含正文分块，锚点用于在原文档中定位命中位置。
+            </span>
+          </p>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
           {material.title && <MetaRow label="标题">{material.title}</MetaRow>}
           <MetaRow label="类型">{material.media_type}</MetaRow>

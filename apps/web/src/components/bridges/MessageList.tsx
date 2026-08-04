@@ -541,7 +541,7 @@ export function MessageList({
             </p>
           </li>
         ) : (
-        <li key={message.id}>
+        <li key={message.id} id={`msg-${message.id}`}>
           {message.role === "user" ? (
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
               <div

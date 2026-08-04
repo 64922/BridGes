@@ -427,3 +427,16 @@
     display: none;
   }
 }
+
+
+/* Issue 24：统一搜索跳转的消息锚点高亮（约 2s 后由脚本移除属性，背景经
+   --motion-duration-slow 过渡显隐；prefers-reduced-motion 下令牌趋近
+   0ms，高亮即时显隐）。 */
+li[id^="msg-"] {
+  transition: background-color var(--motion-duration-slow) var(--motion-easing);
+}
+
+[data-anchor-highlight="true"] {
+  background-color: var(--color-accent-primary-soft);
+  border-radius: var(--radius-md);
+}

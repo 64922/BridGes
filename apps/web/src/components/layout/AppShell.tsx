@@ -1,12 +1,14 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { SkipLink } from "@/components/design-system/SkipLink";
 import { useAuth } from "@/context/AuthContext";
+import { saveSearchReturnFocus } from "@/lib/search-shortcut";
 
 import { AppSidebar } from "./AppSidebar";
 import { MainContent } from "./MainContent";
@@ -30,6 +32,25 @@ interface AppShellProps {
 export function AppShell({ children, mode = "account", projectId, showSkipLink = true }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const { accountRevision, authState, sessionError, refreshSession } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Issue 24：全局 Ctrl/Cmd+K 打开统一搜索页并记录触发元素（Esc 返回时
+  // 归还焦点）；已在搜索页时改为聚焦搜索输入框，不与输入框内行为冲突。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k") return;
+      event.preventDefault();
+      if (pathname === "/search") {
+        document.querySelector<HTMLInputElement>('[data-testid="search-input"]')?.focus();
+        return;
+      }
+      saveSearchReturnFocus(document.activeElement as HTMLElement | null);
+      router.push("/search");
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [pathname, router]);
 
   const protectedContent =
     authState === "authenticated" ? (

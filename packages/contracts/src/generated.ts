@@ -909,6 +909,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Unified Search
+         * @description 跨内容统一搜索：空查询返回空结果；索引未就绪时结果照返并标记
+         *     ``index_ready=false``，由前端显示「索引尚未就绪」而非「没有结果」。
+         */
+        get: operations["unified_search_search_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/key-settings": {
         parameters: {
             query?: never;
@@ -16028,6 +16049,34 @@ export interface components {
             rerank: boolean;
         };
         /**
+         * SearchResponse
+         * @description 统一搜索响应：查询回显、索引就绪信号、结果列表与分类计数。
+         */
+        SearchResponse: {
+            /**
+             * Query
+             * @description 原始查询词（回显）。
+             */
+            query: string;
+            /**
+             * Index Ready
+             * @description 账户索引是否就绪；有待处理/处理中文档或索引未就绪时为 false，结果仍返回，由前端显示「索引尚未就绪」提示。
+             */
+            index_ready: boolean;
+            /**
+             * Results
+             * @description 按最近更新倒序的合并结果（截断到 limit）。
+             */
+            results?: components["schemas"]["SearchResultItem"][];
+            /**
+             * Counts
+             * @description 四类结果各自的总命中数（不受 limit 截断），用于筛选 tab 计数。
+             */
+            counts?: {
+                [key: string]: number;
+            };
+        };
+        /**
          * SearchResult
          * @description Result of a scoped hybrid search.
          *
@@ -16065,6 +16114,90 @@ export interface components {
             vector_total: number;
             /** Coverage Gaps */
             coverage_gaps?: components["schemas"]["CoverageGap"][];
+        };
+        /**
+         * SearchResultItem
+         * @description 单条搜索结果（扁平结构，代码生成友好）。
+         *
+         *     ``result_id`` 在类型内唯一：消息命中为消息标识，会话标题命中为会话
+         *     标识，图片为对象标识，文档为文档标识，项目为项目标识。跳转锚点字段
+         *     按类型填充，不适用时为 null。
+         */
+        SearchResultItem: {
+            /**
+             * Result Type
+             * @description 结果类型。
+             * @enum {string}
+             */
+            result_type: "chat" | "image" | "document" | "project";
+            /**
+             * Result Id
+             * @description 类型内唯一的结果标识（跳转主键）。
+             */
+            result_id: string;
+            /**
+             * Title
+             * @description 结果标题（会话/项目名、文档或图片名）。
+             */
+            title: string;
+            /**
+             * Snippet
+             * @description 真实命中片段；命中词段 matched=true。标题命中时片段取自标题。
+             */
+            snippet?: components["schemas"]["SearchSegment"][];
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 结果最近更新时间。
+             */
+            updated_at: string;
+            /**
+             * Conversation Id
+             * @description 聊天结果的会话标识。
+             */
+            conversation_id?: string | null;
+            /**
+             * Message Id
+             * @description 消息命中时的消息标识。
+             */
+            message_id?: string | null;
+            /**
+             * Object Id
+             * @description 图片/文档结果的对象标识。
+             */
+            object_id?: string | null;
+            /**
+             * Project Id
+             * @description 项目标识（项目结果或归属项目）。
+             */
+            project_id?: string | null;
+            /**
+             * Page Number
+             * @description 文档命中分块的页码锚点。
+             */
+            page_number?: number | null;
+            /**
+             * Section Title
+             * @description 文档命中分块的章节标题锚点。
+             */
+            section_title?: string | null;
+        };
+        /**
+         * SearchSegment
+         * @description 结果片段的一段文字；``matched`` 标记该段是否为真实命中词。
+         */
+        SearchSegment: {
+            /**
+             * Text
+             * @description 片段文字。
+             */
+            text: string;
+            /**
+             * Matched
+             * @description 是否为查询命中词（前端高亮）。
+             * @default false
+             */
+            matched: boolean;
         };
         /**
          * SeatPolicy
@@ -22333,6 +22466,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    unified_search_search_get: {
+        parameters: {
+            query?: {
+                q?: string;
+                /** @description 结果类型筛选：chat/image/document/project，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。 */
+                types?: string[] | null;
+                /** @description 限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。 */
+                project_id?: string | null;
+                /** @description 起始时间（ISO 8601，作用于结果最近更新时间）。 */
+                from?: string | null;
+                /** @description 截止时间（ISO 8601，作用于结果最近更新时间）。 */
+                to?: string | null;
+                /** @description 合并结果上限，默认 10。 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SearchResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
             /** @description Service Unavailable */
