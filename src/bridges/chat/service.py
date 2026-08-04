@@ -45,7 +45,9 @@ from bridges.contracts.retrieval import (
     RetrievalRoundProjection,
     RetrievalSourceLayer,
 )
+from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
@@ -61,9 +63,9 @@ CHAT_MODE = ChatMode.COMPANION
 class OrchestrationStep(Protocol):
     """模式编排中的一步（Issue 14 声明的代码级编排 seam）。
 
-    每步向用户披露一条可公开进度（``describe``），并在后续 Issue 接入
-    真实行为（教学证据充足性门、自动联网检索、理解检查、测验）时扩展
-    ``run`` 钩子；当前全部步骤为声明式，行为零变化。
+    每步向用户披露一条可公开进度（``describe``）。学习模式的教学证据门、
+    自动联网检索、理解检查与测验由 ``TeachingTurnService`` 和生成主路径
+    执行，步骤本身只负责提供稳定的公开进度文案。
     """
 
     @property
@@ -73,10 +75,10 @@ class OrchestrationStep(Protocol):
 
 
 class DeclarativeStep:
-    """声明式编排步骤：当前只提供可披露进度，不产生行为。
+    """声明式编排步骤：只提供可披露进度，不承载教学业务行为。
 
-    后续 Issue 引入真实能力时，用带 ``run`` 的步骤替换对应声明项，
-    或在此类上扩展可选钩子；生成主路径与思考摘要无需改写。
+    教学业务行为在生成主路径中按当前模式执行，避免把进度文案误当成
+    证据检查或回答能力。
     """
 
     def __init__(self, name: str, description: str) -> None:
@@ -94,9 +96,9 @@ class DeclarativeStep:
 class ModeContract:
     """对话模式的回答策略合同（Issue 14，AC-05/AC-04 的代码级编排接口）。
 
-    每种模式一份合同，是后续能力接入的单一 seam：编排能力（画像、材料
-    检索、教学规划、理解检查、测验）作为合同声明的步骤接入，不重写生成
-    主路径；思考摘要的初始步骤从 ``steps`` 派生，合同是唯一来源。
+    每种模式一份合同，统一提供提示词与公开进度；教学证据门、材料检索、
+    教学规划、理解检查与测验由学习模式的教学服务执行。思考摘要的初始
+    步骤从 ``steps`` 派生，合同是进度文案的唯一来源。
     """
 
     def __init__(
@@ -114,9 +116,8 @@ class ModeContract:
 #: 日常陪伴：自然、有分寸的个性化陪伴——识别当前情境信号但不形成心理诊断，
 #: 不把单次情绪写成长期事实。
 #: 学习模式：因材施教老师合同——把「界定目标 → 参考知识状态 → 循序讲解 →
-#: 理解检查/适量测验」的编排阶段显式声明为合同步骤，后续画像、材料检索、
-#: 教学规划、理解检查与测验功能在此合同上接入；当前实现只注入合同与编排
-#: 约定，真实检索/画像/测验由后续 Issue 接入，不伪造工具结果。
+#: 理解检查/适量测验」的编排阶段显式声明为合同步骤；证据门与教学轮次
+#: 由 ``TeachingTurnService`` 负责，回答不得绕过证据门或伪造工具结果。
 _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
     ChatMode.COMPANION: ModeContract(
         system_prompt=(
@@ -141,12 +142,12 @@ _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
             "3）讲解中用具体例子连接新知识与已有认知，必要时主动安排理解检查"
             "（简短提问或请学生复述）与适量测验；"
             "4）回答结束给出下一步学习建议。"
-            "本地教学材料不足时，如实说明缺失并建议可核实的补充来源，不得编造资料。"
-            "后续的画像、材料检索、教学规划、理解检查与测验功能会逐步接入本合同；"
-            "尚未接入的功能不得伪造结果。"
+            "每轮先核对当前对话、附件、项目资料和授权知识库；本地证据不足时按需"
+            "检索公开来源。证据不足、冲突或不可用时，必须明确说明缺口，不得用模型"
+            "记忆补全或伪造资料。教学卡片记录的理解检查只能作为待确认状态，不能"
+            "仅凭一次回答宣布用户已掌握。"
         ),
-        # 编排步骤与提示词合同一致；后续教学证据充足性门、自动联网检索、
-        # 理解检查与测验作为带 run 的步骤接入（Issue 23+），替换声明项即可。
+        # 编排步骤与提示词合同一致；教学业务行为由学习模式教学服务执行。
         steps=(
             DeclarativeStep("teaching_objective", "按学习目标分析你的问题与已有知识"),
             DeclarativeStep("teaching_explain", "组织循序渐进的教学回答"),
@@ -259,6 +260,7 @@ class ChatService:
         retrieval_service: LayeredRetrievalService | None = None,
         web_search_service: WebSearchService | None = None,
         arxiv_search_service: ArxivSearchService | None = None,
+        teaching_service: TeachingTurnService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -269,6 +271,8 @@ class ChatService:
         self._web_search = web_search_service
         #: 受限内置 arXiv MCP（Issue 22）；结果失败时不调用模型兜底。
         self._arxiv_search = arxiv_search_service
+        #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
+        self._teaching = teaching_service or TeachingTurnService()
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -567,6 +571,11 @@ class ChatService:
             if self._arxiv_search is not None
             else None
         )
+        teaching = (
+            self._teaching.initial(content)
+            if mode == ChatMode.STUDY
+            else None
+        )
         user_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -602,6 +611,7 @@ class ChatService:
             updated_at=now,
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
+            teaching=(teaching.model_dump(mode="json") if teaching else None),
         )
         if attachment_ids:
             self._repo.insert_messages_with_attachments(
@@ -670,9 +680,205 @@ class ChatService:
             history = self._model_history(
                 account_id, conversation_id, until_user_message_id
             )
+            mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            retrieval_round: RetrievalRoundProjection | None = None
+            teaching_projection: TeachingTurnProjection | None = (
+                TeachingTurnProjection.model_validate(current.teaching)
+                if current.teaching is not None and mode == ChatMode.STUDY
+                else None
+            )
+            if current.teaching is not None and mode != ChatMode.STUDY:
+                # 若用户在流启动后切回日常陪伴，不能留下永久 loading 教学卡，
+                # 也不能把教学上下文注入这条日常回答。
+                switched_teaching = TeachingTurnProjection.model_validate(current.teaching)
+                switched_gate = switched_teaching.evidence_gate.model_copy(
+                    update={"search_status": TeachingCardStatus.RECOVERY}
+                )
+                switched_teaching = switched_teaching.model_copy(
+                    update={
+                        "status": TeachingCardStatus.RECOVERY,
+                        "evidence_gate": switched_gate,
+                        "next_prompt": "本轮已切回日常陪伴，教学检查不会强制继续。",
+                        "gap_response": "本轮尚未形成教学回答，因为对话已切回日常陪伴。",
+                        "can_answer_reliably": False,
+                        "can_cancel": False,
+                        "can_retry": False,
+                        "quiz": None,
+                    }
+                )
+                self._repo.update_message_teaching(
+                    account_id,
+                    assistant_message_id,
+                    switched_teaching.model_dump(mode="json"),
+                    datetime.now(UTC),
+                )
+
+            # 学习模式先检查三层本地材料，再按证据门结果自动选择公开来源。
+            # 普通陪伴模式继续沿用“用户明确要求/时效/核查才联网”的规则。
+            if mode == ChatMode.STUDY:
+                messages = self._repo.list_messages(account_id, conversation_id)
+                owner = _owner_user_message(messages, assistant_message_id)
+                round_query = owner.content if owner is not None else ""
+                previous_turn = _previous_teaching_turn(
+                    messages, owner.message_id if owner else None
+                )
+                if self._retrieval is not None and not stop_event.is_set():
+                    retrieval_round = self._retrieval.run_round(
+                        account_id,
+                        conversation_id,
+                        assistant_message_id,
+                        until_user_message_id
+                        or (owner.message_id if owner is not None else None),
+                        round_query,
+                        use_knowledge_base=use_knowledge_base,
+                    )
+                    if retrieval_round is not None:
+                        thinking = _retrieval_thinking(thinking, retrieval_round)
+
+                required_search = self._teaching.required_search(round_query, retrieval_round)
+
+                if required_search.value in {"arxiv", "both"} and self._arxiv_search is not None:
+                    arxiv_plan = self._arxiv_search.plan(
+                        round_query, mode, force=True
+                    )
+                    try:
+                        arxiv_search_projection = self._arxiv_search.search(
+                            account_id, arxiv_plan, stop_event=stop_event
+                        )
+                    except Exception:  # noqa: BLE001 - 教学门对外统一呈现失败状态
+                        arxiv_search_projection = ArxivSearchProjection(
+                            status=ArxivSearchStatus.ERROR,
+                            trigger_reason=arxiv_plan.reason,
+                            query_summary=arxiv_plan.query,
+                            error_code="arxiv_startup",
+                            error_message="arXiv 搜索服务启动失败，请重试。",
+                            can_retry=True,
+                        )
+                    if arxiv_search_projection is not None:
+                        self._repo.update_message_arxiv_search(
+                            account_id,
+                            assistant_message_id,
+                            arxiv_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        thinking = _arxiv_search_thinking(
+                            thinking, arxiv_search_projection
+                        )
+                        if arxiv_search_projection.status == ArxivSearchStatus.CANCELLED:
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.STOPPED,
+                                error_code=None,
+                                error_message=None,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_stopped_thinking(thinking),
+                                arxiv_search=arxiv_search_projection.model_dump(mode="json"),
+                                teaching=(
+                                    teaching_projection.model_dump(mode="json")
+                                    if teaching_projection is not None
+                                    else current.teaching
+                                ),
+                            )
+                            return
+
+                if required_search.value in {"duckduckgo", "both"} and self._web_search is not None:
+                    search_plan = self._web_search.plan(
+                        round_query, mode, force=True
+                    )
+                    web_search_projection = self._web_search.search(
+                        account_id, search_plan, stop_event=stop_event
+                    )
+                    if web_search_projection is not None:
+                        self._repo.update_message_web_search(
+                            account_id,
+                            assistant_message_id,
+                            web_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        thinking = _web_search_thinking(thinking, web_search_projection)
+                        if web_search_projection.status == WebSearchStatus.CANCELLED:
+                            self._finalize_message(
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.STOPPED,
+                                error_code=None,
+                                error_message=None,
+                                duration_ms=None,
+                                model_id=None,
+                                run_lock_id=None,
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=_stopped_thinking(thinking),
+                                web_search=web_search_projection.model_dump(mode="json"),
+                                teaching=(
+                                    teaching_projection.model_dump(mode="json")
+                                    if teaching_projection is not None
+                                    else current.teaching
+                                ),
+                            )
+                            return
+
+                teaching_projection = self._teaching.prepare(
+                    round_query,
+                    retrieval=retrieval_round,
+                    web_search=web_search_projection,
+                    arxiv_search=arxiv_search_projection,
+                    previous_turn=previous_turn,
+                    answer_text=round_query if previous_turn is not None else None,
+                    answer_message_id=owner.message_id if owner is not None else None,
+                )
+                self._repo.update_message_teaching(
+                    account_id,
+                    assistant_message_id,
+                    teaching_projection.model_dump(mode="json"),
+                    datetime.now(UTC),
+                )
+                thinking = _teaching_thinking(thinking, teaching_projection)
+
+                # 证据门仍未通过时用明确缺口结束本轮，不让模型记忆冒充来源。
+                if not teaching_projection.can_answer_reliably:
+                    safe_response = teaching_projection.gap_response or (
+                        "这轮的依据还不够，我先不把不确定内容说成可靠结论。"
+                    )
+                    self._repo.update_message_content(
+                        account_id, assistant_message_id, safe_response, datetime.now(UTC)
+                    )
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_done_thinking(thinking),
+                        web_search=(
+                            web_search_projection.model_dump(mode="json")
+                            if web_search_projection is not None
+                            else None
+                        ),
+                        arxiv_search=(
+                            arxiv_search_projection.model_dump(mode="json")
+                            if arxiv_search_projection is not None
+                            else None
+                        ),
+                        teaching=teaching_projection.model_dump(mode="json"),
+                    )
+                    yield StreamEvent(kind="delta", delta=safe_response)
+                    yield StreamEvent(kind="done")
+                    return
+
             # 论文型问题优先走固定、只读的 arXiv MCP；搜索失败时 fail closed，
             # 不允许模型记忆替代真实论文结果。
-            if self._arxiv_search is not None:
+            if mode != ChatMode.STUDY and self._arxiv_search is not None:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = _owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -746,7 +952,7 @@ class ChatService:
                             return
             # 公网搜索只接收当前用户消息经本地规划器脱敏后的最小词组；搜索
             # 失败或证据为空时 fail closed，不让模型用记忆伪装成联网结论。
-            if self._web_search is not None:
+            if mode != ChatMode.STUDY and self._web_search is not None:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = _owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -832,8 +1038,11 @@ class ChatService:
                 return
             # 生成前执行一轮分层检索：查询文本取所属用户消息正文；检索
             # 结果固化到消息投影（引用展示数据不漂移），并注入最小上下文。
-            retrieval_round: RetrievalRoundProjection | None = None
-            if self._retrieval is not None and not stop_event.is_set():
+            if (
+                self._retrieval is not None
+                and retrieval_round is None
+                and not stop_event.is_set()
+            ):
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = _owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -877,6 +1086,14 @@ class ChatService:
                     {
                         "role": "system",
                         "content": _arxiv_search_context(arxiv_search_projection),
+                    },
+                )
+            if teaching_projection is not None:
+                payload["messages"].insert(
+                    1,
+                    {
+                        "role": "system",
+                        "content": _teaching_context(teaching_projection),
                     },
                 )
             for event in self._gateway.stream(
@@ -934,7 +1151,7 @@ class ChatService:
                             content, len(web_search_projection.results)
                         )
                         if citation_error is not None:
-                            invalid_projection = web_search_projection.model_copy(
+                            invalid_web_projection = web_search_projection.model_copy(
                                 update={
                                     "status": WebSearchStatus.ERROR,
                                     "error_code": "web_search_citation_invalid",
@@ -946,7 +1163,7 @@ class ChatService:
                             self._repo.update_message_web_search(
                                 account_id,
                                 assistant_message_id,
-                                invalid_projection.model_dump(mode="json"),
+                                invalid_web_projection.model_dump(mode="json"),
                                 datetime.now(UTC),
                             )
                             self._finalize_message(
@@ -963,7 +1180,7 @@ class ChatService:
                                 thinking=_failed_thinking(
                                     thinking, "web_search_citation_invalid"
                                 ),
-                                web_search=invalid_projection.model_dump(mode="json"),
+                                web_search=invalid_web_projection.model_dump(mode="json"),
                             )
                             yield StreamEvent(
                                 kind="error",
@@ -977,7 +1194,7 @@ class ChatService:
                             content, arxiv_search_projection
                         )
                         if citation_error is not None:
-                            invalid_projection = arxiv_search_projection.model_copy(
+                            invalid_arxiv_projection = arxiv_search_projection.model_copy(
                                 update={
                                     "status": ArxivSearchStatus.ERROR,
                                     "error_code": "arxiv_citation_invalid",
@@ -989,7 +1206,7 @@ class ChatService:
                             self._repo.update_message_arxiv_search(
                                 account_id,
                                 assistant_message_id,
-                                invalid_projection.model_dump(mode="json"),
+                                invalid_arxiv_projection.model_dump(mode="json"),
                                 datetime.now(UTC),
                             )
                             self._finalize_message(
@@ -1006,7 +1223,7 @@ class ChatService:
                                 thinking=_failed_thinking(
                                     thinking, "arxiv_citation_invalid"
                                 ),
-                                arxiv_search=invalid_projection.model_dump(mode="json"),
+                                arxiv_search=invalid_arxiv_projection.model_dump(mode="json"),
                             )
                             yield StreamEvent(
                                 kind="error",
@@ -1098,6 +1315,7 @@ class ChatService:
         # 先收敛状态再注销活跃标记：避免并发读取在两者之间把仍处于
         # streaming 的消息误判为陈旧中断（终态由原子守卫保证单一写入）。
         # 停止同样保留已完成思考摘要并写入中文质量结论（Issue 14）。
+        stopped_teaching = _stopped_teaching_projection(message.teaching)
         self._finalize_message(
             account_id,
             message_id,
@@ -1112,6 +1330,11 @@ class ChatService:
             thinking=_stopped_thinking(message.thinking or _initial_thinking(CHAT_MODE)),
             web_search=_cancelled_web_search(message.web_search, now),
             arxiv_search=_cancelled_arxiv_search(message.arxiv_search, now),
+            teaching=(
+                stopped_teaching.model_dump(mode="json")
+                if stopped_teaching is not None
+                else None
+            ),
         )
         self._lifecycle.unregister(message_id)
         finalized = self._repo.get_message(account_id, message_id)
@@ -1174,6 +1397,11 @@ class ChatService:
             if self._arxiv_search is not None
             else None
         )
+        teaching = (
+            self._teaching.initial(owner.content, recovery=True)
+            if mode == ChatMode.STUDY
+            else None
+        )
         new_attempt = MessageRecord(
             message_id=secrets.token_urlsafe(16),
             conversation_id=conversation_id,
@@ -1195,6 +1423,7 @@ class ChatService:
             updated_at=now,
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
+            teaching=(teaching.model_dump(mode="json") if teaching else None),
         )
         self._repo.insert_message(new_attempt)
         self._repo.touch_conversation(account_id, conversation_id, now)
@@ -1277,6 +1506,7 @@ class ChatService:
         thinking: dict[str, list[str]] | None = None,
         web_search: dict[str, Any] | None = None,
         arxiv_search: dict[str, Any] | None = None,
+        teaching: dict[str, Any] | None = None,
     ) -> None:
         """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。"""
         measured = max(1, int((time.monotonic() - started) * 1000))
@@ -1293,6 +1523,7 @@ class ChatService:
             thinking=thinking,
             web_search=web_search,
             arxiv_search=arxiv_search,
+            teaching=teaching,
         )
 
     @staticmethod
@@ -1349,6 +1580,11 @@ class ChatService:
                 ArxivSearchProjection(**message.arxiv_search)
                 if message.arxiv_search is not None
                 and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            teaching=(
+                TeachingTurnProjection.model_validate(message.teaching)
+                if message.teaching is not None and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
             error_code=message.error_code,
@@ -1414,6 +1650,19 @@ def _owner_user_message(
     return None
 
 
+def _previous_teaching_turn(
+    messages: list[MessageRecord], user_message_id: str | None
+) -> TeachingTurnProjection | None:
+    """找到本轮用户消息之前最近一轮教学记录，用于评价连续对话中的回答。"""
+    previous: TeachingTurnProjection | None = None
+    for message in messages:
+        if user_message_id is not None and message.message_id == user_message_id:
+            return previous
+        if message.role == ChatMessageRole.ASSISTANT and message.teaching is not None:
+            previous = TeachingTurnProjection.model_validate(message.teaching)
+    return previous
+
+
 def _attempt_group(
     messages: list[MessageRecord], user_message_id: str
 ) -> list[MessageRecord]:
@@ -1447,6 +1696,70 @@ _LAYER_NAMES: dict[RetrievalSourceLayer, str] = {
 _EVIDENCE_SNIPPET_MAX = 160
 #: 注入模型的最小上下文总长度上限。
 _CONTEXT_MAX_CHARS = 2400
+
+
+def _teaching_thinking(
+    thinking: dict[str, list[str]], teaching: TeachingTurnProjection
+) -> dict[str, list[str]]:
+    """将证据门的检查、联网触发和缺口写入用户可见的过程摘要。"""
+    gate = teaching.evidence_gate
+    tools = [
+        f"教学证据门：{gate.status.value}；检查理由：{gate.reason}",
+        f"公开来源策略：{gate.required_search.value}",
+    ]
+    if gate.search_status is not None:
+        tools.append(f"公开来源状态：{gate.search_status.value}")
+    evidence = [
+        f"{source.source_type}：{source.title}"
+        for source in [*gate.local_sources, *gate.external_sources]
+    ]
+    return {
+        **thinking,
+        "evidence": [*thinking.get("evidence", []), *evidence],
+        "tools": [*thinking.get("tools", []), *tools],
+    }
+
+
+def _stopped_teaching_projection(
+    teaching: dict[str, Any] | None,
+) -> TeachingTurnProjection | None:
+    """把用户取消时的教学卡片从 loading 收敛为可恢复状态。"""
+
+    if teaching is None:
+        return None
+    projection = TeachingTurnProjection.model_validate(teaching)
+    gate = projection.evidence_gate.model_copy(
+        update={"search_status": TeachingCardStatus.RECOVERY}
+    )
+    return projection.model_copy(
+        update={
+            "status": TeachingCardStatus.RECOVERY,
+            "evidence_gate": gate,
+            "next_prompt": "本轮已取消；你可以重试证据检查，或继续日常陪伴。",
+            "gap_response": "本轮教学检查已取消，尚未形成可靠教学结论。",
+            "can_answer_reliably": False,
+            "can_cancel": False,
+            "can_retry": True,
+            "quiz": None,
+        }
+    )
+
+
+def _teaching_context(teaching: TeachingTurnProjection) -> str:
+    """向模型注入教学证据边界，防止把模型记忆冒充为本轮依据。"""
+    gate = teaching.evidence_gate
+    lines = [
+        "你正在执行学习模式的一轮教学。只能使用下列证据门允许的来源，不得用模型记忆填补缺口。",
+        f"证据门状态：{gate.status.value}；理由：{gate.reason}",
+        f"本轮可靠回答许可：{'是' if teaching.can_answer_reliably else '否'}",
+        "不得仅凭一次自述或一次题目回答宣称用户已掌握；知识状态只能作为待确认候选。",
+    ]
+    for source in [*gate.local_sources, *gate.external_sources]:
+        locator = f"（{source.locator}）" if source.locator else ""
+        lines.append(f"[{source.source_id}] {source.title}{locator}")
+    if gate.gap:
+        lines.append(f"必须向用户明确说明缺口：{gate.gap}")
+    return "\n".join(lines)
 
 
 def _citation_location(
@@ -1655,8 +1968,8 @@ def _arxiv_citation_error(
 # 「思考摘要」是面向用户的过程说明，不是模型隐藏推理。全部由结构化进度
 # 事件与可披露结果构造：步骤（处理过程）、证据（采用的来源）、工具（调用
 # 进度）、质量（检查结论）。绝不包含原始 Chain-of-Thought、系统提示、
-# 隐藏指令或逐 token 推理。当前切片没有检索/工具能力，证据与工具数组
-# 为空；后续 Issue 接入时在对应生命周期事件处追加。
+# 隐藏指令或逐 token 推理。学习模式会在证据门与检索完成后追加结构化来源、
+# 工具状态与质量结论；普通陪伴模式只在实际触发检索时追加对应信息。
 
 def _initial_thinking(mode: ChatMode) -> dict[str, list[str]]:
     """生成开始时的初始摘要（前端据此自动展开思考区域）。

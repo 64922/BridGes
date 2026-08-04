@@ -57,6 +57,7 @@ class MessageRecord:
     updated_at: datetime
     web_search: dict[str, Any] | None = None
     arxiv_search: dict[str, Any] | None = None
+    teaching: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -287,8 +288,8 @@ class ConversationRepository:
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                    " web_search, arxiv_search)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " web_search, arxiv_search, teaching)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -307,6 +308,7 @@ class ConversationRepository:
                         _iso(record.updated_at),
                         _json_dumps(record.web_search) if record.web_search else None,
                         _json_dumps(record.arxiv_search) if record.arxiv_search else None,
+                        _json_dumps(record.teaching) if record.teaching else None,
                     ),
                 )
         except StorageError:
@@ -329,8 +331,8 @@ class ConversationRepository:
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                        " web_search, arxiv_search)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " web_search, arxiv_search, teaching)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -349,6 +351,7 @@ class ConversationRepository:
                             _iso(record.updated_at),
                             _json_dumps(record.web_search) if record.web_search else None,
                             _json_dumps(record.arxiv_search) if record.arxiv_search else None,
+                            _json_dumps(record.teaching) if record.teaching else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -388,7 +391,7 @@ class ConversationRepository:
         rows = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search"
+            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search, teaching"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -400,7 +403,7 @@ class ConversationRepository:
         row = self._db.scoped(account_id).execute(
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
-            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search"
+            " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search, teaching"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -468,6 +471,22 @@ class ConversationRepository:
             )
             return cursor.rowcount
 
+    def update_message_teaching(
+        self,
+        account_id: str,
+        message_id: str,
+        teaching: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """流式更新学习模式投影；只允许写入仍在生成的助手消息。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET teaching = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(teaching), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
     def finalize_message(
         self,
         account_id: str,
@@ -483,6 +502,7 @@ class ConversationRepository:
         thinking: dict[str, list[str]] | None = None,
         web_search: dict[str, Any] | None = None,
         arxiv_search: dict[str, Any] | None = None,
+        teaching: dict[str, Any] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -600,6 +620,12 @@ class ConversationRepository:
                         account_id,
                     ),
                 )
+            if cursor.rowcount and teaching is not None:
+                self._db.scoped(account_id).execute(
+                    "UPDATE messages SET teaching = ?"
+                    " WHERE message_id = ? AND account_id = ? AND status = ?",
+                    (_json_dumps(teaching), message_id, account_id, status.value),
+                )
             return cursor.rowcount
 
     def message_count(self, account_id: str, conversation_id: str) -> int:
@@ -663,6 +689,7 @@ class ConversationRepository:
             updated_at=_parse_iso(str(row["updated_at"])),
             web_search=_json_loads_any(row["web_search"]),
             arxiv_search=_json_loads_any(row["arxiv_search"]),
+            teaching=_json_loads_any(row["teaching"]),
         )
 
 

@@ -23646,6 +23646,17 @@
             ],
             "description": "本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。"
           },
+          "teaching": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingTurnProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条学习模式消息的教学编排与证据门投影（Issue 23）。"
+          },
           "error_code": {
             "anyOf": [
               {
@@ -23971,6 +23982,17 @@
               }
             ],
             "description": "失败或取消时的 arXiv 论文搜索状态。"
+          },
+          "teaching": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingTurnProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "失败或取消时的学习模式教学卡片状态。"
           }
         },
         "type": "object",
@@ -24121,6 +24143,17 @@
               }
             ],
             "description": "arXiv 论文搜索初始状态；无触发时为 None。"
+          },
+          "teaching": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingTurnProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "学习模式教学卡片初始状态。"
           }
         },
         "type": "object",
@@ -42336,6 +42369,270 @@
         "title": "SyncOutboxStatus",
         "description": "Delivery state of a durable synchronization outbox entry."
       },
+      "TeachingAnswerEvidence": {
+        "properties": {
+          "answer_id": {
+            "type": "string",
+            "title": "Answer Id",
+            "description": "答案记录标识。"
+          },
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "对应的测验题标识。"
+          },
+          "source_message_id": {
+            "type": "string",
+            "title": "Source Message Id",
+            "description": "产生回答的用户消息标识。"
+          },
+          "response_text": {
+            "type": "string",
+            "title": "Response Text",
+            "description": "用户原始回答。"
+          },
+          "evaluated_state": {
+            "$ref": "#/components/schemas/AnswerEvaluatedState",
+            "description": "correct、partial、incorrect 或 needs_review。"
+          },
+          "evaluation_basis": {
+            "type": "string",
+            "title": "Evaluation Basis",
+            "description": "可解释的评价依据。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs"
+          },
+          "knowledge_state": {
+            "$ref": "#/components/schemas/TeachingKnowledgeState",
+            "description": "本轮形成的知识状态候选。"
+          },
+          "knowledge_state_reason": {
+            "type": "string",
+            "title": "Knowledge State Reason",
+            "description": "知识状态候选的限制与下一步。"
+          },
+          "requires_confirmation": {
+            "type": "boolean",
+            "title": "Requires Confirmation",
+            "description": "是否仍需更多证据或用户确认。",
+            "default": true
+          },
+          "mastery_claim_allowed": {
+            "type": "boolean",
+            "title": "Mastery Claim Allowed",
+            "description": "模型不得仅凭自述或单次回答标记已掌握。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "answer_id",
+          "question_id",
+          "source_message_id",
+          "response_text",
+          "evaluated_state",
+          "evaluation_basis",
+          "knowledge_state",
+          "knowledge_state_reason"
+        ],
+        "title": "TeachingAnswerEvidence",
+        "description": "把题目、回答、评价依据和知识状态候选串成可追溯记录。"
+      },
+      "TeachingCardStatus": {
+        "type": "string",
+        "enum": [
+          "loading",
+          "ready",
+          "empty",
+          "error",
+          "permission",
+          "recovery"
+        ],
+        "title": "TeachingCardStatus",
+        "description": "教学卡片的用户可见生命周期状态。"
+      },
+      "TeachingEvidenceGate": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TeachingEvidenceStatus",
+            "description": "充分、不足、冲突或不可用。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "裁决理由。"
+          },
+          "local_sources": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingEvidenceSource"
+            },
+            "type": "array",
+            "title": "Local Sources"
+          },
+          "external_sources": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingEvidenceSource"
+            },
+            "type": "array",
+            "title": "External Sources"
+          },
+          "required_search": {
+            "$ref": "#/components/schemas/TeachingSearchSource",
+            "default": "none"
+          },
+          "search_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingCardStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gap": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap",
+            "description": "仍不能可靠回答的缺口。"
+          },
+          "recovery_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Steps"
+          },
+          "checked_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Checked At",
+            "description": "证据门检查时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "reason",
+          "checked_at"
+        ],
+        "title": "TeachingEvidenceGate",
+        "description": "每轮教学开始前的结构化证据裁决。"
+      },
+      "TeachingEvidenceSource": {
+        "properties": {
+          "source_type": {
+            "$ref": "#/components/schemas/TeachingEvidenceSourceType",
+            "description": "来源层级或公开来源类型。"
+          },
+          "source_id": {
+            "type": "string",
+            "title": "Source Id",
+            "description": "来源或引用标识。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "面向用户展示的来源标题。"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator",
+            "description": "页码、章节、网址或 arXiv 标识。"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "可直接打开的真实来源网址。"
+          },
+          "alternate_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alternate Url",
+            "description": "同一来源的备用网址，例如 arXiv PDF。"
+          },
+          "accessed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accessed At",
+            "description": "本次读取或搜索来源的时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "source_type",
+          "source_id",
+          "title",
+          "accessed_at"
+        ],
+        "title": "TeachingEvidenceSource",
+        "description": "教学轮次使用的最小来源标识，不复制私人原文。"
+      },
+      "TeachingEvidenceSourceType": {
+        "type": "string",
+        "enum": [
+          "attachment",
+          "project",
+          "knowledge_base",
+          "duckduckgo",
+          "arxiv",
+          "local"
+        ],
+        "title": "TeachingEvidenceSourceType",
+        "description": "教学引用的来源层级与公开来源类型。"
+      },
+      "TeachingEvidenceStatus": {
+        "type": "string",
+        "enum": [
+          "sufficient",
+          "insufficient",
+          "conflict",
+          "unavailable"
+        ],
+        "title": "TeachingEvidenceStatus",
+        "description": "教学正式回答使用的证据裁决。"
+      },
+      "TeachingKnowledgeState": {
+        "type": "string",
+        "enum": [
+          "unknown",
+          "emerging_candidate",
+          "supported_candidate"
+        ],
+        "title": "TeachingKnowledgeState",
+        "description": "单轮作答形成的、仍需确认的知识状态候选。"
+      },
       "TeachingPlan": {
         "properties": {
           "plan_id": {
@@ -42507,6 +42804,182 @@
         ],
         "title": "TeachingQualityGateResult",
         "description": "Result of running the teaching quality gate over a short lesson."
+      },
+      "TeachingQuiz": {
+        "properties": {
+          "question_id": {
+            "type": "string",
+            "title": "Question Id",
+            "description": "稳定的本轮问题标识。"
+          },
+          "concept": {
+            "type": "string",
+            "title": "Concept",
+            "description": "问题针对的概念。"
+          },
+          "question": {
+            "type": "string",
+            "title": "Question",
+            "description": "面向用户的问题。"
+          },
+          "expected_focus": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Expected Focus",
+            "description": "评价时关注的关键点。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "依据来源标识。"
+          },
+          "can_skip": {
+            "type": "boolean",
+            "title": "Can Skip",
+            "default": true
+          },
+          "can_follow_up": {
+            "type": "boolean",
+            "title": "Can Follow Up",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "question_id",
+          "concept",
+          "question"
+        ],
+        "title": "TeachingQuiz",
+        "description": "单轮理解检查；每轮最多展示一个问题。"
+      },
+      "TeachingSearchSource": {
+        "type": "string",
+        "enum": [
+          "none",
+          "duckduckgo",
+          "arxiv",
+          "both"
+        ],
+        "title": "TeachingSearchSource",
+        "description": "证据门需要补充的公开来源。"
+      },
+      "TeachingTurnProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/TeachingCardStatus",
+            "description": "教学卡片状态。"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "本轮确认或推导的学习目标。"
+          },
+          "level_assumption": {
+            "type": "string",
+            "title": "Level Assumption",
+            "description": "当前水平假设及其可修正性。"
+          },
+          "steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Steps",
+            "description": "本轮教学步骤。"
+          },
+          "check_method": {
+            "type": "string",
+            "title": "Check Method",
+            "description": "理解检查方式。"
+          },
+          "evidence_gate": {
+            "$ref": "#/components/schemas/TeachingEvidenceGate",
+            "description": "本轮证据充足性门结果。"
+          },
+          "quiz": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingQuiz"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "最多一个理解检查问题。"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingAnswerEvidence"
+            },
+            "type": "array",
+            "title": "Evidence"
+          },
+          "next_prompt": {
+            "type": "string",
+            "title": "Next Prompt",
+            "description": "下一步邀请。"
+          },
+          "gap_response": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gap Response",
+            "description": "证据不足时的安全说明。"
+          },
+          "can_answer_reliably": {
+            "type": "boolean",
+            "title": "Can Answer Reliably",
+            "default": false
+          },
+          "can_cancel": {
+            "type": "boolean",
+            "title": "Can Cancel",
+            "default": false
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "default": false
+          },
+          "can_skip": {
+            "type": "boolean",
+            "title": "Can Skip",
+            "default": true
+          },
+          "can_follow_up": {
+            "type": "boolean",
+            "title": "Can Follow Up",
+            "default": true
+          },
+          "can_switch_mode": {
+            "type": "boolean",
+            "title": "Can Switch Mode",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "goal",
+          "level_assumption",
+          "steps",
+          "check_method",
+          "evidence_gate",
+          "next_prompt"
+        ],
+        "title": "TeachingTurnProjection",
+        "description": "统一聊天流中的一轮教学编排投影。"
       },
       "TemporaryTaskCapsule": {
         "properties": {

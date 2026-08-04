@@ -55,6 +55,7 @@ from bridges.contracts.chat import (
 from bridges.contracts.credentials import ProbeStatus
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.retrieval import CitationDetailProjection
+from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.credentials.service import KeyCredentialService
 from bridges.ingestion.service import IngestionError, IngestionService
@@ -277,6 +278,7 @@ def _stream_error_event(
     duration_ms: int | None,
     web_search: WebSearchProjection | None = None,
     arxiv_search: ArxivSearchProjection | None = None,
+    teaching: TeachingTurnProjection | None = None,
 ) -> ChatStreamEvent:
     """构造 error 终态事件（成功/停止/失败共用的补发路径）。"""
     return ChatStreamEvent(
@@ -290,6 +292,7 @@ def _stream_error_event(
             duration_ms=duration_ms,
             web_search=web_search,
             arxiv_search=arxiv_search,
+            teaching=teaching,
         ),
     )
 
@@ -322,6 +325,7 @@ def _generation_events(
             thinking=assistant_message.thinking,
             web_search=assistant_message.web_search,
             arxiv_search=assistant_message.arxiv_search,
+            teaching=assistant_message.teaching,
         ),
     )
     terminated = False
@@ -358,6 +362,7 @@ def _generation_events(
                 duration_ms=final.duration_ms if final is not None else None,
                 web_search=final.web_search if final is not None else None,
                 arxiv_search=final.arxiv_search if final is not None else None,
+                teaching=final.teaching if final is not None else None,
             )
             return
         elif event.kind == "done":
@@ -400,6 +405,7 @@ def _generation_events(
             duration_ms=final.duration_ms,
             web_search=final.web_search,
             arxiv_search=final.arxiv_search,
+            teaching=final.teaching,
         )
         return
     yield _stream_error_event(
@@ -411,6 +417,7 @@ def _generation_events(
         duration_ms=final.duration_ms,
         web_search=final.web_search,
         arxiv_search=final.arxiv_search,
+        teaching=final.teaching,
     )
 
 

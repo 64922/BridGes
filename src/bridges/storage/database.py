@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 12
+SCHEMA_VERSION = 13
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -682,6 +682,11 @@ MIGRATIONS: dict[int, list[str]] = {
     12: [
         """
         ALTER TABLE messages ADD COLUMN arxiv_search TEXT
+        """,
+    ],
+    13: [
+        """
+        ALTER TABLE messages ADD COLUMN teaching TEXT
         """,
     ],
 }

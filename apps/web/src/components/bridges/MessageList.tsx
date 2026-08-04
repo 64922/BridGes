@@ -10,12 +10,14 @@ import type {
   ChatMode,
   ChatModeEventProjection,
   RetrievalRoundProjection,
+  TeachingTurnProjection,
   WebSearchProjection,
 } from "@/lib/api";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
 import { RetrievalCard } from "./RetrievalCard";
+import { TeachingCard } from "./TeachingCard";
 import { WebSearchCard } from "./WebSearchCard";
 
 /** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
@@ -58,6 +60,8 @@ export interface ChatMessage {
   webSearch?: WebSearchProjection | null;
   /** Issue 22：本条助手消息绑定的 arXiv 搜索状态与真实论文引用 */
   arxivSearch?: ArxivSearchProjection | null;
+  /** Issue 23：学习模式的教学目标、证据门与理解检查记录 */
+  teaching?: TeachingTurnProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -70,6 +74,7 @@ interface MessageListProps {
   messages: (ChatMessage | ThreadModeEvent)[];
   onRetry?: (id: string) => void;
   onStop?: () => void;
+  onTeachingSkip?: (messageId: string) => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
   /** 附件摄取重试（Issue 17）：页面处理器调用重试 API 并刷新对话 */
@@ -503,6 +508,7 @@ export function MessageList({
   onRetryIngestion,
   conversationId,
   onStop,
+  onTeachingSkip,
 }: MessageListProps) {
   return (
     <ol
@@ -621,6 +627,14 @@ export function MessageList({
                 {/* Issue 20：本地检索轮次与引用（回答内容的证据卡）。
                     streaming 且无轮次时显示检索中加载态；终态无轮次（无
                     检索作用域）不渲染卡片。 */}
+                {conversationId && message.teaching && (
+                  <TeachingCard
+                    teaching={message.teaching}
+                    onSkip={() => onTeachingSkip?.(message.id)}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
                 {conversationId && (
                   <ArxivPaperSearchCard
                     search={message.arxivSearch ?? null}

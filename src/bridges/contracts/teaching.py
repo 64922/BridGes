@@ -1,0 +1,142 @@
+"""学习模式教学轮次与证据充足性门的公开合同。"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from enum import StrEnum
+
+from pydantic import BaseModel, Field
+
+from bridges.contracts.learning import AnswerEvaluatedState
+
+
+class TeachingCardStatus(StrEnum):
+    """教学卡片的用户可见生命周期状态。"""
+
+    LOADING = "loading"
+    READY = "ready"
+    EMPTY = "empty"
+    ERROR = "error"
+    PERMISSION = "permission"
+    RECOVERY = "recovery"
+
+
+class TeachingEvidenceStatus(StrEnum):
+    """教学正式回答使用的证据裁决。"""
+
+    SUFFICIENT = "sufficient"
+    INSUFFICIENT = "insufficient"
+    CONFLICT = "conflict"
+    UNAVAILABLE = "unavailable"
+
+
+class TeachingSearchSource(StrEnum):
+    """证据门需要补充的公开来源。"""
+
+    NONE = "none"
+    DUCKDUCKGO = "duckduckgo"
+    ARXIV = "arxiv"
+    BOTH = "both"
+
+
+class TeachingEvidenceSourceType(StrEnum):
+    """教学引用的来源层级与公开来源类型。"""
+
+    ATTACHMENT = "attachment"
+    PROJECT = "project"
+    KNOWLEDGE_BASE = "knowledge_base"
+    DUCKDUCKGO = "duckduckgo"
+    ARXIV = "arxiv"
+    #: 兼容早期未区分本地层级的历史投影；新记录不得使用。
+    LEGACY_LOCAL = "local"
+
+
+class TeachingKnowledgeState(StrEnum):
+    """单轮作答形成的、仍需确认的知识状态候选。"""
+
+    UNKNOWN = "unknown"
+    EMERGING_CANDIDATE = "emerging_candidate"
+    SUPPORTED_CANDIDATE = "supported_candidate"
+
+
+class TeachingEvidenceSource(BaseModel):
+    """教学轮次使用的最小来源标识，不复制私人原文。"""
+
+    source_type: TeachingEvidenceSourceType = Field(description="来源层级或公开来源类型。")
+    source_id: str = Field(description="来源或引用标识。")
+    title: str = Field(description="面向用户展示的来源标题。")
+    locator: str | None = Field(default=None, description="页码、章节、网址或 arXiv 标识。")
+    url: str | None = Field(default=None, description="可直接打开的真实来源网址。")
+    alternate_url: str | None = Field(
+        default=None, description="同一来源的备用网址，例如 arXiv PDF。"
+    )
+    accessed_at: datetime = Field(description="本次读取或搜索来源的时间。")
+
+
+class TeachingEvidenceGate(BaseModel):
+    """每轮教学开始前的结构化证据裁决。"""
+
+    status: TeachingEvidenceStatus = Field(description="充分、不足、冲突或不可用。")
+    reason: str = Field(description="裁决理由。")
+    local_sources: list[TeachingEvidenceSource] = Field(default_factory=list)
+    external_sources: list[TeachingEvidenceSource] = Field(default_factory=list)
+    required_search: TeachingSearchSource = Field(default=TeachingSearchSource.NONE)
+    search_status: TeachingCardStatus | None = Field(default=None)
+    gap: str | None = Field(default=None, description="仍不能可靠回答的缺口。")
+    recovery_steps: list[str] = Field(default_factory=list)
+    checked_at: datetime = Field(description="证据门检查时间。")
+
+
+class TeachingQuiz(BaseModel):
+    """单轮理解检查；每轮最多展示一个问题。"""
+
+    question_id: str = Field(description="稳定的本轮问题标识。")
+    concept: str = Field(description="问题针对的概念。")
+    question: str = Field(description="面向用户的问题。")
+    expected_focus: list[str] = Field(default_factory=list, description="评价时关注的关键点。")
+    evidence_refs: list[str] = Field(default_factory=list, description="依据来源标识。")
+    can_skip: bool = Field(default=True)
+    can_follow_up: bool = Field(default=True)
+
+
+class TeachingAnswerEvidence(BaseModel):
+    """把题目、回答、评价依据和知识状态候选串成可追溯记录。"""
+
+    answer_id: str = Field(description="答案记录标识。")
+    question_id: str = Field(description="对应的测验题标识。")
+    source_message_id: str = Field(description="产生回答的用户消息标识。")
+    response_text: str = Field(description="用户原始回答。")
+    evaluated_state: AnswerEvaluatedState = Field(
+        description="correct、partial、incorrect 或 needs_review。"
+    )
+    evaluation_basis: str = Field(description="可解释的评价依据。")
+    evidence_refs: list[str] = Field(default_factory=list)
+    knowledge_state: TeachingKnowledgeState = Field(description="本轮形成的知识状态候选。")
+    knowledge_state_reason: str = Field(description="知识状态候选的限制与下一步。")
+    requires_confirmation: bool = Field(
+        default=True, description="是否仍需更多证据或用户确认。"
+    )
+    mastery_claim_allowed: bool = Field(
+        default=False, description="模型不得仅凭自述或单次回答标记已掌握。"
+    )
+
+
+class TeachingTurnProjection(BaseModel):
+    """统一聊天流中的一轮教学编排投影。"""
+
+    status: TeachingCardStatus = Field(description="教学卡片状态。")
+    goal: str = Field(description="本轮确认或推导的学习目标。")
+    level_assumption: str = Field(description="当前水平假设及其可修正性。")
+    steps: list[str] = Field(description="本轮教学步骤。")
+    check_method: str = Field(description="理解检查方式。")
+    evidence_gate: TeachingEvidenceGate = Field(description="本轮证据充足性门结果。")
+    quiz: TeachingQuiz | None = Field(default=None, description="最多一个理解检查问题。")
+    evidence: list[TeachingAnswerEvidence] = Field(default_factory=list)
+    next_prompt: str = Field(description="下一步邀请。")
+    gap_response: str | None = Field(default=None, description="证据不足时的安全说明。")
+    can_answer_reliably: bool = Field(default=False)
+    can_cancel: bool = Field(default=False)
+    can_retry: bool = Field(default=False)
+    can_skip: bool = Field(default=True)
+    can_follow_up: bool = Field(default=True)
+    can_switch_mode: bool = Field(default=True)

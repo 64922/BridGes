@@ -1,5 +1,5 @@
 # 23 — 交付学习模式教学编排与证据充足性门
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: [14](./14-deliver-conversation-modes-and-thinking-summary.md), [20](./20-deliver-layered-retrieval-and-citations.md), [21](./21-deliver-duckduckgo-private-web-search.md), [22](./22-deliver-arxiv-mcp-paper-search.md)
 Covered requirements: CHAT-01, CHAT-06, CHAT-09, CHAT-10, A-01, BONUS-01, BONUS-02, SCORE-01, SCORE-02, DESKTOP-01
 ADRs: [0001](../../../docs/adr/0001-chat-first-product-surface.md), [0002](../../../docs/adr/0002-tiered-profile-writing-and-emotion-boundary.md), [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0015](../../../docs/adr/0015-minimum-cloud-disclosure.md), [0020](../../../docs/adr/0020-layered-retrieval-and-mandatory-teaching-search.md), [0022](../../../docs/adr/0022-persisted-conversation-mode.md), [0023](../../../docs/adr/0023-desktop-only-deployment-and-use.md)
@@ -12,16 +12,16 @@ ADRs: [0001](../../../docs/adr/0001-chat-first-product-surface.md), [0002](../..
 
 ## Acceptance criteria
 
-- [ ] 学习模式收到学习意图后，在聊天中确认或推导本轮目标、当前水平假设、教学步骤与理解检查方式。
-- [ ] 讲解能依据用户回答调整深度、例子和下一问；测验不过量，且用户可跳过、追问或切换模式。
-- [ ] 测验题、用户作答、评价依据和知识状态变化形成可追溯学习证据；模型自述不得直接标记用户“已掌握”。
-- [ ] 每轮先检查当前附件、项目文件和授权知识库，并输出结构化“充分/不足/冲突/不可用”判断及理由。
-- [ ] 三层本地材料均不存在时自动联网；材料存在但过时、冲突或覆盖不足时也自动联网补充。
-- [ ] 普通公开知识优先使用 DuckDuckGo，论文型问题使用 arXiv；必要时可组合，但不得把普通网页伪装成论文证据。
-- [ ] 联网触发、搜索过程、来源和引用对用户可见；私人原文仍遵守最小查询披露边界。
-- [ ] 联网无结果、失败或证据仍不足时，回答明确说明缺口、可继续采取的步骤和无法可靠断言的部分。
-- [ ] 切回日常陪伴后，后续消息停止强制教学结构；历史教学消息与模式切换标记保持不变。
-- [ ] 教学卡片与消息流具有中文 loading、empty、error、permission 和 recovery 状态，可取消或重试且不重复消息。
+- [x] 学习模式收到学习意图后，在聊天中确认或推导本轮目标、当前水平假设、教学步骤与理解检查方式。
+- [x] 讲解能依据用户回答调整深度、例子和下一问；测验不过量，且用户可跳过、追问或切换模式。
+- [x] 测验题、用户作答、评价依据和知识状态变化形成可追溯学习证据；模型自述不得直接标记用户“已掌握”。
+- [x] 每轮先检查当前附件、项目文件和授权知识库，并输出结构化“充分/不足/冲突/不可用”判断及理由。
+- [x] 三层本地材料均不存在时自动联网；材料存在但过时、冲突或覆盖不足时也自动联网补充。
+- [x] 普通公开知识优先使用 DuckDuckGo，论文型问题使用 arXiv；必要时可组合，但不得把普通网页伪装成论文证据。
+- [x] 联网触发、搜索过程、来源和引用对用户可见；私人原文仍遵守最小查询披露边界。
+- [x] 联网无结果、失败或证据仍不足时，回答明确说明缺口、可继续采取的步骤和无法可靠断言的部分。
+- [x] 切回日常陪伴后，后续消息停止强制教学结构；历史教学消息与模式切换标记保持不变。
+- [x] 教学卡片与消息流具有中文 loading、empty、error、permission 和 recovery 状态，可取消或重试且不重复消息。
 
 ## Verification
 
@@ -46,3 +46,7 @@ ADRs: [0001](../../../docs/adr/0001-chat-first-product-surface.md), [0002](../..
 ## Comments
 
 本 Issue 先使用用户明确陈述与可追溯学习证据；画像最小切片和反馈闭环将在 Issue 27 接入，不形成反向依赖。
+
+本次交付：学习模式已接入统一聊天生成链，持久化教学轮次、目标/水平假设/步骤/理解检查、三层本地证据门、DuckDuckGo/arXiv 自动补充、来源与缺口说明；学习卡片覆盖 loading、recovery、ready、empty、error、permission，支持重试与跳过，并保持模式切换和历史消息不变。
+
+验证：Python 全量测试 1372 passed、4 skipped；前端 typecheck/build 通过；Issue 23 隔离桌面 E2E 1 passed；完整桌面基线 145 passed、8 个既有范围失败（Issue 04/08/12/19）。静态 ruff 通过；mypy 仅剩 4 个既有 unused type: ignore。

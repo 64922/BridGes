@@ -336,18 +336,21 @@ class LayeredRetrievalService:
                 "note": "本轮未附加文件。",
                 "ready_document_ids": [],
                 "candidates": 0,
+                "stale": False,
             },
             RetrievalSourceLayer.PROJECT: {
                 "status": RetrievalLayerStatus.DISABLED,
                 "note": "该对话未归属学习项目。",
                 "ready_document_ids": [],
                 "candidates": 0,
+                "stale": False,
             },
             RetrievalSourceLayer.KNOWLEDGE_BASE: {
                 "status": RetrievalLayerStatus.DISABLED,
                 "note": "全局知识库本轮已关闭。",
                 "ready_document_ids": [],
                 "candidates": 0,
+                "stale": False,
             },
         }
         if attachment_ids:
@@ -362,6 +365,11 @@ class LayeredRetrievalService:
                 source="chat_attachment",
                 object_ids=attachment_ids,
             )
+            layers[RetrievalSourceLayer.ATTACHMENT]["stale"] = self._has_stale_documents(
+                account_id,
+                source="chat_attachment",
+                object_ids=attachment_ids,
+            )
         if project_id is not None:
             layers[RetrievalSourceLayer.PROJECT].update(
                 status=RetrievalLayerStatus.NO_MATERIAL,
@@ -372,6 +380,9 @@ class LayeredRetrievalService:
             ] = self._ready_documents(
                 account_id, source="project_file", project_id=project_id
             )
+            layers[RetrievalSourceLayer.PROJECT]["stale"] = self._has_stale_documents(
+                account_id, source="project_file", project_id=project_id
+            )
         if use_knowledge_base:
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
                 status=RetrievalLayerStatus.NO_MATERIAL,
@@ -380,10 +391,16 @@ class LayeredRetrievalService:
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE][
                 "ready_document_ids"
             ] = self._ready_documents(account_id, source="knowledge_base")
+            layers[RetrievalSourceLayer.KNOWLEDGE_BASE]["stale"] = self._has_stale_documents(
+                account_id, source="knowledge_base"
+            )
         for layer in _LAYER_ORDER:
+            if layers[layer]["stale"]:
+                layers[layer]["note"] = "本地材料已更新，但索引尚未重建，当前引用可能过时。"
             if layers[layer]["ready_document_ids"]:
                 layers[layer]["status"] = RetrievalLayerStatus.OK
-                layers[layer]["note"] = None
+                if not layers[layer]["stale"]:
+                    layers[layer]["note"] = None
         return layers
 
     def _ready_documents(
@@ -411,6 +428,35 @@ class LayeredRetrievalService:
             params.append(project_id)
         rows = self._database.scoped(account_id).execute(sql, params).fetchall()
         return [str(row["document_id"]) for row in rows]
+
+    def _has_stale_documents(
+        self,
+        account_id: str,
+        *,
+        source: str,
+        object_ids: list[str] | None = None,
+        project_id: str | None = None,
+    ) -> bool:
+        """返回已就绪但等待索引重建的文档状态，供教学证据门闭锁。"""
+
+        sql = (
+            "SELECT 1 FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.source = ? AND r.status = 'ready'"
+            " AND r.rebuild_requested = 1 AND o.account_id = ? AND o.status = 'active'"
+        )
+        params: list[object] = [account_id, source, account_id]
+        if object_ids is not None:
+            placeholders = ",".join("?" for _ in object_ids)
+            sql += f" AND r.object_id IN ({placeholders})"
+            params.extend(object_ids)
+        if project_id is not None:
+            sql += " AND r.project_id = ?"
+            params.append(project_id)
+        return (
+            self._database.scoped(account_id).execute(sql + " LIMIT 1", params).fetchone()
+            is not None
+        )
 
     def _active_version(self, account_id: str) -> sqlite3.Row | None:
         row = self._database.scoped(account_id).execute(

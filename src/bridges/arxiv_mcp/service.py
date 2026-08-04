@@ -67,11 +67,23 @@ class ArxivQueryPlanner:
         {"请", "帮我", "一下", "看看", "告诉我", "论文", "文献", "搜索", "查找", "检索"}
     )
 
-    def plan(self, content: str, mode: ChatMode = ChatMode.COMPANION) -> ArxivSearchPlan:
+    def plan(
+        self,
+        content: str,
+        mode: ChatMode = ChatMode.COMPANION,
+        *,
+        force: bool = False,
+    ) -> ArxivSearchPlan:
         explicit = bool(re.search(r"论文搜索|搜索论文|查论文|找论文", content, re.IGNORECASE))
         natural = bool(self._ARXIV.search(content) and self._ACTION.search(content))
-        should_search = explicit or natural
-        reason = "用户明确要求搜索论文" if should_search else "本轮未触发 arXiv 论文搜索"
+        should_search = force or explicit or natural
+        reason = (
+            "学习模式本地证据不足，自动补充 arXiv 论文"
+            if force and not (explicit or natural)
+            else "用户明确要求搜索论文"
+            if should_search
+            else "本轮未触发 arXiv 论文搜索"
+        )
         return ArxivSearchPlan(should_search, self._scrub(content) if should_search else "", reason)
 
     def _scrub(self, content: str) -> str:
@@ -103,8 +115,14 @@ class ArxivSearchService:
         self._planner = planner or ArxivQueryPlanner()
         self._observability = observability
 
-    def plan(self, content: str, mode: ChatMode) -> ArxivSearchPlan:
-        return self._planner.plan(content, mode)
+    def plan(
+        self,
+        content: str,
+        mode: ChatMode,
+        *,
+        force: bool = False,
+    ) -> ArxivSearchPlan:
+        return self._planner.plan(content, mode, force=force)
 
     def close(self) -> None:
         """关闭受限 worker，避免应用重载后遗留子进程。"""

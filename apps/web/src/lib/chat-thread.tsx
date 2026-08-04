@@ -59,6 +59,7 @@ export function buildThreadMessages(
       retrieval: latest.retrieval ?? null,
       webSearch: latest.web_search ?? null,
       arxivSearch: latest.arxiv_search ?? null,
+      teaching: latest.teaching ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({

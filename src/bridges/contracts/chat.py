@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.contracts.retrieval import RetrievalRoundProjection
+from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.web_search.contracts import WebSearchProjection
 
 
@@ -136,6 +137,10 @@ class ChatMessageProjection(BaseModel):
     arxiv_search: ArxivSearchProjection | None = Field(
         default=None,
         description="本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。",
+    )
+    teaching: TeachingTurnProjection | None = Field(
+        default=None,
+        description="本条学习模式消息的教学编排与证据门投影（Issue 23）。",
     )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
@@ -288,6 +293,9 @@ class ChatStreamStartedData(BaseModel):
     arxiv_search: ArxivSearchProjection | None = Field(
         default=None, description="arXiv 论文搜索初始状态；无触发时为 None。"
     )
+    teaching: TeachingTurnProjection | None = Field(
+        default=None, description="学习模式教学卡片初始状态。"
+    )
 
 
 class ChatStreamDeltaData(BaseModel):
@@ -321,6 +329,9 @@ class ChatStreamErrorData(BaseModel):
     )
     arxiv_search: ArxivSearchProjection | None = Field(
         default=None, description="失败或取消时的 arXiv 论文搜索状态。"
+    )
+    teaching: TeachingTurnProjection | None = Field(
+        default=None, description="失败或取消时的学习模式教学卡片状态。"
     )
 
 

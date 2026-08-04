@@ -71,17 +71,23 @@ class LocalQueryPlanner:
         {"请", "帮我", "一下", "看看", "告诉我", "搜索", "查找", "联网", "上网", "网页", "在线"}
     )
 
-    def plan(self, content: str, mode: ChatMode = ChatMode.COMPANION) -> SearchPlan:
+    def plan(
+        self,
+        content: str,
+        mode: ChatMode = ChatMode.COMPANION,
+        *,
+        force: bool = False,
+    ) -> SearchPlan:
         # 论文/文献请求交给 Issue 22 的固定 arXiv MCP，避免同一轮同时触发
         # 通用网页搜索并把普通网页误呈现为论文证据。
-        if re.search(r"论文|文献|arxiv", content, re.IGNORECASE) and re.search(
+        if not force and re.search(r"论文|文献|arxiv", content, re.IGNORECASE) and re.search(
             r"搜索|搜|查|找|检索|推荐|综述", content
         ):
             return SearchPlan(False, "", "论文请求由 arXiv 论文搜索处理")
         explicit = bool(self._EXPLICIT.search(content))
         fresh = bool(self._FRESHNESS.search(content))
         fact_check = bool(self._FACT_CHECK.search(content))
-        should_search = mode == ChatMode.COMPANION and (explicit or fresh or fact_check)
+        should_search = force or (mode == ChatMode.COMPANION and (explicit or fresh or fact_check))
         reasons = []
         if explicit:
             reasons.append("你明确要求联网搜索")
@@ -89,6 +95,8 @@ class LocalQueryPlanner:
             reasons.append("问题依赖最新信息")
         if fact_check:
             reasons.append("问题需要事实核查")
+        if force and not reasons:
+            reasons.append("学习模式本地证据不足，自动补充公开资料")
         reason = "、".join(reasons) if reasons else "本轮未触发公网搜索"
         return SearchPlan(should_search, self._scrub(content) if should_search else "", reason)
 
@@ -121,8 +129,14 @@ class WebSearchService:
         self._planner = planner or LocalQueryPlanner()
         self._observability = observability
 
-    def plan(self, content: str, mode: ChatMode) -> SearchPlan:
-        return self._planner.plan(content, mode)
+    def plan(
+        self,
+        content: str,
+        mode: ChatMode,
+        *,
+        force: bool = False,
+    ) -> SearchPlan:
+        return self._planner.plan(content, mode, force=force)
 
     def initial_projection(self, plan: SearchPlan) -> WebSearchProjection | None:
         if not plan.should_search:

@@ -31,6 +31,7 @@ import {
   type ChatAttachmentProjection,
   type ChatStreamEvent,
   type ArxivSearchProjection,
+  type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
 import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
@@ -48,6 +49,8 @@ interface ActiveRun {
   webSearch: WebSearchProjection | null;
   /** 流式中的 arXiv 论文搜索状态与真实论文来源 */
   arxivSearch: ArxivSearchProjection | null;
+  /** 流式中的学习模式教学卡片与证据门 */
+  teaching: TeachingTurnProjection | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -215,6 +218,7 @@ export default function ChatConversationPage() {
               : null,
             webSearch: event.data.web_search ?? null,
             arxivSearch: event.data.arxiv_search ?? null,
+            teaching: event.data.teaching ?? null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -254,6 +258,7 @@ export default function ChatConversationPage() {
                 : null,
               webSearch: event.data.web_search ?? current?.webSearch ?? null,
               arxivSearch: event.data.arxiv_search ?? current?.arxivSearch ?? null,
+              teaching: event.data.teaching ?? current?.teaching ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -336,6 +341,10 @@ export default function ChatConversationPage() {
     },
     [conversationId]
   );
+
+  const skipTeachingQuestion = useCallback(() => {
+    void sendMessage("跳过这道理解检查，我想继续学习。", [], true);
+  }, [sendMessage]);
 
   const deleteAttachment = useCallback(
     async (messageId: string, attachment: ChatAttachmentProjection) => {
@@ -443,6 +452,7 @@ export default function ChatConversationPage() {
       thinking: activeRun.thinking ?? undefined,
       webSearch: activeRun.webSearch,
       arxivSearch: activeRun.arxivSearch,
+      teaching: activeRun.teaching,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -499,6 +509,7 @@ export default function ChatConversationPage() {
                 messages={threadMessages}
                 onRetry={(messageId) => void retry(messageId)}
                 onStop={() => void stop()}
+                onTeachingSkip={() => skipTeachingQuestion()}
                 onDownloadAttachment={(attachment) => void downloadAttachment(attachment)}
                 onDeleteAttachment={(messageId, attachment) =>
                   void deleteAttachment(messageId, attachment)

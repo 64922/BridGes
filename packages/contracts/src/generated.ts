@@ -6067,6 +6067,8 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description 本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
+            /** @description 本条学习模式消息的教学编排与证据门投影（Issue 23）。 */
+            teaching?: components["schemas"]["TeachingTurnProjection"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -6251,6 +6253,8 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description 失败或取消时的 arXiv 论文搜索状态。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
+            /** @description 失败或取消时的学习模式教学卡片状态。 */
+            teaching?: components["schemas"]["TeachingTurnProjection"] | null;
         };
         /**
          * ChatStreamErrorDetail
@@ -6332,6 +6336,8 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description arXiv 论文搜索初始状态；无触发时为 None。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
+            /** @description 学习模式教学卡片初始状态。 */
+            teaching?: components["schemas"]["TeachingTurnProjection"] | null;
         };
         /**
          * ChatThinkingSummary
@@ -17628,6 +17634,156 @@ export interface components {
          */
         SyncOutboxStatus: "pending" | "delivered";
         /**
+         * TeachingAnswerEvidence
+         * @description 把题目、回答、评价依据和知识状态候选串成可追溯记录。
+         */
+        TeachingAnswerEvidence: {
+            /**
+             * Answer Id
+             * @description 答案记录标识。
+             */
+            answer_id: string;
+            /**
+             * Question Id
+             * @description 对应的测验题标识。
+             */
+            question_id: string;
+            /**
+             * Source Message Id
+             * @description 产生回答的用户消息标识。
+             */
+            source_message_id: string;
+            /**
+             * Response Text
+             * @description 用户原始回答。
+             */
+            response_text: string;
+            /** @description correct、partial、incorrect 或 needs_review。 */
+            evaluated_state: components["schemas"]["AnswerEvaluatedState"];
+            /**
+             * Evaluation Basis
+             * @description 可解释的评价依据。
+             */
+            evaluation_basis: string;
+            /** Evidence Refs */
+            evidence_refs?: string[];
+            /** @description 本轮形成的知识状态候选。 */
+            knowledge_state: components["schemas"]["TeachingKnowledgeState"];
+            /**
+             * Knowledge State Reason
+             * @description 知识状态候选的限制与下一步。
+             */
+            knowledge_state_reason: string;
+            /**
+             * Requires Confirmation
+             * @description 是否仍需更多证据或用户确认。
+             * @default true
+             */
+            requires_confirmation: boolean;
+            /**
+             * Mastery Claim Allowed
+             * @description 模型不得仅凭自述或单次回答标记已掌握。
+             * @default false
+             */
+            mastery_claim_allowed: boolean;
+        };
+        /**
+         * TeachingCardStatus
+         * @description 教学卡片的用户可见生命周期状态。
+         * @enum {string}
+         */
+        TeachingCardStatus: "loading" | "ready" | "empty" | "error" | "permission" | "recovery";
+        /**
+         * TeachingEvidenceGate
+         * @description 每轮教学开始前的结构化证据裁决。
+         */
+        TeachingEvidenceGate: {
+            /** @description 充分、不足、冲突或不可用。 */
+            status: components["schemas"]["TeachingEvidenceStatus"];
+            /**
+             * Reason
+             * @description 裁决理由。
+             */
+            reason: string;
+            /** Local Sources */
+            local_sources?: components["schemas"]["TeachingEvidenceSource"][];
+            /** External Sources */
+            external_sources?: components["schemas"]["TeachingEvidenceSource"][];
+            /** @default none */
+            required_search: components["schemas"]["TeachingSearchSource"];
+            search_status?: components["schemas"]["TeachingCardStatus"] | null;
+            /**
+             * Gap
+             * @description 仍不能可靠回答的缺口。
+             */
+            gap?: string | null;
+            /** Recovery Steps */
+            recovery_steps?: string[];
+            /**
+             * Checked At
+             * Format: date-time
+             * @description 证据门检查时间。
+             */
+            checked_at: string;
+        };
+        /**
+         * TeachingEvidenceSource
+         * @description 教学轮次使用的最小来源标识，不复制私人原文。
+         */
+        TeachingEvidenceSource: {
+            /** @description 来源层级或公开来源类型。 */
+            source_type: components["schemas"]["TeachingEvidenceSourceType"];
+            /**
+             * Source Id
+             * @description 来源或引用标识。
+             */
+            source_id: string;
+            /**
+             * Title
+             * @description 面向用户展示的来源标题。
+             */
+            title: string;
+            /**
+             * Locator
+             * @description 页码、章节、网址或 arXiv 标识。
+             */
+            locator?: string | null;
+            /**
+             * Url
+             * @description 可直接打开的真实来源网址。
+             */
+            url?: string | null;
+            /**
+             * Alternate Url
+             * @description 同一来源的备用网址，例如 arXiv PDF。
+             */
+            alternate_url?: string | null;
+            /**
+             * Accessed At
+             * Format: date-time
+             * @description 本次读取或搜索来源的时间。
+             */
+            accessed_at: string;
+        };
+        /**
+         * TeachingEvidenceSourceType
+         * @description 教学引用的来源层级与公开来源类型。
+         * @enum {string}
+         */
+        TeachingEvidenceSourceType: "attachment" | "project" | "knowledge_base" | "duckduckgo" | "arxiv" | "local";
+        /**
+         * TeachingEvidenceStatus
+         * @description 教学正式回答使用的证据裁决。
+         * @enum {string}
+         */
+        TeachingEvidenceStatus: "sufficient" | "insufficient" | "conflict" | "unavailable";
+        /**
+         * TeachingKnowledgeState
+         * @description 单轮作答形成的、仍需确认的知识状态候选。
+         * @enum {string}
+         */
+        TeachingKnowledgeState: "unknown" | "emerging_candidate" | "supported_candidate";
+        /**
          * TeachingPlan
          * @description A minimal teaching plan derived from a mission and its knowledge states.
          *
@@ -17736,6 +17892,127 @@ export interface components {
              * @description Human-readable gate summary.
              */
             reason?: string | null;
+        };
+        /**
+         * TeachingQuiz
+         * @description 单轮理解检查；每轮最多展示一个问题。
+         */
+        TeachingQuiz: {
+            /**
+             * Question Id
+             * @description 稳定的本轮问题标识。
+             */
+            question_id: string;
+            /**
+             * Concept
+             * @description 问题针对的概念。
+             */
+            concept: string;
+            /**
+             * Question
+             * @description 面向用户的问题。
+             */
+            question: string;
+            /**
+             * Expected Focus
+             * @description 评价时关注的关键点。
+             */
+            expected_focus?: string[];
+            /**
+             * Evidence Refs
+             * @description 依据来源标识。
+             */
+            evidence_refs?: string[];
+            /**
+             * Can Skip
+             * @default true
+             */
+            can_skip: boolean;
+            /**
+             * Can Follow Up
+             * @default true
+             */
+            can_follow_up: boolean;
+        };
+        /**
+         * TeachingSearchSource
+         * @description 证据门需要补充的公开来源。
+         * @enum {string}
+         */
+        TeachingSearchSource: "none" | "duckduckgo" | "arxiv" | "both";
+        /**
+         * TeachingTurnProjection
+         * @description 统一聊天流中的一轮教学编排投影。
+         */
+        TeachingTurnProjection: {
+            /** @description 教学卡片状态。 */
+            status: components["schemas"]["TeachingCardStatus"];
+            /**
+             * Goal
+             * @description 本轮确认或推导的学习目标。
+             */
+            goal: string;
+            /**
+             * Level Assumption
+             * @description 当前水平假设及其可修正性。
+             */
+            level_assumption: string;
+            /**
+             * Steps
+             * @description 本轮教学步骤。
+             */
+            steps: string[];
+            /**
+             * Check Method
+             * @description 理解检查方式。
+             */
+            check_method: string;
+            /** @description 本轮证据充足性门结果。 */
+            evidence_gate: components["schemas"]["TeachingEvidenceGate"];
+            /** @description 最多一个理解检查问题。 */
+            quiz?: components["schemas"]["TeachingQuiz"] | null;
+            /** Evidence */
+            evidence?: components["schemas"]["TeachingAnswerEvidence"][];
+            /**
+             * Next Prompt
+             * @description 下一步邀请。
+             */
+            next_prompt: string;
+            /**
+             * Gap Response
+             * @description 证据不足时的安全说明。
+             */
+            gap_response?: string | null;
+            /**
+             * Can Answer Reliably
+             * @default false
+             */
+            can_answer_reliably: boolean;
+            /**
+             * Can Cancel
+             * @default false
+             */
+            can_cancel: boolean;
+            /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
+            /**
+             * Can Skip
+             * @default true
+             */
+            can_skip: boolean;
+            /**
+             * Can Follow Up
+             * @default true
+             */
+            can_follow_up: boolean;
+            /**
+             * Can Switch Mode
+             * @default true
+             */
+            can_switch_mode: boolean;
         };
         /**
          * TemporaryTaskCapsule
