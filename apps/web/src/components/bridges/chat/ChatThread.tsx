@@ -25,6 +25,12 @@ interface ChatThreadProps {
   tts?: { available: boolean; reason?: string };
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表 */
   onRefreshMessages?: () => void;
+  /** Issue 36：消息内 MCP 敏感操作确认（approve/deny 由页面接入真实 API） */
+  onConfirmMcpCall?: (
+    messageId: string,
+    confirmationId: string,
+    action: "approve" | "deny"
+  ) => Promise<void> | void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -46,6 +52,7 @@ export function ChatThread({
   conversationId,
   tts,
   onRefreshMessages,
+  onConfirmMcpCall,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -78,6 +85,7 @@ export function ChatThread({
           conversationId={conversationId}
           tts={tts}
           onRefreshMessages={onRefreshMessages}
+          onConfirmMcpCall={onConfirmMcpCall}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

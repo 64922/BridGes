@@ -79,6 +79,7 @@ export function buildThreadMessages(
       image: latest.image ?? null,
       // Issue 32：本条助手消息的视频任务/资产状态快照（任务卡与资产卡）
       video: latest.video ?? null,
+      mcpCall: latest.mcp_call ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({

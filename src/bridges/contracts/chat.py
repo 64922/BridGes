@@ -24,6 +24,7 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
+from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.speech import ReadAloudProjection
@@ -240,6 +241,11 @@ class ChatMessageProjection(BaseModel):
         description="助手消息的视频任务/资产状态快照（Issue 32）；进行中渲染"
         "任务卡，成功后渲染资产卡；普通消息为 None。",
     )
+    mcp_call: McpCallMessageProjection | None = Field(
+        default=None,
+        description="助手消息的 MCP 插件调用结果投影（Issue 36）；非 MCP "
+        "调用消息为 None。",
+    )
     read_aloud: ReadAloudProjection | None = Field(
         default=None,
         description="本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。",
@@ -251,6 +257,33 @@ class ChatMessageProjection(BaseModel):
     run_lock_id: str | None = Field(default=None, description="绑定的模型运行锁标识。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近更新时间。")
+
+
+class ChatPluginSelectionItem(BaseModel):
+    """对话级插件选择条目（Issue 36）。
+
+    ``kind`` 区分 SKILL 插件（Issue 34，含内置与用户包）与 MCP 服务器
+    （Issue 35）；``plugin_id`` 为插件/服务器的稳定标识。选择随会话持久
+    化，服务端逐项校验「当前账户已安装且启用」，失效项清洗并解释影响。
+    """
+
+    kind: Literal["skill", "mcp"] = Field(description="插件类别：skill 或 mcp。")
+    plugin_id: str = Field(
+        min_length=1, max_length=200, description="SKILL 插件标识或 MCP 服务器标识。"
+    )
+
+
+class RemovedPluginSelection(BaseModel):
+    """被服务端清洗出对话选择的失效插件（含影响解释）。
+
+    插件被停用、卸载或权限撤回后，从当前账户可用集合消失；读取会话或
+    发送消息时按此解释影响，前端向用户说明后不再注入上下文。
+    """
+
+    kind: Literal["skill", "mcp"] = Field(description="插件类别。")
+    plugin_id: str = Field(description="插件标识。")
+    name: str = Field(description="插件显示名（读取时快照，已卸载也可解释）。")
+    reason: str = Field(description="移除原因（中文，可操作）。")
 
 
 class ChatConversationSummary(BaseModel):
@@ -290,6 +323,15 @@ class ChatConversationProjection(BaseModel):
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
     pinned: bool = Field(default=False, description="是否置顶。")
     project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
+    plugin_selection: list[ChatPluginSelectionItem] = Field(
+        default_factory=list,
+        description="本对话选中的有效插件（Issue 36）：SKILL 与 MCP 的"
+        "当前账户可用集合子集，随对话持久化；停用/卸载/撤权后清洗。",
+    )
+    removed_selections: list[RemovedPluginSelection] = Field(
+        default_factory=list,
+        description="本次读取时从选择中清洗的失效插件（含中文影响解释）。",
+    )
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近活动时间。")
     messages: list[ChatMessageProjection] = Field(default_factory=list)
@@ -302,23 +344,33 @@ class ChatCreateRequest(BaseModel):
     """新建对话请求；标题可选，缺省由首条消息自动推导。
 
     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。
+    ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话）。
     """
 
     title: str | None = Field(default=None, max_length=120, description="可选标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话初始模式。")
     project_id: str | None = Field(default=None, max_length=200, description="可选学习项目标识。")
+    plugin_selection: list[ChatPluginSelectionItem] = Field(
+        default_factory=list, max_length=20, description="初始插件选择（可选，逐项校验可用）。"
+    )
 
 
 class ChatConversationUpdateRequest(BaseModel):
-    """更新对话标题、置顶状态或学习项目归属；至少提供一个字段。
+    """更新对话标题、置顶状态、学习项目归属或插件选择；至少提供一个字段。
 
     ``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。
+    ``plugin_selection`` 全量替换当前选择；显式传空数组表示清空全部选择。
     """
 
     title: str | None = Field(default=None, min_length=1, max_length=120, description="新标题。")
     pinned: bool | None = Field(default=None, description="是否置顶。")
     project_id: str | None = Field(
         default=None, max_length=200, description="目标学习项目标识；显式 null 解除归属。"
+    )
+    plugin_selection: list[ChatPluginSelectionItem] | None = Field(
+        default=None,
+        max_length=20,
+        description="插件选择全量替换；显式 [] 清空；缺省表示不变。",
     )
 
     @model_validator(mode="after")
@@ -327,8 +379,9 @@ class ChatConversationUpdateRequest(BaseModel):
             self.title is None
             and self.pinned is None
             and "project_id" not in self.model_fields_set
+            and "plugin_selection" not in self.model_fields_set
         ):
-            raise ValueError("至少提供标题、置顶状态或学习项目归属。")
+            raise ValueError("至少提供标题、置顶状态、学习项目归属或插件选择。")
         return self
 
 
@@ -345,6 +398,63 @@ class ChatModeSwitchResponse(BaseModel):
     event: ChatModeEventProjection | None = Field(
         default=None, description="本次写入的可见事件；相同模式幂等切换时为 None。"
     )
+
+
+class McpCallRequestPayload(BaseModel):
+    """聊天内对选中 MCP 插件的真实调用载荷（Issue 36）。
+
+    只允许调用当前对话已选中的 MCP 服务器（选择器持久化到会话）；工具
+    名与入参由用户在调用对话框中明确指定，不依赖模型臆造。``data_slice``
+    只携带本调用明确授权的文本与附件片段，不含画像、完整聊天历史或
+    项目数据。
+    """
+
+    mcp_id: str = Field(
+        min_length=1, max_length=200, description="目标 MCP 服务器标识（须被本对话选中）。"
+    )
+    tool: str = Field(min_length=1, max_length=120, description="要调用的工具名。")
+    input: dict[str, Any] = Field(
+        default_factory=dict, description="工具入参（不含秘密与私人正文）。"
+    )
+    data_slice: McpDataSlice = Field(
+        default_factory=McpDataSlice, description="本次调用明确授权的数据切片。"
+    )
+
+
+class McpCallStatus(StrEnum):
+    """消息内 MCP 调用结果的状态机（Issue 36）。"""
+
+    LOADING = "loading"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SENSITIVE_PENDING = "sensitive_pending"
+    DENIED = "denied"
+
+
+class McpCallMessageProjection(BaseModel):
+    """助手消息的 MCP 调用投影（随消息持久化，刷新可恢复）。
+
+    成功只保留结果摘要与工具名，不保存服务器返回的完整私人正文；敏感
+    挂起携带确认载荷供前端再次确认；拒绝后结果为 denied 终态。
+    """
+
+    status: McpCallStatus = Field(description="调用结果状态。")
+    mcp_id: str = Field(description="被调用的 MCP 标识。")
+    mcp_name: str | None = Field(default=None, description="MCP 显示名快照。")
+    tool: str = Field(description="工具名。")
+    input_summary: str = Field(
+        default="", description="入参摘要（仅调用时快照，最长 200 字符）。"
+    )
+    result_summary: str | None = Field(
+        default=None, description="成功结果摘要（最长 500 字符，不含完整正文）。"
+    )
+    error_code: str | None = Field(default=None, description="失败分类码。")
+    error_message: str | None = Field(default=None, description="可操作的中文提示。")
+    confirmation: McpSensitiveConfirmation | None = Field(
+        default=None, description="敏感操作挂起的确认载荷。"
+    )
+    created_at: datetime = Field(description="创建时间。")
+    updated_at: datetime = Field(description="最近更新时间。")
 
 
 class ChatMessageCreateRequest(BaseModel):
@@ -383,6 +493,11 @@ class ChatMessageCreateRequest(BaseModel):
         default=None,
         description="文生视频请求载荷（Issue 32）；携带时本轮创建视频异步"
         "任务而非普通回答。",
+    )
+    mcp_call: McpCallRequestPayload | None = Field(
+        default=None,
+        description="对选中 MCP 插件的调用载荷（Issue 36）；携带时本轮执行"
+        "真实 MCP 调用而非普通回答，与 SKILL/图片/视频载荷互斥。",
     )
 
 
@@ -439,6 +554,7 @@ class ChatStreamEventKind(StrEnum):
     CAREER = "career"
     IMAGE = "image"
     VIDEO = "video"
+    MCP_CALL = "mcp_call"
 
 
 class ChatStreamStartedData(BaseModel):
@@ -586,6 +702,19 @@ class ChatStreamImageData(BaseModel):
     task: ImageTaskProjection = Field(description="任务状态快照。")
 
 
+class ChatStreamMcpData(BaseModel):
+    """mcp_call 事件载荷：驱动消息内 MCP 调用卡（Issue 36）。
+
+    调用为同步执行：loading 状态随 started 后下发，成功/失败/敏感挂起
+    为终态投影（写入消息列，刷新可恢复）；敏感挂起由前端确认对话框
+    继续（approve/deny 走 chat 域路由，结果写回同一投影）。
+    """
+
+    kind: Literal["mcp_call"] = "mcp_call"
+    message_id: str = Field(description="助手消息标识。")
+    call: McpCallMessageProjection = Field(description="调用状态投影。")
+
+
 class ChatStreamEvent(BaseModel):
     """一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
 
@@ -604,6 +733,7 @@ class ChatStreamEvent(BaseModel):
         | ChatStreamHumanizerData
         | ChatStreamCareerData
         | ChatStreamImageData
-        | ChatStreamVideoData,
+        | ChatStreamVideoData
+        | ChatStreamMcpData,
         Field(discriminator="kind", description="事件载荷。"),
     ] = Field(description="事件载荷。")

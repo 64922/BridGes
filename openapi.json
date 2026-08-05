@@ -1392,7 +1392,7 @@
           "chat"
         ],
         "summary": "Create Conversation",
-        "description": "新建对话；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。",
+        "description": "新建对话；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。\n``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），\n逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。",
         "operationId": "create_conversation_chat_conversations_post",
         "parameters": [
           {
@@ -1472,7 +1472,7 @@
           "chat"
         ],
         "summary": "Update Conversation",
-        "description": "更新当前账户会话的标题、置顶状态或学习项目归属。\n\n``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改\n归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH\n与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。",
+        "description": "更新当前账户会话的标题、置顶状态、学习项目归属或插件选择。\n\n``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改\n归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH\n与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。\n``plugin_selection`` 全量替换当前选择（显式 [] 清空）：逐项校验\n已安装且启用，停用/卸载/撤权项 422 拒绝并说明原因（读取路径的\n失效清洗在投影层完成并解释影响）。",
         "operationId": "update_conversation_chat_conversations__conversation_id__patch",
         "parameters": [
           {
@@ -2553,6 +2553,240 @@
               }
             },
             "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/mcp/confirmations/{confirmation_id}/approve": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Approve Message Mcp Confirmation",
+        "description": "确认消息内 MCP 调用的敏感操作（仅本次调用有效）。",
+        "operationId": "approve_message_mcp_confirmation_chat_conversations__conversation_id__messages__message_id__mcp_confirmations__confirmation_id__approve_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "confirmation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Confirmation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessageProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/mcp/confirmations/{confirmation_id}/deny": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Deny Message Mcp Confirmation",
+        "description": "拒绝消息内 MCP 调用的敏感操作（调用安全终止并落库 denied）。",
+        "operationId": "deny_message_mcp_confirmation_chat_conversations__conversation_id__messages__message_id__mcp_confirmations__confirmation_id__deny_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "confirmation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Confirmation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessageProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
           },
           "503": {
             "content": {
@@ -26210,7 +26444,7 @@
           "plugins"
         ],
         "summary": "Disable Plugin",
-        "description": "停用插件（内置与用户包统一入口）。",
+        "description": "停用插件（内置与用户包统一入口）。\n\n停用后插件立即从「可用集合」（选择器/工具调用）消失；对话中已选\n择的该项在读取/发送时被清洗并解释影响（Issue 36 AC7：立即从可用\n集合移除并解释影响）——「选择随对话持久化」保留用户未主动清除的\n选择，重新启用后恢复属持久化语义。",
         "operationId": "disable_plugin_plugins__plugin_id__disable_post",
         "parameters": [
           {
@@ -26955,7 +27189,7 @@
           "mcp"
         ],
         "summary": "Revoke Permissions",
-        "description": "撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。",
+        "description": "撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。\n\n撤权成功后把该 MCP 从当前账户全部会话的插件选择中移除（Issue 36\nAC7：撤权后立即从可用集合移除）——此前对话对旧权限清单的选择授权\n不再成立，需重新选择后才能再次调用。",
         "operationId": "revoke_permissions_mcp__mcp_id__permissions_put",
         "parameters": [
           {
@@ -27725,6 +27959,54 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Test Recovery Token  Test Recovery Token Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/_test/capabilities": {
+      "post": {
+        "summary": "Test Mark Capabilities Ready",
+        "operationId": "test_mark_capabilities_ready__test_capabilities_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Test Mark Capabilities Ready  Test Capabilities Post"
                 }
               }
             }
@@ -30660,6 +30942,22 @@
             "title": "Project Id",
             "description": "所属学习项目标识（可选）。"
           },
+          "plugin_selection": {
+            "items": {
+              "$ref": "#/components/schemas/ChatPluginSelectionItem"
+            },
+            "type": "array",
+            "title": "Plugin Selection",
+            "description": "本对话选中的有效插件（Issue 36）：SKILL 与 MCP 的当前账户可用集合子集，随对话持久化；停用/卸载/撤权后清洗。"
+          },
+          "removed_selections": {
+            "items": {
+              "$ref": "#/components/schemas/RemovedPluginSelection"
+            },
+            "type": "array",
+            "title": "Removed Selections",
+            "description": "本次读取时从选择中清洗的失效插件（含中文影响解释）。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -30801,11 +31099,27 @@
             ],
             "title": "Project Id",
             "description": "目标学习项目标识；显式 null 解除归属。"
+          },
+          "plugin_selection": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ChatPluginSelectionItem"
+                },
+                "type": "array",
+                "maxItems": 20
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plugin Selection",
+            "description": "插件选择全量替换；显式 [] 清空；缺省表示不变。"
           }
         },
         "type": "object",
         "title": "ChatConversationUpdateRequest",
-        "description": "更新对话标题、置顶状态或学习项目归属；至少提供一个字段。\n\n``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。"
+        "description": "更新对话标题、置顶状态、学习项目归属或插件选择；至少提供一个字段。\n\n``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。\n``plugin_selection`` 全量替换当前选择；显式传空数组表示清空全部选择。"
       },
       "ChatCreateRequest": {
         "properties": {
@@ -30839,11 +31153,20 @@
             ],
             "title": "Project Id",
             "description": "可选学习项目标识。"
+          },
+          "plugin_selection": {
+            "items": {
+              "$ref": "#/components/schemas/ChatPluginSelectionItem"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Plugin Selection",
+            "description": "初始插件选择（可选，逐项校验可用）。"
           }
         },
         "type": "object",
         "title": "ChatCreateRequest",
-        "description": "新建对话请求；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。"
+        "description": "新建对话请求；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。\n``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话）。"
       },
       "ChatError": {
         "properties": {
@@ -30940,6 +31263,17 @@
               }
             ],
             "description": "文生视频请求载荷（Issue 32）；携带时本轮创建视频异步任务而非普通回答。"
+          },
+          "mcp_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpCallRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "对选中 MCP 插件的调用载荷（Issue 36）；携带时本轮执行真实 MCP 调用而非普通回答，与 SKILL/图片/视频载荷互斥。"
           }
         },
         "type": "object",
@@ -31111,6 +31445,17 @@
               }
             ],
             "description": "助手消息的视频任务/资产状态快照（Issue 32）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。"
+          },
+          "mcp_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpCallMessageProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "助手消息的 MCP 插件调用结果投影（Issue 36）；非 MCP 调用消息为 None。"
           },
           "read_aloud": {
             "anyOf": [
@@ -31313,6 +31658,33 @@
         ],
         "title": "ChatModeSwitchResponse",
         "description": "模式切换结果：切换后的对话投影与本次可见事件。"
+      },
+      "ChatPluginSelectionItem": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "skill",
+              "mcp"
+            ],
+            "title": "Kind",
+            "description": "插件类别：skill 或 mcp。"
+          },
+          "plugin_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Plugin Id",
+            "description": "SKILL 插件标识或 MCP 服务器标识。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "plugin_id"
+        ],
+        "title": "ChatPluginSelectionItem",
+        "description": "对话级插件选择条目（Issue 36）。\n\n``kind`` 区分 SKILL 插件（Issue 34，含内置与用户包）与 MCP 服务器\n（Issue 35）；``plugin_id`` 为插件/服务器的稳定标识。选择随会话持久\n化，服务端逐项校验「当前账户已安装且启用」，失效项清洗并解释影响。"
       },
       "ChatStopResponse": {
         "properties": {
@@ -31588,6 +31960,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatStreamVideoData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamMcpData"
               }
             ],
             "title": "Data",
@@ -31601,6 +31976,7 @@
                 "error": "#/components/schemas/ChatStreamErrorData",
                 "humanizer": "#/components/schemas/ChatStreamHumanizerData",
                 "image": "#/components/schemas/ChatStreamImageData",
+                "mcp_call": "#/components/schemas/ChatStreamMcpData",
                 "profile": "#/components/schemas/ChatStreamProfileData",
                 "started": "#/components/schemas/ChatStreamStartedData",
                 "video": "#/components/schemas/ChatStreamVideoData"
@@ -31627,7 +32003,8 @@
           "humanizer",
           "career",
           "image",
-          "video"
+          "video",
+          "mcp_call"
         ],
         "title": "ChatStreamEventKind",
         "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"
@@ -31715,6 +32092,32 @@
         ],
         "title": "ChatStreamImageData",
         "description": "image 事件载荷：驱动消息内图片任务卡（Issue 31）。\n\n任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器\n写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影\n是快照，刷新与重启后可恢复查询）。"
+      },
+      "ChatStreamMcpData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "mcp_call",
+            "title": "Kind",
+            "default": "mcp_call"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "call": {
+            "$ref": "#/components/schemas/McpCallMessageProjection",
+            "description": "调用状态投影。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "call"
+        ],
+        "title": "ChatStreamMcpData",
+        "description": "mcp_call 事件载荷：驱动消息内 MCP 调用卡（Issue 36）。\n\n调用为同步执行：loading 状态随 started 后下发，成功/失败/敏感挂起\n为终态投影（写入消息列，刷新可恢复）；敏感挂起由前端确认对话框\n继续（approve/deny 走 chat 域路由，结果写回同一投影）。"
       },
       "ChatStreamProfileData": {
         "properties": {
@@ -42126,6 +42529,111 @@
         "title": "McpAttachmentSlice",
         "description": "调用数据切片中的一条附件：只含元数据与已授权正文片段。"
       },
+      "McpCallMessageProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/McpCallStatus",
+            "description": "调用结果状态。"
+          },
+          "mcp_id": {
+            "type": "string",
+            "title": "Mcp Id",
+            "description": "被调用的 MCP 标识。"
+          },
+          "mcp_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mcp Name",
+            "description": "MCP 显示名快照。"
+          },
+          "tool": {
+            "type": "string",
+            "title": "Tool",
+            "description": "工具名。"
+          },
+          "input_summary": {
+            "type": "string",
+            "title": "Input Summary",
+            "description": "入参摘要（仅调用时快照，最长 200 字符）。",
+            "default": ""
+          },
+          "result_summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Summary",
+            "description": "成功结果摘要（最长 500 字符，不含完整正文）。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文提示。"
+          },
+          "confirmation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpSensitiveConfirmation"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "敏感操作挂起的确认载荷。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "mcp_id",
+          "tool",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "McpCallMessageProjection",
+        "description": "助手消息的 MCP 调用投影（随消息持久化，刷新可恢复）。\n\n成功只保留结果摘要与工具名，不保存服务器返回的完整私人正文；敏感\n挂起携带确认载荷供前端再次确认；拒绝后结果为 denied 终态。"
+      },
       "McpCallRecord": {
         "properties": {
           "call_id": {
@@ -42226,6 +42734,41 @@
         "title": "McpCallRequest",
         "description": "一次真实 MCP 调用请求。"
       },
+      "McpCallRequestPayload": {
+        "properties": {
+          "mcp_id": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Mcp Id",
+            "description": "目标 MCP 服务器标识（须被本对话选中）。"
+          },
+          "tool": {
+            "type": "string",
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Tool",
+            "description": "要调用的工具名。"
+          },
+          "input": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Input",
+            "description": "工具入参（不含秘密与私人正文）。"
+          },
+          "data_slice": {
+            "$ref": "#/components/schemas/McpDataSlice",
+            "description": "本次调用明确授权的数据切片。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mcp_id",
+          "tool"
+        ],
+        "title": "McpCallRequestPayload",
+        "description": "聊天内对选中 MCP 插件的真实调用载荷（Issue 36）。\n\n只允许调用当前对话已选中的 MCP 服务器（选择器持久化到会话）；工具\n名与入参由用户在调用对话框中明确指定，不依赖模型臆造。``data_slice``\n只携带本调用明确授权的文本与附件片段，不含画像、完整聊天历史或\n项目数据。"
+      },
       "McpCallResult": {
         "properties": {
           "status": {
@@ -42285,6 +42828,18 @@
         ],
         "title": "McpCallResult",
         "description": "一次调用的结果：成功 / 失败 / 敏感操作挂起待确认。"
+      },
+      "McpCallStatus": {
+        "type": "string",
+        "enum": [
+          "loading",
+          "succeeded",
+          "failed",
+          "sensitive_pending",
+          "denied"
+        ],
+        "title": "McpCallStatus",
+        "description": "消息内 MCP 调用结果的状态机（Issue 36）。"
       },
       "McpCheckResult": {
         "properties": {
@@ -48293,6 +48848,43 @@
         ],
         "title": "ReminderUpdateRequest",
         "description": "编辑提醒：允许修改日程、主题与画像开关。\n\n编辑后从新的确认载荷重新冻结快照（同创建语义）；投递记录保留\n历史，不被编辑覆盖。"
+      },
+      "RemovedPluginSelection": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "skill",
+              "mcp"
+            ],
+            "title": "Kind",
+            "description": "插件类别。"
+          },
+          "plugin_id": {
+            "type": "string",
+            "title": "Plugin Id",
+            "description": "插件标识。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "插件显示名（读取时快照，已卸载也可解释）。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "移除原因（中文，可操作）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "plugin_id",
+          "name",
+          "reason"
+        ],
+        "title": "RemovedPluginSelection",
+        "description": "被服务端清洗出对话选择的失效插件（含影响解释）。\n\n插件被停用、卸载或权限撤回后，从当前账户可用集合消失；读取会话或\n发送消息时按此解释影响，前端向用户说明后不再注入上下文。"
       },
       "ResearchReportElement": {
         "properties": {

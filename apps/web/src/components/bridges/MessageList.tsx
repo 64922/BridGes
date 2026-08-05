@@ -21,11 +21,13 @@ import type {
   ChatStreamHumanizerData,
   HumanizerResultProjection,
   ImageTaskProjection,
+  McpCallMessageProjection,
   ReadAloudProjection,
   VideoTaskProjection,
 } from "@/lib/api";
 import { ImageTaskCard } from "./chat/ImageTaskCard";
 import { VideoTaskCard } from "./chat/VideoTaskCard";
+import { McpCallCard } from "@/components/bridges/McpCallCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
@@ -98,6 +100,8 @@ export interface ChatMessage {
   /** Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡） */
   image?: ImageTaskProjection | null;
   video?: VideoTaskProjection | null;
+  /** Issue 36：本条助手消息的 MCP 调用结果投影（结果卡；敏感挂起可确认） */
+  mcpCall?: McpCallMessageProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -121,6 +125,12 @@ interface MessageListProps {
   onRefreshMessages?: () => void;
   /** Issue 30：TTS 能力可用性（账户级探测快照；不可用时禁用朗读入口并说明原因） */
   tts?: CapabilityAvailability;
+  /** Issue 36：消息内 MCP 敏感操作确认（approve/deny 由宿主接入真实 API） */
+  onConfirmMcpCall?: (
+    messageId: string,
+    confirmationId: string,
+    action: "approve" | "deny"
+  ) => Promise<void> | void;
 }
 
 /** Issue 29：该轮是否为生涯规划意图（显式前缀或强触发关键词命中；
@@ -531,6 +541,7 @@ export function MessageList({
   onTeachingSkip,
   tts,
   onRefreshMessages,
+  onConfirmMcpCall,
 }: MessageListProps) {
   // Issue 30：每条助手消息的朗读控制器句柄（供消息操作栏「朗读」按钮桥接）
   const readAloudRefs = useRef(new Map<string, ReadAloudControlsHandle>());
@@ -832,6 +843,16 @@ export function MessageList({
                       conversationId={conversationId}
                       task={message.video}
                       onSucceeded={onRefreshMessages}
+                    />
+                  )}
+
+                {conversationId &&
+                  message.role === "assistant" &&
+                  message.mcpCall && (
+                    <McpCallCard
+                      call={message.mcpCall}
+                      messageId={message.id}
+                      onConfirm={onConfirmMcpCall}
                     />
                   )}
               </div>

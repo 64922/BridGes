@@ -113,6 +113,23 @@ class ChatAttachmentService:
         self._database = database
         self._objects = object_repository
 
+    def conversation_project_id(
+        self, account_id: str, conversation_id: str
+    ) -> str | None:
+        """返回会话当前归属的学习项目标识（Issue 36「新附件归属」）。
+
+        聊天附件上传后若会话归属项目，摄取记录携带 project_id，纳入
+        项目检索范围；跨账户或不存在返回 None（不泄漏存在性）。
+        """
+        row = self._database.scoped(account_id).execute(
+            "SELECT project_id FROM conversations"
+            " WHERE conversation_id = ? AND account_id = ?",
+            (conversation_id, account_id),
+        ).fetchone()
+        if row is None or row["project_id"] is None:
+            return None
+        return str(row["project_id"])
+
     def upload(
         self,
         account_id: str,

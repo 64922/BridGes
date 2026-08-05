@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { Composer } from "@/components/bridges/Composer";
+import { PluginPickerDialog } from "@/components/bridges/PluginPickerDialog";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
@@ -23,7 +24,13 @@ import {
   chatVideoKey,
   pluginHumanizerKey,
 } from "@/lib/chat-flow";
-import { ApiError, createChatConversation, updateChatConversationProject } from "@/lib/api";
+import {
+  ApiError,
+  createChatConversation,
+  updateChatConversation,
+  updateChatConversationProject,
+  type ChatPluginSelectionItem,
+} from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -55,7 +62,13 @@ export function NewChatHome() {
   const ensureConversation = async (): Promise<string | undefined> => {
     if (preparedConversationRef.current) return preparedConversationRef.current;
     try {
-      const conversation = await createChatConversation(undefined, mode);
+      // Issue 36：预建空对话时携带当前插件选择（先选插件再传附件的路径）。
+      const conversation = await createChatConversation(
+        undefined,
+        mode,
+        learningProject?.project_id,
+        pluginSelection
+      );
       preparedConversationRef.current = conversation.conversation_id;
       return conversation.conversation_id;
     } catch (error) {
@@ -71,6 +84,14 @@ export function NewChatHome() {
   const [careerOpen, setCareerOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
+  // Issue 36：新聊天首页暂存的插件选择（发送创建对话时携带；chip 与
+  // 真实选择器共用，随对话持久化；停用/卸载/撤权由服务端清洗解释）。
+  const [pluginSelection, setPluginSelection] = useState<ChatPluginSelectionItem[]>([]);
+  const [pluginNames, setPluginNames] = useState<Record<string, string>>({});
+  const [pluginPickerOpen, setPluginPickerOpen] = useState(false);
+  // 是否触碰过插件选择（含清空）：触碰后发送必须 PATCH 会话，否则服务端
+  // 旧选择会在「先选后清再发送」路径上静默复活（Issue 36 AC7 持久化语义）。
+  const pluginsTouchedRef = useRef(false);
 
   // Issue 34：插件页「在聊天中使用 humanizer」意图——消费即删除，
   // 防止刷新或 StrictMode 双触发重复打开。
@@ -89,7 +110,7 @@ export function NewChatHome() {
     try {
       const conversationId =
         preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode)).conversation_id;
+        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
       preparedConversationRef.current = conversationId;
       sessionStorage.setItem(chatPromptKey(conversationId), content);
       if (!useProfile) {
@@ -116,7 +137,7 @@ export function NewChatHome() {
     try {
       const conversationId =
         preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode)).conversation_id;
+        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
       preparedConversationRef.current = conversationId;
       sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
       sessionStorage.setItem(chatImageKey(conversationId), JSON.stringify(payload));
@@ -136,7 +157,7 @@ export function NewChatHome() {
     try {
       const conversationId =
         preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode)).conversation_id;
+        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
       preparedConversationRef.current = conversationId;
       const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
       sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
@@ -160,7 +181,7 @@ export function NewChatHome() {
     try {
       const conversationId =
         preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode)).conversation_id;
+        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
       preparedConversationRef.current = conversationId;
       sessionStorage.setItem(chatPromptKey(conversationId), content);
       sessionStorage.setItem(chatSkillKey(conversationId), JSON.stringify(skillInput));
@@ -188,9 +209,12 @@ export function NewChatHome() {
       const prepared = preparedConversationId ?? preparedConversationRef.current;
       const conversationId =
         prepared ??
-        (await createChatConversation(undefined, mode, learningProject?.project_id)).conversation_id;
-      if (prepared && learningProject) {
-        await updateChatConversationProject(conversationId, learningProject.project_id);
+        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
+      if (prepared && (learningProject || pluginSelection.length > 0)) {
+        await updateChatConversationProject(conversationId, learningProject?.project_id ?? null);
+      }
+      if (prepared && pluginsTouchedRef.current) {
+        await updateChatConversation(conversationId, { pluginSelection });
       }
       sessionStorage.setItem(chatPromptKey(conversationId), text);
       if (attachmentIds.length > 0) {
@@ -246,6 +270,17 @@ export function NewChatHome() {
                 onOpenCareer={() => setCareerOpen(true)}
                 onOpenImage={() => setImageOpen(true)}
                 onOpenVideo={() => setVideoOpen(true)}
+                pluginSelection={pluginSelection}
+                pluginNames={pluginNames}
+                onSelectPlugins={() => setPluginPickerOpen(true)}
+                onRemovePlugin={(kind, pluginId) => {
+                  pluginsTouchedRef.current = true;
+                  setPluginSelection((current) =>
+                    current.filter(
+                      (item) => !(item.kind === kind && item.plugin_id === pluginId)
+                    )
+                  );
+                }}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
@@ -259,7 +294,6 @@ export function NewChatHome() {
                 }}
                 onHumanizer={() => setHumanizerOpen(true)}
                 onCareer={() => setCareerOpen(true)}
-                onImage={() => setImageOpen(true)}
               />
               <p className={styles.blankStateNote}>
                 BridGes 的回答会标注依据与来源；重要内容请核对引用。
@@ -291,6 +325,16 @@ export function NewChatHome() {
         open={videoOpen}
         onClose={() => setVideoOpen(false)}
         onSubmit={handleVideoSubmit}
+      />
+      <PluginPickerDialog
+        open={pluginPickerOpen}
+        onClose={() => setPluginPickerOpen(false)}
+        selected={pluginSelection}
+        onSelect={(selection, names) => {
+          pluginsTouchedRef.current = true;
+          setPluginSelection(selection);
+          setPluginNames(names);
+        }}
       />
     </AppShell>
   );

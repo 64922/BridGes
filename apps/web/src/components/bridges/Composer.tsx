@@ -18,6 +18,7 @@ import {
   transcribeDictation,
   uploadChatAttachment,
 } from "@/lib/api";
+import type { ChatPluginSelectionItem } from "@/lib/api";
 import { Menu } from "./Menu";
 import type { CapabilityAvailability } from "./chat/ReadAloudControls";
 import styles from "./chat/chat.module.css";
@@ -53,6 +54,16 @@ interface ComposerProps {
   learningProject?: { project_id: string; name: string } | null;
   /** 「选择学习项目」入口；选择/清除后回调（传 null 表示清除）。 */
   onSelectLearningProject?: (project: { project_id: string; name: string } | null) => void;
+  /** Issue 36：当前对话选中的插件（随对话持久化；chip 持续显示）。 */
+  pluginSelection?: ChatPluginSelectionItem[];
+  /** Issue 36：选中插件的显示名映射（key = `${kind}:${plugin_id}`）。 */
+  pluginNames?: Record<string, string>;
+  /** Issue 36：「选择已启用插件」入口（打开真实选择器）。 */
+  onSelectPlugins?: () => void;
+  /** Issue 36：移除单个插件选择（chip 清除按钮；PATCH 持久化）。 */
+  onRemovePlugin?: (kind: "skill" | "mcp", pluginId: string) => void;
+  /** Issue 36：对选中 MCP 插件发起调用（chip「调用」按钮）。 */
+  onInvokeMcp?: (mcpId: string) => void;
   /** Issue 28：打开「文章人味化」任务对话框（由宿主渲染对话框）。 */
   onOpenHumanizer?: () => void;
   /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
@@ -71,13 +82,6 @@ interface ComposerProps {
 
 const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-const UNAVAILABLE_TOOLS = [
-  {
-    label: "选择已启用插件",
-    icon: "plugins",
-    reason: "插件中心将在后续版本开放，目前没有可选择的已启用插件。",
-  },
-] as const;
 
 function newId(prefix: string): string {
   return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
@@ -105,6 +109,11 @@ export function Composer({
   prefill = null,
   learningProject = null,
   onSelectLearningProject,
+  pluginSelection = [],
+  pluginNames = {},
+  onSelectPlugins,
+  onRemovePlugin,
+  onInvokeMcp,
   onOpenHumanizer,
   onOpenCareer,
   onOpenImage,
@@ -728,6 +737,79 @@ export function Composer({
         </div>
       )}
 
+      {/* Issue 36：选中的插件 chip（与学习项目 chip 平行，随对话持久化）。
+          SKILL 插件展示名称与移除；MCP 插件额外提供「调用」按钮（真实
+          invoke 走消息流）。停用/卸载/撤权后由服务端清洗，此处不再出现。 */}
+      {pluginSelection.length > 0 && (
+        <div
+          data-testid="composer-plugin-chips"
+          role="group"
+          aria-label="本对话选中的插件"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            flexWrap: "wrap",
+            gap: "var(--space-2)",
+            alignSelf: "flex-start",
+            maxWidth: "100%",
+          }}
+        >
+          {pluginSelection.map((item) => {
+            const key = `${item.kind}:${item.plugin_id}`;
+            const name = pluginNames[key] ?? item.plugin_id;
+            return (
+              <span
+                key={key}
+                data-testid={`composer-selected-plugin-${item.plugin_id}`}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "var(--space-2)",
+                  padding: "var(--space-1) var(--space-2)",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
+                  backgroundColor: "var(--color-bg-secondary)",
+                  fontSize: "var(--text-sm)",
+                  color: "var(--color-text-secondary)",
+                }}
+              >
+                <Icon name={item.kind === "skill" ? "plugins" : "mcpServer"} size={14} aria-hidden />
+                <span
+                  style={{
+                    maxWidth: "14rem",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                  title={`${name}（${item.kind === "skill" ? "SKILL 插件" : "MCP 服务器"}）`}
+                >
+                  {name}
+                </span>
+                {item.kind === "mcp" && onInvokeMcp && (
+                  <button
+                    type="button"
+                    aria-label={`调用插件 ${name}`}
+                    data-testid={`composer-invoke-plugin-${item.plugin_id}`}
+                    onClick={() => onInvokeMcp(item.plugin_id)}
+                    style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
+                  >
+                    <Icon name="play" size={12} aria-hidden />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  aria-label={`移除插件 ${name}`}
+                  onClick={() => onRemovePlugin?.(item.kind, item.plugin_id)}
+                  style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
+                >
+                  <Icon name="close" size={14} aria-hidden />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
       {/* Issue 20：本轮启用的来源层面板（附件 → 项目 → 知识库）。
           附件/项目仅作展示，知识库可发送前关闭；关闭后本轮检索与引用
           均不含知识库候选。只在真实对话（有 conversationId 或延迟创建
@@ -928,15 +1010,19 @@ export function Composer({
             border: "1px solid var(--color-border)",
           }}
           items={[
+            // Issue 36：六入口固定顺序（上传文件/图片、论文搜索、文章
+            // 人味化、生涯规划助手、选择学习项目、选择已启用插件）。
             {
               label: "上传文件/图片",
               icon: "uploadFile",
               onSelect: () => fileInputRef.current?.click(),
             },
             // Issue 28/29：文章人味化与生涯规划进入真实任务对话框，
-            // 不再只是预填前缀；其它意图仍为结构化预填，不伪造工具结果。
-            // 菜单顺序与入口数保持不变（Issue 13 固定六入口契约）。
-            ...TOOL_PROMPTS.map((tool) => ({
+            // 不再只是预填前缀；论文搜索仍为结构化预填（真实 arXiv MCP）。
+            ...TOOL_PROMPTS.filter(
+              (tool) =>
+                tool.label !== IMAGE_TOOL_LABEL && tool.label !== VIDEO_TOOL_LABEL
+            ).map((tool) => ({
               label: tool.label,
               icon: tool.icon,
               onSelect:
@@ -950,33 +1036,7 @@ export function Composer({
                         setToolNotice("");
                         onOpenCareer?.();
                       }
-                    : tool.label === IMAGE_TOOL_LABEL && onOpenImage
-                      ? () => {
-                          // Issue 31：图片能力不可用时入口明确停用并说明
-                          // 原因（探测快照；服务端仍做权威校验）。
-                          if (!image.available) {
-                            setToolNotice(
-                              image.reason ?? "图片生成与编辑能力当前不可用。"
-                            );
-                            return;
-                          }
-                          setToolNotice("");
-                          onOpenImage?.();
-                        }
-                      : tool.label === VIDEO_TOOL_LABEL && onOpenVideo
-                        ? () => {
-                            // Issue 32：视频能力不可用时入口明确停用并说明
-                            // 原因（探测快照；服务端仍做权威校验）。
-                            if (!video.available) {
-                              setToolNotice(
-                                video.reason ?? "视频生成能力当前不可用。"
-                              );
-                              return;
-                            }
-                            setToolNotice("");
-                            onOpenVideo?.();
-                          }
-                        : () => insertToolPrefix(tool.prefix),
+                    : () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
             ...(onSelectLearningProject
@@ -989,10 +1049,58 @@ export function Composer({
                   },
                 ]
               : []),
-            ...UNAVAILABLE_TOOLS.map((tool) => ({
+            // Issue 36：占位「选择已启用插件」实现为真实选择器（可用集合
+            // = 当前账户已安装且启用；选择随对话持久化）。
+            ...(onSelectPlugins
+              ? [
+                  {
+                    label: "选择已启用插件",
+                    icon: "plugins" as const,
+                    returnFocus: false,
+                    onSelect: () => {
+                      setToolNotice("");
+                      onSelectPlugins?.();
+                    },
+                  },
+                ]
+              : []),
+            // 既有能力入口（图片/视频生成）保留在清单六入口之后：
+            // 它们是已实现能力，非清单新增项。
+            ...TOOL_PROMPTS.filter(
+              (tool) =>
+                tool.label === IMAGE_TOOL_LABEL || tool.label === VIDEO_TOOL_LABEL
+            ).map((tool) => ({
               label: tool.label,
               icon: tool.icon,
-              onSelect: () => setToolNotice(tool.reason),
+              onSelect:
+                tool.label === IMAGE_TOOL_LABEL && onOpenImage
+                  ? () => {
+                      // Issue 31：图片能力不可用时入口明确停用并说明
+                      // 原因（探测快照；服务端仍做权威校验）。
+                      if (!image.available) {
+                        setToolNotice(
+                          image.reason ?? "图片生成与编辑能力当前不可用。"
+                        );
+                        return;
+                      }
+                      setToolNotice("");
+                      onOpenImage?.();
+                    }
+                  : tool.label === VIDEO_TOOL_LABEL && onOpenVideo
+                    ? () => {
+                        // Issue 32：视频能力不可用时入口明确停用并说明
+                        // 原因（探测快照；服务端仍做权威校验）。
+                        if (!video.available) {
+                          setToolNotice(
+                            video.reason ?? "视频生成能力当前不可用。"
+                          );
+                          return;
+                        }
+                        setToolNotice("");
+                        onOpenVideo?.();
+                      }
+                    : () => insertToolPrefix(tool.prefix),
+              returnFocus: false,
             })),
           ]}
         />

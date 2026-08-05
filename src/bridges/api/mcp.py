@@ -10,12 +10,14 @@ MCP 插件中心是账户作用域能力：安装描述（单个 MCP.yaml）先�
 
 from __future__ import annotations
 
+import contextlib
 from typing import Annotated
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from bridges.api.auth import SubjectDep
+from bridges.chat.selections import ChatSelectionsService
 from bridges.contracts.identity import AuthError
 from bridges.contracts.mcp import (
     McpCallRecord,
@@ -214,12 +216,26 @@ def revoke_permissions(
     manifest: McpPermissionManifest,
     service: McpServiceDep,
     subject: SubjectDep,
+    request: Request,
 ) -> McpServerProjection:
-    """撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。"""
+    """撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。
+
+    撤权成功后把该 MCP 从当前账户全部会话的插件选择中移除（Issue 36
+    AC7：撤权后立即从可用集合移除）——此前对话对旧权限清单的选择授权
+    不再成立，需重新选择后才能再次调用。
+    """
     try:
-        return service.revoke_permissions(subject.account_id, mcp_id, manifest)
+        projection = service.revoke_permissions(subject.account_id, mcp_id, manifest)
     except McpError as exc:
         raise _from_error(exc) from exc
+    selections: ChatSelectionsService | None = getattr(
+        request.app.state, "chat_selections_service", None
+    )
+    if selections is not None:
+        # 选择联动失败不阻断撤权主流程（仅影响后续对话可用集合）。
+        with contextlib.suppress(Exception):  # noqa: BLE001
+            selections.revoke_mcp_selection(subject.account_id, mcp_id)
+    return projection
 
 
 @router.delete(

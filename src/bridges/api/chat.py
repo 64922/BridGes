@@ -25,6 +25,7 @@ from bridges.chat.attachments import (
     ChatAttachmentError,
     ChatAttachmentService,
 )
+from bridges.chat.selections import ChatSelectionsService
 from bridges.chat.service import (
     ChatDomainError,
     ChatService,
@@ -174,6 +175,16 @@ def _get_learning_project_service(request: Request) -> LearningProjectService:
 
 LearningProjectServiceDep = Annotated[
     LearningProjectService, Depends(_get_learning_project_service)
+]
+
+
+def _get_selections_service(request: Request) -> ChatSelectionsService | None:
+    """插件选择服务依赖：未挂载时返回 None（选择端点自行 503）。"""
+    return getattr(request.app.state, "chat_selections_service", None)
+
+
+SelectionsServiceDep = Annotated[
+    ChatSelectionsService | None, Depends(_get_selections_service)
 ]
 
 
@@ -437,6 +448,16 @@ def _generation_events(
                     event=ChatStreamEventKind.VIDEO,
                     data=video_data,
                 )
+        elif event.kind == "mcp_call":
+            # Issue 36：MCP 调用结果事件（同步执行终态投影），与 delta
+            # 同一事件流；敏感挂起由前端确认对话框继续（approve/deny
+            # 走 chat 域路由，结果写回同一消息列，刷新可恢复）。
+            mcp_data = event.mcp_call
+            if mcp_data is not None:
+                yield ChatStreamEvent(
+                    event=ChatStreamEventKind.MCP_CALL,
+                    data=mcp_data,
+                )
     if terminated:
         return
     # 生成器空产出：以消息当前状态补发终态
@@ -511,10 +532,13 @@ def create_conversation(
     service: ChatServiceDep,
     subject: SubjectDep,
     learning_project_service: LearningProjectServiceDep,
+    selections_service: SelectionsServiceDep,
 ) -> ChatConversationProjection:
     """新建对话；标题可选，缺省由首条消息自动推导。
 
     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
+    ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
+    逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
     """
     try:
         if body.project_id is not None:
@@ -526,11 +550,27 @@ def create_conversation(
                     "project_not_found",
                     "学习项目不存在或没有访问权限。",
                 ) from exc
+        if body.plugin_selection:
+            if selections_service is None:
+                raise _error(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    "selections_unavailable",
+                    "插件选择服务未启用，请稍后重试。",
+                )
+            result = selections_service.validate_items(
+                subject.account_id, body.plugin_selection or []
+            )
+            if result.removed:
+                reasons = "；".join(
+                    f"「{entry.name}」{entry.reason}" for entry in result.removed
+                )
+                raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "plugin_not_available", reasons)
         return service.create_conversation(
             subject.account_id,
             title=body.title,
             mode=body.mode,
             project_id=body.project_id,
+            plugin_selection=body.plugin_selection,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -553,14 +593,40 @@ def update_conversation(
     service: ChatServiceDep,
     subject: SubjectDep,
     learning_project_service: LearningProjectServiceDep,
+    selections_service: SelectionsServiceDep,
 ) -> ChatConversationProjection:
-    """更新当前账户会话的标题、置顶状态或学习项目归属。
+    """更新当前账户会话的标题、置顶状态、学习项目归属或插件选择。
 
     ``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改
     归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH
     与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。
+    ``plugin_selection`` 全量替换当前选择（显式 [] 清空）：逐项校验
+    已安装且启用，停用/卸载/撤权项 422 拒绝并说明原因（读取路径的
+    失效清洗在投影层完成并解释影响）。
     """
     try:
+        # 插件选择先做纯校验（validate_items 不写库）：422 拒绝发生在
+        # 一切写入之前；通过后再按项目归属（事务内）→ 插件选择（事务内）
+        # 顺序提交，任一失败都不留下半更新状态。
+        if "plugin_selection" in body.model_fields_set:
+            if selections_service is None:
+                raise _error(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    "selections_unavailable",
+                    "插件选择服务未启用，请稍后重试。",
+                )
+            result = selections_service.validate_items(
+                subject.account_id, body.plugin_selection or []
+            )
+            if result.removed:
+                reasons = "；".join(
+                    f"「{entry.name}」{entry.reason}" for entry in result.removed
+                )
+                raise _error(
+                    status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    "plugin_not_available",
+                    reasons,
+                )
         if "project_id" in body.model_fields_set:
             record = learning_project_service.update_conversation_metadata(
                 subject.account_id,
@@ -569,12 +635,19 @@ def update_conversation(
                 pinned=body.pinned,
                 project_id=body.project_id,
             )
+            if "plugin_selection" in body.model_fields_set:
+                return service.update_conversation(
+                    subject.account_id,
+                    conversation_id,
+                    plugin_selection=body.plugin_selection,
+                )
             return service.projection_from_record(record)
         return service.update_conversation(
             subject.account_id,
             conversation_id,
             title=body.title,
             pinned=body.pinned,
+            plugin_selection=body.plugin_selection,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -722,10 +795,17 @@ async def upload_attachment(
     except ChatAttachmentError as exc:
         raise _error(exc.status_code, exc.code, exc.message) from exc
     # 入队幂等（INSERT OR IGNORE），重复上传与失败重试都安全；入队失败
-    # 显式报错，前端可重试，绝不静默吞掉摄取记录缺失。
+    # 显式报错，前端可重试，绝不静默吞掉摄取记录缺失。会话归属学习项目
+    # 时新附件携带项目归属（Issue 36）：纳入项目检索范围，清除归属后的
+    # 新上传不再携带旧项目上下文。
     try:
         ingestion_service.enqueue(
-            subject.account_id, projection.object_id, conversation_id
+            subject.account_id,
+            projection.object_id,
+            conversation_id,
+            project_id=service.conversation_project_id(
+                subject.account_id, conversation_id
+            ),
         )
     except IngestionError as exc:
         raise _error(exc.status_code, exc.code, exc.message) from exc
@@ -913,6 +993,11 @@ async def send_message(
             video=(
                 body.video.model_dump(mode="json") if body.video is not None else None
             ),
+            mcp_call=(
+                body.mcp_call.model_dump(mode="json")
+                if body.mcp_call is not None
+                else None
+            ),
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -968,6 +1053,79 @@ def citation_detail(
         )
     except RetrievalError as exc:
         raise _error(exc.status_code, exc.code, exc.message) from exc
+
+
+def _mcp_confirmation_route(
+    conversation_id: str,
+    message_id: str,
+    confirmation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+    denied: bool,
+) -> ChatMessageProjection:
+    """聊天内 MCP 敏感操作确认（approve/deny）共用实现。
+
+    只允许确认本人消息上真实挂起的敏感调用；结果写回消息 mcp_call 列，
+    刷新/恢复历史对话不丢失（Verification 4：MCP 拒权与确认覆盖）。
+    """
+    try:
+        if denied:
+            return service.deny_mcp_confirmation(
+                subject.account_id, conversation_id, message_id, confirmation_id
+            )
+        return service.approve_mcp_confirmation(
+            subject.account_id, conversation_id, message_id, confirmation_id
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/mcp/confirmations/"
+    "{confirmation_id}/approve",
+    response_model=ChatMessageProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def approve_message_mcp_confirmation(
+    conversation_id: str,
+    message_id: str,
+    confirmation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> ChatMessageProjection:
+    """确认消息内 MCP 调用的敏感操作（仅本次调用有效）。"""
+    return _mcp_confirmation_route(
+        conversation_id, message_id, confirmation_id, service, subject, denied=False
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/mcp/confirmations/"
+    "{confirmation_id}/deny",
+    response_model=ChatMessageProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def deny_message_mcp_confirmation(
+    conversation_id: str,
+    message_id: str,
+    confirmation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> ChatMessageProjection:
+    """拒绝消息内 MCP 调用的敏感操作（调用安全终止并落库 denied）。"""
+    return _mcp_confirmation_route(
+        conversation_id, message_id, confirmation_id, service, subject, denied=True
+    )
 
 
 @router.post(

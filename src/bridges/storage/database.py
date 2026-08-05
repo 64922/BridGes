@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 23
+SCHEMA_VERSION = 24
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1211,6 +1211,17 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX IF NOT EXISTS idx_mcp_calls_account
             ON mcp_calls(account_id, mcp_id, created_at DESC)
+        """,
+    ],
+    # Issue 36: 对话级插件选择（SKILL/MCP，JSON 列表随对话持久化）与
+    # 消息内 MCP 调用结果投影（真实调用链路，刷新可恢复）。两列均为
+    # 可空 JSON 文本，存量行不受影响。
+    24: [
+        """
+        ALTER TABLE conversations ADD COLUMN plugin_selection TEXT
+        """,
+        """
+        ALTER TABLE messages ADD COLUMN mcp_call TEXT
         """,
     ],
 }

@@ -1011,13 +1011,19 @@ export async function listChatConversations(): Promise<ChatConversationListProje
 export async function createChatConversation(
   title?: string,
   mode: ChatMode = "companion",
-  projectId?: string
+  projectId?: string,
+  pluginSelection?: ChatPluginSelectionItem[]
 ): Promise<ChatConversationProjection> {
   const res = await fetch(`${API_BASE}/chat/conversations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({ title: title ?? null, mode, project_id: projectId ?? null }),
+    body: JSON.stringify({
+      title: title ?? null,
+      mode,
+      project_id: projectId ?? null,
+      plugin_selection: pluginSelection ?? [],
+    }),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
@@ -1025,13 +1031,19 @@ export async function createChatConversation(
 
 export async function updateChatConversation(
   conversationId: string,
-  update: { title?: string; pinned?: boolean }
+  update: { title?: string; pinned?: boolean; pluginSelection?: ChatPluginSelectionItem[] | null }
 ): Promise<ChatConversationProjection> {
+  const body: Record<string, unknown> = {};
+  if (update.title !== undefined) body.title = update.title;
+  if (update.pinned !== undefined) body.pinned = update.pinned;
+  if ("pluginSelection" in update) {
+    body.plugin_selection = update.pluginSelection ?? [];
+  }
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify(update),
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
@@ -1264,7 +1276,8 @@ export async function streamChatMessage(
   skillId?: string,
   skillInput?: unknown,
   image?: ImageRequestPayload,
-  video?: VideoRequestPayload
+  video?: VideoRequestPayload,
+  mcpCall?: McpCallRequestPayload
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -1282,11 +1295,47 @@ export async function streamChatMessage(
       ...(image !== undefined ? { image } : {}),
       // Issue 32：文生视频载荷（视频对话框走真实消息流程，任务异步执行）
       ...(video !== undefined ? { video } : {}),
+      // Issue 36：对选中 MCP 插件的调用载荷（调用对话框走真实消息流程）
+      ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
     }),
     signal,
   });
   if (!res.ok) throw await parseApiError(res);
   await readSseStream(res, onEvent);
+}
+
+/** Issue 36：确认消息内 MCP 调用的敏感操作（仅本次调用有效；结果写回消息）。 */
+export async function approveMessageMcpConfirmation(
+  conversationId: string,
+  messageId: string,
+  confirmationId: string
+): Promise<ChatMessageProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/mcp/confirmations/${encodeURIComponent(confirmationId)}/approve`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** Issue 36：拒绝消息内 MCP 调用的敏感操作（调用安全终止并落库 denied）。 */
+export async function denyMessageMcpConfirmation(
+  conversationId: string,
+  messageId: string,
+  confirmationId: string
+): Promise<ChatMessageProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/mcp/confirmations/${encodeURIComponent(confirmationId)}/deny`,
+    {
+      method: "POST",
+      credentials: "same-origin",
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 /** 提交一条回答反馈（Issue 27）：回答不合适或画像有误（幂等，不丢反馈）。
@@ -2493,6 +2542,12 @@ export type McpDataSlice = components["schemas"]["McpDataSlice"];
 export type McpCallResult = components["schemas"]["McpCallResult"];
 export type McpSensitiveConfirmation = components["schemas"]["McpSensitiveConfirmation"];
 export type McpCallRecord = components["schemas"]["McpCallRecord"];
+// Issue 36：对话级插件选择与聊天内 MCP 调用契约（随对话持久化）。
+export type ChatPluginSelectionItem = components["schemas"]["ChatPluginSelectionItem"];
+export type RemovedPluginSelection = components["schemas"]["RemovedPluginSelection"];
+export type McpCallRequestPayload = components["schemas"]["McpCallRequestPayload"];
+export type McpCallMessageProjection = components["schemas"]["McpCallMessageProjection"];
+export type ChatStreamMcpData = components["schemas"]["ChatStreamMcpData"];
 
 /** 返回当前账户的全部 MCP 服务器与真实调用统计。 */
 export async function listMcpServers(): Promise<McpListProjection> {

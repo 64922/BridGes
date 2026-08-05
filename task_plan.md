@@ -1,6 +1,139 @@
 # Task Plan — 架构审查候选逐项修复（M01–M05 审查后深化）
 
-状态：进行中（2026-08-05）
+状态：进行中（2026-08-06，Issue 36 已完成待提交）
+
+## Issue 36 实施计划（集成聊天工具、学习项目与插件选择）
+
+状态：已完成（2026-08-06）。全量验证：1980 pytest（+22 新增：
+selections 9 + mcp_call 6 + attachment_project 4 + schema v24 3，
+另补载荷互斥 1）、issue36 E2E 5 条全过、全量 E2E 232 通过（4 条
+失败均为既有基线：issue04/08 环境 flake、issue14/30 并行 flake
+串行通过，与 Issue 35 记录一致）、mypy 242 文件 0 错误、改动区域
+ruff 干净、npm typecheck/build 通过、openapi 同步通过（regenerate
+脚本改 test 环境生成，与契约同步测试一致）。双轴 code-review 修复：
+PATCH 会话原子性（插件选择先纯校验后按序提交，杜绝半更新）、
+mcp_call 与 SKILL/图片/视频全互斥（并发 422 不静默丢弃）、invoke
+异常路径失败投影落库（刷新不残留「调用中…」）、selection_key 跨
+模块去重、死代码清理（chatPluginSelectionKey）、新聊天首页「先选
+后清再发送」清空持久化（pluginsTouchedRef 防旧选择复活）、E2E 补
+建议卡逐卡键盘触发与卸载移除断言。Issue 36 验收状态已更新为
+ready-for-human（AC 与 Verification 全部勾选附证据）。
+
+### 目标
+把已完成的六项能力（附件/论文搜索/人味化/生涯规划/项目/插件）统一接入两种
+对话模式「+」菜单：六入口固定顺序；「选择已启用插件」由占位实现为真实选择器
+（可用集合=当前账户已安装且启用，停用/卸载/撤权立即从可用集合移除并解释影响）；
+选择状态随对话持久化（conversations.plugin_selection，schema v24）；选中 MCP
+插件可通过 chip 发起真实调用（消息载荷 mcp_call → 真实 invoke → 数据切片/
+敏感确认/审计 → 结果卡持久化到消息）；选中 SKILL 插件注入「可用工具集合」
+系统上下文（清除后不再携带旧上下文）；项目选择真实约束检索与新附件归属
+（上传附件带会话项目写入 document_records，检索项目层纳入聊天附件）；
+空白对话恰好三张建议卡（论文搜索/文章人味化/生涯规划，原创图标、真实消息
+触发）；输入区持续显示模式/项目/插件选择与数据披露；刷新、恢复历史对话、
+切换模式与切换账户后选择与结果不丢失、不串号。
+
+### 设计决策
+1. 插件选择 = conversations.plugin_selection JSON 列（元素
+   {"kind":"skill"|"mcp","plugin_id":"…"}）；创建会话可携带、PATCH 全量替换
+   （显式 [] 清空）；服务端逐项校验存在且当前账户启用（SKILL：内置
+   account_skill_states 默认启用、用户包 status=installed；MCP：enabled=true）；
+   失效项清洗写回并随投影返回 removed_selections（kind/id/名称/中文原因）供
+   前端解释影响；跨账户 404、坏 kind 422
+2. 允许工具集合：生成时按会话有效选择注入「本对话可用工具」系统上下文（SKILL
+   插件：名称/能力/数据类别；MCP：名称/权限类别摘要）；清除或失效后不注入
+3. MCP 真实调用：ChatMessageCreateRequest.mcp_call（mcp_id/tool/input/data_slice）
+   → 校验该 MCP 被本会话选中（未选中 422「该插件未选择，无法调用」）→
+   McpService.invoke（数据切片+敏感确认+审计既有）→ 结果入 messages.mcp_call
+   JSON 列 + SSE MCP_CALL 事件；敏感挂起 → 消息终态 done + mcp_call.status=
+   sensitive_pending（含 confirmation）→ 前端确认对话框 → chat 域封装
+   POST .../messages/{mid}/mcp/confirmations/{cid}/approve|deny（调既有
+   McpService 端点 + 更新消息列，刷新可见最终结果）
+4. 新附件归属：上传聊天附件时读取会话 project_id → ingestion.enqueue 带
+   project_id（source 仍 chat_attachment）；检索项目层 ready 文档扩展
+   source IN ('project_file','chat_attachment') AND project_id=?
+5. 菜单顺序：六入口固定顺序（上传文件/图片、论文搜索、文章人味化、生涯规划
+   助手、选择学习项目、选择已启用插件）；图片/视频生成为既有能力入口保留其后
+   （AC1「未实现按钮」=占位插件选择器，本次实现为真实选择器）
+6. 建议卡：恰好三张（论文搜索预填真实消息、文章人味化 HumanizerDialog、
+   生涯规划 CareerPlanningDialog），移除图片/视频卡（清单之外不新增建议卡）
+7. 前端状态：插件 chip 与项目 chip 平行显示于输入区上方（composer-selected-
+   plugin-*），chip 展开数据披露（数据类别/权限摘要）并可移除；MCP chip 提供
+   「调用」按钮 → McpInvokeDialog（工具名 + JSON 参数 + 数据切片预览）→ 真实
+   send；新聊天首页选择插件 → 创建会话时携带；chat-flow.ts sessionStorage
+   桥接
+8. 跨账户/切换模式：选择存会话（模式无关）；账户隔离 scoped 既有；前端
+   accountRevision 清态既有
+
+### 新增模块
+1. `contracts/chat.py` — ChatPluginSelectionItem（kind/plugin_id）、
+   RemovedPluginSelection（item/名称/中文原因）、ChatConversationProjection
+   .plugin_selection + .removed_selections、ChatCreateRequest.plugin_selection、
+   ChatConversationUpdateRequest.plugin_selection（显式 [] 清空）、
+   McpCallRequestPayload（mcp_id/tool/input/data_slice）、McpCallMessageProjection
+   （status: loading|succeeded|failed|sensitive_pending|denied/error_code/
+   error_message/result 摘要/confirmation 摘要/created_at）、ChatStreamEventKind.
+   MCP_CALL + ChatStreamMcpData
+2. `chat/selections.py` — ChatSelectionsService：可用集合解析（plugin_service.
+   list_plugins + mcp_service.list_servers 过滤 enabled）、选择校验（存在+启用）、
+   失效清洗 + removed 解释（已停用/已卸载/权限已撤回）、工具上下文编译（固定
+   中文格式：插件名/能力/数据类别，MCP 附权限类别）
+3. `storage/database.py` — SCHEMA_VERSION 24：conversations ADD COLUMN
+   plugin_selection TEXT + messages ADD COLUMN mcp_call TEXT
+
+### 修改
+4. `chat/repository.py` — conversation 读写 plugin_selection；MessageRecord.
+   mcp_call + insert/get + update_message_mcp_call
+5. `chat/service.py` — 生成上下文注入（读取会话选择 → 校验清洗 → 编译工具块，
+   未选中不注入）；mcp_call 载荷分支（选中校验 → invoke → SSE started/
+   mcp_call/done；敏感挂起投影 confirmation）；approve/deny 封装（校验消息
+   归属 → McpService.approve/deny → update_message_mcp_call）；投影映射
+   plugin_selection/removed/mcp_call
+6. `api/chat.py` — create/update conversation 校验 plugin_selection（422 中文
+   原因）；send 透传 mcp_call 载荷与 MCP_CALL 事件；上传附件端点读取会话
+   project_id 传 ingestion.enqueue；消息级 mcp 确认 approve/deny 路由
+7. `retrieval/service.py` — 项目层 source IN ('project_file','chat_attachment')
+   AND project_id=?
+8. `api/main.py` — ChatService 构造接入 PluginService/McpService（选择校验与
+   工具上下文）；openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：选择器分区卡 + chip 披露 + 调用对话框 + 结果卡）
+9. api.ts — createChatConversation/updateChatConversation/streamChatMessage
+   支持 pluginSelection/mcpCall + MCP_CALL 事件类型 + 消息级 mcp 确认函数
+10. PluginPickerDialog（新）— SKILL/MCP 分区只列已安装+启用；每项能力/数据
+    类别/权限摘要披露；多选确认（PATCH 会话）；失效项中文原因；loading/
+    empty/error/permission/recovery；纯键盘可达
+11. McpInvokeDialog（新）— 工具名 + JSON 参数 + 数据切片预览披露；提交走
+    真实 send（mcp_call 载荷）
+12. Composer — 菜单六入口顺序 + 插件选择器接入；插件 chip（名称/移除/披露
+    展开）；MCP chip「调用」按钮；与项目 chip 平行
+13. McpCallCard（新，挂助手消息）— loading/成功结果/失败原因/敏感挂起确认
+    （approve/deny 走 chat 域路由）/结果摘要；MCP_CALL 事件消费
+14. SuggestionCards — 恰好三张（论文搜索/文章人味化/生涯规划）原创图标；
+    NewChatHome/page.tsx 宿主与事件接入
+15. chat-flow.ts — pluginSelection sessionStorage 桥接（新聊天首页 → 创建
+    对话携带）
+
+### 测试
+16. `tests/chat/test_selections.py` — 选择校验矩阵（存在/启用/停用/卸载/撤权/
+    跨账户 404/坏 kind 422）、失效清洗 + removed 解释、持久化（创建/更新/
+    清空）、上下文注入（选中/清除/失效后不再注入）
+17. `tests/chat/test_mcp_call_chat.py` — 选中可调用（真实 invoke 成功/失败）、
+    未选中拒绝 422、敏感挂起 → approve/deny → 消息投影更新、刷新恢复、审计
+    不含正文、两账户隔离
+18. `tests/chat/test_attachment_project.py` — 上传附件带会话项目 →
+    document_records.project_id；检索项目层纳入聊天附件；清除项目后新附件
+    不归属
+19. `tests/storage/test_schema_v24.py` — v23→v24 迁移（旧数据保留+新列存在）、
+    重启不重复迁移
+20. E2E issue36 — 两模式六入口顺序（含无未实现按钮）；插件选择器（可用集合
+    过滤/选中 chip/停用后移除解释/清空）；选中 MCP 真实调用（echo 成功、note
+    敏感确认、未选中拒绝）；建议卡恰好三张 + 键盘 + 屏幕阅读器 + 图标语义；
+    项目选择改变检索（上传附件后项目层显示）；刷新恢复；切换账户隔离
+
+### 收尾
+21. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review 双轴
+    审查并修复；更新 Issue 36 验收状态（ready-for-human + AC 与 Verification
+    勾选附证据）；提交（工作内容+bug 修复两部分提交信息）
 
 ## Issue 35 实施计划（交付显式授权 MCP 插件管理）
 

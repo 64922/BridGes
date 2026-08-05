@@ -37,3 +37,4 @@ export function chatVideoKey(conversationId: string): string {
 export function pluginHumanizerKey(): string {
   return "bridges:plugin:open-humanizer";
 }
+

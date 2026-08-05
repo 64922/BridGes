@@ -375,13 +375,26 @@ class LayeredRetrievalService:
                 status=RetrievalLayerStatus.NO_MATERIAL,
                 note="项目暂无已就绪文件。",
             )
+            # Issue 36「新附件归属」：会话归属项目后，新上传的聊天附件
+            # 携带 project_id 入队，纳入项目层检索范围（与项目上传文件
+            # 同层）；清除项目归属后的新附件不再进入任何项目层。
             layers[RetrievalSourceLayer.PROJECT][
                 "ready_document_ids"
-            ] = self._ready_documents(
-                account_id, source="project_file", project_id=project_id
+            ] = _merge_document_ids(
+                self._ready_documents(
+                    account_id, source="project_file", project_id=project_id
+                ),
+                self._ready_documents(
+                    account_id, source="chat_attachment", project_id=project_id
+                ),
             )
-            layers[RetrievalSourceLayer.PROJECT]["stale"] = self._has_stale_documents(
-                account_id, source="project_file", project_id=project_id
+            layers[RetrievalSourceLayer.PROJECT]["stale"] = (
+                self._has_stale_documents(
+                    account_id, source="project_file", project_id=project_id
+                )
+                or self._has_stale_documents(
+                    account_id, source="chat_attachment", project_id=project_id
+                )
             )
         if use_knowledge_base:
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
@@ -766,6 +779,18 @@ class LayeredRetrievalService:
             "原文可访问。",
             f"/knowledge-base/materials/{object_id}/download",
         )
+
+
+def _merge_document_ids(*groups: list[str]) -> list[str]:
+    """按出现顺序合并文档标识并去重（项目层多来源候选）。"""
+    seen: set[str] = set()
+    merged: list[str] = []
+    for group in groups:
+        for document_id in group:
+            if document_id not in seen:
+                seen.add(document_id)
+                merged.append(document_id)
+    return merged
 
 
 def _loads_layers(value: str) -> list[dict[str, Any]]:

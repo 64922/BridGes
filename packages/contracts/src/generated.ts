@@ -360,6 +360,8 @@ export interface paths {
          * @description 新建对话；标题可选，缺省由首条消息自动推导。
          *
          *     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
+         *     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
+         *     逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
          */
         post: operations["create_conversation_chat_conversations_post"];
         delete?: never;
@@ -391,11 +393,14 @@ export interface paths {
         head?: never;
         /**
          * Update Conversation
-         * @description 更新当前账户会话的标题、置顶状态或学习项目归属。
+         * @description 更新当前账户会话的标题、置顶状态、学习项目归属或插件选择。
          *
          *     ``project_id`` 字段缺省表示归属不变；显式 null 解除归属。移动只改
          *     归属：消息、模式事件与附件绝不被触碰。携带 ``project_id`` 的 PATCH
          *     与标题/置顶在同一事务内提交：任一失败整体回滚，绝不留下半更新状态。
+         *     ``plugin_selection`` 全量替换当前选择（显式 [] 清空）：逐项校验
+         *     已安装且启用，停用/卸载/撤权项 422 拒绝并说明原因（读取路径的
+         *     失效清洗在投影层完成并解释影响）。
          */
         patch: operations["update_conversation_chat_conversations__conversation_id__patch"];
         trace?: never;
@@ -570,6 +575,46 @@ export interface paths {
         get: operations["citation_detail_chat_conversations__conversation_id__messages__message_id__citations__citation_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/mcp/confirmations/{confirmation_id}/approve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve Message Mcp Confirmation
+         * @description 确认消息内 MCP 调用的敏感操作（仅本次调用有效）。
+         */
+        post: operations["approve_message_mcp_confirmation_chat_conversations__conversation_id__messages__message_id__mcp_confirmations__confirmation_id__approve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/mcp/confirmations/{confirmation_id}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deny Message Mcp Confirmation
+         * @description 拒绝消息内 MCP 调用的敏感操作（调用安全终止并落库 denied）。
+         */
+        post: operations["deny_message_mcp_confirmation_chat_conversations__conversation_id__messages__message_id__mcp_confirmations__confirmation_id__deny_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5544,6 +5589,11 @@ export interface paths {
         /**
          * Disable Plugin
          * @description 停用插件（内置与用户包统一入口）。
+         *
+         *     停用后插件立即从「可用集合」（选择器/工具调用）消失；对话中已选
+         *     择的该项在读取/发送时被清洗并解释影响（Issue 36 AC7：立即从可用
+         *     集合移除并解释影响）——「选择随对话持久化」保留用户未主动清除的
+         *     选择，重新启用后恢复属持久化语义。
          */
         post: operations["disable_plugin_plugins__plugin_id__disable_post"];
         delete?: never;
@@ -5703,6 +5753,10 @@ export interface paths {
         /**
          * Revoke Permissions
          * @description 撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。
+         *
+         *     撤权成功后把该 MCP 从当前账户全部会话的插件选择中移除（Issue 36
+         *     AC7：撤权后立即从可用集合移除）——此前对话对旧权限清单的选择授权
+         *     不再成立，需重新选择后才能再次调用。
          */
         put: operations["revoke_permissions_mcp__mcp_id__permissions_put"];
         post?: never;
@@ -5932,6 +5986,23 @@ export interface paths {
         get: operations["test_recovery_token__test_recovery_token_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/_test/capabilities": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Test Mark Capabilities Ready */
+        post: operations["test_mark_capabilities_ready__test_capabilities_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -7731,6 +7802,16 @@ export interface components {
              */
             project_id?: string | null;
             /**
+             * Plugin Selection
+             * @description 本对话选中的有效插件（Issue 36）：SKILL 与 MCP 的当前账户可用集合子集，随对话持久化；停用/卸载/撤权后清洗。
+             */
+            plugin_selection?: components["schemas"]["ChatPluginSelectionItem"][];
+            /**
+             * Removed Selections
+             * @description 本次读取时从选择中清洗的失效插件（含中文影响解释）。
+             */
+            removed_selections?: components["schemas"]["RemovedPluginSelection"][];
+            /**
              * Created At
              * Format: date-time
              * @description 创建时间。
@@ -7803,9 +7884,10 @@ export interface components {
         };
         /**
          * ChatConversationUpdateRequest
-         * @description 更新对话标题、置顶状态或学习项目归属；至少提供一个字段。
+         * @description 更新对话标题、置顶状态、学习项目归属或插件选择；至少提供一个字段。
          *
          *     ``project_id`` 字段缺省表示归属不变；显式传 null 表示解除归属。
+         *     ``plugin_selection`` 全量替换当前选择；显式传空数组表示清空全部选择。
          */
         ChatConversationUpdateRequest: {
             /**
@@ -7823,12 +7905,18 @@ export interface components {
              * @description 目标学习项目标识；显式 null 解除归属。
              */
             project_id?: string | null;
+            /**
+             * Plugin Selection
+             * @description 插件选择全量替换；显式 [] 清空；缺省表示不变。
+             */
+            plugin_selection?: components["schemas"]["ChatPluginSelectionItem"][] | null;
         };
         /**
          * ChatCreateRequest
          * @description 新建对话请求；标题可选，缺省由首条消息自动推导。
          *
          *     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时显式传 ``study``。
+         *     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话）。
          */
         ChatCreateRequest: {
             /**
@@ -7846,6 +7934,11 @@ export interface components {
              * @description 可选学习项目标识。
              */
             project_id?: string | null;
+            /**
+             * Plugin Selection
+             * @description 初始插件选择（可选，逐项校验可用）。
+             */
+            plugin_selection?: components["schemas"]["ChatPluginSelectionItem"][];
         };
         /**
          * ChatError
@@ -7906,6 +7999,8 @@ export interface components {
             image?: components["schemas"]["ImageRequestPayload"] | null;
             /** @description 文生视频请求载荷（Issue 32）；携带时本轮创建视频异步任务而非普通回答。 */
             video?: components["schemas"]["VideoRequestPayload"] | null;
+            /** @description 对选中 MCP 插件的调用载荷（Issue 36）；携带时本轮执行真实 MCP 调用而非普通回答，与 SKILL/图片/视频载荷互斥。 */
+            mcp_call?: components["schemas"]["McpCallRequestPayload"] | null;
         };
         /**
          * ChatMessageProjection
@@ -7973,6 +8068,8 @@ export interface components {
             image?: components["schemas"]["ImageTaskProjection"] | null;
             /** @description 助手消息的视频任务/资产状态快照（Issue 32）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。 */
             video?: components["schemas"]["VideoTaskProjection"] | null;
+            /** @description 助手消息的 MCP 插件调用结果投影（Issue 36）；非 MCP 调用消息为 None。 */
+            mcp_call?: components["schemas"]["McpCallMessageProjection"] | null;
             /** @description 本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。 */
             read_aloud?: components["schemas"]["ReadAloudProjection"] | null;
             /**
@@ -8083,6 +8180,27 @@ export interface components {
             conversation: components["schemas"]["ChatConversationProjection"];
             /** @description 本次写入的可见事件；相同模式幂等切换时为 None。 */
             event?: components["schemas"]["ChatModeEventProjection"] | null;
+        };
+        /**
+         * ChatPluginSelectionItem
+         * @description 对话级插件选择条目（Issue 36）。
+         *
+         *     ``kind`` 区分 SKILL 插件（Issue 34，含内置与用户包）与 MCP 服务器
+         *     （Issue 35）；``plugin_id`` 为插件/服务器的稳定标识。选择随会话持久
+         *     化，服务端逐项校验「当前账户已安装且启用」，失效项清洗并解释影响。
+         */
+        ChatPluginSelectionItem: {
+            /**
+             * Kind
+             * @description 插件类别：skill 或 mcp。
+             * @enum {string}
+             */
+            kind: "skill" | "mcp";
+            /**
+             * Plugin Id
+             * @description SKILL 插件标识或 MCP 服务器标识。
+             */
+            plugin_id: string;
         };
         /**
          * ChatStopResponse
@@ -8240,14 +8358,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video";
+        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video" | "mcp_call";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -8311,6 +8429,28 @@ export interface components {
             message_id: string;
             /** @description 任务状态快照。 */
             task: components["schemas"]["ImageTaskProjection"];
+        };
+        /**
+         * ChatStreamMcpData
+         * @description mcp_call 事件载荷：驱动消息内 MCP 调用卡（Issue 36）。
+         *
+         *     调用为同步执行：loading 状态随 started 后下发，成功/失败/敏感挂起
+         *     为终态投影（写入消息列，刷新可恢复）；敏感挂起由前端确认对话框
+         *     继续（approve/deny 走 chat 域路由，结果写回同一投影）。
+         */
+        ChatStreamMcpData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "mcp_call";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 调用状态投影。 */
+            call: components["schemas"]["McpCallMessageProjection"];
         };
         /**
          * ChatStreamProfileData
@@ -14940,6 +15080,67 @@ export interface components {
             preview: string;
         };
         /**
+         * McpCallMessageProjection
+         * @description 助手消息的 MCP 调用投影（随消息持久化，刷新可恢复）。
+         *
+         *     成功只保留结果摘要与工具名，不保存服务器返回的完整私人正文；敏感
+         *     挂起携带确认载荷供前端再次确认；拒绝后结果为 denied 终态。
+         */
+        McpCallMessageProjection: {
+            /** @description 调用结果状态。 */
+            status: components["schemas"]["McpCallStatus"];
+            /**
+             * Mcp Id
+             * @description 被调用的 MCP 标识。
+             */
+            mcp_id: string;
+            /**
+             * Mcp Name
+             * @description MCP 显示名快照。
+             */
+            mcp_name?: string | null;
+            /**
+             * Tool
+             * @description 工具名。
+             */
+            tool: string;
+            /**
+             * Input Summary
+             * @description 入参摘要（仅调用时快照，最长 200 字符）。
+             * @default
+             */
+            input_summary: string;
+            /**
+             * Result Summary
+             * @description 成功结果摘要（最长 500 字符，不含完整正文）。
+             */
+            result_summary?: string | null;
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文提示。
+             */
+            error_message?: string | null;
+            /** @description 敏感操作挂起的确认载荷。 */
+            confirmation?: components["schemas"]["McpSensitiveConfirmation"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间。
+             */
+            updated_at: string;
+        };
+        /**
          * McpCallRecord
          * @description 插件中心展示的一次真实调用记录（不含输入与正文）。
          */
@@ -15014,6 +15215,36 @@ export interface components {
             data_slice?: components["schemas"]["McpDataSlice"];
         };
         /**
+         * McpCallRequestPayload
+         * @description 聊天内对选中 MCP 插件的真实调用载荷（Issue 36）。
+         *
+         *     只允许调用当前对话已选中的 MCP 服务器（选择器持久化到会话）；工具
+         *     名与入参由用户在调用对话框中明确指定，不依赖模型臆造。``data_slice``
+         *     只携带本调用明确授权的文本与附件片段，不含画像、完整聊天历史或
+         *     项目数据。
+         */
+        McpCallRequestPayload: {
+            /**
+             * Mcp Id
+             * @description 目标 MCP 服务器标识（须被本对话选中）。
+             */
+            mcp_id: string;
+            /**
+             * Tool
+             * @description 要调用的工具名。
+             */
+            tool: string;
+            /**
+             * Input
+             * @description 工具入参（不含秘密与私人正文）。
+             */
+            input?: {
+                [key: string]: unknown;
+            };
+            /** @description 本次调用明确授权的数据切片。 */
+            data_slice?: components["schemas"]["McpDataSlice"];
+        };
+        /**
          * McpCallResult
          * @description 一次调用的结果：成功 / 失败 / 敏感操作挂起待确认。
          */
@@ -15041,6 +15272,12 @@ export interface components {
              */
             error_message?: string | null;
         };
+        /**
+         * McpCallStatus
+         * @description 消息内 MCP 调用结果的状态机（Issue 36）。
+         * @enum {string}
+         */
+        McpCallStatus: "loading" | "succeeded" | "failed" | "sensitive_pending" | "denied";
         /**
          * McpCheckResult
          * @description 一次安装检查的结果：通过时携带清单，拒绝时携带具体原因。
@@ -18732,6 +18969,36 @@ export interface components {
              * @description 编辑后使用的画像切片标识。
              */
             profile_slice_id?: string | null;
+        };
+        /**
+         * RemovedPluginSelection
+         * @description 被服务端清洗出对话选择的失效插件（含影响解释）。
+         *
+         *     插件被停用、卸载或权限撤回后，从当前账户可用集合消失；读取会话或
+         *     发送消息时按此解释影响，前端向用户说明后不再注入上下文。
+         */
+        RemovedPluginSelection: {
+            /**
+             * Kind
+             * @description 插件类别。
+             * @enum {string}
+             */
+            kind: "skill" | "mcp";
+            /**
+             * Plugin Id
+             * @description 插件标识。
+             */
+            plugin_id: string;
+            /**
+             * Name
+             * @description 插件显示名（读取时快照，已卸载也可解释）。
+             */
+            name: string;
+            /**
+             * Reason
+             * @description 移除原因（中文，可操作）。
+             */
+            reason: string;
         };
         /**
          * ResearchReportElement
@@ -25639,6 +25906,148 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    approve_message_mcp_confirmation_chat_conversations__conversation_id__messages__message_id__mcp_confirmations__confirmation_id__approve_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+                confirmation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessageProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    deny_message_mcp_confirmation_chat_conversations__conversation_id__messages__message_id__mcp_confirmations__confirmation_id__deny_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+                confirmation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatMessageProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -41905,6 +42314,39 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_mark_capabilities_ready__test_capabilities_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
         };
         requestBody?: never;
         responses: {

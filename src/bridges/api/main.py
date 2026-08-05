@@ -55,6 +55,7 @@ from bridges.api.video import router as video_router
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
 from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
+from bridges.chat.selections import ChatSelectionsService
 from bridges.config import get_settings
 from bridges.contracts.ai import (
     CapabilityKind,
@@ -1075,6 +1076,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             learning_service=app.state.learning_service,
             observability_service=app.state.observability_service,
         )
+        # Issue 36：对话级插件选择域（校验/失效清洗/工具上下文编译）。
+        # 可用集合来自插件中心（SKILL 已安装且启用）与 MCP 服务器（已
+        # 安装且启用），选择随对话持久化；撤权动作从全部会话选择移除。
+        app.state.chat_selections_service = ChatSelectionsService(
+            repository=ConversationRepository(bridges_database),
+            database=bridges_database,
+            plugin_service=getattr(app.state, "plugin_service", None),
+            mcp_service=getattr(app.state, "mcp_service", None),
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -1088,6 +1098,8 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             career_planner_service=app.state.career_planner_service,
             image_service=app.state.image_service,
             video_service=app.state.video_service,
+            selections_service=app.state.chat_selections_service,
+            mcp_service=getattr(app.state, "mcp_service", None),
         )
         # Issue 30: 听写与单条回答朗读（固定 ASR/TTS 快照）。复用同一
         # 模型网关（固定模型标识进运行记录）、账户对象库（朗读音频按
@@ -1497,6 +1509,35 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         except IdentityError as exc:
             return {"error": str(exc)}
         return {"token": token}
+
+    if settings is not None and settings.environment.lower() == "test":
+        # Issue 36 E2E：为当前会话账户标记核心对话能力就绪（假 Key + chat
+        # probe available）。仅在 test 环境注册；消息发送预检由此通过，让
+        # 桌面 E2E 走真实消息流验证 MCP 调用链路，不依赖真实百炼密钥。
+        @app.post("/_test/capabilities", response_model=dict[str, Any])
+        async def test_mark_capabilities_ready(subject: auth.SubjectDep) -> dict[str, Any]:
+            from datetime import UTC, datetime
+
+            from pydantic import SecretStr
+
+            from bridges.contracts.credentials import ProbeRecord, ProbeStatus
+
+            credential_service: KeyCredentialService = app.state.credential_service
+            credential_service._store.save(subject.account_id, SecretStr("e2e-test-key"))
+            credential_service._probes._put_record(
+                subject.account_id,
+                ProbeRecord(
+                    probe_id=f"probe-chat-e2e-{subject.account_id}",
+                    capability_id="chat",
+                    model_id="qwen3.7-plus-2026-05-26",
+                    region="cn-beijing",
+                    parameters={},
+                    status=ProbeStatus.AVAILABLE,
+                    probed_at=datetime.now(UTC),
+                    error_message=None,
+                ),
+            )
+            return {"ok": True, "account_id": subject.account_id}
 
     def _get_workflow_service(request: Request) -> WorkflowService:
         service: WorkflowService | None = getattr(request.app.state, "workflow_service", None)

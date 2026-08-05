@@ -36,6 +36,7 @@ export default defineConfig({
       env: {
         BRIDGES_DATABASE_URL: `sqlite:///./.e2e-data/bridges.db`,
         BRIDGES_SECRET_KEY: "e2e-chat-test-secret-key",
+        BRIDGES_ENVIRONMENT: "test",
         BRIDGES_SMTP_HOST: "127.0.0.1",
         BRIDGES_SMTP_PORT: "8025",
         BRIDGES_SMTP_PLAIN: "true",

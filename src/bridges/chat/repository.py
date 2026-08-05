@@ -27,6 +27,7 @@ class ConversationRecord:
     project_id: str | None
     created_at: datetime
     updated_at: datetime
+    plugin_selection: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -65,6 +66,7 @@ class MessageRecord:
     read_aloud: dict[str, Any] | None = None
     image: dict[str, Any] | None = None
     video: dict[str, Any] | None = None
+    mcp_call: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -92,6 +94,7 @@ class ConversationRepository:
         mode: str,
         created_at: datetime,
         project_id: str | None = None,
+        plugin_selection: list[dict[str, Any]] | None = None,
     ) -> None:
         updated_at = created_at
         try:
@@ -99,14 +102,15 @@ class ConversationRepository:
                 self._db.scoped(account_id).execute(
                     "INSERT INTO conversations"
                     "(conversation_id, account_id, title, mode, pinned, project_id,"
-                    " created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, 0, ?, ?, ?)",
+                    " plugin_selection, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
                     (
                         conversation_id,
                         account_id,
                         title,
                         mode,
                         project_id,
+                        _json_dumps(plugin_selection) if plugin_selection else None,
                         _iso(created_at),
                         _iso(updated_at),
                     ),
@@ -121,7 +125,7 @@ class ConversationRepository:
     ) -> ConversationRecord | None:
         row = self._db.scoped(account_id).execute(
             "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
-            " created_at, updated_at"
+            " plugin_selection, created_at, updated_at"
             " FROM conversations WHERE conversation_id = ? AND account_id = ?",
             (conversation_id, account_id),
         ).fetchone()
@@ -132,7 +136,8 @@ class ConversationRepository:
     def list_conversations(self, account_id: str) -> list[ConversationRecord]:
         rows = self._db.scoped(account_id).execute(
             "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
-            " created_at, updated_at FROM conversations WHERE account_id = ?"
+            " plugin_selection, created_at, updated_at FROM conversations"
+            " WHERE account_id = ?"
             " ORDER BY pinned DESC, updated_at DESC, created_at DESC, conversation_id",
             (account_id,),
         ).fetchall()
@@ -149,6 +154,7 @@ class ConversationRepository:
             project_id=(str(row["project_id"]) if row["project_id"] is not None else None),
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
+            plugin_selection=_json_loads_list(row["plugin_selection"]),
         )
 
     def set_conversation_title(
@@ -168,9 +174,13 @@ class ConversationRepository:
         *,
         title: str | None = None,
         pinned: bool | None = None,
+        plugin_selection: list[dict[str, Any]] | None = None,
         updated_at: datetime,
     ) -> int:
-        """更新会话元数据；每个字段更新都带账户条件，返回影响行数。"""
+        """更新会话元数据；每个字段更新都带账户条件，返回影响行数。
+
+        ``plugin_selection`` 为 None 时保持不变；空列表表示清空选择。
+        """
         assignments: list[str] = []
         values: list[Any] = []
         if title is not None:
@@ -179,6 +189,9 @@ class ConversationRepository:
         if pinned is not None:
             assignments.append("pinned = ?")
             values.append(1 if pinned else 0)
+        if plugin_selection is not None:
+            assignments.append("plugin_selection = ?")
+            values.append(_json_dumps(plugin_selection) if plugin_selection else None)
         if not assignments:
             return 0
         assignments.append("updated_at = ?")
@@ -296,8 +309,9 @@ class ConversationRepository:
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                     " web_search, arxiv_search, teaching, context_note, skill,"
-                    " career_planning, image, video)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " career_planning, image, video, mcp_call)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                    " ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -324,6 +338,7 @@ class ConversationRepository:
                         else None,
                         _json_dumps(record.image) if record.image else None,
                         _json_dumps(record.video) if record.video else None,
+                        _json_dumps(record.mcp_call) if record.mcp_call else None,
                     ),
                 )
         except StorageError:
@@ -347,9 +362,9 @@ class ConversationRepository:
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                         " web_search, arxiv_search, teaching, context_note, skill,"
-                        " career_planning, image, video)"
+                        " career_planning, image, video, mcp_call)"
                         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -376,6 +391,7 @@ class ConversationRepository:
                             else None,
                             _json_dumps(record.image) if record.image else None,
                             _json_dumps(record.video) if record.video else None,
+                            _json_dumps(record.mcp_call) if record.mcp_call else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -416,7 +432,8 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill, career_planning, read_aloud, image, video"
+            " teaching, context_note, skill, career_planning, read_aloud, image, video,"
+            " mcp_call"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -429,7 +446,8 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill, career_planning, read_aloud, image, video"
+            " teaching, context_note, skill, career_planning, read_aloud, image, video,"
+            " mcp_call"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -595,6 +613,26 @@ class ConversationRepository:
                     message_id,
                     account_id,
                 ),
+            )
+            return cursor.rowcount
+
+    def update_message_mcp_call(
+        self,
+        account_id: str,
+        message_id: str,
+        mcp_call: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """落库 MCP 调用结果投影（Issue 36），不限定消息生成状态。
+
+        调用成功/失败在生成中写入、敏感挂起在终态后经确认写回最终结果，
+        因此与朗读列一样按账户+消息定位幂等覆盖；跨账户写被作用域拒绝。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET mcp_call = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (_json_dumps(mcp_call), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -943,6 +981,7 @@ class ConversationRepository:
             read_aloud=_json_loads_any(row["read_aloud"]),
             image=_json_loads_any(row["image"]),
             video=_json_loads_any(row["video"]),
+            mcp_call=_json_loads_any(row["mcp_call"]),
         )
 
 
@@ -964,6 +1003,21 @@ def _json_loads(value: Any) -> dict[str, list[str]] | None:
     return cleaned if cleaned else None
 
 
+def _json_loads_list(value: Any) -> list[dict[str, Any]] | None:
+    if value is None:
+        return None
+    try:
+        import json
+
+        parsed = json.loads(str(value))
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, list):
+        return None
+    cleaned = [item for item in parsed if isinstance(item, dict)]
+    return cleaned or None
+
+
 def _json_loads_any(value: Any) -> dict[str, Any] | None:
     if value is None:
         return None
@@ -976,7 +1030,7 @@ def _json_loads_any(value: Any) -> dict[str, Any] | None:
     return parsed if isinstance(parsed, dict) else None
 
 
-def _json_dumps(value: dict[str, Any]) -> str:
+def _json_dumps(value: dict[str, Any] | list[dict[str, Any]]) -> str:
     import json
 
     return json.dumps(value, ensure_ascii=False, sort_keys=True)

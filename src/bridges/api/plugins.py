@@ -193,7 +193,13 @@ async def disable_plugin(
     service: PluginServiceDep,
     subject: SubjectDep,
 ) -> PluginListProjection:
-    """停用插件（内置与用户包统一入口）。"""
+    """停用插件（内置与用户包统一入口）。
+
+    停用后插件立即从「可用集合」（选择器/工具调用）消失；对话中已选
+    择的该项在读取/发送时被清洗并解释影响（Issue 36 AC7：立即从可用
+    集合移除并解释影响）——「选择随对话持久化」保留用户未主动清除的
+    选择，重新启用后恢复属持久化语义。
+    """
     try:
         service.set_enabled(subject.account_id, plugin_id, enabled=False)
         return service.list_plugins(subject.account_id)

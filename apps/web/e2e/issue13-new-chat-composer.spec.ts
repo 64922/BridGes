@@ -230,24 +230,41 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await expect(reducedQuote).toHaveAttribute("data-quote-index", "0");
   });
 
-  test("「+」菜单固定七入口，未实现入口给明确不可用原因", async ({ page }) => {
+  test("「+」菜单固定八入口，插件选择器为真实空态", async ({ page }) => {
     await registerAndEnterHome(page);
+    // 选择器真实加载插件/MCP 列表：mock 为空列表（当前账户无插件 → 空态）
+    await page.route("**/api/plugins", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ builtin: [], user: [] }),
+      });
+    });
+    await page.route("**/api/mcp", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ servers: [] }),
+      });
+    });
     const composer = page.getByTestId("composer");
 
     await composer.getByRole("button", { name: "更多功能" }).click();
     const menu = page.getByRole("menu", { name: "更多功能" });
     await expect(menu).toBeVisible();
 
-    // 固定顺序七入口（Issue 31：图片生成为真实任务对话框入口）
+    // 固定顺序入口（Issue 36：六入口统一顺序；图片/视频生成为既有能力
+    // 入口保留在清单之后；「选择已启用插件」为真实选择器不再占位）
     const labels = await menu.getByRole("menuitem").allTextContents();
     expect(labels).toEqual([
       "上传文件/图片",
       "论文搜索",
       "文章人味化",
       "生涯规划助手",
-      "图片生成",
       "选择学习项目",
       "选择已启用插件",
+      "图片生成",
+      "视频生成",
     ]);
 
     // Issue 31：「图片生成」已落地——打开真实任务对话框（生成页签），
@@ -271,12 +288,16 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog")).toHaveCount(0);
 
-    // 未实现入口：明确不可用原因，不弹假对话框、不产生假结果
+    // Issue 36：「选择已启用插件」已落地为真实选择器（可用集合=已安装且
+    // 启用；当前账户无插件时给真实空状态），不再是不可用占位。
     await composer.getByRole("button", { name: "更多功能" }).click();
     await page.getByRole("menu", { name: "更多功能" }).getByRole("menuitem", { name: "选择已启用插件" }).click();
-    const notice = page.getByTestId("tool-unavailable-notice");
-    await expect(notice).toBeVisible();
-    await expect(notice).toContainText("目前没有可选择的已启用插件");
+    const pluginPicker = page.getByRole("dialog", { name: "选择已启用插件" });
+    await expect(pluginPicker).toBeVisible();
+    await expect(page.getByTestId("plugin-picker-empty-all")).toBeVisible();
+    await expect(page.getByTestId("tool-unavailable-notice")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   test("建议卡预填结构化意图并聚焦，发送走正常消息流", async ({ page }) => {
@@ -321,7 +342,7 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem", { name: "论文搜索" })).toBeFocused();
     await page.keyboard.press("End");
-    await expect(menu.getByRole("menuitem", { name: "选择已启用插件" })).toBeFocused();
+    await expect(menu.getByRole("menuitem", { name: "视频生成" })).toBeFocused();
     await page.keyboard.press("Escape");
     await expect(menu).not.toBeVisible();
     await expect(plusButton).toBeFocused();

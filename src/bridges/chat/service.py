@@ -34,6 +34,11 @@ from bridges.chat.repository import (
     MessageRecord,
     ModeEventRecord,
 )
+from bridges.chat.selections import (
+    ChatSelectionsService,
+    SelectionResolution,
+    selection_key,
+)
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.career import (
     CareerPlanningProjection,
@@ -48,15 +53,21 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatMode,
     ChatModeEventProjection,
+    ChatPluginSelectionItem,
     ChatStreamCareerData,
     ChatStreamHumanizerData,
     ChatStreamImageData,
+    ChatStreamMcpData,
     ChatStreamVideoData,
     ChatThinkingSummary,
     ContextNoteProfileItem,
     ContextNoteProjection,
     ContextNoteState,
     ImageRequestPayload,
+    McpCallMessageProjection,
+    McpCallRequestPayload,
+    McpCallStatus,
+    RemovedPluginSelection,
     VideoRequestPayload,
 )
 from bridges.contracts.feedback import (
@@ -71,6 +82,7 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
+from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
     PROFILE_DIMENSION_LABELS,
@@ -89,6 +101,7 @@ from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjectio
 from bridges.contracts.video import VideoError, VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
+from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
@@ -407,6 +420,8 @@ class ChatService:
         career_planner_service: CareerPlannerOrchestrator | None = None,
         image_service: ImageOrchestrator | None = None,
         video_service: VideoOrchestrator | None = None,
+        selections_service: ChatSelectionsService | None = None,
+        mcp_service: McpService | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -434,6 +449,12 @@ class ChatService:
         #: 文生视频编排（Issue 32，Wan 固定绑定）；未挂载时携带 video
         #: 载荷的消息按错误收敛（测试/内存环境不假装生成）。
         self._video = video_service
+        #: 对话级插件选择域（Issue 36）：选择校验、失效清洗与工具上下文
+        #: 编译；未挂载时不注入工具集合、不校验选择（内存测试环境）。
+        self._selections = selections_service
+        #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用与
+        #: 敏感确认；未挂载时携带 mcp_call 载荷的消息按错误收敛。
+        self._mcp = mcp_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -447,8 +468,13 @@ class ChatService:
         title: str | None = None,
         mode: ChatMode = ChatMode.COMPANION,
         project_id: str | None = None,
+        plugin_selection: list[ChatPluginSelectionItem] | None = None,
     ) -> ChatConversationProjection:
-        """新建对话；普通新聊天默认日常陪伴，学习项目传入 ``study``。"""
+        """新建对话；普通新聊天默认日常陪伴，学习项目传入 ``study``。
+
+        ``plugin_selection`` 为新对话的初始插件选择（新聊天首页先选
+        插件再建对话）；调用方负责逐项校验可用性，这里原样持久化。
+        """
         now = datetime.now(UTC)
         conversation_id = secrets.token_urlsafe(16)
         self._repo.create_conversation(
@@ -458,6 +484,11 @@ class ChatService:
             mode=mode.value,
             created_at=now,
             project_id=project_id,
+            plugin_selection=(
+                [item.model_dump() for item in plugin_selection]
+                if plugin_selection
+                else None
+            ),
         )
         return self._project_conversation(
             account_id,
@@ -466,6 +497,8 @@ class ChatService:
             mode=mode,
             pinned=False,
             project_id=project_id,
+            plugin_selection=list(plugin_selection or []),
+            removed_selections=[],
             created_at=now,
             updated_at=now,
             messages=[],
@@ -550,8 +583,14 @@ class ChatService:
         *,
         title: str | None = None,
         pinned: bool | None = None,
+        plugin_selection: list[ChatPluginSelectionItem] | None = None,
     ) -> ChatConversationProjection:
-        """改名或置顶自己的会话；跨账户目标统一返回安全 404。"""
+        """改名、置顶或替换插件选择；跨账户目标统一返回安全 404。
+
+        ``plugin_selection`` 全量替换当前选择；显式提交的选择逐项校验
+        可用性（已停用/已卸载/撤权项 422 拒绝并说明原因，不静默清洗
+        用户意图）；读取路径的失效清洗由 ``get_conversation`` 负责。
+        """
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
@@ -560,6 +599,25 @@ class ChatService:
             raise ChatDomainError("invalid_title", "对话标题不能为空。", 422)
         changed = normalized_title != record.title if normalized_title is not None else False
         changed = changed or (pinned is not None and pinned != record.pinned)
+        selection = None
+        removed: list[RemovedPluginSelection] = []
+        if plugin_selection is not None:
+            if self._selections is None:
+                raise ChatDomainError(
+                    "selections_unavailable", "插件选择服务未启用，请稍后重试。", 503
+                )
+            result = self._selections.validate_items(account_id, plugin_selection)
+            if result.removed:
+                reasons = "；".join(
+                    f"「{entry.name}」{entry.reason}" for entry in result.removed
+                )
+                raise ChatDomainError("plugin_not_available", reasons, 422)
+            current = _selection_set(record.plugin_selection)
+            target = {selection_key(item) for item in result.valid}
+            changed = changed or current != target
+            if current != target:
+                selection = result.valid
+            removed = result.removed
         now = datetime.now(UTC)
         if changed:
             self._repo.update_conversation(
@@ -567,10 +625,20 @@ class ChatService:
                 conversation_id,
                 title=normalized_title,
                 pinned=pinned,
+                plugin_selection=(
+                    [item.model_dump() for item in selection]
+                    if selection is not None
+                    else None
+                ),
                 updated_at=now,
             )
             record = self._repo.get_conversation(account_id, conversation_id)
             assert record is not None
+        valid_selection = (
+            selection
+            if selection is not None
+            else _record_selection(record.plugin_selection)
+        )
         return self._project_conversation(
             account_id,
             conversation_id,
@@ -578,6 +646,8 @@ class ChatService:
             mode=ChatMode(record.mode),
             pinned=record.pinned,
             project_id=record.project_id,
+            plugin_selection=valid_selection,
+            removed_selections=removed,
             created_at=record.created_at,
             updated_at=record.updated_at,
             messages=self._repo.list_messages(account_id, conversation_id),
@@ -593,6 +663,7 @@ class ChatService:
         ``LearningProjectService.update_conversation_metadata``）用已更新
         的记录投影响应，不触发读取路径的陈旧流收敛。
         """
+        resolution = self._resolve_selections(record.account_id, record.conversation_id)
         return self._project_conversation(
             record.account_id,
             record.conversation_id,
@@ -600,6 +671,8 @@ class ChatService:
             mode=ChatMode(record.mode),
             pinned=record.pinned,
             project_id=record.project_id,
+            plugin_selection=resolution.valid,
+            removed_selections=resolution.removed,
             created_at=record.created_at,
             updated_at=record.updated_at,
             messages=self._repo.list_messages(record.account_id, record.conversation_id),
@@ -607,6 +680,19 @@ class ChatService:
                 record.account_id, record.conversation_id
             ),
         )
+
+    def _resolve_selections(
+        self, account_id: str, conversation_id: str
+    ) -> SelectionResolution:
+        """读取会话选择并校验清洗（Issue 36）；未挂载选择服务时原样返回。"""
+        if self._selections is None:
+            record = self._repo.get_conversation(account_id, conversation_id)
+            return SelectionResolution(
+                valid=_record_selection(record.plugin_selection)
+                if record is not None
+                else []
+            )
+        return self._selections.resolve(account_id, conversation_id)
 
     def delete_conversation(self, account_id: str, conversation_id: str) -> None:
         """删除自己的会话及其历史；生成中会话先拒绝，避免删除流状态。"""
@@ -666,6 +752,7 @@ class ChatService:
                 message.error_code = "stream_interrupted"
                 message.error_message = STREAM_INTERRUPTED_MESSAGE
                 message.thinking = stale_thinking
+        resolution = self._resolve_selections(account_id, conversation_id)
         return self._project_conversation(
             account_id,
             record.conversation_id,
@@ -673,6 +760,8 @@ class ChatService:
             mode=ChatMode(record.mode),
             pinned=record.pinned,
             project_id=record.project_id,
+            plugin_selection=resolution.valid,
+            removed_selections=resolution.removed,
             created_at=record.created_at,
             updated_at=record.updated_at,
             messages=messages,
@@ -693,6 +782,7 @@ class ChatService:
         skill_input: dict[str, Any] | None = None,
         image: dict[str, Any] | None = None,
         video: dict[str, Any] | None = None,
+        mcp_call: dict[str, Any] | None = None,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
         """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。
 
@@ -703,14 +793,24 @@ class ChatService:
         互斥，携带时本轮创建图片异步任务而非普通回答。
         ``video``（Issue 32）：文生视频请求载荷；与 SKILL 载荷互斥，
         携带时本轮创建视频异步任务而非普通回答。
+        ``mcp_call``（Issue 36）：对选中 MCP 插件的调用载荷；与 SKILL
+        载荷互斥，携带时本轮执行真实 MCP 调用而非普通回答。目标 MCP
+        必须被本对话选中（选择器持久化），否则流式阶段拒绝。
         """
         now = datetime.now(UTC)
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
         skill_payload = self._validate_skill_payload(skill_id, skill_input)
-        image_payload = _validate_image_payload(image, skill_payload is not None)
-        video_payload = _validate_video_payload(video, skill_payload is not None)
+        # Issue 31/32/36：SKILL / 图片 / 视频 / MCP 调用四类载荷互斥——
+        # 同一轮只允许一种载荷驱动生成，并发携带按 422 拒绝而不是静默
+        # 丢弃（失败不伪装成功，契约单一来源）。
+        has_skill = skill_payload is not None
+        image_payload = _validate_image_payload(image, has_skill)
+        video_payload = _validate_video_payload(video, has_skill or image_payload is not None)
+        mcp_call_payload = _validate_mcp_call_payload(
+            mcp_call, has_skill or image_payload is not None or video_payload is not None
+        )
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError(
@@ -774,6 +874,7 @@ class ChatService:
             skill=skill_payload,
             image=image_payload,
             video=video_payload,
+            mcp_call=mcp_call_payload,
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -986,6 +1087,39 @@ class ChatService:
                     conversation_id,
                     assistant_message_id,
                     owner_video,
+                )
+                return
+            # Issue 36：用户消息携带 MCP 调用载荷（前端选中插件的调用
+            # 对话框提交）走真实 MCP 调用编排——同步执行 invoke（数据
+            # 切片/敏感确认/审计由 MCP 服务既有链路完成），结果写入
+            # 消息 mcp_call 列；未选中的 MCP 拒绝调用，绝不绕过选择器。
+            owner_mcp_call = _mcp_call_payload_from(owner_message)
+            if owner_mcp_call is not None:
+                if self._mcp is None:
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="mcp_unavailable",
+                        error_message="MCP 服务暂不可用，请稍后重试。",
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_failed_thinking(thinking, "mcp_unavailable"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="mcp_unavailable",
+                        error_message="MCP 服务暂不可用，请稍后重试。",
+                    )
+                    return
+                yield from self._stream_mcp_call(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    owner_mcp_call,
                 )
                 return
             # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
@@ -1388,6 +1522,22 @@ class ChatService:
                 "temperature": 0.7,
                 "max_tokens": 1024,
             }
+            # Issue 36：本对话启用的插件工具集合（选择器持久化到会话）
+            # 以独立 system 块注入——模型只能引用本清单列出的插件能力；
+            # 未选择或清除选择后该块不再注入（Verification 3：清除后
+            # 不再携带旧上下文）。解析失败静默降级（回答照常）。
+            if self._selections is not None:
+                try:
+                    tools_context = self._selections.resolve(
+                        account_id, conversation_id
+                    ).context
+                except Exception:  # noqa: BLE001 - 辅助路径静默降级
+                    tools_context = None
+                if tools_context:
+                    payload["messages"].insert(
+                        1,
+                        {"role": "system", "content": tools_context},
+                    )
             if retrieval_round is not None and retrieval_round.citations:
                 # 检索上下文以独立 system 块注入，与模式合同并存：模型只可
                 # 引用本块提供的材料，不得声称存在未提供的文件或页码。
@@ -2417,6 +2567,312 @@ class ChatService:
         )
         yield StreamEvent(kind="done")
 
+    def _stream_mcp_call(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        payload: McpCallRequestPayload,
+    ) -> Iterator[StreamEvent]:
+        """真实 MCP 调用编排：选中校验 → invoke → MCP_CALL 事件 → 收敛。
+
+        同步执行：invoke 走 MCP 服务既有真实链路（受限进程/数据切片/
+        敏感确认/审计）。结果投影写入消息 mcp_call 列，刷新可恢复；
+        敏感操作挂起时消息终态收敛为 done + sensitive_pending，前端经
+        chat 域确认路由 approve/deny 后写回最终结果（不丢失）。
+        """
+        started = time.monotonic()
+        now = datetime.now(UTC)
+        assert self._mcp is not None
+        # 1. 目标 MCP 必须被本对话选中（可用集合=已安装且启用，选择器
+        #    持久化到会话）；未选中拒绝，绝不绕过选择器发起调用。
+        if self._selections is not None:
+            resolution = self._selections.resolve(account_id, conversation_id)
+            selected = {selection_key(item) for item in resolution.valid}
+            if ("mcp", payload.mcp_id) not in selected:
+                self._finalize_message(
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="mcp_not_selected",
+                    error_message="该 MCP 插件未在本对话选择，请先在「+」菜单选择插件。",
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=now,
+                    thinking=_failed_thinking(_initial_thinking(CHAT_MODE), "mcp_not_selected"),
+                )
+                yield StreamEvent(
+                    kind="error",
+                    error_code="mcp_not_selected",
+                    error_message="该 MCP 插件未在本对话选择，请先在「+」菜单选择插件。",
+                )
+                return
+        mcp_name = self._mcp_name(account_id, payload.mcp_id)
+        loading = McpCallMessageProjection(
+            status=McpCallStatus.LOADING,
+            mcp_id=payload.mcp_id,
+            mcp_name=mcp_name,
+            tool=payload.tool,
+            input_summary=_input_summary(payload.input),
+            created_at=now,
+            updated_at=now,
+        )
+        self._repo.update_message_mcp_call(
+            account_id, assistant_message_id, loading.model_dump(mode="json"), now
+        )
+        # 2. 真实 invoke：失败分类由 MCP 服务给出（中文可操作原因），
+        #    不伪造成功、不把服务器错误当结果。
+        try:
+            result = self._mcp.invoke(
+                account_id,
+                payload.mcp_id,
+                McpCallRequest(
+                    tool=payload.tool,
+                    input=payload.input,
+                    data_slice=payload.data_slice,
+                ),
+            )
+        except McpError as exc:
+            failed_projection = McpCallMessageProjection(
+                status=McpCallStatus.FAILED,
+                mcp_id=payload.mcp_id,
+                mcp_name=mcp_name,
+                tool=payload.tool,
+                input_summary=_input_summary(payload.input),
+                error_code=exc.code,
+                error_message=exc.message,
+                created_at=now,
+                updated_at=now,
+            )
+            # 失败投影落库：刷新后调用卡呈现失败原因，不留「调用中…」。
+            self._repo.update_message_mcp_call(
+                account_id,
+                assistant_message_id,
+                failed_projection.model_dump(mode="json"),
+                now,
+            )
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code=exc.code,
+                error_message=exc.message,
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=_failed_thinking(_initial_thinking(CHAT_MODE), exc.code),
+            )
+            yield StreamEvent(kind="error", error_code=exc.code, error_message=exc.message)
+            return
+        except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
+            failed_projection = McpCallMessageProjection(
+                status=McpCallStatus.FAILED,
+                mcp_id=payload.mcp_id,
+                mcp_name=mcp_name,
+                tool=payload.tool,
+                input_summary=_input_summary(payload.input),
+                error_code="mcp_invoke_failed",
+                error_message="MCP 调用异常，请重试。",
+                created_at=now,
+                updated_at=now,
+            )
+            self._repo.update_message_mcp_call(
+                account_id,
+                assistant_message_id,
+                failed_projection.model_dump(mode="json"),
+                now,
+            )
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="mcp_invoke_failed",
+                error_message="MCP 调用异常，请重试。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=_failed_thinking(_initial_thinking(CHAT_MODE), "mcp_invoke_failed"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="mcp_invoke_failed",
+                error_message="MCP 调用异常，请重试。",
+            )
+            return
+        if result.status == "success":
+            projection = McpCallMessageProjection(
+                status=McpCallStatus.SUCCEEDED,
+                mcp_id=payload.mcp_id,
+                mcp_name=mcp_name,
+                tool=payload.tool,
+                input_summary=_input_summary(payload.input),
+                result_summary=_result_summary(result.result),
+                created_at=now,
+                updated_at=now,
+            )
+        elif result.status == "sensitive_pending":
+            projection = McpCallMessageProjection(
+                status=McpCallStatus.SENSITIVE_PENDING,
+                mcp_id=payload.mcp_id,
+                mcp_name=mcp_name,
+                tool=payload.tool,
+                input_summary=_input_summary(payload.input),
+                confirmation=result.confirmation,
+                created_at=now,
+                updated_at=now,
+            )
+        else:
+            projection = McpCallMessageProjection(
+                status=McpCallStatus.FAILED,
+                mcp_id=payload.mcp_id,
+                mcp_name=mcp_name,
+                tool=payload.tool,
+                input_summary=_input_summary(payload.input),
+                error_code=result.error_code,
+                error_message=result.error_message or "调用失败，请重试。",
+                created_at=now,
+                updated_at=now,
+            )
+        self._repo.update_message_mcp_call(
+            account_id, assistant_message_id, projection.model_dump(mode="json"), now
+        )
+        # 3. 收敛：成功与敏感挂起为 done（正文=调用摘要，结果卡呈现）；
+        #    失败在错误收敛后由前端错误呈现（mcp_call 列保留失败原因）。
+        self._repo.update_message_content(
+            account_id,
+            assistant_message_id,
+            _mcp_call_summary(projection),
+            now,
+        )
+        self._finalize_message(
+            account_id,
+            assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            model_id=None,
+            run_lock_id=None,
+            started=started,
+            now=now,
+            thinking=_done_thinking(_initial_thinking(CHAT_MODE)),
+        )
+        yield StreamEvent(
+            kind="mcp_call",
+            mcp_call=ChatStreamMcpData(
+                message_id=assistant_message_id,
+                call=projection,
+            ),
+        )
+        yield StreamEvent(kind="done")
+
+    def approve_mcp_confirmation(
+        self, account_id: str, conversation_id: str, message_id: str, confirmation_id: str
+    ) -> ChatMessageProjection:
+        """聊天内敏感操作确认（approve）：调 MCP 服务 → 更新消息投影。
+
+        只允许确认本人消息上真实挂起的敏感调用；结果写回消息 mcp_call
+        列（终态后也可更新），刷新/恢复历史对话不丢失。
+        """
+        return self._resolve_mcp_confirmation(
+            account_id, conversation_id, message_id, confirmation_id, denied=False
+        )
+
+    def deny_mcp_confirmation(
+        self, account_id: str, conversation_id: str, message_id: str, confirmation_id: str
+    ) -> ChatMessageProjection:
+        """聊天内敏感操作拒绝（deny）：调用安全终止并落库 denied 终态。"""
+        return self._resolve_mcp_confirmation(
+            account_id, conversation_id, message_id, confirmation_id, denied=True
+        )
+
+    def _resolve_mcp_confirmation(
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        confirmation_id: str,
+        *,
+        denied: bool,
+    ) -> ChatMessageProjection:
+        if self._mcp is None:
+            raise ChatDomainError("mcp_unavailable", "MCP 服务不可用，请稍后重试。", 503)
+        message = self._repo.get_message(account_id, message_id)
+        if message is None or message.conversation_id != conversation_id:
+            raise ChatDomainError("message_not_found", "消息不存在或没有访问权限。", 404)
+        if not message.mcp_call:
+            raise ChatDomainError(
+                "no_mcp_call", "该消息没有 MCP 调用，无法确认。", 409
+            )
+        call = McpCallMessageProjection.model_validate(message.mcp_call)
+        if (
+            call.status != McpCallStatus.SENSITIVE_PENDING
+            or call.confirmation is None
+            or call.confirmation.confirmation_id != confirmation_id
+        ):
+            raise ChatDomainError(
+                "no_pending_confirmation", "该调用没有待确认的敏感操作。", 409
+            )
+        try:
+            if denied:
+                result = self._mcp.deny(account_id, call.mcp_id, confirmation_id)
+            else:
+                result = self._mcp.approve(account_id, call.mcp_id, confirmation_id)
+        except McpError as exc:
+            raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+        if denied:
+            updated = call.model_copy(
+                update={
+                    "status": McpCallStatus.DENIED,
+                    "error_code": "sensitive_denied",
+                    "error_message": "已拒绝本次敏感操作，调用安全终止。",
+                    "updated_at": datetime.now(UTC),
+                }
+            )
+        elif result.status == "success":
+            updated = call.model_copy(
+                update={
+                    "status": McpCallStatus.SUCCEEDED,
+                    "result_summary": _result_summary(result.result),
+                    "confirmation": None,
+                    "updated_at": datetime.now(UTC),
+                }
+            )
+        else:
+            updated = call.model_copy(
+                update={
+                    "status": McpCallStatus.FAILED,
+                    "error_code": result.error_code,
+                    "error_message": result.error_message or "调用失败，请重试。",
+                    "confirmation": None,
+                    "updated_at": datetime.now(UTC),
+                }
+            )
+        self._repo.update_message_mcp_call(
+            account_id, message_id, updated.model_dump(mode="json"), datetime.now(UTC)
+        )
+        refreshed = self._repo.get_message(account_id, message_id)
+        assert refreshed is not None
+        return self._project_message(refreshed)
+
+    def _mcp_name(self, account_id: str, mcp_id: str) -> str | None:
+        try:
+            listing = self._mcp.list_servers(account_id) if self._mcp is not None else None
+        except Exception:  # noqa: BLE001 - 名称只是展示快照，失败不阻断调用
+            return None
+        if listing is None:
+            return None
+        for server in listing.servers:
+            if server.mcp_id == mcp_id:
+                return server.name
+        return None
+
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -2984,6 +3440,14 @@ class ChatService:
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
+            # 助手消息的 mcp_call 列只承载调用结果投影（请求载荷只在用户
+            # 消息，由 stream 分支按角色读取，不外发为结果投影）。
+            mcp_call=(
+                McpCallMessageProjection.model_validate(message.mcp_call)
+                if message.mcp_call is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
             error_code=message.error_code,
             error_message=message.error_message,
             duration_ms=message.duration_ms,
@@ -3006,6 +3470,8 @@ class ChatService:
         updated_at: datetime,
         messages: list[MessageRecord],
         mode_events: list[ModeEventRecord] | None = None,
+        plugin_selection: list[ChatPluginSelectionItem] | None = None,
+        removed_selections: list[RemovedPluginSelection] | None = None,
     ) -> ChatConversationProjection:
         return ChatConversationProjection(
             conversation_id=conversation_id,
@@ -3013,6 +3479,8 @@ class ChatService:
             mode=mode,
             pinned=pinned,
             project_id=project_id,
+            plugin_selection=list(plugin_selection or []),
+            removed_selections=list(removed_selections or []),
             created_at=created_at,
             updated_at=updated_at,
             messages=[self._project_message(message) for message in messages],
@@ -3027,6 +3495,32 @@ class ChatService:
                 for event in (mode_events or [])
             ],
         )
+
+
+def _selection_set(
+    entries: list[dict[str, Any]] | None,
+) -> set[tuple[str, str]]:
+    """由持久化 JSON 条目提取选择键集合（去重比较用）。"""
+    result: set[tuple[str, str]] = set()
+    for entry in entries or []:
+        if isinstance(entry, dict) and "kind" in entry and "plugin_id" in entry:
+            result.add((str(entry["kind"]), str(entry["plugin_id"])))
+    return result
+
+
+def _record_selection(
+    entries: list[dict[str, Any]] | None,
+) -> list[ChatPluginSelectionItem]:
+    """把持久化 JSON 条目转为契约模型（非法条目跳过）。"""
+    result: list[ChatPluginSelectionItem] = []
+    for entry in entries or []:
+        if not isinstance(entry, dict):
+            continue
+        try:
+            result.append(ChatPluginSelectionItem(**entry))
+        except (TypeError, ValueError):
+            continue
+    return result
 
 
 def _monotonic_of(created_at: datetime, now: datetime) -> float:
@@ -3131,6 +3625,78 @@ def _video_payload_from(owner: MessageRecord | None) -> VideoRequestPayload | No
         return VideoRequestPayload.model_validate(owner.video)
     except ValidationError:
         return None
+
+
+def _validate_mcp_call_payload(
+    mcp_call: dict[str, Any] | None, has_skill: bool
+) -> dict[str, Any] | None:
+    """校验 MCP 调用载荷并落库为用户消息快照（与 SKILL 载荷互斥）。
+
+    与 image/video 载荷的互斥校验一致：同一轮只允许一种载荷驱动生成。
+    """
+    if mcp_call is None:
+        return None
+    if has_skill:
+        raise ChatDomainError(
+            "conflicting_payload", "SKILL 与 MCP 调用不能同时携带。", 422
+        )
+    try:
+        payload = McpCallRequestPayload.model_validate(mcp_call)
+    except ValidationError as exc:
+        raise ChatDomainError(
+            "invalid_mcp_call", "MCP 调用载荷无效。", 422
+        ) from exc
+    return payload.model_dump(mode="json")
+
+
+def _mcp_call_payload_from(owner: MessageRecord | None) -> McpCallRequestPayload | None:
+    """从用户消息的 mcp_call 列还原调用载荷（重试沿用同一份输入）。
+
+    用户消息的 mcp_call 列只存请求载荷；助手消息的 mcp_call 列存结果
+    投影（含 status 字段），据此判别避免误解析。
+    """
+    if owner is None or not owner.mcp_call:
+        return None
+    if "status" in owner.mcp_call:
+        return None
+    try:
+        return McpCallRequestPayload.model_validate(owner.mcp_call)
+    except ValidationError:
+        return None
+
+
+def _input_summary(input_data: dict[str, Any]) -> str:
+    """入参摘要：JSON 序列化截断，最长 200 字符（不含秘密与完整正文）。"""
+    import json
+
+    try:
+        text = json.dumps(input_data, ensure_ascii=False, sort_keys=True)
+    except (TypeError, ValueError):
+        return ""
+    return text[:200]
+
+
+def _result_summary(result: Any) -> str | None:
+    """成功结果摘要：字符串化截断，最长 500 字符（不保存完整私人正文）。"""
+    if result is None:
+        return None
+    text = str(result)
+    if not text.strip():
+        return None
+    return text[:500]
+
+
+def _mcp_call_summary(projection: McpCallMessageProjection) -> str:
+    """助手消息正文收敛为调用摘要（结果卡承载详情）。"""
+    name = projection.mcp_name or projection.mcp_id
+    if projection.status == McpCallStatus.SENSITIVE_PENDING:
+        return f"已调用「{name}」工具 {projection.tool}，等待敏感操作确认…"
+    if projection.status == McpCallStatus.FAILED:
+        reason = projection.error_message or "未知原因"
+        return f"「{name}」工具 {projection.tool} 调用失败：{reason}"
+    if projection.status == McpCallStatus.DENIED:
+        return f"已拒绝「{name}」工具 {projection.tool} 的敏感操作。"
+    return f"已调用「{name}」工具 {projection.tool}。"
 
 
 def _previous_teaching_turn(
