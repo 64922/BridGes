@@ -4872,6 +4872,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/dictation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Transcribe Dictation
+         * @description 提交一段完整录音音频到固定 ASR 快照，返回可编辑转写文本。
+         *
+         *     音频通过请求体原样上传（Content-Type 为音频 MIME，时长经
+         *     ``x-bridges-audio-duration`` 头声明）；只接受音频 MIME，空音频、
+         *     超限音频与不支持格式在调用前确定性拒绝。转写失败返回 failed
+         *     投影（含稳定错误码与中文原因），不产生用户消息、不落盘音频。
+         */
+        post: operations["transcribe_dictation_chat_conversations__conversation_id__dictation_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Read Aloud
+         * @description 读取消息上的朗读状态快照；刷新后从同一快照恢复播放入口。
+         */
+        get: operations["get_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_get"];
+        put?: never;
+        /**
+         * Generate Read Aloud
+         * @description 为一条已完成的助手回答生成朗读（固定 TTS 快照）。
+         *
+         *     同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先
+         *     清理再写新对象。生成失败返回 failed 投影与重试语义，回答正文
+         *     不受影响。
+         */
+        post: operations["generate_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_post"];
+        /**
+         * Delete Read Aloud
+         * @description 停止并清理朗读：删除账户对象库中的音频并复位状态，幂等。
+         */
+        delete: operations["delete_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud/audio": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Read Aloud Audio
+         * @description 流式返回朗读音频字节；未生成或跨账户一律 404。
+         *
+         *     音频按账户对象库授权校验后返回，不携带任何会话或凭据信息。
+         */
+        get: operations["get_read_aloud_audio_chat_conversations__conversation_id__messages__message_id__read_aloud_audio_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -6963,6 +7042,8 @@ export interface components {
             humanizer?: components["schemas"]["HumanizerResultProjection"] | null;
             /** @description 助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。 */
             career_planning?: components["schemas"]["CareerPlanningProjection"] | null;
+            /** @description 本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。 */
+            read_aloud?: components["schemas"]["ReadAloudProjection"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -9389,6 +9470,65 @@ export interface components {
          * @enum {string}
          */
         DiagnosticRunStatus: "draft" | "running" | "completed" | "cancelled";
+        /**
+         * DictationProjection
+         * @description 一次听写请求的结果投影；不包含音频本身与账户信息。
+         *
+         *     转写文本进入前端输入框可自由编辑，由用户自行决定发送，系统绝不
+         *     自动产生用户消息。
+         */
+        DictationProjection: {
+            /** @description 转写结果状态。 */
+            status: components["schemas"]["DictationStatus"];
+            /**
+             * Transcript
+             * @description 转写文本（成功时非空，可编辑回填输入框）。
+             * @default
+             */
+            transcript: string;
+            /**
+             * Model Id
+             * @description 实际使用的固定 ASR 模型快照。
+             */
+            model_id?: string | null;
+            /**
+             * Duration Ms
+             * @description 本次转写调用耗时（毫秒）。
+             */
+            duration_ms?: number | null;
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 失败后是否可原样重试同一音频。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 转写完成时间。
+             */
+            created_at: string;
+        };
+        /**
+         * DictationStatus
+         * @description 听写结果状态。
+         *
+         *     - ``success``：转写完成，transcript 可直接编辑后发送；
+         *     - ``failed``：转写失败，error_code/error_message 说明原因，
+         *       retryable 表示是否可原样重试同一音频。
+         * @enum {string}
+         */
+        DictationStatus: "success" | "failed";
         /**
          * DocumentIngestionProjection
          * @description 单个文档的摄取详情投影（不包含对象库路径或原文）。
@@ -16103,6 +16243,85 @@ export interface components {
             /** Valid Until */
             valid_until?: string | null;
         };
+        /**
+         * ReadAloudProjection
+         * @description 单条助手回答朗读的公开投影；不包含音频内容与账户信息。
+         *
+         *     ``audio_ref`` 是账户对象库中的对象 ID，播放时通过音频端点按账户
+         *     授权校验后流式返回。同一条回答的受控重试复用同一消息正文重新合成，
+         *     成功后旧音频先清理再写入新对象。
+         */
+        ReadAloudProjection: {
+            /**
+             * Message Id
+             * @description 所属助手消息标识。
+             */
+            message_id: string;
+            /** @description 朗读状态。 */
+            state: components["schemas"]["ReadAloudState"];
+            /**
+             * Model Id
+             * @description 实际使用的固定 TTS 模型快照。
+             */
+            model_id?: string | null;
+            /**
+             * Audio Ref
+             * @description 账户对象库中的音频对象 ID；ready 时存在。
+             */
+            audio_ref?: string | null;
+            /**
+             * Media Type
+             * @description 音频媒体类型（ready 时存在）。
+             */
+            media_type?: string | null;
+            /**
+             * Content Length
+             * @description 音频字节数（ready 时存在）。
+             */
+            content_length?: number | null;
+            /**
+             * Char Count
+             * @description 实际合成的字符数。
+             */
+            char_count?: number | null;
+            /**
+             * Truncated
+             * @description 是否因长度限制截断（明确披露，不静默）。
+             * @default false
+             */
+            truncated: boolean;
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 失败后是否可对同一条回答重试生成。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Generated At
+             * @description 最近一次生成完成时间；未生成为 None。
+             */
+            generated_at?: string | null;
+        };
+        /**
+         * ReadAloudState
+         * @description 单条回答朗读的持久化状态。
+         *
+         *     - ``not_generated``：尚未生成朗读（可发起生成）；
+         *     - ``ready``：音频已生成并转存到账户对象库，可请求播放；
+         *     - ``failed``：生成失败，error_message 说明原因，可重试。
+         * @enum {string}
+         */
+        ReadAloudState: "not_generated" | "ready" | "failed";
         /**
          * ReauthenticationRequest
          * @description Password confirmation for sensitive account settings.
@@ -35588,6 +35807,283 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LearningError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcribe_dictation_chat_conversations__conversation_id__dictation_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DictationProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadAloudProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    generate_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadAloudProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReadAloudProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_read_aloud_audio_chat_conversations__conversation_id__messages__message_id__read_aloud_audio_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
                 };
             };
             /** @description Validation Error */

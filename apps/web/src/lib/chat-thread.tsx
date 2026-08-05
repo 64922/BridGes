@@ -73,6 +73,8 @@ export function buildThreadMessages(
       skill: latest.skill ?? skillOfPreviousUser(items),
       // Issue 29：生涯规划结果投影（助手消息）
       careerPlanning: latest.career_planning ?? null,
+      // Issue 30：本条助手消息的朗读状态快照（服务端持久化）
+      readAloud: latest.read_aloud ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({

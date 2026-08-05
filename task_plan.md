@@ -2,6 +2,107 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 30 实施计划（交付听写与单条回答朗读）
+
+状态：已完成（2026-08-05）。全量验证：1639 pytest（+25 新增：speech 服务/API
+听写与朗读）、11 条 issue30 E2E（录音状态机/转写回填/取消清理/权限拒绝/设备
+不可用/空音频恢复/网络中断重试/朗读播放控制/失败重试/单活动会话/刷新保持/
+能力禁用说明/纯键盘路径）、全量 E2E 通过（issue04 附件控件与 issue08 视觉
+回归为干净树复现的既有环境 flake、issue12/14 并行 flake 串行通过、doctor
+CLI smoke 为环境既有编码 flake）、mypy 干净、改动区域 ruff 干净（observability
+UP042 为既有问题）、npm typecheck/build 通过。双轴 code-review 修复：CSS
+令牌用错（--font-size-* 未定义）、MIME 白名单私有常量公开化、听写端点补对话
+归属校验（404 不泄漏）、fetch 网络错误映射中文、删除未使用 getReadAloud
+helper、播放条 aria 角色矛盾、朗读工具栏入口恢复（issue04 设计基线契约）、
+E2E 播放竞态（等进度再暂停）与缺失场景补充（设备不可用/网络中断重试/纯键盘
+朗读控制）。Issue 30 验收状态已更新为 ready-for-human。
+
+前置依赖：Issue 10（账户级凭据与能力探测：asr/tts 固定快照矩阵与真实探测
+已存在）、11（持久化流式聊天）、13（新输入框）均已交付。探索完成：矩阵
+已含 ASR_MODEL_ID=qwen3-asr-flash-2025-09-08 与 TTS_MODEL_ID=
+qwen3-tts-flash-2025-11-27；QwenAsrAdapter/QwenTtsAdapter、ModelGateway
+运行锁、KeyCredentialService 能力快照门控（_ensure_chat_capability_ready
+模式）、加密对象库（create_object/delete_object/pending_cleanup 清理轮）
+全部可复用；前端 Composer 已有 Web Speech 听写骨架、MessageList
+AssistantActions 已有 speechSynthesis 朗读骨架，均需替换为真实链路。
+
+### 目标
+在真实聊天链路交付「录完再转写」听写与单条回答按需朗读。听写固定
+qwen3-asr-flash-2025-09-08：录音→停止→提交完整音频→可编辑文本→用户
+自行决定发送，绝不自动发送。朗读固定 qwen3-tts-flash-2025-11-27：每条
+已完成的助手文本回答独立生成朗读，播放/暂停/继续/停止/同条受控重试，
+页面单活动播放会话。两项能力共用当前账户百炼密钥与独立真实探测；不可用
+时明确停用并说明原因，失败只重试同一快照，不切换模型不模拟成功。听写
+音频不落盘（请求体内存直传 ASR，超限/空音频/非白名单 MIME 拒绝）；生成
+音频按账户对象库留存并接入最小留存清理。
+
+### 新增模块
+1. `contracts/speech.py` — DictationStatus/ReadAloudState(not_generated/
+   generating/ready/failed)、DictationProjection（transcript/model_id/
+   duration_ms/error_code/error_message/created_at）、ReadAloudProjection
+   （state/model_id/audio_ref(对象 ID)/char_count/error_code/error_message/
+   generated_at/retryable/完整消息正文快照不存——朗读按消息正文现取）、
+   SpeechError
+2. `speech/service.py` — SpeechService：transcribe（能力门→固定 ASR 绑定
+   经 ModelGateway invoke qwen_asr_short@1（固定模型来自矩阵）→审计
+   ASR_TRANSCRIBE（details 不含音频/转写正文）→DictationProjection）；
+   generate_read_aloud（校验消息归属/role=assistant/status=done/正文非空
+   →正文纯文本化→固定 TTS 绑定 invoke→下载供应商临时 URL→转存账户对象
+   库→ReadAloudProjection 快照写回消息 read_aloud 列→审计
+   READ_ALOUD_GENERATE）；get_read_aloud / get_audio_bytes（对象授权校验）；
+   delete_read_aloud（清理对象与快照，幂等）；失败只重试同一快照
+3. `storage/database.py` — SCHEMA_VERSION 18：messages 加 read_aloud
+   JSON 列（快照含 state/model_id/audio_ref/error/retryable/created_at）
+
+### 修改
+4. `contracts/observability.py` — AuditAction.ASR_TRANSCRIBE /
+   READ_ALOUD_GENERATE / READ_ALOUD_DELETE（details 只含时长/字符数/消息
+   ID/模型标识，不含音频与正文）
+5. `api/speech.py` — 路由：POST /conversations/{id}/dictation（multipart
+   音频，能力门 asr）、POST /conversations/{id}/messages/{mid}/read-aloud
+   （能力门 tts，返回投影）、GET 投影、GET /audio（流式返回对象字节，
+   含 Content-Type/长度，带账户授权校验）、DELETE（停止并清理，幂等）；
+   错误码 no_api_key/capability_probing/capability_unavailable 复用
+6. `api/main.py` — SpeechService 挂载（gateway/credential_service/
+   object_store/object_repository/observability/chat_repository）
+7. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：录音胶囊 + 朗读播放条 + 状态芯片）
+8. api.ts — transcribeDictation / generateReadAloud / getReadAloud /
+   fetchReadAloudAudio(URL) / deleteReadAloud + 类型导出
+9. Composer 录音状态机（替换 Web Speech）：idle→recording(时长计时)→
+   stopping(提交中)→transcribed(可编辑回填不自动发送)/error(权限拒绝/
+   设备不可用/空音频/超限/网络/密钥失效)；按钮：开始/停止/取消/重录，
+   全部键盘可达；录音中禁用发送；取消不遗留待发送文本；跨账户/刷新
+   安全（卸载清理）
+10. ReadAloudControls（新，挂 MessageList 每条助手消息）：生成→
+    generating(过程态)→ready(播放条：播放/暂停/继续/停止/进度)/
+    failed(原因+重试同条)；全局单活动播放会话（AudioManager 单例，
+    新播先停旧）；切换对话/账户/刷新安全停止；失败重试走同一消息正文
+11. MessageList/ChatThread 接入；chat.module.css 录音/朗读样式
+
+### 测试
+12. `tests/speech/test_speech_service.py` — 转写成功/空音频/超限/不支持
+    MIME/能力门（未配置/探测中/不可用）/审计不含正文/固定模型标识进
+    运行锁/失败可重试同快照/不落盘（无对象产生）
+13. `tests/speech/test_read_aloud.py` — 生成/重试/消息归属与 role 校验/
+    账户隔离（跨账户取音频拒绝）/删除幂等/对象库留存与清理（delete
+    后 pending_cleanup）/刷新后可重新请求
+14. `tests/chat/test_speech_chat.py` 或并入 — 与聊天链路集成（消息正文
+    纯文本化、快照落库、SSE 无关）
+15. E2E issue30 — 录音→停止→转写回填→编辑→发送；取消/重录；麦克风
+    拒绝；空音频；超限；网络中断；密钥失效；朗读生成/播放/暂停/继续/
+    停止/失败重试；切换回答单会话；刷新与跨账户安全；纯键盘路径
+16. 真实探测验证：能力探测覆盖 asr/tts 固定快照（已有 issue10 测试），
+    记录模型标识与失败语义
+
+### 收尾
+17. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review
+    双轴审查并修复；更新 Issue 30 验收状态（ready-for-human + 验收项
+    打勾附证据）；提交（工作内容+bug 修复两部分提交信息）
+
+
+
 ## Issue 29 实施计划（交付生涯规划助手）
 
 状态：已完成（2026-08-05）。全量验证：1616 pytest（+71 新增：career 意图

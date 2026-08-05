@@ -29,7 +29,8 @@ LONG_AUDIO_MAX_SECONDS = 12 * 3600  # 12 hours
 LONG_AUDIO_MAX_BYTES = 2 * 1024 * 1024 * 1024
 
 # MIME types supported by the Qwen ASR models per official documentation.
-_SUPPORTED_AUDIO_MIME_TYPES: frozenset[str] = frozenset({
+#: 支持的音频 MIME 白名单（Issue 30 听写入口与服务共用）。
+SUPPORTED_AUDIO_MIME_TYPES: frozenset[str] = frozenset({
     "audio/mpeg",
     "audio/mp3",
     "audio/wav",
@@ -82,12 +83,12 @@ class QwenAsrAdapter(CapabilityAdapter):
         mime_type = str(payload.get("mime_type") or "audio/mpeg")
         duration_seconds = float(payload.get("duration_seconds") or 0)
 
-        if mime_type not in _SUPPORTED_AUDIO_MIME_TYPES:
+        if mime_type not in SUPPORTED_AUDIO_MIME_TYPES:
             raise AdapterError(
                 code="unsupported_mime_type",
                 message=(
                     f"Unsupported audio MIME type {mime_type!r}. "
-                    f"Supported: {', '.join(sorted(_SUPPORTED_AUDIO_MIME_TYPES))}."
+                    f"Supported: {', '.join(sorted(SUPPORTED_AUDIO_MIME_TYPES))}."
                 ),
                 retryable=False,
             )

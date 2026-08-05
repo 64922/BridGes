@@ -21,6 +21,8 @@ interface ChatThreadProps {
   /** 附件摄取重试（Issue 17）：调用重试 API 并刷新对话 */
   onRetryIngestion?: (objectId: string) => Promise<void>;
   conversationId?: string;
+  /** Issue 30：TTS 能力可用性（账户级探测快照） */
+  tts?: { available: boolean; reason?: string };
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -40,6 +42,7 @@ export function ChatThread({
   onDeleteAttachment,
   onRetryIngestion,
   conversationId,
+  tts,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -70,6 +73,7 @@ export function ChatThread({
           onDeleteAttachment={onDeleteAttachment}
           onRetryIngestion={onRetryIngestion}
           conversationId={conversationId}
+          tts={tts}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

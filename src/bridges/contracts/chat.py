@@ -25,6 +25,7 @@ from bridges.contracts.humanizer import (
 )
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
+from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.web_search.contracts import WebSearchProjection
 
@@ -226,6 +227,10 @@ class ChatMessageProjection(BaseModel):
     career_planning: CareerPlanningProjection | None = Field(
         default=None,
         description="助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。",
+    )
+    read_aloud: ReadAloudProjection | None = Field(
+        default=None,
+        description="本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。",
     )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")

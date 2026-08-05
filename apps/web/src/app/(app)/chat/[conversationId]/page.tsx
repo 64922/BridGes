@@ -20,6 +20,7 @@ import {
   ApiError,
   deleteChatMessageAttachment,
   downloadChatAttachment,
+  fetchKeySettings,
   getChatConversation,
   getLearningProject,
   isChatStreamEventOf,
@@ -30,6 +31,7 @@ import {
   stopChatMessage,
   streamChatMessage,
   switchChatMode,
+  type CapabilityProbeSummary,
   type ChatConversationProjection,
   type ChatAttachmentProjection,
   type ChatStreamEvent,
@@ -38,6 +40,8 @@ import {
   type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
+import { readAloudSession } from "@/lib/read-aloud";
+import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
 import {
   chatAttachmentKey,
   chatNoProfileKey,
@@ -51,6 +55,29 @@ import { buildThreadMessages } from "@/lib/chat-thread";
 import type { ChatStreamCareerData, ChatStreamHumanizerData } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
+
+/** Issue 30：把账户级探测快照折叠为语音入口可用性（不可用时带中文原因）。 */
+function speechAvailability(
+  capabilities: CapabilityProbeSummary[] | null | undefined,
+  capabilityId: string,
+  displayName: string
+): CapabilityAvailability {
+  const item = capabilities?.find((c) => c.capability_id === capabilityId);
+  if (!item) {
+    return {
+      available: false,
+      reason: `${displayName}能力尚未探测，请前往「设置」中的密钥页重新探测。`,
+    };
+  }
+  if (item.status === "available") return { available: true };
+  if (item.status === "probing") {
+    return { available: false, reason: `${displayName}能力正在探测中，请稍候再试。` };
+  }
+  return {
+    available: false,
+    reason: `${displayName}能力当前不可用：${item.message ?? "请前往「设置」重新探测。"}`,
+  };
+}
 
 interface ActiveRun {
   messageId: string;
@@ -110,6 +137,11 @@ export default function ChatConversationPage() {
   >([]);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
+  // Issue 30：账户级语音能力探测快照（asr 听写 / tts 朗读独立门控；
+  // 不可用时禁用入口并说明原因，服务端仍做权威校验）
+  const [speechCapabilities, setSpeechCapabilities] = useState<
+    CapabilityProbeSummary[] | null
+  >(null);
 
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
@@ -138,6 +170,17 @@ export default function ChatConversationPage() {
     setProjectName(null);
     void load();
   }, [load]);
+
+  // Issue 30：拉取一次账户级语音能力探测快照（asr/tts 独立门控）；
+  // 切换对话/离开页面/切换账户时安全停止朗读播放会话。
+  useEffect(() => {
+    setSpeechCapabilities(null);
+    void fetchKeySettings()
+      .then((projection) => setSpeechCapabilities(projection.capabilities ?? []))
+      .catch(() => setSpeechCapabilities([]));
+  }, [conversationId]);
+
+  useEffect(() => () => readAloudSession.stop(), [conversationId]);
 
   // Issue 24：统一搜索跳转的消息锚点。?message=<id> 时等消息渲染完成后
   // 滚动到对应消息并短暂高亮（data-anchor-highlight，2s 后自动消退；
@@ -689,6 +732,7 @@ export default function ChatConversationPage() {
                 }
                 onRetryIngestion={retryIngestion}
                 conversationId={conversationId}
+                tts={speechAvailability(speechCapabilities, "tts", "语音朗读")}
                 announcement={announcement}
               />
               {profileNotifications.length > 0 && (
@@ -721,6 +765,7 @@ export default function ChatConversationPage() {
                     onSelectLearningProject={(project) => void changeLearningProject(project)}
                     onOpenHumanizer={() => setHumanizerOpen(true)}
                     onOpenCareer={() => setCareerOpen(true)}
+                    asr={speechAvailability(speechCapabilities, "asr", "语音转写")}
                   />
                 </div>
               </div>

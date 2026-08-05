@@ -126,6 +126,9 @@ const icons = {
   readAloud: stroke(
     "M11 5.5L6.5 9H3.5v6h3L11 18.5v-13zM14.75 9.25a4 4 0 010 5.5M17.25 6.75a7.75 7.75 0 010 10.5",
   ),
+  play: stroke("M7.5 5.75v12.5l10-6.25-10-6.25z"),
+  pause: stroke("M7.75 5.75h2.75v12.5H7.75zM13.5 5.75h2.75v12.5H13.5z"),
+  stopSquare: stroke("M6.75 6.75h10.5v10.5H6.75z"),
 
   // ---- 统一搜索结果类型（Issue 24）----
   chatBubble: stroke(

@@ -44,6 +44,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api.media import router as media_router
+from bridges.api.speech import router as speech_router
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
 from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
@@ -145,6 +146,7 @@ from bridges.search import SearchService
 from bridges.sharing import SharingService
 from bridges.skills import create_builtin_registry
 from bridges.skills.humanizer.service import HumanizerService
+from bridges.speech.service import SpeechService
 from bridges.storage import (
     BridgesDatabase,
     BridgesObjectRepository,
@@ -942,6 +944,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             humanizer_service=app.state.humanizer_service,
             career_planner_service=app.state.career_planner_service,
         )
+        # Issue 30: 听写与单条回答朗读（固定 ASR/TTS 快照）。复用同一
+        # 模型网关（固定模型标识进运行记录）、账户对象库（朗读音频按
+        # 账户隔离留存）与对话仓库；听写音频不落盘，失败只重试同一快照。
+        app.state.speech_service = SpeechService(
+            gateway=model_gateway,
+            object_repository=object_repository,
+            chat_repository=ConversationRepository(bridges_database),
+            observability_service=app.state.observability_service,
+        )
 
     # T040/T046: register the built-in domain packs as candidates and attach the
     # expert workbench. The workbench owns three-signature release, semantic
@@ -1261,6 +1272,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(expression.router)
     app.include_router(media_router)
     app.include_router(learning_router)
+    app.include_router(speech_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

@@ -53,6 +53,11 @@ export type CareerStage = components["schemas"]["CareerStage"];
 export type CareerSuggestion = components["schemas"]["CareerSuggestion"];
 export type CareerReviewResult = components["schemas"]["CareerReviewResult"];
 export type ChatStreamCareerData = components["schemas"]["ChatStreamCareerData"];
+// Issue 30：听写与单条回答朗读契约（生成类型来自 openapi.json）。
+export type DictationProjection = components["schemas"]["DictationProjection"];
+export type DictationStatus = components["schemas"]["DictationStatus"];
+export type ReadAloudProjection = components["schemas"]["ReadAloudProjection"];
+export type ReadAloudState = components["schemas"]["ReadAloudState"];
 export type DocumentIngestionProjection = components["schemas"]["DocumentIngestionProjection"];
 export type KnowledgeBaseMaterialProjection = components["schemas"]["KnowledgeBaseMaterialProjection"];
 export type IngestionStatus = components["schemas"]["IngestionStatus"];
@@ -1894,4 +1899,66 @@ export async function decideCandidatesBatch(
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Issue 30：听写与单条回答朗读
+// ---------------------------------------------------------------------------
+
+/** 提交一段完整录音到固定 ASR 快照，返回可编辑转写文本（不自动发送）。 */
+export async function transcribeDictation(
+  conversationId: string,
+  audioBlob: Blob,
+  durationSeconds: number,
+  signal?: AbortSignal
+): Promise<DictationProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/dictation`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": audioBlob.type || "audio/webm",
+        "X-Bridges-Audio-Duration": String(durationSeconds),
+      },
+      credentials: "same-origin",
+      body: audioBlob,
+      signal,
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 为一条已完成的助手回答生成朗读（固定 TTS 快照；失败返回 failed 投影）。 */
+export async function generateReadAloud(
+  conversationId: string,
+  messageId: string
+): Promise<ReadAloudProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 删除朗读音频并复位状态（幂等；同源会话 Cookie 授权）。 */
+export async function deleteReadAloud(
+  conversationId: string,
+  messageId: string
+): Promise<ReadAloudProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 朗读音频的同源播放地址（经账户授权校验后流式返回）。 */
+export function readAloudAudioUrl(
+  conversationId: string,
+  messageId: string
+): string {
+  return `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud/audio`;
 }

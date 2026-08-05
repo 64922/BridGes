@@ -20,7 +20,9 @@ import type {
   ChatStreamCareerData,
   ChatStreamHumanizerData,
   HumanizerResultProjection,
+  ReadAloudProjection,
 } from "@/lib/api";
+import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
@@ -87,6 +89,8 @@ export interface ChatMessage {
   careerPlanning?: CareerPlanningProjection | null;
   /** Issue 29：流式中的生涯规划过程卡状态（五态中文） */
   careerProcess?: ChatStreamCareerData | null;
+  /** Issue 30：本条助手消息的朗读状态快照（服务端持久化，刷新一致） */
+  readAloud?: ReadAloudProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -106,6 +110,8 @@ interface MessageListProps {
   onRetryIngestion?: (objectId: string) => Promise<void>;
   /** 附件所属对话（摄取详情接口的上下文） */
   conversationId?: string;
+  /** Issue 30：TTS 能力可用性（账户级探测快照；不可用时禁用朗读入口并说明原因） */
+  tts?: CapabilityAvailability;
 }
 
 /** Issue 29：该轮是否为生涯规划意图（显式前缀或强触发关键词命中；
@@ -134,11 +140,13 @@ function MessageAction({
   icon,
   label,
   pressed,
+  disabled,
   onClick,
 }: {
   icon: IconName;
   label: string;
   pressed?: boolean;
+  disabled?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -147,10 +155,13 @@ function MessageAction({
       aria-label={label}
       title={label}
       aria-pressed={pressed}
+      disabled={disabled}
       onClick={onClick}
       style={{
         ...actionButtonStyle,
         color: pressed ? "var(--color-accent-primary)" : "var(--color-text-tertiary)",
+        opacity: disabled ? 0.45 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
       }}
     >
       <Icon name={icon} size={18} aria-hidden />
@@ -267,55 +278,30 @@ function MessageAttachments({
   );
 }
 
-function AssistantActions({ message, onRetry }: { message: ChatMessage; onRetry?: (id: string) => void }) {
+function AssistantActions({
+  message,
+  onRetry,
+  onReadAloud,
+  readAloudPressed = false,
+  readAloudDisabled = false,
+}: {
+  message: ChatMessage;
+  onRetry?: (id: string) => void;
+  /** Issue 30：朗读入口（消息操作栏按钮；无回调时为模板静态展示） */
+  onReadAloud?: () => void;
+  /** 生成中/播放中时入口按钮 pressed 态 */
+  readAloudPressed?: boolean;
+  /** TTS 能力不可用时禁用入口（原因在消息下方说明） */
+  readAloudDisabled?: boolean;
+}) {
   const [copyStatus, setCopyStatus] = useState<"idle" | "success" | "error">("idle");
   const [feedback, setFeedback] = useState<"good" | "bad" | null>(null);
-  const [reading, setReading] = useState(false);
-  const [speechError, setSpeechError] = useState("");
-  const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const copy = async () => {
     const copied = await copyTextToClipboard(message.plainText);
     setCopyStatus(copied ? "success" : "error");
     window.setTimeout(() => setCopyStatus("idle"), 2000);
   };
-
-  const toggleReading = () => {
-    if (reading) {
-      window.speechSynthesis.cancel();
-      utteranceRef.current = null;
-      setReading(false);
-      return;
-    }
-    if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
-      setSpeechError("当前浏览器不支持朗读。");
-      return;
-    }
-
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(message.plainText);
-    utterance.lang = "zh-CN";
-    utterance.onend = () => {
-      utteranceRef.current = null;
-      setReading(false);
-    };
-    utterance.onerror = () => {
-      utteranceRef.current = null;
-      setReading(false);
-      setSpeechError("朗读失败，请检查系统语音设置后重试。");
-    };
-    setSpeechError("");
-    utteranceRef.current = utterance;
-    setReading(true);
-    window.speechSynthesis.speak(utterance);
-  };
-
-  useEffect(
-    () => () => {
-      if (utteranceRef.current) window.speechSynthesis.cancel();
-    },
-    [],
-  );
 
   return (
     <div
@@ -353,23 +339,14 @@ function AssistantActions({ message, onRetry }: { message: ChatMessage; onRetry?
       />
       <MessageAction
         icon="readAloud"
-        label={reading ? "停止朗读" : "朗读"}
-        pressed={reading}
-        onClick={toggleReading}
+        label="朗读"
+        pressed={readAloudPressed}
+        disabled={readAloudDisabled}
+        onClick={() => onReadAloud?.()}
       />
-      {reading && (
-        <span role="status" style={{ fontSize: "var(--text-xs)", color: "var(--color-accent-primary)" }}>
-          朗读中…
-        </span>
-      )}
       {feedback && (
         <span role="status" style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
           已在当前页面标记为{feedback === "good" ? "有帮助" : "需改进"}
-        </span>
-      )}
-      {speechError && (
-        <span role="alert" style={{ fontSize: "var(--text-xs)", color: "var(--color-status-error)" }}>
-          {speechError}
         </span>
       )}
     </div>
@@ -543,7 +520,11 @@ export function MessageList({
   conversationId,
   onStop,
   onTeachingSkip,
+  tts,
 }: MessageListProps) {
+  // Issue 30：每条助手消息的朗读控制器句柄（供消息操作栏「朗读」按钮桥接）
+  const readAloudRefs = useRef(new Map<string, ReadAloudControlsHandle>());
+  const [activeReadAloudId, setActiveReadAloudId] = useState<string | null>(null);
   return (
     <ol
       role="list"
@@ -786,7 +767,41 @@ export function MessageList({
                   </p>
                 )}
 
-                <AssistantActions message={message} onRetry={onRetry} />
+                <AssistantActions
+                  message={message}
+                  onRetry={onRetry}
+                  onReadAloud={
+                    conversationId
+                      ? () => readAloudRefs.current.get(message.id)?.generate()
+                      : undefined
+                  }
+                  readAloudPressed={activeReadAloudId === message.id}
+                  readAloudDisabled={tts ? !tts.available : false}
+                />
+
+                {conversationId &&
+                  message.role === "assistant" &&
+                  message.status !== "streaming" &&
+                  message.status !== "error" && (
+                    <ReadAloudControls
+                      ref={(handle) => {
+                        if (handle) {
+                          readAloudRefs.current.set(message.id, handle);
+                        } else {
+                          readAloudRefs.current.delete(message.id);
+                        }
+                      }}
+                      conversationId={conversationId}
+                      messageId={message.id}
+                      projection={message.readAloud ?? null}
+                      tts={tts ?? { available: true }}
+                      onActivityChange={(active) =>
+                        setActiveReadAloudId((current) =>
+                          active ? message.id : current === message.id ? null : current
+                        )
+                      }
+                    />
+                  )}
               </div>
             </article>
           )}

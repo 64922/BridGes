@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 17
+SCHEMA_VERSION = 18
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -911,6 +911,15 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         ALTER TABLE answer_feedback ADD COLUMN career_item_ref TEXT
+        """,
+    ],
+    # Issue 30：单条回答朗读状态快照固化在助手消息上。快照含状态
+    # （not_generated/ready/failed）、实际固定 TTS 模型标识、账户对象库
+    # 音频引用与失败语义；刷新后可从同一快照重新请求播放。听写音频
+    # 不落盘（请求体内存直传 ASR），无持久化表。
+    18: [
+        """
+        ALTER TABLE messages ADD COLUMN read_aloud TEXT
         """,
     ],
 }

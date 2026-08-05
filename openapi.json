@@ -22545,6 +22545,451 @@
         }
       }
     },
+    "/chat/conversations/{conversation_id}/dictation": {
+      "post": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "Transcribe Dictation",
+        "description": "提交一段完整录音音频到固定 ASR 快照，返回可编辑转写文本。\n\n音频通过请求体原样上传（Content-Type 为音频 MIME，时长经\n``x-bridges-audio-duration`` 头声明）；只接受音频 MIME，空音频、\n超限音频与不支持格式在调用前确定性拒绝。转写失败返回 failed\n投影（含稳定错误码与中文原因），不产生用户消息、不落盘音频。",
+        "operationId": "transcribe_dictation_chat_conversations__conversation_id__dictation_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DictationProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud": {
+      "post": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "Generate Read Aloud",
+        "description": "为一条已完成的助手回答生成朗读（固定 TTS 快照）。\n\n同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先\n清理再写新对象。生成失败返回 failed 投影与重试语义，回答正文\n不受影响。",
+        "operationId": "generate_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadAloudProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "Get Read Aloud",
+        "description": "读取消息上的朗读状态快照；刷新后从同一快照恢复播放入口。",
+        "operationId": "get_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadAloudProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "Delete Read Aloud",
+        "description": "停止并清理朗读：删除账户对象库中的音频并复位状态，幂等。",
+        "operationId": "delete_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadAloudProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud/audio": {
+      "get": {
+        "tags": [
+          "speech"
+        ],
+        "summary": "Get Read Aloud Audio",
+        "description": "流式返回朗读音频字节；未生成或跨账户一律 404。\n\n音频按账户对象库授权校验后返回，不携带任何会话或凭据信息。",
+        "operationId": "get_read_aloud_audio_chat_conversations__conversation_id__messages__message_id__read_aloud_audio_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -25952,6 +26397,17 @@
               }
             ],
             "description": "助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。"
+          },
+          "read_aloud": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadAloudProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。"
           },
           "error_code": {
             "anyOf": [
@@ -29947,6 +30403,96 @@
         ],
         "title": "DiagnosticRunStatus",
         "description": "Lifecycle status of a diagnostic run."
+      },
+      "DictationProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DictationStatus",
+            "description": "转写结果状态。"
+          },
+          "transcript": {
+            "type": "string",
+            "title": "Transcript",
+            "description": "转写文本（成功时非空，可编辑回填输入框）。",
+            "default": ""
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "实际使用的固定 ASR 模型快照。"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "本次转写调用耗时（毫秒）。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "稳定错误码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "失败后是否可原样重试同一音频。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "转写完成时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "created_at"
+        ],
+        "title": "DictationProjection",
+        "description": "一次听写请求的结果投影；不包含音频本身与账户信息。\n\n转写文本进入前端输入框可自由编辑，由用户自行决定发送，系统绝不\n自动产生用户消息。"
+      },
+      "DictationStatus": {
+        "type": "string",
+        "enum": [
+          "success",
+          "failed"
+        ],
+        "title": "DictationStatus",
+        "description": "听写结果状态。\n\n- ``success``：转写完成，transcript 可直接编辑后发送；\n- ``failed``：转写失败，error_code/error_message 说明原因，\n  retryable 表示是否可原样重试同一音频。"
       },
       "DocumentIngestionProjection": {
         "properties": {
@@ -40640,6 +41186,145 @@
         ],
         "title": "QualificationRecord",
         "description": "可核验资质：类型、核验者、有效期和适用范围。"
+      },
+      "ReadAloudProjection": {
+        "properties": {
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "所属助手消息标识。"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ReadAloudState",
+            "description": "朗读状态。"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "实际使用的固定 TTS 模型快照。"
+          },
+          "audio_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audio Ref",
+            "description": "账户对象库中的音频对象 ID；ready 时存在。"
+          },
+          "media_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Media Type",
+            "description": "音频媒体类型（ready 时存在）。"
+          },
+          "content_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Content Length",
+            "description": "音频字节数（ready 时存在）。"
+          },
+          "char_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Char Count",
+            "description": "实际合成的字符数。"
+          },
+          "truncated": {
+            "type": "boolean",
+            "title": "Truncated",
+            "description": "是否因长度限制截断（明确披露，不静默）。",
+            "default": false
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "稳定错误码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "失败后是否可对同一条回答重试生成。",
+            "default": false
+          },
+          "generated_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Generated At",
+            "description": "最近一次生成完成时间；未生成为 None。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "state"
+        ],
+        "title": "ReadAloudProjection",
+        "description": "单条助手回答朗读的公开投影；不包含音频内容与账户信息。\n\n``audio_ref`` 是账户对象库中的对象 ID，播放时通过音频端点按账户\n授权校验后流式返回。同一条回答的受控重试复用同一消息正文重新合成，\n成功后旧音频先清理再写入新对象。"
+      },
+      "ReadAloudState": {
+        "type": "string",
+        "enum": [
+          "not_generated",
+          "ready",
+          "failed"
+        ],
+        "title": "ReadAloudState",
+        "description": "单条回答朗读的持久化状态。\n\n- ``not_generated``：尚未生成朗读（可发起生成）；\n- ``ready``：音频已生成并转存到账户对象库，可请求播放；\n- ``failed``：生成失败，error_message 说明原因，可重试。"
       },
       "ReauthenticationRequest": {
         "properties": {

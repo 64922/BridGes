@@ -9,9 +9,12 @@ import { CAREER_TOOL_LABEL, CHAT_TOOL_INTENTS, HUMANIZER_TOOL_LABEL } from "@/li
 import {
   cancelChatAttachment,
   cancelChatAttachmentUpload,
+  transcribeDictation,
   uploadChatAttachment,
 } from "@/lib/api";
 import { Menu } from "./Menu";
+import type { CapabilityAvailability } from "./chat/ReadAloudControls";
+import styles from "./chat/chat.module.css";
 
 interface ComposerAttachment {
   id: string;
@@ -48,28 +51,9 @@ interface ComposerProps {
   onOpenHumanizer?: () => void;
   /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
   onOpenCareer?: () => void;
+  /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
+  asr?: CapabilityAvailability;
 }
-
-interface SpeechRecognitionResultEventLike {
-  results: ArrayLike<{ 0: { transcript: string } }>;
-}
-
-interface SpeechRecognitionErrorEventLike {
-  error: string;
-}
-
-interface SpeechRecognitionLike {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  onresult: ((event: SpeechRecognitionResultEventLike) => void) | null;
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
-  onend: (() => void) | null;
-  start: () => void;
-  stop: () => void;
-}
-
-type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -109,11 +93,19 @@ export function Composer({
   onSelectLearningProject,
   onOpenHumanizer,
   onOpenCareer,
+  asr = { available: true },
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
-  const [dictating, setDictating] = useState(false);
+  // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
+  // 停止录音后才提交完整音频到固定 ASR 快照；转写结果可编辑回填，绝不
+  // 自动发送；取消/重录不遗留待发送文本、跨账户临时音频或后台孤儿任务。
+  const [dictationPhase, setDictationPhase] = useState<
+    "idle" | "recording" | "transcribing" | "error"
+  >("idle");
   const [dictationError, setDictationError] = useState("");
+  const [dictationSeconds, setDictationSeconds] = useState(0);
+  const [dictationTranscribed, setDictationTranscribed] = useState(false);
   const [toolNotice, setToolNotice] = useState("");
   const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   // Issue 20：本轮是否启用全局知识库层（发送前可关闭；关闭后本轮请求、
@@ -124,7 +116,13 @@ export function Composer({
   const [useProfile, setUseProfile] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const dictationTimerRef = useRef<number | null>(null);
+  const dictationSecondsRef = useRef(0);
+  const dictationAbortRef = useRef<AbortController | null>(null);
+  const pendingAudioRef = useRef<Blob | null>(null);
   const controllersRef = useRef(new Map<string, AbortController>());
   const preparedConversationRef = useRef<string | undefined>(conversationId);
   const attachmentsRef = useRef<ComposerAttachment[]>([]);
@@ -134,9 +132,20 @@ export function Composer({
     (item) => item.status === "uploaded" && item.objectId
   );
   const hasUploading = attachments.some((item) => item.status === "uploading");
-  const canSend = text.trim().length > 0 || uploadedAttachments.length > 0;
+  const canSend =
+    (text.trim().length > 0 || uploadedAttachments.length > 0) &&
+    dictationPhase === "idle";
   // 真实对话上下文（模板设计基线不渲染来源层面板）
   const isRealChat = conversationId !== undefined || ensureConversation !== undefined;
+
+  // Issue 30：录音硬上限（服务端 ASR 同款 300 秒限制，客户端提前自动停止）。
+  const MAX_RECORDING_SECONDS = 299;
+
+  const formatDictationTime = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const rest = seconds % 60;
+    return `${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+  };
 
   const autoGrow = () => {
     const element = textareaRef.current;
@@ -279,9 +288,7 @@ export function Composer({
         current.filter((item) => item.status !== "uploaded" || !item.objectId)
       );
       setToolNotice("");
-      recognitionRef.current?.stop();
-      recognitionRef.current = null;
-      setDictating(false);
+      cancelRecording();
       requestAnimationFrame(autoGrow);
     } catch (error) {
       setToolNotice(errorMessage(error));
@@ -307,54 +314,212 @@ export function Composer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillNonce]);
 
-  const stopDictation = () => {
-    recognitionRef.current?.stop();
-    recognitionRef.current = null;
-    setDictating(false);
+  // ------------------------------------------------------------------
+  // Issue 30：录音状态机（MediaRecorder → 固定 ASR 快照 → 可编辑文本）
+  // ------------------------------------------------------------------
+
+  const clearDictationTimer = () => {
+    if (dictationTimerRef.current !== null) {
+      window.clearInterval(dictationTimerRef.current);
+      dictationTimerRef.current = null;
+    }
   };
 
-  const toggleDictation = () => {
-    if (dictating) {
-      stopDictation();
+  const stopAudioTracks = () => {
+    const stream = streamRef.current;
+    if (stream) {
+      stream.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+  };
+
+  /** 取消录音/转写：停止音轨、丢弃片段与在途请求，不遗留任何状态。 */
+  const cancelRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state !== "inactive") {
+      recorder.onstop = null;
+      try {
+        recorder.stop();
+      } catch {
+        // 已停止/不活动时忽略
+      }
+    }
+    mediaRecorderRef.current = null;
+    stopAudioTracks();
+    chunksRef.current = [];
+    pendingAudioRef.current = null;
+    dictationAbortRef.current?.abort();
+    dictationAbortRef.current = null;
+    clearDictationTimer();
+    setDictationSeconds(0);
+    setDictationTranscribed(false);
+    setDictationError("");
+    setDictationPhase("idle");
+  };
+
+  /** 把已录片段提交到固定 ASR 快照（停止录音后才提交；失败保留片段可重试）。 */
+  const transcribePendingAudio = async () => {
+    const audio = pendingAudioRef.current;
+    if (!audio || audio.size === 0) {
+      setDictationError("录音为空，请重新录制。");
+      setDictationPhase("error");
       return;
     }
-    const speechWindow = window as typeof window & {
-      SpeechRecognition?: SpeechRecognitionConstructor;
-      webkitSpeechRecognition?: SpeechRecognitionConstructor;
-    };
-    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (!Recognition) {
-      setDictationError("当前浏览器不支持语音听写，请改用键盘输入。");
+    setDictationPhase("transcribing");
+    setDictationError("");
+    const controller = new AbortController();
+    dictationAbortRef.current = controller;
+    let targetConversationId: string | null = null;
+    try {
+      targetConversationId = await resolveConversation();
+    } catch {
+      targetConversationId = null;
+    }
+    if (!targetConversationId) {
+      dictationAbortRef.current = null;
+      setDictationError("无法获取当前对话，请稍后重试。");
+      setDictationPhase("error");
       return;
     }
-    const recognition = new Recognition();
-    recognition.lang = "zh-CN";
-    recognition.continuous = true;
-    recognition.interimResults = false;
-    recognition.onresult = (event) => {
-      const last = event.results[event.results.length - 1];
-      const transcript = last?.[0]?.transcript?.trim();
-      if (!transcript) return;
-      setText((current) => `${current}${current ? " " : ""}${transcript}`);
-      requestAnimationFrame(autoGrow);
-    };
-    recognition.onerror = (event) => {
-      setDictationError(`听写失败（${event.error}），请重试或改用键盘输入。`);
-      recognitionRef.current = null;
-      setDictating(false);
-    };
-    recognition.onend = () => {
-      recognitionRef.current = null;
-      setDictating(false);
+    try {
+      const projection = await transcribeDictation(
+        targetConversationId,
+        audio,
+        dictationSecondsRef.current,
+        controller.signal
+      );
+      dictationAbortRef.current = null;
+      if (projection.status === "success" && projection.transcript) {
+        // 转写结果进入输入框可自由编辑；不自动产生用户消息。
+        pendingAudioRef.current = null;
+        setText(projection.transcript);
+        setDictationTranscribed(true);
+        setDictationPhase("idle");
+        requestAnimationFrame(() => {
+          autoGrow();
+          textareaRef.current?.focus();
+        });
+      } else {
+        // 失败保留录音片段：同一音频可原样重试（受控重试，不换快照）。
+        setDictationError(projection.error_message || "转写失败，请重试或重新录制。");
+        setDictationPhase("error");
+      }
+    } catch (error) {
+      dictationAbortRef.current = null;
+      if (error instanceof DOMException && error.name === "AbortError") {
+        // 用户取消转写：不遗留待发送文本与后台请求。
+        pendingAudioRef.current = null;
+        setDictationPhase("idle");
+        return;
+      }
+      if (error instanceof TypeError) {
+        // fetch 网络层失败（断网/服务不可达）映射为可操作中文原因。
+        setDictationError("网络异常，转写失败，请检查网络后重试。");
+      } else {
+        setDictationError(error instanceof Error ? error.message : "转写失败，请重试或重新录制。");
+      }
+      setDictationPhase("error");
+    }
+  };
+
+  /** 停止录音并提交完整音频（不超过硬上限，到达上限自动停止提交）。 */
+  const stopRecordingAndTranscribe = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state === "inactive") {
+      cancelRecording();
+      return;
+    }
+    clearDictationTimer();
+    recorder.onstop = () => {
+      // 先在 onstop 里取完数据再停音轨：先停轨会截断 MediaRecorder 数据。
+      const blob = new Blob(chunksRef.current, {
+        type: recorder.mimeType || "audio/webm",
+      });
+      chunksRef.current = [];
+      stopAudioTracks();
+      mediaRecorderRef.current = null;
+      pendingAudioRef.current = blob.size > 0 ? blob : null;
+      void transcribePendingAudio();
     };
     try {
-      setDictationError("");
-      recognition.start();
-      recognitionRef.current = recognition;
-      setDictating(true);
+      recorder.stop();
     } catch {
-      setDictationError("无法启动语音听写，请检查麦克风权限后重试。");
+      cancelRecording();
     }
+  };
+
+  /** 开始录音：申请麦克风权限（拒绝/无设备/被占用分别给出中文原因）。 */
+  const startRecording = async () => {
+    if (dictationPhase === "recording" || dictationPhase === "transcribing") return;
+    if (!asr.available) {
+      setDictationError(asr.reason ?? "语音转写能力不可用，请前往「设置」重新探测。");
+      setDictationPhase("error");
+      return;
+    }
+    // 重新录制：先清掉上一段转写文本（用户显式选择重录，不留待发送文本）。
+    if (dictationTranscribed) {
+      setText("");
+      setDictationTranscribed(false);
+      requestAnimationFrame(autoGrow);
+    }
+    setDictationError("");
+    if (!("MediaRecorder" in window)) {
+      setDictationError("当前浏览器不支持录音，请改用键盘输入。");
+      setDictationPhase("error");
+      return;
+    }
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (error) {
+      const name = error instanceof DOMException ? error.name : "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setDictationError("麦克风权限被拒绝，请在浏览器设置中允许麦克风后重试。");
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        setDictationError("未检测到可用麦克风设备，请检查设备连接后重试。");
+      } else if (name === "NotReadableError") {
+        setDictationError("麦克风设备不可用或被其他应用占用，请检查后重试。");
+      } else {
+        setDictationError("无法启动麦克风，请检查设备与浏览器权限后重试。");
+      }
+      setDictationPhase("error");
+      return;
+    }
+    streamRef.current = stream;
+    chunksRef.current = [];
+    let recorder: MediaRecorder;
+    try {
+      recorder = new MediaRecorder(stream);
+    } catch {
+      stopAudioTracks();
+      setDictationError("当前浏览器不支持录音，请改用键盘输入。");
+      setDictationPhase("error");
+      return;
+    }
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
+    };
+    try {
+      recorder.start();
+    } catch {
+      stopAudioTracks();
+      setDictationError("无法启动录音，请检查麦克风后重试。");
+      setDictationPhase("error");
+      return;
+    }
+    mediaRecorderRef.current = recorder;
+    setDictationSeconds(0);
+    setDictationPhase("recording");
+    // 时长计时；到达硬上限自动停止并提交（服务端同款 300 秒上限）。
+    const startedAt = Date.now();
+    dictationTimerRef.current = window.setInterval(() => {
+      const seconds = Math.floor((Date.now() - startedAt) / 1000);
+      dictationSecondsRef.current = seconds;
+      setDictationSeconds(seconds);
+      if (seconds >= MAX_RECORDING_SECONDS) {
+        void stopRecordingAndTranscribe();
+      }
+    }, 250);
   };
 
   useEffect(() => {
@@ -370,7 +535,7 @@ export function Composer({
 
   useEffect(
     () => () => {
-      recognitionRef.current?.stop();
+      cancelRecording();
       controllersRef.current.forEach((controller, id) => {
         controller.abort();
         const item = attachmentsRef.current.find((candidate) => candidate.id === id);
@@ -789,14 +954,124 @@ export function Composer({
         />
 
         <span style={{ flex: 1 }} />
-        {dictating && <span role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-accent-primary)" }}>听写中，请开始说话…</span>}
-        {dictationError && <span role="alert" style={{ fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>{dictationError}</span>}
+
+        {dictationPhase === "recording" && (
+          <span className={styles.composerDictationRow} role="status" aria-live="polite">
+            <span className={styles.composerDictationDot} aria-hidden="true" />
+            <span className={styles.composerDictationTimer}>
+              {formatDictationTime(dictationSeconds)}
+            </span>
+            <button
+              type="button"
+              className={styles.composerDictationAction}
+              aria-label="停止录音并转写"
+              onClick={() => void stopRecordingAndTranscribe()}
+            >
+              <Icon name="stopSquare" size={16} aria-hidden />
+              停止
+            </button>
+            <button
+              type="button"
+              className={styles.composerDictationAction}
+              aria-label="取消录音"
+              onClick={cancelRecording}
+            >
+              <Icon name="close" size={16} aria-hidden />
+              取消
+            </button>
+          </span>
+        )}
+
+        {dictationPhase === "transcribing" && (
+          <span className={styles.composerDictationRow} role="status" aria-live="polite">
+            <span className={styles.readAloudSpinner} aria-hidden="true" />
+            <span className={styles.composerDictationText}>正在转写…</span>
+            <button
+              type="button"
+              className={styles.composerDictationAction}
+              aria-label="取消转写"
+              onClick={cancelRecording}
+            >
+              <Icon name="close" size={16} aria-hidden />
+              取消
+            </button>
+          </span>
+        )}
+
+        {dictationPhase === "error" && (
+          <span className={styles.composerDictationRow} role="alert">
+            <Icon name="alert" size={16} aria-hidden />
+            <span className={styles.composerDictationError}>{dictationError}</span>
+            {pendingAudioRef.current && (
+              <button
+                type="button"
+                className={styles.composerDictationAction}
+                aria-label="重试转写"
+                onClick={() => void transcribePendingAudio()}
+              >
+                <Icon name="retry" size={16} aria-hidden />
+                重试
+              </button>
+            )}
+            <button
+              type="button"
+              className={styles.composerDictationAction}
+              aria-label="重新录制"
+              onClick={() => void startRecording()}
+            >
+              <Icon name="dictation" size={16} aria-hidden />
+              重新录制
+            </button>
+            <button
+              type="button"
+              className={styles.composerDictationAction}
+              aria-label="取消听写"
+              onClick={cancelRecording}
+            >
+              <Icon name="close" size={16} aria-hidden />
+              取消
+            </button>
+          </span>
+        )}
+
+        {dictationPhase === "idle" && !asr.available && asr.reason && (
+          <span className={styles.composerDictationRow} role="note">
+            <Icon name="alert" size={16} aria-hidden />
+            <span className={styles.composerDictationText}>{asr.reason}</span>
+          </span>
+        )}
+
+        {dictationPhase === "idle" && dictationTranscribed && (
+          <span className={styles.composerDictationRow} role="status">
+            <span className={styles.composerDictationText}>已转写，可编辑后发送</span>
+            <button
+              type="button"
+              className={styles.composerDictationAction}
+              aria-label="重新录制"
+              onClick={() => void startRecording()}
+            >
+              <Icon name="dictation" size={16} aria-hidden />
+              重新录制
+            </button>
+          </span>
+        )}
+
         <button
           type="button"
-          aria-label={dictating ? "停止听写" : "开始听写"}
-          aria-pressed={dictating}
-          onClick={toggleDictation}
-          style={{ ...iconButtonStyle, color: dictating ? "var(--color-accent-primary)" : "var(--color-text-secondary)" }}
+          aria-label="开始听写"
+          aria-pressed={dictationPhase === "recording"}
+          disabled={!asr.available}
+          title={asr.available ? undefined : asr.reason}
+          onClick={() => void startRecording()}
+          style={{
+            ...iconButtonStyle,
+            color:
+              dictationPhase === "recording"
+                ? "var(--color-status-error)"
+                : "var(--color-text-secondary)",
+            opacity: asr.available ? 1 : 0.45,
+            cursor: asr.available ? "pointer" : "not-allowed",
+          }}
         >
           <Icon name="dictation" size={20} aria-hidden />
         </button>

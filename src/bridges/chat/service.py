@@ -79,6 +79,7 @@ from bridges.contracts.retrieval import (
     RetrievalRoundProjection,
     RetrievalSourceLayer,
 )
+from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
@@ -2648,6 +2649,12 @@ class ChatService:
             career_planning=(
                 CareerPlanningProjection.model_validate(message.career_planning)
                 if message.career_planning is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            read_aloud=(
+                ReadAloudProjection.model_validate(message.read_aloud)
+                if message.read_aloud is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

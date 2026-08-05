@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from bridges.contracts.ai import ModelRunLock
@@ -62,6 +62,7 @@ class MessageRecord:
     context_note: dict[str, Any] | None = None
     skill: dict[str, Any] | None = None
     career_planning: dict[str, Any] | None = None
+    read_aloud: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -408,7 +409,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill, career_planning"
+            " teaching, context_note, skill, career_planning, read_aloud"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -421,7 +422,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill, career_planning"
+            " teaching, context_note, skill, career_planning, read_aloud"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -562,6 +563,31 @@ class ConversationRepository:
                 "UPDATE messages SET career_planning = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(career_planning), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_read_aloud(
+        self,
+        account_id: str,
+        message_id: str,
+        read_aloud: dict[str, Any] | None,
+    ) -> int:
+        """落库朗读状态快照（Issue 30），不限定消息生成状态。
+
+        朗读在消息终态之后发生：生成/失败/删除都写入同一列，幂等覆盖；
+        None 表示清除（删除朗读后复位）。只按账户+消息定位，跨账户写
+        入被作用域强制拒绝。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET read_aloud = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ?",
+                (
+                    _json_dumps(read_aloud) if read_aloud is not None else None,
+                    _iso(datetime.now(UTC)),
+                    message_id,
+                    account_id,
+                ),
             )
             return cursor.rowcount
 
@@ -907,6 +933,7 @@ class ConversationRepository:
             context_note=_json_loads_any(row["context_note"]),
             skill=_json_loads_any(row["skill"]),
             career_planning=_json_loads_any(row["career_planning"]),
+            read_aloud=_json_loads_any(row["read_aloud"]),
         )
 
 
