@@ -2,6 +2,152 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 33 实施计划（交付 QQ SMTP 任务提醒）
+
+状态：实施完成，全量验证与 code-review 进行中（2026-08-05）。
+进度：后端（契约/SMTP 适配器/解析器/适配/服务/存储 v21/调度器接入/
+API 路由/审计/凭据命名空间/reminder 画像模式）完成；前端（任务安排页
+SMTP 配置卡/时区/新建编辑对话框/提醒列表/投递记录 + api.ts + openapi
+再生成）完成；pytest 新增 75 条（解析器 25 + 适配 5 + SMTP 适配器 7 +
+服务 26 + API 12）+ issue33 E2E 3 条通过；全量 pytest 1786 通过（3 条
+失败为 E2E 并行抢 8000 端口 + 秘密扫描误报，已分别复验通过）；mypy
+干净、改动区域 ruff 干净、npm typecheck/build 通过。
+
+### 目标
+交付完整的「任务安排」电脑端页面与本地提醒链路：账户配置并验证 QQ SMTP
+授权码（自发自收验证：SMTP 发送测试邮件 + IMAP 轮询确认到达，ADR-0004），
+授权码按账户加密保存（凭据存储新增 smtp 命名空间，与百炼 Key 分离）、
+不进入日志/模型/导出；未验证不得启用提醒。自然语言解析（确定性中文解析
+器：时间/重复规则/主题 → 带时区结构化日程 + 简练邮件预览，经确认才持久化，
+ADR-0019 同时保存账户时区规则与 UTC 执行时间）。本地调度器（scheduler 进程
+dispatch_due_reminders 接缝）按冻结的画像措辞快照投递，画像只在创建/编辑时
+经 compile_chat_slice 最小切片编译（reminder 模式白名单），用户可关闭并查看
+本次使用类别。保存发送/失败/跳过/补发/手动重试投递记录；一次性提醒 24h 内
+补发并标记延迟、超窗记为错过，重复提醒最多补发最近一次；SMTP 临时失败有限
+退避重试（3 次），授权失效立即暂停相关提醒；全部账户作用域（scoped 强制），
+切换账户不残留。SMTP 服务器/IMAP 收件确认端点走配置项（默认 smtp.qq.com:465
+SSL / imap.qq.com:993 SSL），测试与 E2E 指向本地假邮件服务器。
+
+### 新增模块
+1. `contracts/reminder.py` — ReminderRepeatRule（once/daily/weekdays/
+   weekly_days{集合}/monthly_day）、ReminderStatus（enabled/paused/
+   completed/cancelled）、ReminderDeliveryKind（scheduled/catch_up/
+   manual_retry）、ReminderDeliveryOutcome（sent/failed/skipped）、
+   SmtpStatus（unconfigured/verifying/verified/failed）、
+   SmtpSettingsProjection（含脱敏邮箱/状态/原因/验证时间，不含授权码）、
+   ReminderSettingsProjection（timezone）、ParsedReminderPreview（时区/
+   首次执行 UTC+本地/重复规则/主题/邮件正文预览/画像开关/本次使用类别）、
+   ReminderCreateRequest/ReminderUpdateRequest（确认后的结构化载荷 +
+   raw_text 追溯）、ReminderProjection、ReminderDeliveryProjection、
+   ReminderError
+2. `reminder/parser.py` — 确定性中文解析：日锚（今天/明天/后天/大后天/本周X/
+   下X）、时刻（凌晨/早上/上午/中午/下午/晚上/今晚 + 数字点[分]）、重复规则
+   （一次/每天/工作日/每周X/每月N日）、动词前缀（提醒我/记得/别忘了…）、
+   主题提取；带时区（zoneinfo）→ naive 本地时间 + UTC 执行时间；解析失败
+   中文原因
+3. `reminder/adaptation.py` — 画像措辞适配纯函数：BASIC_INFORMATION 称呼规则
+   （称呼我X/叫我X → 称呼行）、EXPRESSION_HABIT 语气提示行；返回正文 + 本次
+   使用类别（维度中文标签）；off 时返回纯主题正文
+4. `reminder/smtp.py` — MailGatewayPort + QqMailGateway（smtplib SMTP_SSL/
+   STARTTLS，可配置 host/port）、SmtpVerifier（唯一 Message-ID/主题令牌 →
+   imaplib 轮询收件确认，imap_connect 工厂可注入便于测试）；错误分类：
+   auth_failed（535/535 5.7.8 等 → 授权失效）、transient（网络/超时 → 有限
+   重试）、其他；绝不落盘授权码
+5. `reminder/service.py` — ReminderService：smtp 配置状态机（save→verifying
+   后台线程→verified/failed+原因、re-verify、delete 复位）；parse（时区+
+   画像编译预览，画像切片 snapshot 挂 pending 预览令牌）；create（确认载荷
+   + slice 快照冻结）/update/pause/resume/cancel/send_now（手动补发）；
+   process_due（调度核心：领取到期提醒 → 授权码缺失/失效暂停、一次性 24h
+   补发窗口、重复提醒最多补发最近一次、有限退避重试 next_retry_at、成功推进
+   next_run_at、全部动作写投递记录 + 审计）；可控时钟注入（测试确定性）
+6. `storage/database.py` — SCHEMA_VERSION 21：reminders（reminder_id/
+   account_id/qq_email/timezone/raw_text/解析快照 JSON/主题/正文/画像开关/
+   slice_id 与类别快照/status/next_run_at/retry_count/next_retry_at/
+   pause_reason/created_at/updated_at）、reminder_deliveries（delivery_id/
+   account_id/reminder_id/kind/outcome/scheduled_for/attempted_at/
+   error_code/error_message/message_id/delayed）、reminder_settings
+   （account_id PK/timezone/smtp 状态列：smtp_status/smtp_verified_at/
+   smtp_error）
+
+### 修改
+7. `credentials/store.py` — OsCredentialStore/EncryptedVolumeCredentialStore/
+   InMemoryCredentialStore 增加 namespace 构造参数（默认 "account" 兼容既有；
+   SMTP 授权码用 "smtp" 命名空间，keyring 用户名前缀/卷文件名带命名空间）
+8. `runtime/scheduler.py` — dispatch_due_reminders 改由 ReminderService
+   process_due 接缝实现（惰性构造：数据目录凭据存储 + 数据库 + 观察服务），
+   run_tick 摘要包含发送/失败/补发计数；REMINDERS_TABLE 语义交付
+9. `contracts/observability.py` — AuditAction 新增：SMTP_CODE_SAVE /
+   SMTP_CODE_DELETE / SMTP_VERIFY / REMINDER_CREATE / REMINDER_UPDATE /
+   REMINDER_PAUSE / REMINDER_RESUME / REMINDER_CANCEL / REMINDER_DELIVER /
+   REMINDER_MANUAL_SEND / REMINDER_CATCH_UP（details 只含 reminder_id/
+   outcome/kind/类别数，不含授权码与邮件正文）
+10. `profiles/service.py` — _CHAT_MODE_DIMENSIONS 增加 "reminder" 模式
+    （INTEREST_PREFERENCE/EXPRESSION_HABIT/BASIC_INFORMATION，与日常模式
+    同白名单——提醒措辞适配只用表达与基本偏好）
+11. `config.py` — Settings 增加 smtp_host/smtp_port/smtp_starttls（默认
+    smtp.qq.com:465 SSL）、imap_host/imap_port（默认 imap.qq.com:993）
+12. `api/reminder.py` — 路由（prefix /reminders）：GET/PUT/DELETE smtp
+    （授权码保存/验证走 RecentAuthRequired 敏感门，返回 SmtpSettingsProjection）、
+    POST smtp/verify（重新验证）、GET/PUT settings（时区）、POST parse
+    （NL→预览）、POST（创建）、GET 列表、GET/{id}、PUT/{id}、POST/{id}/
+    pause、POST/{id}/resume、DELETE/{id}（取消）、POST/{id}/send-now
+    （手动补发）、GET/{id}/deliveries；全部账户作用域，跨账户 404；
+    错误码复用（reauth_required/no_credential/smtp_not_verified/
+    smtp_auth_failed/transient_smtp_failure/parse_failed/404…）
+13. `api/main.py` — ReminderService 挂载（database/credential_store(smtp
+    命名空间)/profile_service/observability + smtp/imap 配置）；reminder
+    路由注册
+14. openapi.json + generated.ts 再生成（scripts/regenerate_openapi.py +
+    openapi-typescript）
+
+### 前端（先调 ui-ux-pro-max：设置卡 + 提醒列表 + 预览确认对话框）
+15. api.ts — fetchSmtpSettings/saveSmtpCode/deleteSmtpCode/verifySmtp/
+    fetchReminderSettings/updateReminderSettings/parseReminder/createReminder/
+    listReminders/getReminder/updateReminder/pauseReminder/resumeReminder/
+    cancelReminder/sendReminderNow/listReminderDeliveries + 类型导出
+16. `/tasks` 页面替换占位为真实「任务安排」：SMTP 配置卡（授权码输入/保存/
+    验证状态芯片 verifying/verified/failed+原因/重新验证/删除，收件人固定
+    当前账户 QQ 邮箱且不可改）、时区选择、新建提醒（自然语言输入 →
+    预览确认对话框：时区/首次执行/重复规则/主题/邮件正文预览/画像适配开关+
+    本次使用类别）、提醒列表（主题/本地时间/重复徽标/状态/下次执行/操作：
+    暂停/恢复/编辑/取消/手动补发）、投递记录展开（发送/失败/跳过/补发/手动
+    重试 + 时间与原因）、账户切换清态（accountRevision 重挂）
+17. chat-tools.ts 可选：「提醒我」工具意图 → 跳转 /tasks（保持范围克制）
+
+### 测试
+18. `tests/reminder/test_parser.py` — 时间/日锚/重复规则/主题/时区矩阵、
+    解析失败中文原因、UTC 计算与夏令时无关性（Asia/Shanghai 无 DST 用
+    固定偏移断言）
+19. `tests/reminder/test_adaptation.py` — 称呼规则/语气/off/类别披露
+20. `tests/reminder/fake_mail.py` — 进程内假 SMTP + 假 IMAP 服务器（共享
+    邮箱存储，AUTH LOGIN 校验/MAIL/RCPT/DATA/SEARCH 子集）
+21. `tests/reminder/test_smtp_adapter.py` — 真实 smtplib 适配器对假服务器：
+    发送成功/授权失败分类/网络中断 transient/验证自发自收成功与超时
+22. `tests/reminder/test_reminder_service.py` — 可控时钟：创建/编辑/暂停/
+    恢复/取消/手动补发、一次性 24h 补发与超窗错过、重复提醒最多补发最近
+    一次、有限退避重试（3 次）、授权失效立即暂停+原因、投递记录区分五种
+    语义、两账户并发同分钟隔离（凭据/队列/记录不串）、重启一致（重建
+    service 读库）
+23. `tests/reminder/test_reminder_api.py` — 路由契约：保存/验证状态机/
+    未验证拒绝启用/reauth 门/时区设置/解析预览/CRUD/手动补发/投递记录/
+    跨账户 404、授权码不进响应与审计
+24. `tests/chat/` 回归 + scheduler 集成（dispatch_due_reminders 真实表）
+25. E2E issue33 — 侧栏入口、授权码保存→验证成功芯片（本地假邮件服务器）、
+    未验证禁止创建、自然语言输入→预览（时区/规则/主题/正文）→确认创建、
+    投递后记录展示、暂停/恢复/取消/手动补发、编辑、切换账户不残留
+26. `scripts/e2e_mail_server.py` — 独立 SMTP+IMAP 假服务器（playwright
+    webServer 第三入口，env 指向）；playwright.config.ts 增加入口与
+    BRIDGES_SMTP_*/BRIDGES_IMAP_* env
+27. 真实冒烟 `scripts/smoke_qq_smtp_reminder.py` — 显式 BRIDGES_SMOKE_QQ_
+    AUTH_CODE 真实 QQ 自发自收验证 + 一次真实投递，核对收件人不扩散
+
+### 收尾
+28. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review 双轴
+    审查并修复；更新 Issue 33 验收状态（ready-for-human + 验收项打勾附
+    证据）；提交（工作内容+bug 修复两部分提交信息）
+
+
+
 ## Issue 32 实施计划（交付视频生成）
 
 状态：已完成（2026-08-05）。全量验证：1719 pytest（+41 新增：wan 适配器

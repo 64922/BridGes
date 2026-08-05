@@ -183,7 +183,13 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
         emptyText: "当前账户还没有知识库材料",
       },
       { name: "学习项目", url: "/account/projects", heading: "学习项目" },
-      { name: "任务安排", url: "/tasks", heading: "任务安排", emptyText: "当前账户还没有任务" },
+      {
+        name: "任务安排",
+        url: "/tasks",
+        heading: "任务安排",
+        // Issue 33：任务安排已交付真实页面，空态为真实说明（未验证邮箱）
+        emptyText: "还没有提醒",
+      },
       { name: "插件", url: "/plugins", heading: "插件", emptyText: "当前账户没有可用插件" },
     ];
 

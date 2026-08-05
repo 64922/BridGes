@@ -88,6 +88,15 @@ _CHAT_MODE_DIMENSIONS: dict[str, frozenset[ProfileDimension]] = {
             ProfileDimension.INTEREST_PREFERENCE,
         }
     ),
+    # Issue 33: 提醒措辞适配只使用表达习惯、基本偏好与偏好（最小切片，
+    # 与日常模式同白名单——提醒正文只需要称呼/语气等表达类信息）。
+    "reminder": frozenset(
+        {
+            ProfileDimension.INTEREST_PREFERENCE,
+            ProfileDimension.EXPRESSION_HABIT,
+            ProfileDimension.BASIC_INFORMATION,
+        }
+    ),
 }
 
 #: 单维度切片条数上限与整卷切片总量上限（最小必要，防整卷画像注入）。

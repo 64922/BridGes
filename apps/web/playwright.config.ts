@@ -32,10 +32,24 @@ export default defineConfig({
       timeout: 30_000,
       // Issue 11：聊天纵向切片要求 bridges.db 持久化；e2e API 进程注入
       // 临时数据目录与测试密钥（仓库 .gitignore 已排除 .e2e-data）。
+      // Issue 33：SMTP/IMAP 指向本地假邮件服务器（scripts/e2e_mail_server.py）。
       env: {
         BRIDGES_DATABASE_URL: `sqlite:///./.e2e-data/bridges.db`,
         BRIDGES_SECRET_KEY: "e2e-chat-test-secret-key",
+        BRIDGES_SMTP_HOST: "127.0.0.1",
+        BRIDGES_SMTP_PORT: "8025",
+        BRIDGES_SMTP_PLAIN: "true",
+        BRIDGES_IMAP_HOST: "127.0.0.1",
+        BRIDGES_IMAP_PORT: "8143",
+        BRIDGES_IMAP_PLAIN: "true",
       },
+    },
+    {
+      // Issue 33：本地假 SMTP+IMAP 服务器（自发自收验证与真实投递落点）。
+      command: "python ../../scripts/e2e_mail_server.py",
+      url: "http://127.0.0.1:8026/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
     },
     {
       command: "npm run dev",

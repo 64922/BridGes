@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 20
+SCHEMA_VERSION = 21
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1050,6 +1050,76 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         ALTER TABLE messages ADD COLUMN video TEXT
+        """,
+    ],
+    # Issue 33：QQ SMTP 任务提醒纵向链路。reminders 是账户级提醒（带时区
+    # 结构化日程 + 冻结的画像措辞快照 + 调度字段：next_run_at/退避重试）；
+    # reminder_deliveries 是投递记录（区分发送/失败/跳过/补发/手动重试，
+    # 补发带 delayed 标记）；reminder_settings 是账户提醒设置（时区 +
+    # SMTP 授权码验证状态机：unconfigured/verifying/verified/failed）。
+    # 授权码绝不进入本库：只存在于凭据存储（smtp 命名空间）。
+    21: [
+        """
+        CREATE TABLE IF NOT EXISTS reminders (
+            reminder_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            qq_email TEXT NOT NULL,
+            timezone TEXT NOT NULL,
+            raw_text TEXT NOT NULL,
+            schedule_json TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            use_profile INTEGER NOT NULL DEFAULT 0,
+            profile_slice_id TEXT,
+            profile_categories TEXT NOT NULL DEFAULT '[]',
+            profile_item_count INTEGER NOT NULL DEFAULT 0,
+            status TEXT NOT NULL DEFAULT 'enabled',
+            pause_reason TEXT,
+            next_run_at TEXT,
+            next_retry_at TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_reminders_account_status
+            ON reminders(account_id, status)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_reminders_due
+            ON reminders(status, next_run_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS reminder_deliveries (
+            delivery_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            reminder_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            scheduled_for TEXT NOT NULL,
+            attempted_at TEXT,
+            delayed INTEGER NOT NULL DEFAULT 0,
+            error_code TEXT,
+            error_message TEXT,
+            message_id TEXT,
+            FOREIGN KEY (reminder_id) REFERENCES reminders(reminder_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_reminder_deliveries_reminder
+            ON reminder_deliveries(account_id, reminder_id, attempted_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS reminder_settings (
+            account_id TEXT PRIMARY KEY,
+            timezone TEXT NOT NULL DEFAULT 'Asia/Shanghai',
+            smtp_status TEXT NOT NULL DEFAULT 'unconfigured',
+            smtp_verified_at TEXT,
+            smtp_error_code TEXT,
+            smtp_error_message TEXT,
+            smtp_updated_at TEXT
+        )
         """,
     ],
 }

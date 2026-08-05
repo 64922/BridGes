@@ -5228,6 +5228,230 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/reminders/smtp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Smtp Settings
+         * @description 返回当前账户 SMTP 配置与验证状态（不含授权码正文）。
+         */
+        get: operations["get_smtp_settings_reminders_smtp_get"];
+        /**
+         * Save Smtp Code
+         * @description 保存或替换当前账户 QQ 邮箱授权码并触发自发自收验证。
+         */
+        put: operations["save_smtp_code_reminders_smtp_put"];
+        post?: never;
+        /**
+         * Delete Smtp Code
+         * @description 删除当前账户授权码并复位验证状态（暂停依赖它的启用提醒）。
+         */
+        delete: operations["delete_smtp_code_reminders_smtp_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/smtp/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verify Smtp
+         * @description 用已保存的授权码重新执行自发自收验证。
+         */
+        post: operations["verify_smtp_reminders_smtp_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reminder Settings
+         * @description 返回账户提醒设置（时区）。
+         */
+        get: operations["get_reminder_settings_reminders_settings_get"];
+        /**
+         * Update Reminder Settings
+         * @description 更新账户提醒时区。
+         */
+        put: operations["update_reminder_settings_reminders_settings_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/parse": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Parse Reminder
+         * @description 把自然语言解析为带时区结构化日程与邮件预览（不持久化）。
+         */
+        post: operations["parse_reminder_reminders_parse_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reminders
+         * @description 返回当前账户的全部提醒。
+         */
+        get: operations["list_reminders_reminders_get"];
+        put?: never;
+        /**
+         * Create Reminder
+         * @description 创建提醒（要求已验证 SMTP；预览内容经确定性复核后冻结）。
+         */
+        post: operations["create_reminder_reminders_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/{reminder_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Reminder
+         * @description 返回单条提醒（跨账户 404）。
+         */
+        get: operations["get_reminder_reminders__reminder_id__get"];
+        /**
+         * Update Reminder
+         * @description 编辑提醒（重置日程与冻结快照，保留投递记录）。
+         */
+        put: operations["update_reminder_reminders__reminder_id__put"];
+        post?: never;
+        /**
+         * Cancel Reminder
+         * @description 取消提醒（投递记录保留）。
+         */
+        delete: operations["cancel_reminder_reminders__reminder_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/{reminder_id}/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause Reminder
+         * @description 暂停提醒。
+         */
+        post: operations["pause_reminder_reminders__reminder_id__pause_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/{reminder_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Reminder
+         * @description 恢复已暂停的提醒（要求 SMTP 已验证）。
+         */
+        post: operations["resume_reminder_reminders__reminder_id__resume_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/{reminder_id}/send-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send Reminder Now
+         * @description 手动补发：立即发送当前提醒内容（不改变既有日程）。
+         */
+        post: operations["send_reminder_now_reminders__reminder_id__send_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/reminders/{reminder_id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Reminder Deliveries
+         * @description 返回一条提醒的投递记录（区分发送/失败/跳过/补发/手动重试）。
+         */
+        get: operations["list_reminder_deliveries_reminders__reminder_id__deliveries_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -15300,6 +15524,41 @@ export interface components {
             requires_author_confirm: boolean;
         };
         /**
+         * ParsedReminderPreview
+         * @description 自然语言解析结果：结构化日程 + 简练邮件预览（未持久化）。
+         *
+         *     页面展示时区、首次执行时间、重复规则、主题与邮件正文预览，用户
+         *     确认后才调用创建接口持久化；预览内容与创建内容由同一确定性解析
+         *     器与适配函数产生，保证所见即所存。
+         */
+        ParsedReminderPreview: {
+            /**
+             * Raw Text
+             * @description 用户输入的自然语言原文（追溯用）。
+             */
+            raw_text: string;
+            /** @description 带时区的结构化日程。 */
+            schedule: components["schemas"]["ReminderSchedule"];
+            /**
+             * Subject
+             * @description 提醒主题（邮件主题）。
+             */
+            subject: string;
+            /**
+             * Body Preview
+             * @description 确认后将要投递的邮件正文预览。
+             */
+            body_preview: string;
+            /** @description 画像适配披露。 */
+            profile_usage: components["schemas"]["ReminderProfileUsage"];
+            /**
+             * Parsed At
+             * Format: date-time
+             * @description 解析完成时间（UTC）。
+             */
+            parsed_at: string;
+        };
+        /**
          * PatchAction
          * @description User decision on a single revision patch.
          * @enum {string}
@@ -17114,6 +17373,359 @@ export interface components {
              * @description Upstream object refs that are revoked or tombstoned.
              */
             upstream_invalid_object_refs?: components["schemas"]["ObjectRef"][];
+        };
+        /**
+         * ReminderCreateRequest
+         * @description 用户确认后的提醒创建请求（预览内容回传，服务端复核）。
+         *
+         *     ``schedule``/``subject``/``use_profile`` 必须与
+         *     :meth:`parse` 返回的预览一致（服务端用同一确定性解析器复核
+         *     raw_text）；``profile_slice_id`` 来自预览的画像切片标识，服务端
+         *     校验归属后冻结。
+         */
+        ReminderCreateRequest: {
+            /**
+             * Raw Text
+             * @description 用户输入的自然语言原文。
+             */
+            raw_text: string;
+            /** @description 确认后的结构化日程。 */
+            schedule: components["schemas"]["ReminderSchedule"];
+            /**
+             * Subject
+             * @description 确认后的提醒主题。
+             */
+            subject: string;
+            /**
+             * Use Profile
+             * @description 是否启用确认过的画像措辞适配。
+             * @default false
+             */
+            use_profile: boolean;
+            /**
+             * Profile Slice Id
+             * @description 预览返回的画像切片标识（use_profile 时必填）。
+             */
+            profile_slice_id?: string | null;
+        };
+        /**
+         * ReminderDeliveryKind
+         * @description 投递来源语义。
+         *
+         *     - ``scheduled``：按计划正常投递；
+         *     - ``catch_up``：恢复运行后的 24 小时有限补发（delayed=True）；
+         *     - ``manual_retry``：用户手动补发。
+         * @enum {string}
+         */
+        ReminderDeliveryKind: "scheduled" | "catch_up" | "manual_retry";
+        /**
+         * ReminderDeliveryOutcome
+         * @description 投递结果语义。
+         *
+         *     - ``sent``：邮件已提交 SMTP 服务器；
+         *     - ``failed``：投递失败，error_code/error_message 说明原因；
+         *     - ``skipped``：跳过（24 小时补发窗口已过、已取消/已完成、无授权码）。
+         * @enum {string}
+         */
+        ReminderDeliveryOutcome: "sent" | "failed" | "skipped";
+        /**
+         * ReminderDeliveryProjection
+         * @description 一条投递记录；区分发送/失败/跳过/补发/手动重试。
+         */
+        ReminderDeliveryProjection: {
+            /**
+             * Delivery Id
+             * @description 投递记录标识。
+             */
+            delivery_id: string;
+            /**
+             * Reminder Id
+             * @description 所属提醒标识。
+             */
+            reminder_id: string;
+            /** @description 投递来源语义。 */
+            kind: components["schemas"]["ReminderDeliveryKind"];
+            /** @description 投递结果语义。 */
+            outcome: components["schemas"]["ReminderDeliveryOutcome"];
+            /**
+             * Scheduled For
+             * Format: date-time
+             * @description 本次计划执行时间（UTC）。
+             */
+            scheduled_for: string;
+            /**
+             * Attempted At
+             * @description 实际尝试时间（UTC）。
+             */
+            attempted_at?: string | null;
+            /**
+             * Delayed
+             * @description 是否补发（延迟）标记。
+             * @default false
+             */
+            delayed: boolean;
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Message Id
+             * @description SMTP 服务器接受的 Message-ID（成功时存在）。
+             */
+            message_id?: string | null;
+        };
+        /**
+         * ReminderParseRequest
+         * @description 自然语言解析请求：只带原文、账户时区与画像开关。
+         */
+        ReminderParseRequest: {
+            /**
+             * Raw Text
+             * @description 自然语言提醒描述。
+             */
+            raw_text: string;
+            /**
+             * Timezone
+             * @description 账户时区标识（IANA）。
+             */
+            timezone: string;
+            /**
+             * Use Profile
+             * @description 是否启用画像措辞适配（预览会披露使用类别）。
+             * @default false
+             */
+            use_profile: boolean;
+        };
+        /**
+         * ReminderProfileUsage
+         * @description 本次提醒的画像适配披露：只含类别中文标签，不含记录正文。
+         *
+         *     ``categories`` 是本次使用的画像类别（如「表达习惯」「基本偏好」），
+         *     ``item_count`` 是实际注入措辞的切片条数；用户可在确认前关闭画像
+         *     适配（use_profile=false），关闭后正文不再包含任何个性化措辞。
+         */
+        ReminderProfileUsage: {
+            /**
+             * Enabled
+             * @description 本次提醒是否启用画像适配。
+             */
+            enabled: boolean;
+            /**
+             * Categories
+             * @description 本次使用的画像类别中文标签。
+             */
+            categories?: string[];
+            /**
+             * Item Count
+             * @description 实际使用的切片条数。
+             * @default 0
+             */
+            item_count: number;
+            /**
+             * Slice Id
+             * @description 冻结的画像切片标识（确认后持久化引用）。
+             */
+            slice_id?: string | null;
+        };
+        /**
+         * ReminderProjection
+         * @description 一条提醒的公开投影；不含授权码与画像记录正文。
+         */
+        ReminderProjection: {
+            /**
+             * Reminder Id
+             * @description 提醒标识。
+             */
+            reminder_id: string;
+            /**
+             * Qq Email
+             * @description 固定收件人/发件人（当前账户 QQ 邮箱）。
+             */
+            qq_email: string;
+            /**
+             * Timezone
+             * @description 账户时区标识。
+             */
+            timezone: string;
+            /**
+             * Raw Text
+             * @description 创建时的自然语言原文。
+             */
+            raw_text: string;
+            /**
+             * Subject
+             * @description 提醒主题。
+             */
+            subject: string;
+            /**
+             * Body
+             * @description 冻结的邮件正文（确认时的快照）。
+             */
+            body: string;
+            /** @description 带时区的结构化日程。 */
+            schedule: components["schemas"]["ReminderSchedule"];
+            /** @description 生命周期状态。 */
+            status: components["schemas"]["ReminderStatus"];
+            /**
+             * Pause Reason
+             * @description 暂停原因（暂停时存在，含授权失效原因）。
+             */
+            pause_reason?: string | null;
+            /** @description 画像适配披露（冻结于确认时）。 */
+            profile_usage: components["schemas"]["ReminderProfileUsage"];
+            /**
+             * Next Run At
+             * @description 下次计划执行时间（UTC）；一次性已完成时为 None。
+             */
+            next_run_at?: string | null;
+            /**
+             * Next Retry At
+             * @description 临时失败后的下次退避重试时间（UTC）。
+             */
+            next_retry_at?: string | null;
+            /**
+             * Retry Count
+             * @description 当前投递尝试的失败次数。
+             * @default 0
+             */
+            retry_count: number;
+            /** @description 最近一次投递记录快照。 */
+            last_delivery?: components["schemas"]["ReminderDeliveryProjection"] | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间（UTC）。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新时间（UTC）。
+             */
+            updated_at: string;
+        };
+        /**
+         * ReminderRepeatRule
+         * @description 重复规则；参数见 :class:`ReminderSchedule` 的 repeat 载荷。
+         *
+         *     - ``once``：一次性提醒，发送后完成；
+         *     - ``daily``：每天同一本地时间；
+         *     - ``weekdays``：工作日（周一至周五）同一本地时间；
+         *     - ``weekly_days``：每周指定星期（repeat_weekdays 集合）；
+         *     - ``monthly_day``：每月指定日（repeat_month_day，超出当月天数
+         *       自动收敛到月末）。
+         * @enum {string}
+         */
+        ReminderRepeatRule: "once" | "daily" | "weekdays" | "weekly_days" | "monthly_day";
+        /**
+         * ReminderSchedule
+         * @description 带时区的结构化日程（解析产物与持久化快照共用）。
+         *
+         *     ``first_run_at`` 是 UTC 首次执行时间；``first_run_local`` 是同一
+         *     时刻在账户时区下的可读表示，供页面展示与追溯。重复规则参数与
+         *     规则联合使用，一次性提醒忽略规则参数。
+         */
+        ReminderSchedule: {
+            /**
+             * Timezone
+             * @description IANA 时区标识（账户时区规则）。
+             */
+            timezone: string;
+            /**
+             * First Run At
+             * Format: date-time
+             * @description 首次执行时间（UTC）。
+             */
+            first_run_at: string;
+            /**
+             * First Run Local
+             * @description 账户时区下的首次执行时间可读表示。
+             */
+            first_run_local: string;
+            /** @description 重复规则。 */
+            repeat: components["schemas"]["ReminderRepeatRule"];
+            /**
+             * Repeat Weekdays
+             * @description weekly_days 时的星期集合（1=周一 … 7=周日）。
+             */
+            repeat_weekdays?: number[];
+            /**
+             * Repeat Month Day
+             * @description monthly_day 时的每月日期（1-31）。
+             */
+            repeat_month_day?: number | null;
+        };
+        /**
+         * ReminderSettingsProjection
+         * @description 账户提醒设置投影（当前只有时区）。
+         */
+        ReminderSettingsProjection: {
+            /**
+             * Timezone
+             * @description 账户时区标识（IANA）。
+             */
+            timezone: string;
+        };
+        /**
+         * ReminderSettingsUpdateRequest
+         * @description 更新账户提醒设置（时区）。
+         */
+        ReminderSettingsUpdateRequest: {
+            /**
+             * Timezone
+             * @description IANA 时区标识，如 Asia/Shanghai。
+             */
+            timezone: string;
+        };
+        /**
+         * ReminderStatus
+         * @description 提醒生命周期状态。
+         *
+         *     - ``enabled``：已启用，调度器按 next_run_at 投递；
+         *     - ``paused``：已暂停（用户暂停或授权失效自动暂停），pause_reason
+         *       说明原因；恢复后从暂停时保留的 next_run_at 继续；
+         *     - ``completed``：一次性提醒已成功投递（自然完成）；
+         *     - ``cancelled``：用户已取消；不再投递，投递记录保留。
+         * @enum {string}
+         */
+        ReminderStatus: "enabled" | "paused" | "completed" | "cancelled";
+        /**
+         * ReminderUpdateRequest
+         * @description 编辑提醒：允许修改日程、主题与画像开关。
+         *
+         *     编辑后从新的确认载荷重新冻结快照（同创建语义）；投递记录保留
+         *     历史，不被编辑覆盖。
+         */
+        ReminderUpdateRequest: {
+            /**
+             * Raw Text
+             * @description 编辑后的自然语言原文（追溯）。
+             */
+            raw_text: string;
+            /** @description 编辑后的结构化日程。 */
+            schedule: components["schemas"]["ReminderSchedule"];
+            /**
+             * Subject
+             * @description 编辑后的提醒主题。
+             */
+            subject: string;
+            /**
+             * Use Profile
+             * @description 编辑后是否启用画像措辞适配。
+             * @default false
+             */
+            use_profile: boolean;
+            /**
+             * Profile Slice Id
+             * @description 编辑后使用的画像切片标识。
+             */
+            profile_slice_id?: string | null;
         };
         /**
          * ResearchReportElement
@@ -19330,6 +19942,66 @@ export interface components {
          * @enum {string}
          */
         SliceStatus: "active" | "expired" | "revoked" | "cancelled";
+        /**
+         * SmtpCodeSaveRequest
+         * @description 保存 QQ 邮箱授权码的请求；系统不接受 QQ 登录密码。
+         */
+        SmtpCodeSaveRequest: {
+            /**
+             * Authorization Code
+             * Format: password
+             * @description QQ 邮箱授权码（16 位字母数字组合），非 QQ 登录密码。
+             */
+            authorization_code: string;
+        };
+        /**
+         * SmtpSettingsProjection
+         * @description 账户 SMTP 配置投影；绝不包含授权码正文。
+         *
+         *     ``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往
+         *     同一邮箱；页面展示此字段并禁止修改收件人。
+         */
+        SmtpSettingsProjection: {
+            /** @description 授权码保存与验证状态。 */
+            status: components["schemas"]["SmtpStatus"];
+            /**
+             * Qq Email
+             * @description 当前账户注册的 QQ 邮箱（固定收发件人）。
+             */
+            qq_email: string;
+            /**
+             * Verified At
+             * @description 自发自收验证通过时间。
+             */
+            verified_at?: string | null;
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文原因与重新验证路径。
+             */
+            error_message?: string | null;
+            /**
+             * Updated At
+             * @description 最近一次配置或验证状态更新时间。
+             */
+            updated_at?: string | null;
+        };
+        /**
+         * SmtpStatus
+         * @description 账户 SMTP 授权码的验证状态。
+         *
+         *     - ``unconfigured``：尚未保存授权码；
+         *     - ``verifying``：授权码已保存，自发自收验证进行中；
+         *     - ``verified``：自发自收验证通过，可以启用邮件提醒；
+         *     - ``failed``：验证失败或授权失效，error_code/error_message
+         *       说明原因并提供重新验证路径。
+         * @enum {string}
+         */
+        SmtpStatus: "unconfigured" | "verifying" | "verified" | "failed";
         /**
          * Source
          * @description A source entry: the identity and ownership of one scientific work.
@@ -37834,6 +38506,986 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_smtp_settings_reminders_smtp_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmtpSettingsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    save_smtp_code_reminders_smtp_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmtpCodeSaveRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmtpSettingsProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    delete_smtp_code_reminders_smtp_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmtpSettingsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    verify_smtp_reminders_smtp_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmtpSettingsProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    get_reminder_settings_reminders_settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettingsProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    update_reminder_settings_reminders_settings_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderSettingsUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderSettingsProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    parse_reminder_reminders_parse_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderParseRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ParsedReminderPreview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    list_reminders_reminders_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_reminder_reminders_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderCreateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    get_reminder_reminders__reminder_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_reminder_reminders__reminder_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReminderUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_reminder_reminders__reminder_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    pause_reminder_reminders__reminder_id__pause_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_reminder_reminders__reminder_id__resume_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_reminder_now_reminders__reminder_id__send_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderDeliveryProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    list_reminder_deliveries_reminders__reminder_id__deliveries_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reminder_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReminderDeliveryProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

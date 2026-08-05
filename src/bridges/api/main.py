@@ -1,6 +1,6 @@
 """FastAPI application for the BridGes API."""
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -47,6 +47,7 @@ from bridges.api import (
 )
 from bridges.api.image import router as image_router
 from bridges.api.media import router as media_router
+from bridges.api.reminder import router as reminder_router
 from bridges.api.speech import router as speech_router
 from bridges.api.video import router as video_router
 from bridges.arxiv_mcp.service import ArxivSearchService
@@ -135,6 +136,8 @@ from bridges.profiles import InMemoryProfileRepository, ProfileService
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
+from bridges.reminder.service import ReminderService
+from bridges.reminder.smtp import QqMailGateway
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.science import (
     ClaimEvidenceService,
@@ -170,6 +173,20 @@ from bridges.vault import (
 from bridges.video.service import VideoService
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
+
+
+def _qq_email_provider(
+    identity_service: IdentityService,
+) -> Callable[[str], str]:
+    """返回读取账户注册 QQ 邮箱的提供者（Issue 33 固定收发件人）。"""
+
+    def _provide(account_id: str) -> str:
+        account = identity_service.get_account(account_id)
+        if account is None:
+            return ""
+        return account.qq_email
+
+    return _provide
 
 
 def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
@@ -795,6 +812,25 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     app.state.credential_store = credential_store
 
+    # Issue 33: QQ SMTP 授权码使用独立命名空间（smtp）的凭据存储，
+    # 与百炼 Key 在操作系统凭据库/加密卷中完全分离；授权码绝不进入
+    # SQLite、日志、模型或导出。
+    smtp_credential_store: CredentialStorePort = InMemoryCredentialStore(
+        namespace="smtp"
+    )
+    if data_dir is not None:
+        if settings_at_credential is not None and (
+            settings_at_credential.credential_backend == "encrypted-volume"
+        ):
+            smtp_credential_store = EncryptedVolumeCredentialStore(
+                data_dir, namespace="smtp"
+            )
+        else:
+            smtp_credential_store = OsCredentialStore(
+                data_dir=data_dir, namespace="smtp"
+            )
+    app.state.smtp_credential_store = smtp_credential_store
+
     # T018/T020: attach the profile service. Candidate profiles cannot be
     # treated as stable facts until the user accepts them through the human
     # decision loop; accepted candidates are promoted to active assertions. At
@@ -1024,6 +1060,31 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             object_repository=object_repository,
             chat_repository=ConversationRepository(bridges_database),
             observability_service=app.state.observability_service,
+        )
+        # Issue 33: QQ SMTP 任务提醒（ADR-0004/0013/0019）。授权码存
+        # 独立 smtp 命名空间凭据存储；收发件人固定为账户注册 QQ 邮箱；
+        # 邮件端点走配置项（测试/E2E 指向本地假邮件服务器）。
+        app.state.reminder_service = ReminderService(
+            database=bridges_database,
+            credential_store=smtp_credential_store,
+            observability_service=app.state.observability_service,
+            qq_email_provider=_qq_email_provider(
+                app.state.identity_service
+            ),
+            profile_service=getattr(app.state, "profile_service", None),
+            gateway=QqMailGateway(
+                smtp_host=(
+                    settings.smtp_host if settings is not None else "smtp.qq.com"
+                ),
+                smtp_port=settings.smtp_port if settings is not None else 465,
+                smtp_starttls=bool(settings and settings.smtp_starttls),
+                smtp_plain=bool(settings and settings.smtp_plain),
+                imap_host=(
+                    settings.imap_host if settings is not None else "imap.qq.com"
+                ),
+                imap_port=settings.imap_port if settings is not None else 993,
+                imap_plain=bool(settings and settings.imap_plain),
+            ),
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the
@@ -1347,6 +1408,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(speech_router)
     app.include_router(image_router)
     app.include_router(video_router)
+    app.include_router(reminder_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

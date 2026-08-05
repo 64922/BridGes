@@ -100,6 +100,27 @@ class Settings(BaseSettings):
         default=False, validation_alias=_env_aliases("QWEN_FORCE_STUB")
     )
 
+    # Issue 33: QQ SMTP 任务提醒的邮件端点（默认 QQ 邮箱官方服务器；测试与
+    # E2E 通过环境变量指向本地假邮件服务器）。授权码按账户加密保存，配置
+    # 项不包含任何秘密。
+    smtp_host: str = Field(default="smtp.qq.com", validation_alias=_env_aliases("SMTP_HOST"))
+    smtp_port: int = Field(default=465, validation_alias=_env_aliases("SMTP_PORT"))
+    smtp_starttls: bool = Field(
+        default=False, validation_alias=_env_aliases("SMTP_STARTTLS")
+    )
+    smtp_plain: bool = Field(
+        default=False,
+        validation_alias=_env_aliases("SMTP_PLAIN"),
+        description="明文 SMTP（仅本地假邮件服务器测试用，生产保持 SSL）。",
+    )
+    imap_host: str = Field(default="imap.qq.com", validation_alias=_env_aliases("IMAP_HOST"))
+    imap_port: int = Field(default=993, validation_alias=_env_aliases("IMAP_PORT"))
+    imap_plain: bool = Field(
+        default=False,
+        validation_alias=_env_aliases("IMAP_PLAIN"),
+        description="明文 IMAP（仅本地假邮件服务器测试用，生产保持 SSL）。",
+    )
+
     _SECRET_FIELDS: frozenset[str] = frozenset(
         {"secret_key", "database_url", "redis_url", "object_storage_url", "qwen_api_key"}
     )

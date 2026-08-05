@@ -1,4 +1,4 @@
-import { StateBlock } from "@/components/bridges/StateBlock";
+import { TaskSchedule } from "@/components/account/TaskSchedule";
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
@@ -6,25 +6,23 @@ export const metadata = {
 };
 
 /**
- * 任务安排（Issue 12 稳定入口）。
+ * 任务安排（Issue 33）：QQ SMTP 邮件提醒。
  *
- * 后端尚无账户级任务能力，因此这里呈现真实、可操作的空状态：
- * 说明当前账户没有任务的原因，并给出真实的下一步（返回新聊天）。
+ * 配置并验证 QQ 邮箱授权码（自发自收），用自然语言创建带时区的提醒，
+ * 经预览确认后由本地调度器按时投递；支持暂停/恢复/编辑/取消/手动补发
+ * 与投递记录查看。收件人与发件人固定为当前账户 QQ 邮箱。
  */
 export default function TasksPage() {
   return (
     <MainContent>
-      <section aria-labelledby="tasks-title" style={{ maxWidth: "46rem", marginInline: "auto" }}>
+      <section
+        aria-labelledby="tasks-title"
+        style={{ maxWidth: "52rem", marginInline: "auto" }}
+      >
         <h1 id="tasks-title" className="sc-section-title">
           任务安排
         </h1>
-        <StateBlock
-          kind="empty"
-          title="当前账户还没有任务"
-          description="当前版本尚未开放账户级任务安排，因此没有任何任务可以创建或跟踪。你可以先回到新聊天描述你的学习目标；任务能力开放后，本页会展示你的真实任务。"
-          actionLabel="返回新聊天"
-          actionHref="/"
-        />
+        <TaskSchedule />
       </section>
     </MainContent>
   );

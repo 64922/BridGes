@@ -38,6 +38,9 @@ except ImportError:  # pragma: no cover - 依赖可选，覆盖路径由 CI 判�
 #: keyring 服务名与用户名命名空间。
 _KEYRING_SERVICE = "BridGes"
 _KEYRING_USERNAME_PREFIX = "account:"
+#: 默认凭据命名空间（百炼 Key）；Issue 33 的 QQ SMTP 授权码使用
+#: ``smtp`` 命名空间，与模型凭据在存储与文件层面完全分离。
+_DEFAULT_NAMESPACE = "account"
 
 #: 加密凭据卷子目录与文件布局。
 _CREDENTIALS_DIR = "credentials"
@@ -72,17 +75,21 @@ class CredentialStorePort(ABC):
 class InMemoryCredentialStore(CredentialStorePort):
     """进程内测试替身，模拟系统凭据库行为。"""
 
-    def __init__(self) -> None:
+    def __init__(self, namespace: str = _DEFAULT_NAMESPACE) -> None:
+        self._namespace = namespace
         self._secrets: dict[str, SecretStr] = {}
 
+    def _key(self, account_id: str) -> str:
+        return f"{self._namespace}:{account_id}"
+
     def save(self, account_id: str, secret: SecretStr) -> None:
-        self._secrets[account_id] = secret
+        self._secrets[self._key(account_id)] = secret
 
     def get(self, account_id: str) -> SecretStr | None:
-        return self._secrets.get(account_id)
+        return self._secrets.get(self._key(account_id))
 
     def delete(self, account_id: str) -> None:
-        self._secrets.pop(account_id, None)
+        self._secrets.pop(self._key(account_id), None)
 
 
 def _dpapi_available() -> bool:
@@ -171,11 +178,12 @@ class OsCredentialStore(CredentialStorePort):
     报错，绝不写入明文文件。
     """
 
-    def __init__(self, data_dir: Path | None = None) -> None:
+    def __init__(self, data_dir: Path | None = None, namespace: str = _DEFAULT_NAMESPACE) -> None:
         self._data_dir = data_dir
+        self._namespace = namespace
 
     def _username(self, account_id: str) -> str:
-        return f"{_KEYRING_USERNAME_PREFIX}{account_id}"
+        return f"{self._namespace}:{account_id}"
 
     def save(self, account_id: str, secret: SecretStr) -> None:
         value = secret.get_secret_value()
@@ -244,7 +252,9 @@ class OsCredentialStore(CredentialStorePort):
     def _blob_path(self, account_id: str) -> Path:
         if self._data_dir is None:
             raise CredentialStoreError("凭据存储未配置数据目录。")
-        digest = hashlib.sha256(account_id.encode("utf-8")).hexdigest()[:32]
+        digest = hashlib.sha256(
+            f"{self._namespace}:{account_id}".encode()
+        ).hexdigest()[:32]
         return (
             self._data_dir
             / _CREDENTIALS_DIR
@@ -272,9 +282,10 @@ class EncryptedVolumeCredentialStore(CredentialStorePort):
     哈希，避免在文件系统中暴露账户标识。
     """
 
-    def __init__(self, data_dir: Path) -> None:
+    def __init__(self, data_dir: Path, namespace: str = _DEFAULT_NAMESPACE) -> None:
         self._volume_dir = data_dir / _CREDENTIALS_DIR
         self._keys_dir = self._volume_dir / _KEYS_DIR
+        self._namespace = namespace
         self._lock = threading.RLock()
 
     def _master_key(self) -> bytes:
@@ -299,7 +310,9 @@ class EncryptedVolumeCredentialStore(CredentialStorePort):
         return generated
 
     def _blob_path(self, account_id: str) -> Path:
-        digest = hashlib.sha256(account_id.encode("utf-8")).hexdigest()[:32]
+        digest = hashlib.sha256(
+            f"{self._namespace}:{account_id}".encode()
+        ).hexdigest()[:32]
         return self._keys_dir / f"{digest}{_ACCOUNT_BLOB_SUFFIX}"
 
     def save(self, account_id: str, secret: SecretStr) -> None:

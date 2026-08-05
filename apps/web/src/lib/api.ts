@@ -55,6 +55,19 @@ export type VideoDescriptionSource = components["schemas"]["VideoDescriptionSour
 export type VideoDeletionProjection = components["schemas"]["VideoDeletionProjection"];
 export type VideoRequestPayload = components["schemas"]["VideoRequestPayload"];
 export type ChatStreamVideoData = components["schemas"]["ChatStreamVideoData"];
+// Issue 33：QQ SMTP 任务提醒契约（生成类型来自 openapi.json）。
+export type SmtpSettingsProjection = components["schemas"]["SmtpSettingsProjection"];
+export type SmtpStatus = components["schemas"]["SmtpStatus"];
+export type ReminderSettingsProjection = components["schemas"]["ReminderSettingsProjection"];
+export type ParsedReminderPreview = components["schemas"]["ParsedReminderPreview"];
+export type ReminderSchedule = components["schemas"]["ReminderSchedule"];
+export type ReminderProfileUsage = components["schemas"]["ReminderProfileUsage"];
+export type ReminderProjection = components["schemas"]["ReminderProjection"];
+export type ReminderStatus = components["schemas"]["ReminderStatus"];
+export type ReminderDeliveryProjection = components["schemas"]["ReminderDeliveryProjection"];
+export type ReminderDeliveryKind = components["schemas"]["ReminderDeliveryKind"];
+export type ReminderDeliveryOutcome = components["schemas"]["ReminderDeliveryOutcome"];
+export type ReminderRepeatRule = components["schemas"]["ReminderRepeatRule"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
 export type CareerPlanningProjection = components["schemas"]["CareerPlanningProjection"];
 export type CareerPlanningProcessState = components["schemas"]["CareerPlanningProcessState"];
@@ -2188,4 +2201,185 @@ export function videoUrl(
 ): string {
   const base = `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}/video`;
   return download ? `${base}?download=1` : base;
+}
+
+// ---------------------------------------------------------------------------
+// Issue 33：QQ SMTP 任务提醒（任务安排页；授权码只进请求体，不出响应）
+// ---------------------------------------------------------------------------
+
+export async function fetchSmtpSettings(): Promise<SmtpSettingsProjection> {
+  const res = await fetch(`${API_BASE}/reminders/smtp`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function saveSmtpCode(
+  authorizationCode: string
+): Promise<SmtpSettingsProjection> {
+  const res = await fetch(`${API_BASE}/reminders/smtp`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ authorization_code: authorizationCode }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function verifySmtpNow(): Promise<SmtpSettingsProjection> {
+  const res = await fetch(`${API_BASE}/reminders/smtp/verify`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function deleteSmtpCode(): Promise<SmtpSettingsProjection> {
+  const res = await fetch(`${API_BASE}/reminders/smtp`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function fetchReminderSettings(): Promise<ReminderSettingsProjection> {
+  const res = await fetch(`${API_BASE}/reminders/settings`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function updateReminderSettings(
+  timezone: string
+): Promise<ReminderSettingsProjection> {
+  const res = await fetch(`${API_BASE}/reminders/settings`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ timezone }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function parseReminder(
+  rawText: string,
+  timezone: string,
+  useProfile: boolean
+): Promise<ParsedReminderPreview> {
+  const res = await fetch(`${API_BASE}/reminders/parse`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ raw_text: rawText, timezone, use_profile: useProfile }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function createReminder(
+  preview: ParsedReminderPreview,
+  useProfile: boolean
+): Promise<ReminderProjection> {
+  const res = await fetch(`${API_BASE}/reminders`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({
+      raw_text: preview.raw_text,
+      schedule: preview.schedule,
+      subject: preview.subject,
+      use_profile: useProfile,
+      profile_slice_id: useProfile ? preview.profile_usage.slice_id : null,
+    }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function listReminders(): Promise<ReminderProjection[]> {
+  const res = await fetch(`${API_BASE}/reminders`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function updateReminder(
+  reminderId: string,
+  preview: ParsedReminderPreview,
+  useProfile: boolean
+): Promise<ReminderProjection> {
+  const res = await fetch(
+    `${API_BASE}/reminders/${encodeURIComponent(reminderId)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({
+        raw_text: preview.raw_text,
+        schedule: preview.schedule,
+        subject: preview.subject,
+        use_profile: useProfile,
+        profile_slice_id: useProfile ? preview.profile_usage.slice_id : null,
+      }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function pauseReminder(reminderId: string): Promise<ReminderProjection> {
+  const res = await fetch(
+    `${API_BASE}/reminders/${encodeURIComponent(reminderId)}/pause`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function resumeReminder(reminderId: string): Promise<ReminderProjection> {
+  const res = await fetch(
+    `${API_BASE}/reminders/${encodeURIComponent(reminderId)}/resume`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function sendReminderNow(reminderId: string): Promise<ReminderDeliveryProjection> {
+  const res = await fetch(
+    `${API_BASE}/reminders/${encodeURIComponent(reminderId)}/send-now`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function cancelReminder(reminderId: string): Promise<ReminderProjection> {
+  const res = await fetch(
+    `${API_BASE}/reminders/${encodeURIComponent(reminderId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function listReminderDeliveries(
+  reminderId: string
+): Promise<ReminderDeliveryProjection[]> {
+  const res = await fetch(
+    `${API_BASE}/reminders/${encodeURIComponent(reminderId)}/deliveries`,
+    { credentials: "same-origin", cache: "no-store" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
