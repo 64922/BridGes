@@ -427,6 +427,16 @@ def _generation_events(
                     event=ChatStreamEventKind.IMAGE,
                     data=image_data,
                 )
+        elif event.kind == "video":
+            # Issue 32：视频任务状态事件（提交即下发 queued 快照），与
+            # delta 同一事件流；任务完成/失败/取消由后台执行器写回消息
+            # 投影，前端刷新消息列表恢复。
+            video_data = event.video
+            if video_data is not None:
+                yield ChatStreamEvent(
+                    event=ChatStreamEventKind.VIDEO,
+                    data=video_data,
+                )
     if terminated:
         return
     # 生成器空产出：以消息当前状态补发终态
@@ -882,6 +892,11 @@ async def send_message(
         from bridges.api.image import ensure_image_capability_ready
 
         ensure_image_capability_ready(subject, credential_service)
+    if body.video is not None:
+        # 视频能力门控（Wan 固定绑定，与视频 API 路由共享同一实现）。
+        from bridges.api.video import ensure_video_capability_ready
+
+        ensure_video_capability_ready(subject, credential_service)
     try:
         user_message, assistant_message = service.start_generation(
             subject.account_id,
@@ -894,6 +909,9 @@ async def send_message(
             ),
             image=(
                 body.image.model_dump(mode="json") if body.image is not None else None
+            ),
+            video=(
+                body.video.model_dump(mode="json") if body.video is not None else None
             ),
         )
     except ChatDomainError as exc:
@@ -1017,6 +1035,14 @@ async def retry_message(
             status.HTTP_409_CONFLICT,
             "image_task_retry_via_card",
             "图片任务请使用任务卡内的重试按钮。",
+        )
+    # Issue 32：视频任务消息同样不走消息级重试——任务卡内提供同输入
+    # 重试（POST /video-tasks/{id}/retry），避免创建重复任务。
+    if previous is not None and previous.video is not None:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "video_task_retry_via_card",
+            "视频任务请使用任务卡内的重试按钮。",
         )
     try:
         user_message, assistant_message = service.retry_generation(

@@ -51,11 +51,13 @@ from bridges.contracts.chat import (
     ChatStreamCareerData,
     ChatStreamHumanizerData,
     ChatStreamImageData,
+    ChatStreamVideoData,
     ChatThinkingSummary,
     ContextNoteProfileItem,
     ContextNoteProjection,
     ContextNoteState,
     ImageRequestPayload,
+    VideoRequestPayload,
 )
 from bridges.contracts.feedback import (
     AnswerFeedback,
@@ -84,6 +86,7 @@ from bridges.contracts.retrieval import (
 )
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjection
+from bridges.contracts.video import VideoError, VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.observability.service import ObservabilityService
@@ -364,6 +367,18 @@ class ImageOrchestrator(Protocol):
     ) -> ImageTaskProjection: ...
 
 
+class VideoOrchestrator(Protocol):
+    """文生视频编排接缝（Issue 32，运行时由 VideoService 实现）。
+
+    聊天分支只负责把请求载荷转成异步任务并收敛消息；云端提交/轮询、
+    资产落库与迟到结果隔离都在后台执行器进程内完成，不阻塞消息流。
+    """
+
+    def submit(
+        self, account_id: str, conversation_id: str, message_id: str, prompt: str
+    ) -> VideoTaskProjection: ...
+
+
 class ChatDomainError(Exception):
     """聊天领域的可预期失败（由 API 层映射为 HTTP 状态与错误体）。"""
 
@@ -391,6 +406,7 @@ class ChatService:
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
         image_service: ImageOrchestrator | None = None,
+        video_service: VideoOrchestrator | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -415,6 +431,9 @@ class ChatService:
         #: 图片生成与编辑编排（Issue 31）；未挂载时携带 image 载荷的
         #: 消息按错误收敛（测试/内存环境不假装生成）。
         self._image = image_service
+        #: 文生视频编排（Issue 32，Wan 固定绑定）；未挂载时携带 video
+        #: 载荷的消息按错误收敛（测试/内存环境不假装生成）。
+        self._video = video_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -673,6 +692,7 @@ class ChatService:
         skill_id: str | None = None,
         skill_input: dict[str, Any] | None = None,
         image: dict[str, Any] | None = None,
+        video: dict[str, Any] | None = None,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
         """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。
 
@@ -681,6 +701,8 @@ class ChatService:
         任务契约。SKILL 载荷必须通过注册校验，未注册标识直接拒绝。
         ``image``（Issue 31）：图片生成/编辑请求载荷；与 SKILL 载荷
         互斥，携带时本轮创建图片异步任务而非普通回答。
+        ``video``（Issue 32）：文生视频请求载荷；与 SKILL 载荷互斥，
+        携带时本轮创建视频异步任务而非普通回答。
         """
         now = datetime.now(UTC)
         content = content.strip()
@@ -688,6 +710,7 @@ class ChatService:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
         skill_payload = self._validate_skill_payload(skill_id, skill_input)
         image_payload = _validate_image_payload(image, skill_payload is not None)
+        video_payload = _validate_video_payload(video, skill_payload is not None)
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError(
@@ -750,6 +773,7 @@ class ChatService:
             updated_at=now,
             skill=skill_payload,
             image=image_payload,
+            video=video_payload,
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -930,6 +954,38 @@ class ChatService:
                     conversation_id,
                     assistant_message_id,
                     owner_image,
+                )
+                return
+            # Issue 32：用户消息携带文生视频载荷（前端视频对话框提交）走
+            # 视频异步任务编排（Wan 固定绑定）——创建任务并立即收敛消息，
+            # 绝不阻塞等待云端生成；失败原因与安全重试边界由任务卡呈现。
+            owner_video = _video_payload_from(owner_message)
+            if owner_video is not None:
+                if self._video is None:
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="video_unavailable",
+                        error_message="视频能力暂不可用，请稍后重试。",
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_failed_thinking(thinking, "video_unavailable"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="video_unavailable",
+                        error_message="视频能力暂不可用，请稍后重试。",
+                    )
+                    return
+                yield from self._stream_video_request(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    owner_video,
                 )
                 return
             # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
@@ -2274,6 +2330,93 @@ class ChatService:
         )
         yield StreamEvent(kind="done")
 
+    def _stream_video_request(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        payload: VideoRequestPayload,
+    ) -> Iterator[StreamEvent]:
+        """文生视频编排：创建异步任务 → VIDEO 事件 → 收敛 DONE。
+
+        任务创建（含助手消息投影）在视频服务的事务内原子完成；本方法
+        只发事件与收敛消息状态，不调用任何模型。任务完成/失败/取消由
+        后台执行器写回消息投影，前端刷新消息列表即可恢复——任务表是
+        权威，消息投影是快照。
+        """
+        started = time.monotonic()
+        now = datetime.now(UTC)
+        assert self._video is not None
+        try:
+            projection = self._video.submit(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                payload.prompt,
+            )
+        except VideoError as exc:
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code=exc.code,
+                error_message=exc.message,
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=_failed_thinking(_initial_thinking(CHAT_MODE), exc.code),
+            )
+            yield StreamEvent(kind="error", error_code=exc.code, error_message=exc.message)
+            return
+        except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="video_submit_failed",
+                error_message="视频任务提交异常，请重试。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=_failed_thinking(_initial_thinking(CHAT_MODE), "video_submit_failed"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="video_submit_failed",
+                error_message="视频任务提交异常，请重试。",
+            )
+            return
+
+        # 视频任务不再流式产出文本：正文收敛为提交摘要，状态由任务卡呈现。
+        self._repo.update_message_content(
+            account_id, assistant_message_id, "已提交视频生成请求，正在处理…", now
+        )
+        self._finalize_message(
+            account_id,
+            assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            model_id=None,
+            run_lock_id=None,
+            started=started,
+            now=now,
+            thinking=_done_thinking(_initial_thinking(CHAT_MODE)),
+        )
+        yield StreamEvent(
+            kind="video",
+            video=ChatStreamVideoData(
+                message_id=assistant_message_id,
+                task=projection,
+            ),
+        )
+        yield StreamEvent(kind="done")
+
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -2834,6 +2977,13 @@ class ChatService:
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
+            # 助手消息的 video 列同样只承载任务/资产状态快照（Issue 32）。
+            video=(
+                VideoTaskProjection.model_validate(message.video)
+                if message.video is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
             error_code=message.error_code,
             error_message=message.error_message,
             duration_ms=message.duration_ms,
@@ -2944,6 +3094,41 @@ def _image_payload_from(owner: MessageRecord | None) -> ImageRequestPayload | No
         return None
     try:
         return ImageRequestPayload.model_validate(owner.image)
+    except ValidationError:
+        return None
+
+
+def _validate_video_payload(
+    video: dict[str, Any] | None, has_skill: bool
+) -> dict[str, Any] | None:
+    """校验文生视频请求载荷并落库为用户消息快照（与 SKILL 载荷互斥）。"""
+    if video is None:
+        return None
+    if has_skill:
+        raise ChatDomainError(
+            "conflicting_payload", "SKILL 与视频请求不能同时携带。", 422
+        )
+    try:
+        payload = VideoRequestPayload.model_validate(video)
+    except ValidationError as exc:
+        raise ChatDomainError(
+            "invalid_video_request", "视频请求载荷无效。", 422
+        ) from exc
+    return payload.model_dump(mode="json")
+
+
+def _video_payload_from(owner: MessageRecord | None) -> VideoRequestPayload | None:
+    """从用户消息的 video 列还原视频请求载荷（重试沿用同一份输入）。
+
+    用户消息的 video 列只存请求载荷；任务状态快照只写在助手消息的
+    video 列（含 task_id/status 字段），据此判别避免误解析。
+    """
+    if owner is None or not owner.video:
+        return None
+    if "task_id" in owner.video or "status" in owner.video:
+        return None
+    try:
+        return VideoRequestPayload.model_validate(owner.video)
     except ValidationError:
         return None
 

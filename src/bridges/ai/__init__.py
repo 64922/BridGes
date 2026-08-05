@@ -20,6 +20,7 @@ from bridges.ai.qwen_client import CassetteStore, QwenApiClient
 from bridges.ai.qwen_image_adapter import QwenImageAdapter
 from bridges.ai.qwen_tts_adapter import QwenTtsAdapter
 from bridges.ai.qwen_vision_adapters import QwenOcrAdapter, QwenVisionAdapter
+from bridges.ai.qwen_wan_adapter import QwenWanAdapter
 
 __all__ = [
     "AdapterError",
@@ -39,6 +40,7 @@ __all__ = [
     "QwenTextChatAdapter",
     "QwenTtsAdapter",
     "QwenVisionAdapter",
+    "QwenWanAdapter",
     "RateLimitError",
     "RegionError",
     "StreamChunk",

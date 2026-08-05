@@ -16,6 +16,7 @@ from bridges.contracts.chat import (
     ChatStreamCareerData,
     ChatStreamHumanizerData,
     ChatStreamImageData,
+    ChatStreamVideoData,
 )
 from bridges.contracts.workflows import RunContextEnvelope
 
@@ -162,8 +163,9 @@ class StreamEvent:
     ``lock`` 在 done/error 事件上必填；delta 事件上为 None。``humanizer``
     只由人味化编排路径（Issue 28）产出：携带过程卡五态载荷；``career``
     只由生涯规划编排路径（Issue 29）产出：携带规划过程卡五态载荷；
-    ``image`` 只由图片任务编排路径（Issue 31）产出：携带任务状态快照，
-    均与 delta/done/error 同一事件流。
+    ``image`` 只由图片任务编排路径（Issue 31）产出：携带任务状态快照；
+    ``video`` 只由视频任务编排路径（Issue 32）产出：携带视频任务状态
+    快照，均与 delta/done/error 同一事件流。
     """
 
     kind: str = "delta"
@@ -175,6 +177,7 @@ class StreamEvent:
     humanizer: ChatStreamHumanizerData | None = field(default=None, repr=False)
     career: ChatStreamCareerData | None = field(default=None, repr=False)
     image: ChatStreamImageData | None = field(default=None, repr=False)
+    video: ChatStreamVideoData | None = field(default=None, repr=False)
 
 
 class StreamingCapabilityAdapter(Protocol):

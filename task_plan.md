@@ -2,6 +2,135 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 32 实施计划（交付视频生成）
+
+状态：已完成（2026-08-05）。全量验证：1719 pytest（+41 新增：wan 适配器
+14 + 视频服务 23 + 聊天集成 5；7 条失败为干净树复现的既有环境 flake：4 条
+runtime smoke CLI 编码 + 2 条端口占用 + 1 条负载 flake 隔离通过）、6 条
+issue32 E2E 全过、mypy 218 文件 0 错误、改动区域 ruff 干净（observability
+UP042 为既有问题）、npm typecheck/build 通过。双轴 code-review 修复：
+worker 自动重领忽略永久失败码（empty_result 白耗配额 3 次，claim 条件
+排除并回归测试）、提交-落库崩溃窗口重复提交边界注释、冒烟脚本 Key 泄漏
+检查落地（docstring 承诺实现）、资产卡创建时间展示、E2E 下载断言
+（download 属性 + 路由通配查询串 + URL 断言）、API 层跨账户资产/字节/
+缓存/下载越权测试扩展。Issue 32 验收状态已更新为 ready-for-human（AC 与
+Verification 全部勾选附证据）。
+
+### 目标
+交付由聊天真实触发的文生视频纵向链路，固定使用 wan2.7-t2v-2026-06-12
+（ADR-0007：Wan 是矩阵中唯一的非 Qwen 系列例外，仍用同一账户级百炼密钥，
+遵守单类别单快照、用户不可更改、真实能力探测与不可用即明确停用的共同
+合同）。用户从聊天提交视频要求后，请求进入可恢复的异步任务（后台执行器
+worker 按租约领取，提交 DashScope video-synthesis 异步任务、单次轮询、
+有限重试、取消与重启恢复），成功后成为账户隔离资产（含提示/模型/供应商
+任务标识/创建时间/可访问文字说明/预览/下载/带确认的删除）。所有状态来自
+持久化任务与供应商结果，不用轮播占位、固定演示视频或生产 Stub 假成功。
+状态机 raw：queued→submitting→generating→succeeded/failed/cancelled，
+另有 cancelling（取消中，worker 收敛为 cancelled）；租约过期非终态呈现
+recovery。取消后 worker 条件更新（仅 status IN ('submitting','generating')
+可发布）保证迟到结果不进入对话或资产库。视频请求只披露提示与显式选择的
+材料，不上传完整聊天、画像、项目目录或秘密。
+
+### 新增模块
+1. `contracts/video.py` — VideoTaskStatus（queued/submitting/generating/
+   succeeded/failed/cancelling/cancelled + 呈现态 recovery）、
+   VideoTaskProjection（task_id/prompt/model_id/status/error_code/
+   error_message/retryable/asset_id/result_object_id/deleted/created_at/
+   updated_at）、VideoDescriptionSource(prompt|manual)、
+   VideoAssetProjection（asset_id/description/description_source/object_id/
+   prompt/model_id/cloud_task_id/media_type/content_length/deleted/
+   created_at/updated_at）、VideoDescriptionUpdateRequest、
+   VideoDeletionProjection、VideoError
+2. `ai/qwen_wan_adapter.py` — QwenWanAdapter（CapabilityAdapter）：
+   submit（POST /api/v1/services/aigc/video-generation/video-synthesis，
+   固定 1280*720）→ cloud_task_id；poll（GET /api/v1/tasks/{id}，
+   兼容 output.status/task_status 字段）→ RUNNING/SUCCEEDED（video_url
+   优先、results[0].url 兜底）/FAILED；fetch（下载字节，video/mp4 判型）；
+   cancel。错误分类复用 qwen_client
+3. `video/service.py` — VideoService：submit（消息归属校验→queued 任务+
+   消息投影同事务）；get_task（含租约过期 recovery 映射）；cancel（→
+   cancelling，尽力云端取消由 worker 执行，迟到结果隔离由条件发布保证）；
+   retry（仅 failed，重置计数同输入重入队）；get_asset；get_video_bytes
+   （账户授权流式字节）；update_description（prompt→manual）；delete_asset
+   （标记删除+消息投影+对象 pending_cleanup，幂等）；worker 侧 process_
+   pending（领取：queued/failed 可重试→submitting、submitting/generating/
+   cancelling 续租 → submit/poll/cancel/finalize 分支；MAX_CLOUD_POLLS=60；
+   失败语义与 image 对齐：cloud_timeout/cloud_failed/transient 可重试、
+   永久失败码隐藏重试入口）
+4. `storage/database.py` — SCHEMA_VERSION 20：video_tasks/video_assets
+   两表（全部 account_id 作用域）+ messages 加 video JSON 列
+
+### 修改
+5. `contracts/chat.py` — ChatMessageCreateRequest.video（VideoRequestPayload
+   载荷）；ChatMessageProjection.video（VideoTaskProjection）；ChatStream
+   EventKind.VIDEO + ChatStreamVideoData（任务状态事件）
+6. `contracts/observability.py` — AuditAction.VIDEO_TASK_SUBMIT / VIDEO_TASK_
+   COMPLETE / VIDEO_TASK_CANCEL / VIDEO_ASSET_DELETE / VIDEO_DESCRIPTION_
+   UPDATE（details 只含 task_id/model_id/长度/来源，不含提示词与视频字节）
+7. `chat/repository.py` — MessageRecord.video；insert/get 带 video
+8. `chat/service.py` — start_generation 校验并落库 video 载荷（与 skill
+   载荷互斥 422）；stream_generation 检出 video 走 _stream_video_request
+   分支（能力门 → video service 建任务 → SSE started/video(queued)/done，
+   助手消息正文收敛「已提交…」+ video 投影）；消息级 retry 对 video 载荷
+   拒绝（video_task_retry_via_card，任务独立重试端点）
+9. `api/video.py` — 路由（prefix /chat）：GET video-tasks/{id}、POST
+   video-tasks/{id}/cancel、POST video-tasks/{id}/retry（能力门 video）、
+   GET video-assets/{asset_id}、PUT video-assets/{asset_id}/description、
+   GET video-assets/{asset_id}/video（流式字节 + private cache +
+   download Content-Disposition）、DELETE video-assets/{asset_id}；
+   全部账户作用域校验，跨账户 404
+10. `api/chat.py` — SSE 透传 VIDEO 事件；send 携带 video 载荷时能力门
+11. `api/main.py` — 注册 qwen_wan 能力记录（vendor="wan"，ADR-0007 例外
+    注释）；注册 QwenWanAdapter；VideoService 挂载（gateway/object_
+    repository/chat_repository/observability）；ChatService 接入；
+    video_router 挂载
+12. `runtime/executor.py` — 惰性构造视频任务轮（同 image 模式）；run_tick
+    加 video_service.process_pending() 处理轮
+13. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：视频任务状态卡 + 资产播放卡）
+14. api.ts — getVideoTask/cancelVideoTask/retryVideoTask/getVideoAsset/
+    updateVideoDescription/deleteVideoAsset/videoUrl(URL 构造) + 类型导出；
+    streamChatMessage 支持 video 载荷
+15. chat-tools.ts — 「视频生成」工具意图（与「图片生成」平行）
+16. VideoDialog（新）— 生成页签（提示词 textarea + 固定 1280×720 与
+    Wan 固定模型说明，无编辑页签）；提交走真实 send（video 载荷）
+17. VideoTaskCard（新，挂助手消息）— 八态状态芯片（排队/提交中/生成中/
+    恢复中/完成/失败/取消中/已取消）+ 取消/重试按钮 + 中文错误 + 键盘可达
+    + 5s 轮询 getVideoTask
+18. VideoAssetCard（新）— <video controls> 预览（授权端点 URL）、描述
+    内联编辑（PUT description）、下载（当前对象）、删除（确认对话框
+    显示影响说明）；任务完成后轮询消息列表刷新出现资产卡
+19. Composer — 「+」菜单与建议卡入口（video 能力可用性门控，同 image
+    模式）；MessageList/ChatThread/page.tsx 接入 video 卡与 VIDEO 事件
+20. chat-flow.ts — chatVideoKey sessionStorage 桥接（同 image）
+
+### 测试
+21. `tests/video/test_wan_adapter.py` — submit/poll（status 与 task_status
+    字段兼容、video_url 优先与 results 兜底）/fetch/cancel、错误分类
+    （429/401/5xx/超时/空结果）、固定模型标识
+22. `tests/video/test_video_service.py` — 生成成功（对象+资产+描述）、
+    取消（cancelling→cancelled 全流程）、迟到结果隔离（finalize 条件
+    更新）、重启恢复（租约过期重领）、cloud 超时、失败重试同快照、
+    轮询不消耗重试预算、描述修改（prompt→manual）、删除影响（消息引用/
+    对象清理）、账户隔离（跨账户任务/资产/字节 404）、能力不可用拒绝、
+    审计不含提示与字节
+23. `tests/chat/test_video_chat.py` — send 带 video 载荷：SSE started→
+    video(queued)→done；worker 处理收敛消息投影；载荷与 skill 冲突 422；
+    消息级重试拒绝 409；能力门；两账户隔离 404
+24. E2E issue32 — 对话框提交、任务卡八态推进、资产卡（播放器/描述修改/
+    下载/删除确认）、刷新恢复、失败重试、取消（取消中→已取消）、能力
+    停用（page.route mock）
+25. 真实冒烟：scripts/smoke_video_generation.py（显式 Key 提交真实 Wan
+    任务并轮询下载，核对运行记录模型快照 = VIDEO_MODEL_ID）
+
+### 收尾
+26. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review
+    双轴审查并修复；更新 Issue 32 验收状态（ready-for-human + 验收项
+    打勾附证据）；提交（工作内容+bug 修复两部分提交信息）
+
+
+
 ## Issue 31 实施计划（交付图片生成与编辑）
 
 状态：已完成（2026-08-05）。全量验证：1699 pytest（+32 新增：image 适配器

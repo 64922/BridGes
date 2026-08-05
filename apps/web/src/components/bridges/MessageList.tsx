@@ -22,8 +22,10 @@ import type {
   HumanizerResultProjection,
   ImageTaskProjection,
   ReadAloudProjection,
+  VideoTaskProjection,
 } from "@/lib/api";
 import { ImageTaskCard } from "./chat/ImageTaskCard";
+import { VideoTaskCard } from "./chat/VideoTaskCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
@@ -95,6 +97,7 @@ export interface ChatMessage {
   readAloud?: ReadAloudProjection | null;
   /** Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡） */
   image?: ImageTaskProjection | null;
+  video?: VideoTaskProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -817,6 +820,17 @@ export function MessageList({
                     <ImageTaskCard
                       conversationId={conversationId}
                       task={message.image}
+                      onSucceeded={onRefreshMessages}
+                    />
+                  )}
+
+                {conversationId &&
+                  message.role === "assistant" &&
+                  message.video &&
+                  message.status !== "streaming" && (
+                    <VideoTaskCard
+                      conversationId={conversationId}
+                      task={message.video}
                       onSucceeded={onRefreshMessages}
                     />
                   )}

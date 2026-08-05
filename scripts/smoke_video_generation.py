@@ -1,23 +1,22 @@
-"""Issue 31 人工冒烟：真实图片生成与编辑链路验证。
+"""Issue 32 人工冒烟：真实 Wan 文生视频链路验证。
 
 用法（Key 只通过环境变量显式提供，绝不写入仓库或 .env）：
 
-    BRIDGES_SMOKE_QWEN_KEY=sk-... python scripts/smoke_image_generation.py
+    BRIDGES_SMOKE_QWEN_KEY=sk-... python scripts/smoke_video_generation.py
 
 或把 Key 放入项目外文件（与 settings 的 ``*_FILE`` 秘密引用同一语义，
 密钥不经过命令行、不进对话记录）：
 
     BRIDGES_SMOKE_QWEN_KEY_FILE=C:\\Users\\me\\.bridges\\qwen_key.txt \\
-        python scripts/smoke_image_generation.py
+        python scripts/smoke_video_generation.py
 
 脚本会：
 1. 用内存凭据替身保存显式提供的 Key（不触碰真实凭据库）；
-2. 用固定绑定 qwen-image-2.0-pro-2026-06-22 提交真实生成任务，轮询
-   DashScope 云端任务直到终态，下载结果字节；
-3. 用刚生成的图片执行一次编辑（base_image data URL 直传），再次轮询
-   下载；
-4. 核对运行记录（model_run_locks）中的模型快照为固定绑定；
-5. 校验响应/审计/输出都不包含完整 Key。
+2. 用固定绑定 wan2.7-t2v-2026-06-12（ADR-0007：Wan 是矩阵唯一非 Qwen
+   系列例外）提交真实文生视频任务，轮询 DashScope 云端任务直到终态，
+   下载结果字节；
+3. 核对运行记录（model_run_locks）中的模型快照为固定绑定；
+4. 校验响应/审计/输出都不包含完整 Key。
 
 自动化测试不得把 Key 写入仓库或 .env；本脚本只供人工冒烟环境显式使用。
 """
@@ -38,22 +37,23 @@ from bridges.ai import (  # noqa: E402
     CapabilityRegistry,
     ModelGateway,
     QwenApiClient,
-    QwenImageAdapter,
+    QwenWanAdapter,
 )
-from bridges.ai.qwen_image_adapter import image_data_url  # noqa: E402
 from bridges.contracts.ai import (  # noqa: E402
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
     RetryPolicy,
 )
-from bridges.credentials.matrix import IMAGE_MODEL_ID  # noqa: E402
+from bridges.credentials.matrix import VIDEO_MODEL_ID  # noqa: E402
 
 _SMOKE_KEY_ENV = "BRIDGES_SMOKE_QWEN_KEY"
 _SMOKE_KEY_FILE_ENV = "BRIDGES_SMOKE_QWEN_KEY_FILE"
-#: 云端任务轮询间隔与上限（人工冒烟可接受分钟级等待）。
-_POLL_INTERVAL_SECONDS = 5
+#: 云端任务轮询间隔与上限（视频生成分钟级，人工冒烟可接受等待）。
+_POLL_INTERVAL_SECONDS = 10
 _POLL_MAX = 60
+#: 固定生成尺寸（与能力矩阵探测参数一致，用户不可选）。
+_SMOKE_PROMPT = "一条静谧的河在晨雾中缓缓流淌，两岸是初春的树林，镜头缓慢推进"
 
 
 def _resolve_smoke_key() -> str:
@@ -72,23 +72,25 @@ def _resolve_smoke_key() -> str:
 def _gateway(api_key: SecretStr) -> ModelGateway:
     client = QwenApiClient(api_key=api_key)
     registry = CapabilityRegistry()
+    # ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外，仍使用同一账户级
+    # 百炼密钥，遵守单类别单快照、用户不可更改合同。
     registry.register(
         CapabilityRecord(
-            name="qwen_image",
+            name="qwen_wan",
             version="1",
             kind=CapabilityKind.MODEL,
-            vendor="qwen",
+            vendor="wan",
             region="cn-beijing",
-            model_id=IMAGE_MODEL_ID,
-            input_schema_version="image-prompt-v1",
-            output_schema_version="image-task-v1",
+            model_id=VIDEO_MODEL_ID,
+            input_schema_version="video-prompt-v1",
+            output_schema_version="video-task-v1",
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-08-05",
         )
     )
     gateway = ModelGateway(registry)
-    gateway.register_adapter("qwen_image", "1", QwenImageAdapter(client))
+    gateway.register_adapter("qwen_wan", "1", QwenWanAdapter(client))
     return gateway
 
 
@@ -99,7 +101,7 @@ def _run_task(
     label: str,
 ) -> Any:
     """提交 → 轮询 → 下载；返回最终 ModelCallResult（含运行锁与字节）。"""
-    result = gateway.invoke("qwen_image", "1", run_id, payload)
+    result = gateway.invoke("qwen_wan", "1", run_id, payload)
     if result.status.value != "success" or result.output is None:
         raise SystemExit(
             f"{label}提交失败：{result.error_code} {result.error_message}（可重试"
@@ -108,10 +110,10 @@ def _run_task(
     cloud_task_id = str(result.output.get("cloud_task_id") or "")
     if not cloud_task_id:
         raise SystemExit(f"{label}：供应商未返回云端任务标识。")
-    print(f"{label}已提交，云端任务 {cloud_task_id}；开始轮询…")
+    print(f"{label}已提交，云端任务 {cloud_task_id}；开始轮询（视频生成需数分钟）…")
     for attempt in range(1, _POLL_MAX + 1):
         poll = gateway.invoke(
-            "qwen_image",
+            "qwen_wan",
             "1",
             run_id,
             {"kind": "poll", "cloud_task_id": cloud_task_id},
@@ -120,15 +122,15 @@ def _run_task(
         if status == "SUCCEEDED":
             result_url = str(poll.output.get("result_url") or "")
             fetched = gateway.invoke(
-                "qwen_image", "1", run_id, {"kind": "fetch", "result_url": result_url}
+                "qwen_wan", "1", run_id, {"kind": "fetch", "result_url": result_url}
             )
-            image_bytes = fetched.output.get("image_bytes")
-            if not isinstance(image_bytes, bytes) or not image_bytes:
+            video_bytes = fetched.output.get("video_bytes")
+            if not isinstance(video_bytes, bytes) or not video_bytes:
                 raise SystemExit(f"{label}：下载结果为空。")
             print(
-                f"{label}完成：{len(image_bytes)} 字节，"
+                f"{label}完成：{len(video_bytes)} 字节，"
                 f"媒体类型 {fetched.output.get('media_type')}，"
-                f"模型 {fetched.output.get('actual_model_id') or IMAGE_MODEL_ID}。"
+                f"模型 {fetched.output.get('actual_model_id') or VIDEO_MODEL_ID}。"
             )
             return fetched
         if status == "FAILED":
@@ -164,66 +166,63 @@ def main() -> int:
     db.initialize()
     lock_repo = ConversationRepository(db)
 
+    # 记录全部打印输出，结束时校验 Key 未泄漏到任何输出。
+    import builtins
+
+    printed: list[str] = []
+    original_print = builtins.print
+
+    def captured_print(*args: object, **kwargs: Any) -> None:
+        text = " ".join(str(arg) for arg in args)
+        printed.append(text)
+        original_print(*args, **kwargs)
+
+    builtins.print = captured_print  # 冒烟脚本局部替换打印以做泄漏检查
+
     def run_context(tag: str) -> RunContextEnvelope:
         return RunContextEnvelope(
-            run_id=f"smoke-image-{tag}-{int(time.time())}",
+            run_id=f"smoke-video-{tag}-{int(time.time())}",
             account_id="smoke-account",
             project_id="smoke-project",
-            workflow_name="smoke_image_generation",
+            workflow_name="smoke_video_generation",
             workflow_version="1",
             submitted_at=__import__("datetime").datetime.now(
                 __import__("datetime").timezone.utc
             ),
         )
 
-    def run_with_lock(
-        ctx: RunContextEnvelope,
-        payload: dict[str, object],
-        label: str,
-    ) -> bytes:
-        result = _run_task(gateway, ctx, payload, label)
-        if result.lock is not None:
-            lock_repo.insert_run_lock(ctx.account_id, result.lock)
-        image_bytes = result.output.get("image_bytes")
-        if not isinstance(image_bytes, bytes):
-            raise SystemExit(f"{label}：结果字节缺失。")
-        return image_bytes
-
-    # 1. 生成冒烟。
-    generated = run_with_lock(
-        run_context("generate"),
-        {"kind": "submit", "prompt": "一座桥的素描，简洁线稿风格", "size": "1024*1024"},
-        "图片生成",
+    ctx = run_context("generate")
+    result = _run_task(
+        gateway,
+        ctx,
+        {"kind": "submit", "prompt": _SMOKE_PROMPT, "size": "1280*720"},
+        "视频生成",
     )
-    # 2. 编辑冒烟：用生成结果做来源（data URL 直传，最小授权上下文）。
-    edited = run_with_lock(
-        run_context("edit"),
-        {
-            "kind": "submit",
-            "prompt": "把背景改为夜空，保留桥的轮廓",
-            "size": "1024*1024",
-            "base_image": image_data_url(generated, "image/png"),
-        },
-        "图片编辑",
-    )
-    if not edited:
-        raise SystemExit("编辑结果为空。")
+    if result.lock is not None:
+        lock_repo.insert_run_lock(ctx.account_id, result.lock)
+    video_bytes = result.output.get("video_bytes")
+    if not isinstance(video_bytes, bytes) or not video_bytes:
+        raise SystemExit("视频生成结果字节缺失。")
 
-    # 3. 核对运行记录中的模型快照（固定绑定，绝不切换）。
+    # 核对运行记录中的模型快照（固定绑定，绝不切换）。
     rows = db.connection.execute(
         "SELECT DISTINCT actual_model_id FROM model_run_locks"
     ).fetchall()
     lock_model_ids = {str(row["actual_model_id"]) for row in rows}
-    if lock_model_ids != {IMAGE_MODEL_ID}:
+    if lock_model_ids != {VIDEO_MODEL_ID}:
         raise SystemExit(
-            f"运行记录模型快照异常：期望 {IMAGE_MODEL_ID}，实际 {lock_model_ids}。"
+            f"运行记录模型快照异常：期望 {VIDEO_MODEL_ID}，实际 {lock_model_ids}。"
         )
 
+    # Key 泄漏检查：任何输出（含轮询中间行）不得包含完整 Key。
+    if any(key_value in line for line in printed):
+        raise SystemExit("Key 泄漏：输出包含完整 Key，已中止。")
+
     print("\n冒烟通过：")
-    print(f"- 固定模型 {IMAGE_MODEL_ID} 真实生成与编辑成功；")
-    print(f"- 生成结果 {len(generated)} 字节、编辑结果 {len(edited)} 字节；")
+    print(f"- 固定模型 {VIDEO_MODEL_ID}（Wan 例外）真实文生视频成功；")
+    print(f"- 生成结果 {len(video_bytes)} 字节；")
     print(f"- 运行记录（model_run_locks）模型快照核对一致：{lock_model_ids}；")
-    print("- Key 仅经环境变量显式提供，未写入仓库或 .env。")
+    print("- Key 仅经环境变量显式提供，未写入仓库或 .env，输出无泄漏。")
     return 0
 
 

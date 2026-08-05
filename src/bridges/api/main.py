@@ -22,6 +22,7 @@ from bridges.ai import (
     QwenTextChatAdapter,
     QwenTtsAdapter,
     QwenVisionAdapter,
+    QwenWanAdapter,
     StubQwenAdapter,
 )
 from bridges.api import (
@@ -47,6 +48,7 @@ from bridges.api import (
 from bridges.api.image import router as image_router
 from bridges.api.media import router as media_router
 from bridges.api.speech import router as speech_router
+from bridges.api.video import router as video_router
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
 from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
@@ -165,6 +167,7 @@ from bridges.vault import (
     MemoryDeviceVaultPort,
     VaultService,
 )
+from bridges.video.service import VideoService
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
 
@@ -322,6 +325,25 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             input_schema_version="image-prompt-v1",
             output_schema_version="image-task-v1",
             supported_modalities=["text", "image"],
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-08-05",
+        )
+    )
+    # Issue 32: 文生视频（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外，
+    # 仍使用同一账户级百炼密钥）。固定绑定 wan2.7-t2v-2026-06-12，异步
+    # 任务经后台执行器轮询，不注册备用模型——失败只重试同一绑定。
+    registry.register(
+        CapabilityRecord(
+            name="qwen_wan",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="wan",
+            region="cn-beijing",
+            model_id="wan2.7-t2v-2026-06-12",
+            input_schema_version="video-prompt-v1",
+            output_schema_version="video-task-v1",
+            supported_modalities=["text", "video"],
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-08-05",
@@ -867,6 +889,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         # Issue 31: 图片生成与编辑异步任务适配器（submit/poll/fetch/cancel）。
         image_adapter = QwenImageAdapter(qwen_client)
         model_gateway.register_adapter("qwen_image", "1", image_adapter)
+        # Issue 32: 文生视频异步任务适配器（Wan 例外，submit/poll/fetch/cancel）。
+        wan_adapter = QwenWanAdapter(qwen_client)
+        model_gateway.register_adapter("qwen_wan", "1", wan_adapter)
 
     # Issue 10：生产环境禁止为真实模型 ID 注册 Stub 成功。StubQwenAdapter
     # 只允许在显式测试开关（qwen_force_stub）下使用，或绑定在内置
@@ -944,6 +969,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 chat_repository=ConversationRepository(bridges_database),
                 observability_service=app.state.observability_service,
             )
+            # Issue 32: 文生视频（固定 wan2.7-t2v-2026-06-12，ADR-0007
+            # Wan 例外）。API 进程只做提交/查询/取消/重试与资产管理；云端
+            # 轮询在后台执行器进程内按租约执行，任务与消息投影原子落库。
+            app.state.video_service = VideoService(
+                database=bridges_database,
+                gateway=model_gateway,
+                object_repository=object_repository,
+                chat_repository=ConversationRepository(bridges_database),
+                observability_service=app.state.observability_service,
+            )
         # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
         app.state.search_service = SearchService(bridges_database)
         # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
@@ -979,6 +1014,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             humanizer_service=app.state.humanizer_service,
             career_planner_service=app.state.career_planner_service,
             image_service=app.state.image_service,
+            video_service=app.state.video_service,
         )
         # Issue 30: 听写与单条回答朗读（固定 ASR/TTS 快照）。复用同一
         # 模型网关（固定模型标识进运行记录）、账户对象库（朗读音频按
@@ -1310,6 +1346,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(learning_router)
     app.include_router(speech_router)
     app.include_router(image_router)
+    app.include_router(video_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

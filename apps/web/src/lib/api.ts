@@ -47,6 +47,14 @@ export type ImageAltTextSource = components["schemas"]["ImageAltTextSource"];
 export type ImageDeletionProjection = components["schemas"]["ImageDeletionProjection"];
 export type ImageRequestPayload = components["schemas"]["ImageRequestPayload"];
 export type ChatStreamImageData = components["schemas"]["ChatStreamImageData"];
+// Issue 32：文生视频契约（生成类型来自 openapi.json；Wan 固定绑定）。
+export type VideoTaskProjection = components["schemas"]["VideoTaskProjection"];
+export type VideoTaskStatus = components["schemas"]["VideoTaskStatus"];
+export type VideoAssetProjection = components["schemas"]["VideoAssetProjection"];
+export type VideoDescriptionSource = components["schemas"]["VideoDescriptionSource"];
+export type VideoDeletionProjection = components["schemas"]["VideoDeletionProjection"];
+export type VideoRequestPayload = components["schemas"]["VideoRequestPayload"];
+export type ChatStreamVideoData = components["schemas"]["ChatStreamVideoData"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
 export type CareerPlanningProjection = components["schemas"]["CareerPlanningProjection"];
 export type CareerPlanningProcessState = components["schemas"]["CareerPlanningProcessState"];
@@ -1233,7 +1241,8 @@ export async function streamChatMessage(
   useProfile: boolean = true,
   skillId?: string,
   skillInput?: unknown,
-  image?: ImageRequestPayload
+  image?: ImageRequestPayload,
+  video?: VideoRequestPayload
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -1249,6 +1258,8 @@ export async function streamChatMessage(
       ...(skillInput !== undefined ? { skill_input: skillInput } : {}),
       // Issue 31：图片生成/编辑载荷（图片对话框走真实消息流程，任务异步执行）
       ...(image !== undefined ? { image } : {}),
+      // Issue 32：文生视频载荷（视频对话框走真实消息流程，任务异步执行）
+      ...(video !== undefined ? { video } : {}),
     }),
     signal,
   });
@@ -2075,5 +2086,106 @@ export function imageVersionUrl(
   download = false
 ): string {
   const base = `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(versionId)}/image`;
+  return download ? `${base}?download=1` : base;
+}
+
+// ---------------------------------------------------------------------------
+// Issue 32：文生视频（任务操作面 + 资产操作面；Wan 固定绑定）
+// ---------------------------------------------------------------------------
+
+/** 查询任务投影（刷新/重登/重启后恢复任务状态；呈现态含 recovery/cancelling）。 */
+export async function getVideoTask(
+  conversationId: string,
+  taskId: string
+): Promise<VideoTaskProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-tasks/${encodeURIComponent(taskId)}`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 取消任务：本地标记为「取消中」，worker 收敛为已取消；迟到结果不发布。 */
+export async function cancelVideoTask(
+  conversationId: string,
+  taskId: string
+): Promise<VideoTaskProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-tasks/${encodeURIComponent(taskId)}/cancel`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 重试失败任务：同输入（提示不变）重新入队，固定同一模型快照。 */
+export async function retryVideoTask(
+  conversationId: string,
+  taskId: string
+): Promise<VideoTaskProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-tasks/${encodeURIComponent(taskId)}/retry`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 查询资产投影：可访问文字说明、提示、模型、供应商任务标识与时间。 */
+export async function getVideoAsset(
+  conversationId: string,
+  assetId: string
+): Promise<VideoAssetProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 修改可访问文字说明（来源标记为 manual）。 */
+export async function updateVideoDescription(
+  conversationId: string,
+  assetId: string,
+  description: string
+): Promise<VideoAssetProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}/description`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ description }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 删除资产并返回影响说明（对象数/消息引用/对象处置）；幂等。 */
+export async function deleteVideoAsset(
+  conversationId: string,
+  assetId: string
+): Promise<VideoDeletionProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 视频的同源地址（经账户授权校验 + 私有缓存头流式返回）。
+ * ``download=1`` 附加附件下载头；默认内联预览。
+ */
+export function videoUrl(
+  conversationId: string,
+  assetId: string,
+  download = false
+): string {
+  const base = `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}/video`;
   return download ? `${base}?download=1` : base;
 }

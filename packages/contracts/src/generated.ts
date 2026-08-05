@@ -5090,6 +5090,144 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/video-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Video Task
+         * @description 返回任务投影（刷新/重登/重启后据此恢复任务状态）。
+         *
+         *     呈现状态含 recovery（租约过期、后台恢复中）与 cancelling（取消
+         *     收敛中）；不存在或跨账户一律 404。
+         */
+        get: operations["get_video_task_chat_conversations__conversation_id__video_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/video-tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Video Task
+         * @description 取消任务：本地标记为「取消中」，worker 收敛为已取消；迟到结果不发布。
+         *
+         *     已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。
+         */
+        post: operations["cancel_video_task_chat_conversations__conversation_id__video_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/video-tasks/{task_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Video Task
+         * @description 重试失败任务：同输入（提示不变）重新入队，固定同一快照。
+         *
+         *     重试需要视频能力仍可用（能力不可用时入口明确拒绝并说明原因）。
+         */
+        post: operations["retry_video_task_chat_conversations__conversation_id__video_tasks__task_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/video-assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Video Asset
+         * @description 返回资产投影：可访问文字说明、提示、模型、供应商任务标识与时间。
+         */
+        get: operations["get_video_asset_chat_conversations__conversation_id__video_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Video Asset
+         * @description 删除资产并返回影响说明：移除对象数、更新的消息引用与对象处置状态。
+         *
+         *     删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理
+         *     失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，
+         *     可观察可恢复；幂等，已删除资产返回零计数投影。
+         */
+        delete: operations["delete_video_asset_chat_conversations__conversation_id__video_assets__asset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/video-assets/{asset_id}/description": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Video Description
+         * @description 修改资产可访问文字说明（来源标记为 manual，替代提示词默认值）。
+         */
+        put: operations["update_video_description_chat_conversations__conversation_id__video_assets__asset_id__description_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/video-assets/{asset_id}/video": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Video Bytes
+         * @description 返回视频字节（流式，账户授权校验 + 私有缓存头）。
+         *
+         *     ``download=1`` 时附加附件下载头；默认内联预览。跨账户或已删除
+         *     资产一律 404；缓存私有化杜绝跨账户缓存复用。
+         */
+        get: operations["get_video_bytes_chat_conversations__conversation_id__video_assets__asset_id__video_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -7120,6 +7258,8 @@ export interface components {
             skill_input?: components["schemas"]["HumanizerSkillInput"] | null;
             /** @description 图片生成/编辑请求载荷（Issue 31）；携带时本轮创建图片异步任务而非普通回答。 */
             image?: components["schemas"]["ImageRequestPayload"] | null;
+            /** @description 文生视频请求载荷（Issue 32）；携带时本轮创建视频异步任务而非普通回答。 */
+            video?: components["schemas"]["VideoRequestPayload"] | null;
         };
         /**
          * ChatMessageProjection
@@ -7185,6 +7325,8 @@ export interface components {
             career_planning?: components["schemas"]["CareerPlanningProjection"] | null;
             /** @description 助手消息的图片任务/资产状态快照（Issue 31）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。 */
             image?: components["schemas"]["ImageTaskProjection"] | null;
+            /** @description 助手消息的视频任务/资产状态快照（Issue 32）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。 */
+            video?: components["schemas"]["VideoTaskProjection"] | null;
             /** @description 本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。 */
             read_aloud?: components["schemas"]["ReadAloudProjection"] | null;
             /**
@@ -7452,14 +7594,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image";
+        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -7586,6 +7728,28 @@ export interface components {
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
             /** @description 学习模式教学卡片初始状态。 */
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
+        };
+        /**
+         * ChatStreamVideoData
+         * @description video 事件载荷：驱动消息内视频任务卡（Issue 32）。
+         *
+         *     任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器
+         *     写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影
+         *     是快照，刷新与重启后可恢复查询）。
+         */
+        ChatStreamVideoData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "video";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 任务状态快照。 */
+            task: components["schemas"]["VideoTaskProjection"];
         };
         /**
          * ChatThinkingSummary
@@ -21169,6 +21333,230 @@ export interface components {
          * @enum {string}
          */
         VersionDifferenceField: "fact_lock_set" | "claim_ids" | "citation_ids" | "wording_strength_ceiling" | "argument_plan" | "span_text" | "genre" | "model_run_lock" | "applied_patches" | "artifact_trust_status" | "human_decisions";
+        /**
+         * VideoAssetProjection
+         * @description 视频资产的公开投影：说明文字、模型/供应商快照与对象指针。
+         *
+         *     每个成功任务恰好产生一个视频对象；资产与任务一一对应，无版本链
+         *     （视频生成不提供编辑）。``cloud_task_id`` 是供应商任务标识，用于
+         *     追溯真实云端任务。
+         */
+        VideoAssetProjection: {
+            /**
+             * Asset Id
+             * @description 资产标识。
+             */
+            asset_id: string;
+            /**
+             * Description
+             * @description 可访问文字说明（可修改）。
+             * @default
+             */
+            description: string;
+            /**
+             * @description 说明文字来源。
+             * @default prompt
+             */
+            description_source: components["schemas"]["VideoDescriptionSource"];
+            /**
+             * Object Id
+             * @description 账户对象库中的视频对象标识。
+             */
+            object_id: string;
+            /**
+             * Prompt
+             * @description 本资产使用的提示词。
+             */
+            prompt: string;
+            /**
+             * Model Id
+             * @description 本资产使用的固定视频模型快照（运行锁实际标识）。
+             */
+            model_id?: string | null;
+            /**
+             * Cloud Task Id
+             * @description 供应商（DashScope）任务标识，用于追溯。
+             */
+            cloud_task_id?: string | null;
+            /**
+             * Media Type
+             * @description 视频媒体类型。
+             */
+            media_type: string;
+            /**
+             * Content Length
+             * @description 视频字节数。
+             */
+            content_length: number;
+            /**
+             * Deleted
+             * @description 资产已删除（消息投影维护）。
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 资产创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新（含说明修改）时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * VideoDeletionProjection
+         * @description 删除资产的影响说明与结果（幂等：已删除资产返回零计数）。
+         */
+        VideoDeletionProjection: {
+            /**
+             * Asset Id
+             * @description 已删除的资产标识。
+             */
+            asset_id: string;
+            /**
+             * Removed Objects
+             * @description 实际移除的对象数量（0 或 1）。
+             */
+            removed_objects: number;
+            /**
+             * Updated Messages
+             * @description 引用该资产的助手消息投影更新数量。
+             */
+            updated_messages: number;
+            /**
+             * Object Status
+             * @description 对象处置：cleaned（已物理清理）或 pending_cleanup（待清理轮重试）。
+             */
+            object_status: string;
+            /**
+             * Deleted At
+             * Format: date-time
+             * @description 删除完成时间。
+             */
+            deleted_at: string;
+        };
+        /**
+         * VideoDescriptionSource
+         * @description 可访问文字说明来源：提示词确定性生成 / 用户手动修改。
+         * @enum {string}
+         */
+        VideoDescriptionSource: "prompt" | "manual";
+        /**
+         * VideoDescriptionUpdateRequest
+         * @description 修改可访问文字说明的请求。
+         */
+        VideoDescriptionUpdateRequest: {
+            /**
+             * Description
+             * @description 新的可访问文字说明。
+             */
+            description: string;
+        };
+        /**
+         * VideoRequestPayload
+         * @description 文生视频请求（Issue 32）。
+         *
+         *     只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与当前
+         *     账户百炼密钥（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），
+         *     界面不提供模型选择。请求只携带提示词，不携带完整项目目录、画像
+         *     或任何账户秘密。
+         */
+        VideoRequestPayload: {
+            /**
+             * Prompt
+             * @description 视频生成要求。
+             */
+            prompt: string;
+        };
+        /**
+         * VideoTaskProjection
+         * @description 一次视频任务的公开投影；不包含视频字节与账户信息。
+         *
+         *     消息的 ``video`` 列直接保存同一投影：进行中渲染任务卡（状态芯片 +
+         *     取消/重试），成功后前端据此拉取资产详情渲染资产卡。
+         */
+        VideoTaskProjection: {
+            /**
+             * Task Id
+             * @description 任务标识。
+             */
+            task_id: string;
+            /**
+             * Prompt
+             * @description 用户提交的生成要求（用于追溯与前端展示）。
+             */
+            prompt: string;
+            /**
+             * Model Id
+             * @description 实际使用的固定视频模型快照（Wan 例外）。
+             */
+            model_id?: string | null;
+            /** @description 当前呈现状态。 */
+            status: components["schemas"]["VideoTaskStatus"];
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 失败后是否可原样重试同一输入。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Asset Id
+             * @description 结果归属资产标识。
+             */
+            asset_id?: string | null;
+            /**
+             * Result Object Id
+             * @description 成功时创建的资产对象标识。
+             */
+            result_object_id?: string | null;
+            /**
+             * Deleted
+             * @description 资产已被删除（消息引用维护：删除资产时标记，前端据此显示已删除状态，不再请求资产详情）。
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 任务创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近状态更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * VideoTaskStatus
+         * @description 视频任务的呈现状态。
+         *
+         *     - ``queued``：已提交，等待后台执行器领取；
+         *     - ``submitting``：已领取，正在向供应商提交云端任务；
+         *     - ``generating``：云端任务已接受，正在轮询生成；
+         *     - ``recovery``：处理被中断（租约过期），后台正在恢复重领；
+         *     - ``succeeded``：真实模型结果已落为账户资产；
+         *     - ``failed``：失败，error_code/error_message 说明原因，可重试；
+         *     - ``cancelling``：用户已发起取消，worker 正在收敛（尽力通知云端）；
+         *     - ``cancelled``：已取消；迟到结果不会发布为成功资产。
+         * @enum {string}
+         */
+        VideoTaskStatus: "queued" | "submitting" | "generating" | "recovery" | "succeeded" | "failed" | "cancelling" | "cancelled";
         /**
          * VisualObject
          * @description 分镜场景中的一个视觉对象。
@@ -36958,6 +37346,458 @@ export interface operations {
                     "application/json": unknown;
                     "image/png": unknown;
                     "image/jpeg": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_video_task_chat_conversations__conversation_id__video_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    cancel_video_task_chat_conversations__conversation_id__video_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    retry_video_task_chat_conversations__conversation_id__video_tasks__task_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_video_asset_chat_conversations__conversation_id__video_assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoAssetProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    delete_video_asset_chat_conversations__conversation_id__video_assets__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoDeletionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    update_video_description_chat_conversations__conversation_id__video_assets__asset_id__description_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoDescriptionUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VideoAssetProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_video_bytes_chat_conversations__conversation_id__video_assets__asset_id__video_get: {
+        parameters: {
+            query?: {
+                download?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 视频字节流（内联预览或附件下载）。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "video/mp4": unknown;
                 };
             };
             /** @description Unauthorized */

@@ -18,6 +18,7 @@ export const CHAT_TOOL_INTENTS: readonly ChatToolIntent[] = [
   { label: "文章人味化", icon: "humanize", prefix: "文章人味化：" },
   { label: "生涯规划助手", icon: "career", prefix: "生涯规划助手：" },
   { label: "图片生成", icon: "imagePicture", prefix: "图片生成：" },
+  { label: "视频生成", icon: "videoClapper", prefix: "视频生成：" },
 ] as const;
 
 /** Issue 28：「文章人味化」入口已接入真实任务对话框（不再预填前缀）。 */
@@ -28,6 +29,9 @@ export const CAREER_TOOL_LABEL = "生涯规划助手" as const;
 
 /** Issue 31：「图片生成」入口已接入真实任务对话框（不再预填前缀）。 */
 export const IMAGE_TOOL_LABEL = "图片生成" as const;
+
+/** Issue 32：「视频生成」入口已接入真实任务对话框（不再预填前缀）。 */
+export const VIDEO_TOOL_LABEL = "视频生成" as const;
 
 /**
  * Issue 29：生涯规划意图的显式前缀（与后端 src/bridges/career/intent.py

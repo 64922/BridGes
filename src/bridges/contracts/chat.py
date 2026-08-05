@@ -28,6 +28,7 @@ from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
+from bridges.contracts.video import VideoTaskProjection
 from bridges.web_search.contracts import WebSearchProjection
 
 
@@ -234,6 +235,11 @@ class ChatMessageProjection(BaseModel):
         description="助手消息的图片任务/资产状态快照（Issue 31）；进行中渲染"
         "任务卡，成功后渲染资产卡；普通消息为 None。",
     )
+    video: VideoTaskProjection | None = Field(
+        default=None,
+        description="助手消息的视频任务/资产状态快照（Issue 32）；进行中渲染"
+        "任务卡，成功后渲染资产卡；普通消息为 None。",
+    )
     read_aloud: ReadAloudProjection | None = Field(
         default=None,
         description="本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。",
@@ -373,6 +379,25 @@ class ChatMessageCreateRequest(BaseModel):
         description="图片生成/编辑请求载荷（Issue 31）；携带时本轮创建图片"
         "异步任务而非普通回答。",
     )
+    video: VideoRequestPayload | None = Field(
+        default=None,
+        description="文生视频请求载荷（Issue 32）；携带时本轮创建视频异步"
+        "任务而非普通回答。",
+    )
+
+
+class VideoRequestPayload(BaseModel):
+    """文生视频请求（Issue 32）。
+
+    只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与当前
+    账户百炼密钥（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），
+    界面不提供模型选择。请求只携带提示词，不携带完整项目目录、画像
+    或任何账户秘密。
+    """
+
+    prompt: str = Field(
+        min_length=1, max_length=2000, description="视频生成要求。"
+    )
 
 
 class ImageRequestPayload(BaseModel):
@@ -413,6 +438,7 @@ class ChatStreamEventKind(StrEnum):
     HUMANIZER = "humanizer"
     CAREER = "career"
     IMAGE = "image"
+    VIDEO = "video"
 
 
 class ChatStreamStartedData(BaseModel):
@@ -534,6 +560,19 @@ class ChatStreamCareerData(BaseModel):
     )
 
 
+class ChatStreamVideoData(BaseModel):
+    """video 事件载荷：驱动消息内视频任务卡（Issue 32）。
+
+    任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器
+    写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影
+    是快照，刷新与重启后可恢复查询）。
+    """
+
+    kind: Literal["video"] = "video"
+    message_id: str = Field(description="助手消息标识。")
+    task: VideoTaskProjection = Field(description="任务状态快照。")
+
+
 class ChatStreamImageData(BaseModel):
     """image 事件载荷：驱动消息内图片任务卡（Issue 31）。
 
@@ -564,6 +603,7 @@ class ChatStreamEvent(BaseModel):
         | ChatStreamProfileData
         | ChatStreamHumanizerData
         | ChatStreamCareerData
-        | ChatStreamImageData,
+        | ChatStreamImageData
+        | ChatStreamVideoData,
         Field(discriminator="kind", description="事件载荷。"),
     ] = Field(description="事件载荷。")

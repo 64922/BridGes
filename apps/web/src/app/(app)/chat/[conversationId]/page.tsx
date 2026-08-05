@@ -48,18 +48,26 @@ import {
   chatNoProfileKey,
   chatPromptKey,
   chatSkillKey,
+  chatVideoKey,
 } from "@/lib/chat-flow";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import { ImageDialog } from "@/components/bridges/ImageDialog";
+import { VideoDialog } from "@/components/bridges/VideoDialog";
 import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import type {
   ChatStreamCareerData,
   ChatStreamHumanizerData,
   ChatStreamImageData,
+  ChatStreamVideoData,
 } from "@/lib/api";
-import type { ImageAssetProjection, ImageRequestPayload, ImageTaskKind } from "@/lib/api";
+import type {
+  ImageAssetProjection,
+  ImageRequestPayload,
+  ImageTaskKind,
+  VideoRequestPayload,
+} from "@/lib/api";
 import { getImageAsset } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -105,6 +113,8 @@ interface ActiveRun {
   careerProcess: ChatStreamCareerData | null;
   /** Issue 31：流式中的图片任务状态快照（提交即下发，任务卡即时呈现）。 */
   imageProcess: ChatStreamImageData | null;
+  /** Issue 32：流式中的视频任务状态快照（提交即下发，任务卡即时呈现）。 */
+  videoProcess: ChatStreamVideoData | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -145,6 +155,8 @@ export default function ChatConversationPage() {
   // Issue 31：图片生成/编辑任务对话框（生成页签 + 编辑页签）
   const [imageOpen, setImageOpen] = useState(false);
   const [imageAssets, setImageAssets] = useState<ImageAssetProjection[]>([]);
+  // Issue 32：视频生成任务对话框（单一生成页签，Wan 固定绑定）
+  const [videoOpen, setVideoOpen] = useState(false);
   const [profileNotifications, setProfileNotifications] = useState<
     ProfileNotification[]
   >([]);
@@ -339,6 +351,25 @@ export default function ChatConversationPage() {
           setSendError({ message: "图片任务信息损坏，请重新提交。" });
         }
       }
+      // Issue 32：首页提交的视频任务载荷（消费即删除，防 StrictMode 双发）。
+      const rawVideo = sessionStorage.getItem(chatVideoKey(conversationId));
+      sessionStorage.removeItem(chatVideoKey(conversationId));
+      let videoPayload: VideoRequestPayload | undefined;
+      if (rawVideo) {
+        try {
+          const parsed: unknown = JSON.parse(rawVideo);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "prompt" in parsed &&
+            typeof (parsed as { prompt: unknown }).prompt === "string"
+          ) {
+            videoPayload = parsed as VideoRequestPayload;
+          }
+        } catch {
+          setSendError({ message: "视频任务信息损坏，请重新提交。" });
+        }
+      }
       sendingRef.current = true;
       void sendMessage(
         prompt,
@@ -347,7 +378,8 @@ export default function ChatConversationPage() {
         rawNoProfile ? false : true,
         skillId,
         skillInput,
-        imagePayload
+        imagePayload,
+        videoPayload
       );
     }
   }, [loadState, conversation, conversationId]);
@@ -379,6 +411,7 @@ export default function ChatConversationPage() {
             humanizerProcess: null,
             careerProcess: null,
             imageProcess: null,
+            videoProcess: null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -423,6 +456,16 @@ export default function ChatConversationPage() {
             };
             setActiveRun((run) => (run ? { ...run, imageProcess: event.data } : run));
           }
+        } else if (isChatStreamEventOf(event, "video")) {
+          // Issue 32：视频任务状态事件（提交即下发 queued 快照）；任务卡
+          // 在流式期间即时呈现，终态由 done 后权威历史的消息投影接管。
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            activeRunRef.current = {
+              ...activeRunRef.current,
+              videoProcess: event.data,
+            };
+            setActiveRun((run) => (run ? { ...run, videoProcess: event.data } : run));
+          }
         } else if (isChatStreamEventOf(event, "profile")) {
           // 画像通知即时展示：已持久化并按账户隔离；重试轮次会重新下发
           // 同一份通知，本地按 notification_id 去重。
@@ -459,6 +502,7 @@ export default function ChatConversationPage() {
               humanizerProcess: current?.humanizerProcess ?? null,
               careerProcess: current?.careerProcess ?? null,
               imageProcess: current?.imageProcess ?? null,
+              videoProcess: current?.videoProcess ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -487,7 +531,8 @@ export default function ChatConversationPage() {
       useProfile: boolean = true,
       skillId?: string,
       skillInput?: unknown,
-      image?: ImageRequestPayload
+      image?: ImageRequestPayload,
+      video?: VideoRequestPayload
     ): Promise<boolean> => {
       setSendError(null);
       setProfileNotifications([]);
@@ -514,7 +559,9 @@ export default function ChatConversationPage() {
           skillId,
           skillInput,
           // Issue 31：图片生成/编辑载荷（图片对话框走真实消息流程）
-          image
+          image,
+          // Issue 32：文生视频载荷（视频对话框走真实消息流程）
+          video
         );
         return true;
       } catch (error) {
@@ -584,6 +631,16 @@ export default function ChatConversationPage() {
           : {}),
       };
       return sendMessage(payload.prompt, [], true, true, undefined, undefined, imagePayload);
+    },
+    [sendMessage]
+  );
+
+  /** Issue 32：提交文生视频任务（真实消息流：video 载荷创建异步任务，
+   *  状态卡与资产卡在消息流中呈现，不在此处伪造视频结果）。 */
+  const handleVideoSubmit = useCallback(
+    async (payload: { prompt: string }): Promise<boolean> => {
+      const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
+      return sendMessage(payload.prompt, [], true, true, undefined, undefined, undefined, videoPayload);
     },
     [sendMessage]
   );
@@ -777,6 +834,7 @@ export default function ChatConversationPage() {
       humanizerProcess: activeRun.humanizerProcess,
       careerProcess: activeRun.careerProcess,
       image: activeRun.imageProcess?.task ?? undefined,
+      video: activeRun.videoProcess?.task ?? undefined,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -876,6 +934,8 @@ export default function ChatConversationPage() {
                     onOpenCareer={() => setCareerOpen(true)}
                     onOpenImage={() => setImageOpen(true)}
                     image={speechAvailability(speechCapabilities, "image", "图片生成与编辑")}
+                    onOpenVideo={() => setVideoOpen(true)}
+                    video={speechAvailability(speechCapabilities, "video", "视频生成")}
                     asr={speechAvailability(speechCapabilities, "asr", "语音转写")}
                   />
                 </div>
@@ -902,6 +962,11 @@ export default function ChatConversationPage() {
         assets={imageAssets}
         attachmentOptions={imageAttachmentOptions(threadMessages)}
         onSubmit={handleImageSubmit}
+      />
+      <VideoDialog
+        open={videoOpen}
+        onClose={() => setVideoOpen(false)}
+        onSubmit={handleVideoSubmit}
       />
     </AppShell>
   );

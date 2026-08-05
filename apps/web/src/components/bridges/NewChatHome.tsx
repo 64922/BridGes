@@ -10,7 +10,8 @@ import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import { ImageDialog } from "@/components/bridges/ImageDialog";
-import type { HumanizerSkillInput, ImageTaskKind } from "@/lib/api";
+import { VideoDialog } from "@/components/bridges/VideoDialog";
+import type { HumanizerSkillInput, ImageTaskKind, VideoRequestPayload } from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
 import {
@@ -19,6 +20,7 @@ import {
   chatNoProfileKey,
   chatPromptKey,
   chatSkillKey,
+  chatVideoKey,
 } from "@/lib/chat-flow";
 import { ApiError, createChatConversation, updateChatConversationProject } from "@/lib/api";
 
@@ -67,6 +69,7 @@ export function NewChatHome() {
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
 
   /** Issue 29：首页提交生涯规划任务——先建对话，暂存问题后跳转对话页
    *  自动发送（真实消息流；画像开关语义与 Composer 一致）。 */
@@ -108,6 +111,27 @@ export function NewChatHome() {
       preparedConversationRef.current = conversationId;
       sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
       sessionStorage.setItem(chatImageKey(conversationId), JSON.stringify(payload));
+      router.push(`/chat/${conversationId}`);
+      return true;
+    } catch (error) {
+      setSendError({
+        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
+        code: error instanceof ApiError ? error.code : undefined,
+      });
+      return false;
+    }
+  };
+
+  /** Issue 32：首页提交视频任务——先建对话，暂存 video 载荷后跳转对话页自动发送。 */
+  const handleVideoSubmit = async (payload: { prompt: string }): Promise<boolean> => {
+    try {
+      const conversationId =
+        preparedConversationRef.current ??
+        (await createChatConversation(undefined, mode)).conversation_id;
+      preparedConversationRef.current = conversationId;
+      const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
+      sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
+      sessionStorage.setItem(chatVideoKey(conversationId), JSON.stringify(videoPayload));
       router.push(`/chat/${conversationId}`);
       return true;
     } catch (error) {
@@ -212,6 +236,7 @@ export function NewChatHome() {
                 onOpenHumanizer={() => setHumanizerOpen(true)}
                 onOpenCareer={() => setCareerOpen(true)}
                 onOpenImage={() => setImageOpen(true)}
+                onOpenVideo={() => setVideoOpen(true)}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
@@ -252,6 +277,11 @@ export function NewChatHome() {
         assets={[]}
         attachmentOptions={[]}
         onSubmit={handleImageSubmit}
+      />
+      <VideoDialog
+        open={videoOpen}
+        onClose={() => setVideoOpen(false)}
+        onSubmit={handleVideoSubmit}
       />
     </AppShell>
   );

@@ -27,3 +27,8 @@ export function chatNoProfileKey(conversationId: string): string {
 export function chatImageKey(conversationId: string): string {
   return `bridges:chat:image:${conversationId}`;
 }
+
+/** Issue 32：首页提交视频任务时暂存的视频请求载荷（对话页消费后删除）。 */
+export function chatVideoKey(conversationId: string): string {
+  return `bridges:chat:video:${conversationId}`;
+}

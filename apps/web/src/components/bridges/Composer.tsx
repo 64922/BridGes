@@ -10,6 +10,7 @@ import {
   CHAT_TOOL_INTENTS,
   HUMANIZER_TOOL_LABEL,
   IMAGE_TOOL_LABEL,
+  VIDEO_TOOL_LABEL,
 } from "@/lib/chat-tools";
 import {
   cancelChatAttachment,
@@ -60,6 +61,10 @@ interface ComposerProps {
   onOpenImage?: () => void;
   /** Issue 31：图片生成与编辑能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   image?: CapabilityAvailability;
+  /** Issue 32：打开「视频生成」任务对话框（由宿主渲染对话框）。 */
+  onOpenVideo?: () => void;
+  /** Issue 32：视频生成能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
+  video?: CapabilityAvailability;
   /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   asr?: CapabilityAvailability;
 }
@@ -104,6 +109,8 @@ export function Composer({
   onOpenCareer,
   onOpenImage,
   image = { available: true },
+  onOpenVideo,
+  video = { available: true },
   asr = { available: true },
 }: ComposerProps) {
   const [text, setText] = useState("");
@@ -956,7 +963,20 @@ export function Composer({
                           setToolNotice("");
                           onOpenImage?.();
                         }
-                      : () => insertToolPrefix(tool.prefix),
+                      : tool.label === VIDEO_TOOL_LABEL && onOpenVideo
+                        ? () => {
+                            // Issue 32：视频能力不可用时入口明确停用并说明
+                            // 原因（探测快照；服务端仍做权威校验）。
+                            if (!video.available) {
+                              setToolNotice(
+                                video.reason ?? "视频生成能力当前不可用。"
+                              );
+                              return;
+                            }
+                            setToolNotice("");
+                            onOpenVideo?.();
+                          }
+                        : () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
             ...(onSelectLearningProject

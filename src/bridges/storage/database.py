@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 19
+SCHEMA_VERSION = 20
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -993,6 +993,63 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         ALTER TABLE messages ADD COLUMN image TEXT
+        """,
+    ],
+    # Issue 32：文生视频纵向链路（ADR-0007：Wan 是矩阵唯一非 Qwen 系列
+    # 例外）。video_tasks 是可恢复异步任务状态机（后台执行器按租约领取并
+    # 轮询 DashScope 云端任务；取消后迟到结果经条件发布隔离，不进入对话
+    # 或资产库）；video_assets 是账户隔离的本地资产（提示/模型/供应商
+    # 任务标识/说明文字快照，单个对象无版本链——视频生成不提供编辑）；
+    # messages.video 列保存助手消息上的任务/资产状态快照，刷新与重启后
+    # 可恢复查询。
+    20: [
+        """
+        CREATE TABLE IF NOT EXISTS video_tasks (
+            task_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            message_id TEXT,
+            prompt TEXT NOT NULL,
+            cloud_task_id TEXT,
+            status TEXT NOT NULL DEFAULT 'queued',
+            lease_expires_at TEXT,
+            claimed_at TEXT,
+            poll_count INTEGER NOT NULL DEFAULT 0,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error_code TEXT,
+            error_message TEXT,
+            model_id TEXT,
+            asset_id TEXT,
+            result_object_id TEXT,
+            cancelled_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_video_tasks_account_status
+            ON video_tasks(account_id, status)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS video_assets (
+            asset_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            description TEXT NOT NULL DEFAULT '',
+            description_source TEXT NOT NULL DEFAULT 'prompt',
+            object_id TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            model_id TEXT,
+            cloud_task_id TEXT,
+            media_type TEXT NOT NULL,
+            content_length INTEGER NOT NULL DEFAULT 0,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        ALTER TABLE messages ADD COLUMN video TEXT
         """,
     ],
 }

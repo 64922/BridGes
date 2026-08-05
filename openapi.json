@@ -23723,6 +23723,729 @@
         }
       }
     },
+    "/chat/conversations/{conversation_id}/video-tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Get Video Task",
+        "description": "返回任务投影（刷新/重登/重启后据此恢复任务状态）。\n\n呈现状态含 recovery（租约过期、后台恢复中）与 cancelling（取消\n收敛中）；不存在或跨账户一律 404。",
+        "operationId": "get_video_task_chat_conversations__conversation_id__video_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/video-tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Cancel Video Task",
+        "description": "取消任务：本地标记为「取消中」，worker 收敛为已取消；迟到结果不发布。\n\n已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。",
+        "operationId": "cancel_video_task_chat_conversations__conversation_id__video_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/video-tasks/{task_id}/retry": {
+      "post": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Retry Video Task",
+        "description": "重试失败任务：同输入（提示不变）重新入队，固定同一快照。\n\n重试需要视频能力仍可用（能力不可用时入口明确拒绝并说明原因）。",
+        "operationId": "retry_video_task_chat_conversations__conversation_id__video_tasks__task_id__retry_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoTaskProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/video-assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Get Video Asset",
+        "description": "返回资产投影：可访问文字说明、提示、模型、供应商任务标识与时间。",
+        "operationId": "get_video_asset_chat_conversations__conversation_id__video_assets__asset_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoAssetProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Delete Video Asset",
+        "description": "删除资产并返回影响说明：移除对象数、更新的消息引用与对象处置状态。\n\n删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理\n失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，\n可观察可恢复；幂等，已删除资产返回零计数投影。",
+        "operationId": "delete_video_asset_chat_conversations__conversation_id__video_assets__asset_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoDeletionProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/video-assets/{asset_id}/description": {
+      "put": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Update Video Description",
+        "description": "修改资产可访问文字说明（来源标记为 manual，替代提示词默认值）。",
+        "operationId": "update_video_description_chat_conversations__conversation_id__video_assets__asset_id__description_put",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VideoDescriptionUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VideoAssetProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/video-assets/{asset_id}/video": {
+      "get": {
+        "tags": [
+          "video"
+        ],
+        "summary": "Get Video Bytes",
+        "description": "返回视频字节（流式，账户授权校验 + 私有缓存头）。\n\n``download=1`` 时附加附件下载头；默认内联预览。跨账户或已删除\n资产一律 404；缓存私有化杜绝跨账户缓存复用。",
+        "operationId": "get_video_bytes_chat_conversations__conversation_id__video_assets__asset_id__video_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Download"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "视频字节流（内联预览或附件下载）。",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "video/mp4": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -26992,6 +27715,17 @@
               }
             ],
             "description": "图片生成/编辑请求载荷（Issue 31）；携带时本轮创建图片异步任务而非普通回答。"
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文生视频请求载荷（Issue 32）；携带时本轮创建视频异步任务而非普通回答。"
           }
         },
         "type": "object",
@@ -27152,6 +27886,17 @@
               }
             ],
             "description": "助手消息的图片任务/资产状态快照（Issue 31）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。"
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoTaskProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "助手消息的视频任务/资产状态快照（Issue 32）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。"
           },
           "read_aloud": {
             "anyOf": [
@@ -27626,6 +28371,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatStreamImageData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamVideoData"
               }
             ],
             "title": "Data",
@@ -27640,7 +28388,8 @@
                 "humanizer": "#/components/schemas/ChatStreamHumanizerData",
                 "image": "#/components/schemas/ChatStreamImageData",
                 "profile": "#/components/schemas/ChatStreamProfileData",
-                "started": "#/components/schemas/ChatStreamStartedData"
+                "started": "#/components/schemas/ChatStreamStartedData",
+                "video": "#/components/schemas/ChatStreamVideoData"
               }
             }
           }
@@ -27663,7 +28412,8 @@
           "profile",
           "humanizer",
           "career",
-          "image"
+          "image",
+          "video"
         ],
         "title": "ChatStreamEventKind",
         "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"
@@ -27863,6 +28613,32 @@
         ],
         "title": "ChatStreamStartedData",
         "description": "started 事件载荷：消息已落库、生成开始，附带初始思考摘要。"
+      },
+      "ChatStreamVideoData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "video",
+            "title": "Kind",
+            "default": "video"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "task": {
+            "$ref": "#/components/schemas/VideoTaskProjection",
+            "description": "任务状态快照。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "task"
+        ],
+        "title": "ChatStreamVideoData",
+        "description": "video 事件载荷：驱动消息内视频任务卡（Issue 32）。\n\n任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器\n写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影\n是快照，刷新与重启后可恢复查询）。"
       },
       "ChatThinkingSummary": {
         "properties": {
@@ -49570,6 +50346,310 @@
         ],
         "title": "VersionDifferenceField",
         "description": "Fields that can differ between two expression artifact versions."
+      },
+      "VideoAssetProjection": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id",
+            "description": "资产标识。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "可访问文字说明（可修改）。",
+            "default": ""
+          },
+          "description_source": {
+            "$ref": "#/components/schemas/VideoDescriptionSource",
+            "description": "说明文字来源。",
+            "default": "prompt"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "账户对象库中的视频对象标识。"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "本资产使用的提示词。"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "本资产使用的固定视频模型快照（运行锁实际标识）。"
+          },
+          "cloud_task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cloud Task Id",
+            "description": "供应商（DashScope）任务标识，用于追溯。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "视频媒体类型。"
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "视频字节数。"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "description": "资产已删除（消息投影维护）。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "资产创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新（含说明修改）时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "object_id",
+          "prompt",
+          "media_type",
+          "content_length",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VideoAssetProjection",
+        "description": "视频资产的公开投影：说明文字、模型/供应商快照与对象指针。\n\n每个成功任务恰好产生一个视频对象；资产与任务一一对应，无版本链\n（视频生成不提供编辑）。``cloud_task_id`` 是供应商任务标识，用于\n追溯真实云端任务。"
+      },
+      "VideoDeletionProjection": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id",
+            "description": "已删除的资产标识。"
+          },
+          "removed_objects": {
+            "type": "integer",
+            "title": "Removed Objects",
+            "description": "实际移除的对象数量（0 或 1）。"
+          },
+          "updated_messages": {
+            "type": "integer",
+            "title": "Updated Messages",
+            "description": "引用该资产的助手消息投影更新数量。"
+          },
+          "object_status": {
+            "type": "string",
+            "title": "Object Status",
+            "description": "对象处置：cleaned（已物理清理）或 pending_cleanup（待清理轮重试）。"
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At",
+            "description": "删除完成时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "removed_objects",
+          "updated_messages",
+          "object_status",
+          "deleted_at"
+        ],
+        "title": "VideoDeletionProjection",
+        "description": "删除资产的影响说明与结果（幂等：已删除资产返回零计数）。"
+      },
+      "VideoDescriptionSource": {
+        "type": "string",
+        "enum": [
+          "prompt",
+          "manual"
+        ],
+        "title": "VideoDescriptionSource",
+        "description": "可访问文字说明来源：提示词确定性生成 / 用户手动修改。"
+      },
+      "VideoDescriptionUpdateRequest": {
+        "properties": {
+          "description": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Description",
+            "description": "新的可访问文字说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "description"
+        ],
+        "title": "VideoDescriptionUpdateRequest",
+        "description": "修改可访问文字说明的请求。"
+      },
+      "VideoRequestPayload": {
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "视频生成要求。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "VideoRequestPayload",
+        "description": "文生视频请求（Issue 32）。\n\n只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与当前\n账户百炼密钥（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），\n界面不提供模型选择。请求只携带提示词，不携带完整项目目录、画像\n或任何账户秘密。"
+      },
+      "VideoTaskProjection": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id",
+            "description": "任务标识。"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "用户提交的生成要求（用于追溯与前端展示）。"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "实际使用的固定视频模型快照（Wan 例外）。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/VideoTaskStatus",
+            "description": "当前呈现状态。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "稳定错误码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "失败后是否可原样重试同一输入。",
+            "default": false
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id",
+            "description": "结果归属资产标识。"
+          },
+          "result_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Object Id",
+            "description": "成功时创建的资产对象标识。"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "description": "资产已被删除（消息引用维护：删除资产时标记，前端据此显示已删除状态，不再请求资产详情）。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "任务创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近状态更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "prompt",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "VideoTaskProjection",
+        "description": "一次视频任务的公开投影；不包含视频字节与账户信息。\n\n消息的 ``video`` 列直接保存同一投影：进行中渲染任务卡（状态芯片 +\n取消/重试），成功后前端据此拉取资产详情渲染资产卡。"
+      },
+      "VideoTaskStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "submitting",
+          "generating",
+          "recovery",
+          "succeeded",
+          "failed",
+          "cancelling",
+          "cancelled"
+        ],
+        "title": "VideoTaskStatus",
+        "description": "视频任务的呈现状态。\n\n- ``queued``：已提交，等待后台执行器领取；\n- ``submitting``：已领取，正在向供应商提交云端任务；\n- ``generating``：云端任务已接受，正在轮询生成；\n- ``recovery``：处理被中断（租约过期），后台正在恢复重领；\n- ``succeeded``：真实模型结果已落为账户资产；\n- ``failed``：失败，error_code/error_message 说明原因，可重试；\n- ``cancelling``：用户已发起取消，worker 正在收敛（尽力通知云端）；\n- ``cancelled``：已取消；迟到结果不会发布为成功资产。"
       },
       "VisualObject": {
         "properties": {
