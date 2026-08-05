@@ -1,7 +1,11 @@
 "use client";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
-import { CHAT_TOOL_INTENTS, HUMANIZER_TOOL_LABEL } from "@/lib/chat-tools";
+import {
+  CAREER_TOOL_LABEL,
+  CHAT_TOOL_INTENTS,
+  HUMANIZER_TOOL_LABEL,
+} from "@/lib/chat-tools";
 
 export interface SuggestionCard {
   icon: IconName;
@@ -37,13 +41,15 @@ interface SuggestionCardsProps {
   onPrefill: (prefill: string) => void;
   /** Issue 28：「文章人味化」卡片打开真实任务对话框（不再只是预填）。 */
   onHumanizer?: () => void;
+  /** Issue 29：「生涯规划助手」卡片打开真实任务对话框（不再只是预填）。 */
+  onCareer?: () => void;
 }
 
 /**
  * 建议卡列表：真实按钮，键盘可达；悬停与焦点有过渡反馈，
  * 长文案在窄列内折行，不破坏桌面布局。
  */
-export function SuggestionCards({ onPrefill, onHumanizer }: SuggestionCardsProps) {
+export function SuggestionCards({ onPrefill, onHumanizer, onCareer }: SuggestionCardsProps) {
   return (
     <ul
       role="list"
@@ -66,6 +72,8 @@ export function SuggestionCards({ onPrefill, onHumanizer }: SuggestionCardsProps
             onClick={() => {
               if (card.label === HUMANIZER_TOOL_LABEL && onHumanizer) {
                 onHumanizer();
+              } else if (card.label === CAREER_TOOL_LABEL && onCareer) {
+                onCareer();
               } else {
                 onPrefill(card.prefill);
               }

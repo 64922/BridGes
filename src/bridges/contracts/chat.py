@@ -14,6 +14,10 @@ from typing import Annotated, Any, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.contracts.career import (
+    CareerPlanningProcessState,
+    CareerPlanningProjection,
+)
 from bridges.contracts.humanizer import (
     HumanizerProcessState,
     HumanizerResultProjection,
@@ -219,6 +223,10 @@ class ChatMessageProjection(BaseModel):
         default=None,
         description="助手消息的 bridges-humanizer 结果投影（Issue 28）；非人味化消息为 None。",
     )
+    career_planning: CareerPlanningProjection | None = Field(
+        default=None,
+        description="助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。",
+    )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
     duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
@@ -366,6 +374,7 @@ class ChatStreamEventKind(StrEnum):
     DONE = "done"
     PROFILE = "profile"
     HUMANIZER = "humanizer"
+    CAREER = "career"
 
 
 class ChatStreamStartedData(BaseModel):
@@ -469,6 +478,24 @@ class ChatStreamHumanizerData(BaseModel):
     )
 
 
+class ChatStreamCareerData(BaseModel):
+    """career 事件载荷：驱动生涯规划过程卡五态（Issue 29）。
+
+    loading/empty/error/permission/recovery 五态的中文状态与当前步骤
+    说明由此载荷下发；终态由 done 事件携带完整规划投影。
+    """
+
+    kind: Literal["career"] = "career"
+    message_id: str = Field(description="助手消息标识。")
+    state: CareerPlanningProcessState = Field(description="过程卡状态。")
+    step_label: str = Field(description="当前步骤中文说明。")
+    detail: str | None = Field(default=None, description="补充中文说明。")
+    retryable: bool = Field(default=False, description="是否可重试。")
+    progress_steps: list[str] = Field(
+        default_factory=list, description="已完成的步骤中文轨迹。"
+    )
+
+
 class ChatStreamEvent(BaseModel):
     """一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
 
@@ -484,6 +511,7 @@ class ChatStreamEvent(BaseModel):
         | ChatStreamErrorData
         | ChatStreamDoneData
         | ChatStreamProfileData
-        | ChatStreamHumanizerData,
+        | ChatStreamHumanizerData
+        | ChatStreamCareerData,
         Field(discriminator="kind", description="事件载荷。"),
     ] = Field(description="事件载荷。")

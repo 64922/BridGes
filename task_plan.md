@@ -2,6 +2,105 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 29 实施计划（交付生涯规划助手）
+
+状态：已完成（2026-08-05）。全量验证：1616 pytest（+71 新增：career 意图
+检测/复核/服务 48 条 + 聊天集成 13 条 + 审查回归 10 条）、6 条 issue29 E2E、
+全量 E2E 187 通过（issue04/08 为既有环境 flake、issue13/14 并行 flake 串行
+通过）、mypy 206 文件 0 错误、改动区域 ruff 干净、npm typecheck/build 通过。
+双轴 code-review 修复：承诺词否定剥离跨词（「不构成…保证」误伤）与边界
+声明漏扫（正向承诺藏匿）、意图检测过宽劫持普通聊天（「考研英语怎么复习」
+误触发，改分级关键词+语境词）、过时机制不可达（画像/学习记录改用记录更新
+时间，旧记录真实标注）、假设缺核查方式无确定性门、非可重试错误显示必败
+重试按钮、前后端意图规则分叉（前端补关键词表）、私有函数跨模块导入、
+死参数清理、aria-controls/反馈表单自动聚焦。Issue 29 验收状态已更新为
+ready-for-human。
+前置依赖：Issue 23（教学门）、27（切片披露与反馈）、28（humanizer）均已
+交付；探索完成：生成链分支点（skill 载荷/humanizer、mode/teaching）、
+compile_chat_slice、LearningService 学习记录、retrieval.run_round、
+answer_feedback 反馈闭环、scoped() 账户隔离全部可复用。
+
+### 目标
+在既有两种对话模式中，按"明确生涯规划意图"触发真实可保存、可恢复、可追溯的
+规划对话：只使用当前账户授权的画像切片、学习记录、用户陈述与可追溯证据，输出
+固定结构化的已知事实/待验证假设/可选方向/关键风险/分阶段成长路径/近期学习建议
+六类内容加自然中文正文；事实带可定位来源与核查时间，证据不足明确说明未知与
+下一步核查；自然表达受 bridges-humanizer 规则约束（事实与推测分离、限定条件
+保留），但绝不作就业/薪酬/录取保证、不基于单次情绪/敏感身份猜测/未确认候选；
+用户可逐项反馈（事实/假设/建议），反馈进入既有画像治理闭环而非静默覆盖；
+模型/检索/画像不可用时给出可恢复错误与安全替代步骤，不输出模板化假成功。
+
+### 新增模块
+1. `contracts/career.py` — CareerIntent(六类输出契约：CareerFact/CareerAssumption/
+   CareerOption/CareerRisk/CareerStage/CareerSuggestion 各带 item_id/内容/证据引用/
+   核查时间/状态)、CareerPlanningOutputContract（final_text+六类+boundary_statement
+   +完整性门）、CareerEvidenceSource（画像/学习记录/检索/联网/用户陈述五类来源，
+   带 accessed_at 核查时间与 locator）、CareerPlanningProjection（status/plan_id/
+   intent/六类/evidence_sources/profile_used/process_state/error_code...）、
+   CareerPlanningProcessState 五态(loading/empty/error/permission/recovery)
+2. `career/intent.py` — 确定性生涯规划意图检测器：显式前缀"生涯规划助手："必中；
+   关键词表（职业规划/生涯规划/就业方向/求职/转行/职业发展/选专业/考研/考公/
+   找实习/职业选择/晋升路径/职业目标）；否定式防护（不要/不用/别…不触发）；
+   与 humanizer skill 载荷互斥（skill 分支优先）
+3. `career/service.py` — CareerPlannerService：意图检测 → 画像切片编译（复用
+   ProfileService.compile_chat_slice，按当前对话模式维度映射）→ 学习记录读取
+   （复用 LearningService：使命/知识状态/学习记录）→ 本地检索 run_round + 时效性
+   关键词触发 DuckDuckGo/arXiv → 证据集合 → Qwen 结构化生成六类输出（prompt 含
+   humanizer 表达规则与边界禁令）→ 确定性复核（事实证据门：无证据引用降级为
+   假设或标注未核实；承诺词检查：保证/包过/包就业等阻断；引用核验：不在证据
+   清单标记未核实；输出合同完整性门）→ 投影；失败可重试不丢输入
+
+### 修改
+4. `contracts/chat.py` — ChatMessageProjection.career_planning；ChatStreamEventKind.
+   CAREER + ChatStreamCareerData（过程事件：五态+step_label+progress_steps）
+5. `contracts/observability.py` — AuditAction.CAREER_PLANNING_GENERATED（details
+   只含 item 数/证据数/切片 ID，不含正文）
+6. `contracts/feedback.py` — AnswerFeedbackRequest.career_item_ref（可选，逐项
+   反馈定位到六类条目；幂等去重键扩展）
+7. `storage/database.py` — SCHEMA_VERSION 17：messages 加 career_planning JSON 列
+8. `chat/repository.py` — MessageRecord.career_planning；insert/get/update_
+   message_career_planning；find_duplicate_feedback 带 career_item_ref
+9. `chat/service.py` — stream_generation 意图检测 → _stream_career_planning 分支
+   （检索/联网/切片/生成/复核/落库/SSE 事件，模式与 _stream_humanizer 一致）；
+   retry 重新检测意图沿用；_project_message 映射 career_planning；
+   submit_feedback 支持 career_item_ref
+10. `api/chat.py` — send/retry 后 SSE 透传 CAREER 事件
+11. `api/main.py` — learning_service 挂载提前，CareerPlannerService 挂载（gateway/
+    profile_service/learning_service/retrieval/web_search/arxiv/observability），
+    ChatService 构造接入
+12. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：AI-Native 风格、六类分区结果卡、五态过程卡）
+13. chat-tools.ts："生涯规划助手"由预填改为打开 CareerPlanningDialog（两模式"+"菜单
+    与建议卡共用，原创 career 图标已存在）
+14. CareerPlanningDialog（新）— 生涯问题输入 + 画像使用开关 + 提交走真实 send
+15. CareerPlanningProcessCard — 五态中文过程卡（loading/empty/error/permission/
+    recovery）
+16. CareerPlanningResultCard — 可展开结果卡：六类分区（事实/假设/方向/风险/路径/
+    建议，各带核查时间与来源）、证据列表（可打开原文/URL）、画像披露链接、
+    边界声明、逐项反馈（事实/假设/建议各条目"反馈"入口走既有反馈 API）
+17. api.ts streamChatMessage 支持；chat-thread.tsx/MessageList 渲染 career 卡；
+    page.tsx 事件处理
+
+### 测试
+18. `tests/career/` — 意图检测矩阵（前缀/关键词/否定/误触发防护/与 skill 互斥）；
+    六类输出合同完整性门；事实证据门（无证据降级/未核实标注）；承诺词边界阻断；
+    引用核验；确定性复核规则（固定语料）
+19. `tests/chat/test_career_planning_chat.py` — 真实消息流集成（可编程结构化适配器）：
+    started→career 过程事件→done 六类投影；重试不丢输入；无画像/拒绝画像（off 态
+    披露）/敏感推断排除/证据冲突/过时来源/模型失败（error 可恢复不假成功）；
+    两账户隔离（缓存/引用/反馈不串号）；逐项反馈幂等与画像治理闭环
+20. E2E issue29 — 两模式"+"菜单与建议卡入口、对话框提交、五态过程卡、六类分区
+    结果卡、查看依据（来源+核查时间）、逐项反馈、画像关闭、失败恢复重试、
+    键盘路径
+
+### 收尾
+21. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review 双轴审查并
+    修复；更新 Issue 29 验收状态；提交（工作内容+bug 修复两部分提交信息）
+
+
+
+
 ## Issue 28 实施计划（原创净室 bridges-humanizer SKILL）
 
 状态：已完成（2026-08-05）。全量验证：1545 pytest（+46 新增：skills 注册表、

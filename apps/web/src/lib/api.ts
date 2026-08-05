@@ -37,6 +37,22 @@ export type HumanizerEdit = components["schemas"]["HumanizerEdit"];
 export type HumanizerSkillInput = components["schemas"]["HumanizerSkillInput"];
 export type HumanizerTaskContract = components["schemas"]["HumanizerTaskContract"];
 export type HumanizerPath = components["schemas"]["HumanizerPath"];
+// Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
+export type CareerPlanningProjection = components["schemas"]["CareerPlanningProjection"];
+export type CareerPlanningProcessState = components["schemas"]["CareerPlanningProcessState"];
+export type CareerPlanningStatus = components["schemas"]["CareerPlanningStatus"];
+export type CareerPlanningOutputContract = components["schemas"]["CareerPlanningOutputContract"];
+export type CareerEvidenceSource = components["schemas"]["CareerEvidenceSource"];
+export type CareerEvidenceKind = components["schemas"]["CareerEvidenceKind"];
+export type CareerItemState = components["schemas"]["CareerItemState"];
+export type CareerFact = components["schemas"]["CareerFact"];
+export type CareerAssumption = components["schemas"]["CareerAssumption"];
+export type CareerOption = components["schemas"]["CareerOption"];
+export type CareerRisk = components["schemas"]["CareerRisk"];
+export type CareerStage = components["schemas"]["CareerStage"];
+export type CareerSuggestion = components["schemas"]["CareerSuggestion"];
+export type CareerReviewResult = components["schemas"]["CareerReviewResult"];
+export type ChatStreamCareerData = components["schemas"]["ChatStreamCareerData"];
 export type DocumentIngestionProjection = components["schemas"]["DocumentIngestionProjection"];
 export type KnowledgeBaseMaterialProjection = components["schemas"]["KnowledgeBaseMaterialProjection"];
 export type IngestionStatus = components["schemas"]["IngestionStatus"];
@@ -1222,7 +1238,8 @@ export async function streamChatMessage(
   await readSseStream(res, onEvent);
 }
 
-/** 提交一条回答反馈（Issue 27）：回答不合适或画像有误（幂等，不丢反馈）。 */
+/** 提交一条回答反馈（Issue 27）：回答不合适或画像有误（幂等，不丢反馈）。
+ *  Issue 29：``career_item_ref`` 把反馈定位到生涯规划结果的具体条目。 */
 export async function submitAnswerFeedback(
   conversationId: string,
   messageId: string,
@@ -1231,6 +1248,7 @@ export async function submitAnswerFeedback(
     feedback_text: string;
     preference?: string | null;
     assertion_id?: string | null;
+    career_item_ref?: string | null;
   }
 ): Promise<AnswerFeedback> {
   const res = await fetch(

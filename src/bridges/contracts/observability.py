@@ -53,6 +53,7 @@ class AuditAction(str, Enum):
     ANSWER_FEEDBACK = "answer_feedback"
     FEEDBACK_RESOLVED = "feedback_resolved"
     HUMANIZER_GENERATE = "humanizer_generate"
+    CAREER_PLANNING_GENERATED = "career_planning_generated"
     KEY_SAVE = "key_save"
     KEY_DELETE = "key_delete"
     KEY_PROBE = "key_probe"

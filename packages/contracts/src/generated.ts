@@ -5342,6 +5342,11 @@ export interface components {
              * @description 定位的画像记录（可选）。
              */
             assertion_id?: string | null;
+            /**
+             * Career Item Ref
+             * @description 定位的生涯规划条目标识（可选）。
+             */
+            career_item_ref?: string | null;
             /** @description 反馈生命周期状态。 */
             status: components["schemas"]["FeedbackStatus"];
             /**
@@ -5368,9 +5373,11 @@ export interface components {
          *
          *     ``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、
          *     ``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时
-         *     ``assertion_id`` 定位到使用的画像记录（来自上下文说明披露）。
-         *     同一账户对同一消息的相同反馈（kind + assertion_id + 文本）幂等去重，
-         *     失败重试不会产生重复记录。
+         *     ``assertion_id`` 定位到使用的画像记录（来自上下文说明）。
+         *     ``career_item_ref`` 可把反馈定位到生涯规划结果的具体条目
+         *     （如 ``fact:1``/``assumption:2``/``suggestion:3``，来自生涯规划结果卡）。
+         *     同一账户对同一消息的相同反馈（kind + assertion_id + career_item_ref +
+         *     文本）幂等去重，失败重试不会产生重复记录。
          */
         AnswerFeedbackRequest: {
             /** @description 反馈类别。 */
@@ -5390,6 +5397,11 @@ export interface components {
              * @description 画像有误时定位的画像记录标识（来自上下文说明）。
              */
             assertion_id?: string | null;
+            /**
+             * Career Item Ref
+             * @description 生涯规划结果的具体条目标识（逐项反馈定位，如 fact:1）。
+             */
+            career_item_ref?: string | null;
         };
         /**
          * ApplyRevisionPatchRequest
@@ -6026,6 +6038,471 @@ export interface components {
             source_version?: string | null;
         };
         /**
+         * CareerAssumption
+         * @description 待验证假设：说明下一步核查方式，不得包装成结论。
+         */
+        CareerAssumption: {
+            /**
+             * Item Id
+             * @description 稳定条目标识（供逐项反馈定位，如 fact:1）。
+             */
+            item_id: string;
+            /**
+             * Content
+             * @description 条目内容（自然中文，事实与推测分离）。
+             */
+            content: string;
+            /**
+             * Evidence Refs
+             * @description 引用的证据标识（可空，复核会标记状态）。
+             */
+            evidence_refs?: string[];
+            /**
+             * Note
+             * @description 补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。
+             */
+            note?: string | null;
+            /**
+             * Verified At
+             * @description 本条核查时间（服务端复核时填充）。
+             */
+            verified_at?: string | null;
+            /**
+             * Verification Next Step
+             * @description 下一步核查方式（查什么来源、如何验证）。
+             */
+            verification_next_step?: string | null;
+        };
+        /**
+         * CareerEvidenceKind
+         * @description 生涯规划可使用的证据类别（全部按当前账户授权）。
+         * @enum {string}
+         */
+        CareerEvidenceKind: "profile_slice" | "learning_record" | "retrieval" | "web_search" | "arxiv" | "user_statement";
+        /**
+         * CareerEvidenceSource
+         * @description 一条可追溯证据：可定位来源 + 核查时间。
+         *
+         *     ``accessed_at`` 是该来源本次读取/搜索/编译的核查时间；涉及岗位、教育
+         *     路径、资格、行业趋势等会变化的信息时，条目必须引用本模型才能获得
+         *     verified 状态。私人原文不复制，只保留标题/定位/摘要快照。
+         */
+        CareerEvidenceSource: {
+            /**
+             * Evidence Id
+             * @description 稳定证据标识（供条目 evidence_refs 引用）。
+             */
+            evidence_id: string;
+            /** @description 证据类别。 */
+            kind: components["schemas"]["CareerEvidenceKind"];
+            /**
+             * Title
+             * @description 来源标题或文件名。
+             */
+            title: string;
+            /**
+             * Locator
+             * @description 定位：页码/章节/网址/对话消息等。
+             */
+            locator?: string | null;
+            /**
+             * Url
+             * @description 可打开来源链接（联网来源）。
+             */
+            url?: string | null;
+            /**
+             * Summary
+             * @description 可验证片段摘要（截断，不复制完整私人原文）。
+             */
+            summary?: string | null;
+            /**
+             * Accessed At
+             * Format: date-time
+             * @description 本次核查时间。
+             */
+            accessed_at: string;
+            /**
+             * Stale
+             * @description 来源已超过新鲜度阈值（默认 90 天），引用其的条目应标注过时。
+             * @default false
+             */
+            stale: boolean;
+        };
+        /**
+         * CareerFact
+         * @description 已知事实：必须带可定位来源与核查时间，否则复核标记未核实。
+         */
+        CareerFact: {
+            /**
+             * Item Id
+             * @description 稳定条目标识（供逐项反馈定位，如 fact:1）。
+             */
+            item_id: string;
+            /**
+             * Content
+             * @description 条目内容（自然中文，事实与推测分离）。
+             */
+            content: string;
+            /**
+             * Evidence Refs
+             * @description 引用的证据标识（可空，复核会标记状态）。
+             */
+            evidence_refs?: string[];
+            /**
+             * Note
+             * @description 补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。
+             */
+            note?: string | null;
+            /**
+             * Verified At
+             * @description 本条核查时间（服务端复核时填充）。
+             */
+            verified_at?: string | null;
+        };
+        /**
+         * CareerItemState
+         * @description 条目证据状态（确定性复核结果，前端展示标签）。
+         * @enum {string}
+         */
+        CareerItemState: "verified" | "unverified" | "conflicted" | "outdated";
+        /**
+         * CareerOption
+         * @description 可选方向：带依据说明，不暗示唯一正确选择。
+         */
+        CareerOption: {
+            /**
+             * Item Id
+             * @description 稳定条目标识（供逐项反馈定位，如 fact:1）。
+             */
+            item_id: string;
+            /**
+             * Content
+             * @description 条目内容（自然中文，事实与推测分离）。
+             */
+            content: string;
+            /**
+             * Evidence Refs
+             * @description 引用的证据标识（可空，复核会标记状态）。
+             */
+            evidence_refs?: string[];
+            /**
+             * Note
+             * @description 补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。
+             */
+            note?: string | null;
+            /**
+             * Verified At
+             * @description 本条核查时间（服务端复核时填充）。
+             */
+            verified_at?: string | null;
+            /**
+             * Rationale
+             * @description 该方向成立的主要依据。
+             */
+            rationale?: string | null;
+        };
+        /**
+         * CareerPlanningOutputContract
+         * @description 生涯规划的模型输出合同（六类 + 正文 + 边界声明 + 未决问题）。
+         *
+         *     完整性门：``final_text`` 与 ``boundary_statement`` 非空，且六类中至少
+         *     一个类别有内容，否则不标记完成（缺一不完成）。
+         */
+        CareerPlanningOutputContract: {
+            /**
+             * Final Text
+             * @description 自然中文整体正文（含开场与引导追问）。
+             */
+            final_text: string;
+            /**
+             * Facts
+             * @description 已知事实（须带证据与核查时间）。
+             */
+            facts?: components["schemas"]["CareerFact"][];
+            /**
+             * Assumptions
+             * @description 待验证假设。
+             */
+            assumptions?: components["schemas"]["CareerAssumption"][];
+            /**
+             * Options
+             * @description 可选方向。
+             */
+            options?: components["schemas"]["CareerOption"][];
+            /**
+             * Risks
+             * @description 关键风险。
+             */
+            risks?: components["schemas"]["CareerRisk"][];
+            /**
+             * Path
+             * @description 分阶段成长路径。
+             */
+            path?: components["schemas"]["CareerStage"][];
+            /**
+             * Suggestions
+             * @description 近期学习建议。
+             */
+            suggestions?: components["schemas"]["CareerSuggestion"][];
+            /**
+             * Boundary Statement
+             * @description 保证边界声明：不作就业/薪酬/录取保证，不替代持证顾问。
+             */
+            boundary_statement: string;
+            /**
+             * Open Questions
+             * @description 证据缺口与未决问题（含下一步核查方式）。
+             */
+            open_questions?: string[];
+        };
+        /**
+         * CareerPlanningProcessState
+         * @description 生涯规划过程卡状态（与 humanizer 五态一致，另加 done）。
+         *
+         *     - ``loading``：进行中；
+         *     - ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；
+         *     - ``error``：不可重试错误；
+         *     - ``permission``：凭据/能力未就绪；
+         *     - ``recovery``：可重试错误；
+         *     - ``done``：完成。
+         * @enum {string}
+         */
+        CareerPlanningProcessState: "loading" | "empty" | "error" | "permission" | "recovery" | "done";
+        /**
+         * CareerPlanningProjection
+         * @description 一条助手消息的生涯规划结果投影（按账户隔离持久化）。
+         *
+         *     刷新、退出重登与应用重启后由同一账户从消息历史恢复；其他账户不可读。
+         */
+        CareerPlanningProjection: {
+            /**
+             * Plan Id
+             * @description 稳定规划标识（与助手消息绑定）。
+             */
+            plan_id: string;
+            /**
+             * Intent
+             * @description 用户原始生涯问题（截断）。
+             */
+            intent: string;
+            /** @description 终态。 */
+            status: components["schemas"]["CareerPlanningStatus"];
+            /**
+             * Profile Enabled
+             * @description 发送前是否启用了画像使用。
+             */
+            profile_enabled: boolean;
+            /**
+             * Profile Used
+             * @description 本轮是否实际使用了画像切片。
+             */
+            profile_used: boolean;
+            /**
+             * Verified At
+             * Format: date-time
+             * @description 整体核查时间（复核完成时间）。
+             */
+            verified_at: string;
+            /** @description 交付的六类输出合同；失败/阻断时为 None。 */
+            output?: components["schemas"]["CareerPlanningOutputContract"] | null;
+            /**
+             * Evidence Sources
+             * @description 本轮使用的全部证据（含核查时间）。
+             */
+            evidence_sources?: components["schemas"]["CareerEvidenceSource"][];
+            /** @description 确定性复核结论（降级/未核实/冲突/过时/边界）。 */
+            review?: components["schemas"]["CareerReviewResult"] | null;
+            /** @description 过程卡状态。 */
+            process_state: components["schemas"]["CareerPlanningProcessState"];
+            /**
+             * Process Steps
+             * @description 已完成的步骤中文轨迹。
+             */
+            process_steps?: string[];
+            /**
+             * Error Code
+             * @description 失败分类码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作中文错误说明（含安全替代步骤）。
+             */
+            error_message?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at: string;
+        };
+        /**
+         * CareerPlanningStatus
+         * @description 一条规划消息的终态。
+         * @enum {string}
+         */
+        CareerPlanningStatus: "done" | "error";
+        /**
+         * CareerReviewItem
+         * @description 一条确定性复核结果（事实证据门/引用核验/过时/冲突标注）。
+         */
+        CareerReviewItem: {
+            /**
+             * Item Id
+             * @description 被复核的条目标识。
+             */
+            item_id: string;
+            /**
+             * Category
+             * @description 类别：facts/assumptions/options/risks/path/suggestions。
+             */
+            category: string;
+            /** @description 复核后的证据状态。 */
+            state: components["schemas"]["CareerItemState"];
+            /**
+             * Reason
+             * @description 中文原因说明。
+             */
+            reason: string;
+        };
+        /**
+         * CareerReviewResult
+         * @description 生涯规划输出复核结论。
+         *
+         *     ``passed`` 为 False 表示存在阻断性边界违反（如就业/薪酬/录取承诺），
+         *     此时不得交付规划正文，消息进入可恢复错误态。
+         */
+        CareerReviewResult: {
+            /**
+             * Passed
+             * @description 是否可交付。
+             */
+            passed: boolean;
+            /**
+             * Reviews
+             * @description 逐条复核结果。
+             */
+            reviews?: components["schemas"]["CareerReviewItem"][];
+            /**
+             * Boundary Violations
+             * @description 阻断性边界违反（承诺词命中原文片段）。
+             */
+            boundary_violations?: string[];
+            /**
+             * Warnings
+             * @description 非阻断提示（如引用缺失/关系未说明）。
+             */
+            warnings?: string[];
+        };
+        /**
+         * CareerRisk
+         * @description 关键风险：带触发条件与影响，不作确定预言。
+         */
+        CareerRisk: {
+            /**
+             * Item Id
+             * @description 稳定条目标识（供逐项反馈定位，如 fact:1）。
+             */
+            item_id: string;
+            /**
+             * Content
+             * @description 条目内容（自然中文，事实与推测分离）。
+             */
+            content: string;
+            /**
+             * Evidence Refs
+             * @description 引用的证据标识（可空，复核会标记状态）。
+             */
+            evidence_refs?: string[];
+            /**
+             * Note
+             * @description 补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。
+             */
+            note?: string | null;
+            /**
+             * Verified At
+             * @description 本条核查时间（服务端复核时填充）。
+             */
+            verified_at?: string | null;
+            /**
+             * Trigger
+             * @description 风险的触发条件或情景。
+             */
+            trigger?: string | null;
+        };
+        /**
+         * CareerStage
+         * @description 分阶段成长路径中的一步。
+         */
+        CareerStage: {
+            /**
+             * Item Id
+             * @description 稳定条目标识（供逐项反馈定位，如 fact:1）。
+             */
+            item_id: string;
+            /**
+             * Content
+             * @description 条目内容（自然中文，事实与推测分离）。
+             */
+            content: string;
+            /**
+             * Evidence Refs
+             * @description 引用的证据标识（可空，复核会标记状态）。
+             */
+            evidence_refs?: string[];
+            /**
+             * Note
+             * @description 补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。
+             */
+            note?: string | null;
+            /**
+             * Verified At
+             * @description 本条核查时间（服务端复核时填充）。
+             */
+            verified_at?: string | null;
+            /**
+             * Timeline
+             * @description 建议时间范围（如「第 1-3 个月」）。
+             */
+            timeline?: string | null;
+        };
+        /**
+         * CareerSuggestion
+         * @description 近期学习建议：带验证方式，不替代持证职业顾问。
+         */
+        CareerSuggestion: {
+            /**
+             * Item Id
+             * @description 稳定条目标识（供逐项反馈定位，如 fact:1）。
+             */
+            item_id: string;
+            /**
+             * Content
+             * @description 条目内容（自然中文，事实与推测分离）。
+             */
+            content: string;
+            /**
+             * Evidence Refs
+             * @description 引用的证据标识（可空，复核会标记状态）。
+             */
+            evidence_refs?: string[];
+            /**
+             * Note
+             * @description 补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。
+             */
+            note?: string | null;
+            /**
+             * Verified At
+             * @description 本条核查时间（服务端复核时填充）。
+             */
+            verified_at?: string | null;
+            /**
+             * Verification
+             * @description 如何验证该建议是否适合自己。
+             */
+            verification?: string | null;
+        };
+        /**
          * ChartDataColumn
          * @description Schema of one column in chart source data.
          */
@@ -6484,6 +6961,8 @@ export interface components {
             } | null;
             /** @description 助手消息的 bridges-humanizer 结果投影（Issue 28）；非人味化消息为 None。 */
             humanizer?: components["schemas"]["HumanizerResultProjection"] | null;
+            /** @description 助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。 */
+            career_planning?: components["schemas"]["CareerPlanningProjection"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -6602,6 +7081,48 @@ export interface components {
             message: components["schemas"]["ChatMessageProjection"];
         };
         /**
+         * ChatStreamCareerData
+         * @description career 事件载荷：驱动生涯规划过程卡五态（Issue 29）。
+         *
+         *     loading/empty/error/permission/recovery 五态的中文状态与当前步骤
+         *     说明由此载荷下发；终态由 done 事件携带完整规划投影。
+         */
+        ChatStreamCareerData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "career";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 过程卡状态。 */
+            state: components["schemas"]["CareerPlanningProcessState"];
+            /**
+             * Step Label
+             * @description 当前步骤中文说明。
+             */
+            step_label: string;
+            /**
+             * Detail
+             * @description 补充中文说明。
+             */
+            detail?: string | null;
+            /**
+             * Retryable
+             * @description 是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Progress Steps
+             * @description 已完成的步骤中文轨迹。
+             */
+            progress_steps?: string[];
+        };
+        /**
          * ChatStreamDeltaData
          * @description delta 事件载荷：一段增量正文。
          */
@@ -6707,14 +7228,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer";
+        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。

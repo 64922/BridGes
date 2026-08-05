@@ -61,6 +61,7 @@ class MessageRecord:
     teaching: dict[str, Any] | None = None
     context_note: dict[str, Any] | None = None
     skill: dict[str, Any] | None = None
+    career_planning: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -291,8 +292,9 @@ class ConversationRepository:
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                    " web_search, arxiv_search, teaching, context_note, skill)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " web_search, arxiv_search, teaching, context_note, skill,"
+                    " career_planning)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -314,6 +316,9 @@ class ConversationRepository:
                         _json_dumps(record.teaching) if record.teaching else None,
                         _json_dumps(record.context_note) if record.context_note else None,
                         _json_dumps(record.skill) if record.skill else None,
+                        _json_dumps(record.career_planning)
+                        if record.career_planning
+                        else None,
                     ),
                 )
         except StorageError:
@@ -336,8 +341,9 @@ class ConversationRepository:
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                        " web_search, arxiv_search, teaching, context_note, skill)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " web_search, arxiv_search, teaching, context_note, skill,"
+                        " career_planning)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -359,6 +365,9 @@ class ConversationRepository:
                             _json_dumps(record.teaching) if record.teaching else None,
                             _json_dumps(record.context_note) if record.context_note else None,
                             _json_dumps(record.skill) if record.skill else None,
+                            _json_dumps(record.career_planning)
+                            if record.career_planning
+                            else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -399,7 +408,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill"
+            " teaching, context_note, skill, career_planning"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -412,7 +421,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill"
+            " teaching, context_note, skill, career_planning"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -533,6 +542,26 @@ class ConversationRepository:
                 "UPDATE messages SET skill = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(humanizer), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_career_planning(
+        self,
+        account_id: str,
+        message_id: str,
+        career_planning: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """落库生涯规划结果投影（Issue 29）；只允许写入仍在生成的助手消息。
+
+        结果投影在终态前写入（career_planning 列），终态收敛不会覆盖；
+        重试新尝试携带各自的结果投影。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET career_planning = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(career_planning), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -693,9 +722,9 @@ class ConversationRepository:
                 self._db.scoped(feedback.account_id).execute(
                     "INSERT INTO answer_feedback"
                     "(feedback_id, account_id, conversation_id, message_id, kind,"
-                    " feedback_text, preference, assertion_id, status, resolution_note,"
-                    " created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " feedback_text, preference, assertion_id, career_item_ref,"
+                    " status, resolution_note, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         feedback.feedback_id,
                         feedback.account_id,
@@ -705,6 +734,7 @@ class ConversationRepository:
                         feedback.feedback_text,
                         feedback.preference,
                         feedback.assertion_id,
+                        feedback.career_item_ref,
                         feedback.status.value,
                         feedback.resolution_note,
                         _iso(feedback.created_at),
@@ -721,21 +751,24 @@ class ConversationRepository:
         message_id: str,
         kind: FeedbackKind,
         assertion_id: str | None,
+        career_item_ref: str | None,
         feedback_text: str,
     ) -> AnswerFeedback | None:
         """幂等去重：同一账户对同一消息的相同反馈只保留一条。"""
         row = self._db.scoped(account_id).execute(
             "SELECT feedback_id, account_id, conversation_id, message_id, kind,"
-            " feedback_text, preference, assertion_id, status, resolution_note,"
-            " created_at, updated_at"
+            " feedback_text, preference, assertion_id, career_item_ref, status,"
+            " resolution_note, created_at, updated_at"
             " FROM answer_feedback WHERE account_id = ? AND message_id = ?"
-            " AND kind = ? AND assertion_id IS ? AND feedback_text = ?"
+            " AND kind = ? AND assertion_id IS ? AND career_item_ref IS ?"
+            " AND feedback_text = ?"
             " ORDER BY created_at DESC LIMIT 1",
             (
                 account_id,
                 message_id,
                 kind.value,
                 assertion_id,
+                career_item_ref,
                 feedback_text,
             ),
         ).fetchone()
@@ -749,8 +782,8 @@ class ConversationRepository:
         """按对话列出该账户的反馈，最新在前（供前端恢复与闭环查看）。"""
         rows = self._db.scoped(account_id).execute(
             "SELECT feedback_id, account_id, conversation_id, message_id, kind,"
-            " feedback_text, preference, assertion_id, status, resolution_note,"
-            " created_at, updated_at"
+            " feedback_text, preference, assertion_id, career_item_ref, status,"
+            " resolution_note, created_at, updated_at"
             " FROM answer_feedback WHERE account_id = ? AND conversation_id = ?"
             " ORDER BY created_at DESC",
             (account_id, conversation_id),
@@ -760,8 +793,8 @@ class ConversationRepository:
     def get_feedback(self, account_id: str, feedback_id: str) -> AnswerFeedback | None:
         row = self._db.scoped(account_id).execute(
             "SELECT feedback_id, account_id, conversation_id, message_id, kind,"
-            " feedback_text, preference, assertion_id, status, resolution_note,"
-            " created_at, updated_at"
+            " feedback_text, preference, assertion_id, career_item_ref, status,"
+            " resolution_note, created_at, updated_at"
             " FROM answer_feedback WHERE feedback_id = ? AND account_id = ?",
             (feedback_id, account_id),
         ).fetchone()
@@ -802,6 +835,11 @@ class ConversationRepository:
             ),
             assertion_id=(
                 str(row["assertion_id"]) if row["assertion_id"] is not None else None
+            ),
+            career_item_ref=(
+                str(row["career_item_ref"])
+                if row["career_item_ref"] is not None
+                else None
             ),
             status=FeedbackStatus(str(row["status"])),
             resolution_note=(
@@ -868,6 +906,7 @@ class ConversationRepository:
             teaching=_json_loads_any(row["teaching"]),
             context_note=_json_loads_any(row["context_note"]),
             skill=_json_loads_any(row["skill"]),
+            career_planning=_json_loads_any(row["career_planning"]),
         )
 
 

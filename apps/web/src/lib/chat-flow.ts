@@ -17,3 +17,8 @@ export function chatAttachmentKey(conversationId: string): string {
 export function chatSkillKey(conversationId: string): string {
   return `bridges:chat:skill:${conversationId}`;
 }
+
+/** Issue 29：首页提交生涯规划时暂存的「关闭画像」标记（对话页消费后删除）。 */
+export function chatNoProfileKey(conversationId: string): string {
+  return `bridges:chat:no-profile:${conversationId}`;
+}

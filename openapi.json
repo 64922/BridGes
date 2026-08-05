@@ -23267,6 +23267,18 @@
             "title": "Assertion Id",
             "description": "定位的画像记录（可选）。"
           },
+          "career_item_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Career Item Ref",
+            "description": "定位的生涯规划条目标识（可选）。"
+          },
           "status": {
             "$ref": "#/components/schemas/FeedbackStatus",
             "description": "反馈生命周期状态。"
@@ -23348,6 +23360,19 @@
             ],
             "title": "Assertion Id",
             "description": "画像有误时定位的画像记录标识（来自上下文说明）。"
+          },
+          "career_item_ref": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 40
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Career Item Ref",
+            "description": "生涯规划结果的具体条目标识（逐项反馈定位，如 fact:1）。"
           }
         },
         "type": "object",
@@ -23356,7 +23381,7 @@
           "feedback_text"
         ],
         "title": "AnswerFeedbackRequest",
-        "description": "提交一条对某条助手消息的反馈。\n\n``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、\n``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时\n``assertion_id`` 定位到使用的画像记录（来自上下文说明披露）。\n同一账户对同一消息的相同反馈（kind + assertion_id + 文本）幂等去重，\n失败重试不会产生重复记录。"
+        "description": "提交一条对某条助手消息的反馈。\n\n``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、\n``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时\n``assertion_id`` 定位到使用的画像记录（来自上下文说明）。\n``career_item_ref`` 可把反馈定位到生涯规划结果的具体条目\n（如 ``fact:1``/``assumption:2``/``suggestion:3``，来自生涯规划结果卡）。\n同一账户对同一消息的相同反馈（kind + assertion_id + career_item_ref +\n文本）幂等去重，失败重试不会产生重复记录。"
       },
       "ApplyRevisionPatchRequest": {
         "properties": {
@@ -24345,6 +24370,778 @@
         "title": "CaptionTrack",
         "description": "Timed caption track for an audio or video asset."
       },
+      "CareerAssumption": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "稳定条目标识（供逐项反馈定位，如 fact:1）。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "条目内容（自然中文，事实与推测分离）。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "引用的证据标识（可空，复核会标记状态）。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At",
+            "description": "本条核查时间（服务端复核时填充）。"
+          },
+          "verification_next_step": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification Next Step",
+            "description": "下一步核查方式（查什么来源、如何验证）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "content"
+        ],
+        "title": "CareerAssumption",
+        "description": "待验证假设：说明下一步核查方式，不得包装成结论。"
+      },
+      "CareerEvidenceKind": {
+        "type": "string",
+        "enum": [
+          "profile_slice",
+          "learning_record",
+          "retrieval",
+          "web_search",
+          "arxiv",
+          "user_statement"
+        ],
+        "title": "CareerEvidenceKind",
+        "description": "生涯规划可使用的证据类别（全部按当前账户授权）。"
+      },
+      "CareerEvidenceSource": {
+        "properties": {
+          "evidence_id": {
+            "type": "string",
+            "title": "Evidence Id",
+            "description": "稳定证据标识（供条目 evidence_refs 引用）。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CareerEvidenceKind",
+            "description": "证据类别。"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "来源标题或文件名。"
+          },
+          "locator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Locator",
+            "description": "定位：页码/章节/网址/对话消息等。"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "可打开来源链接（联网来源）。"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary",
+            "description": "可验证片段摘要（截断，不复制完整私人原文）。"
+          },
+          "accessed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Accessed At",
+            "description": "本次核查时间。"
+          },
+          "stale": {
+            "type": "boolean",
+            "title": "Stale",
+            "description": "来源已超过新鲜度阈值（默认 90 天），引用其的条目应标注过时。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "evidence_id",
+          "kind",
+          "title",
+          "accessed_at"
+        ],
+        "title": "CareerEvidenceSource",
+        "description": "一条可追溯证据：可定位来源 + 核查时间。\n\n``accessed_at`` 是该来源本次读取/搜索/编译的核查时间；涉及岗位、教育\n路径、资格、行业趋势等会变化的信息时，条目必须引用本模型才能获得\nverified 状态。私人原文不复制，只保留标题/定位/摘要快照。"
+      },
+      "CareerFact": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "稳定条目标识（供逐项反馈定位，如 fact:1）。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "条目内容（自然中文，事实与推测分离）。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "引用的证据标识（可空，复核会标记状态）。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At",
+            "description": "本条核查时间（服务端复核时填充）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "content"
+        ],
+        "title": "CareerFact",
+        "description": "已知事实：必须带可定位来源与核查时间，否则复核标记未核实。"
+      },
+      "CareerItemState": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "unverified",
+          "conflicted",
+          "outdated"
+        ],
+        "title": "CareerItemState",
+        "description": "条目证据状态（确定性复核结果，前端展示标签）。"
+      },
+      "CareerOption": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "稳定条目标识（供逐项反馈定位，如 fact:1）。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "条目内容（自然中文，事实与推测分离）。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "引用的证据标识（可空，复核会标记状态）。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At",
+            "description": "本条核查时间（服务端复核时填充）。"
+          },
+          "rationale": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rationale",
+            "description": "该方向成立的主要依据。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "content"
+        ],
+        "title": "CareerOption",
+        "description": "可选方向：带依据说明，不暗示唯一正确选择。"
+      },
+      "CareerPlanningOutputContract": {
+        "properties": {
+          "final_text": {
+            "type": "string",
+            "title": "Final Text",
+            "description": "自然中文整体正文（含开场与引导追问）。"
+          },
+          "facts": {
+            "items": {
+              "$ref": "#/components/schemas/CareerFact"
+            },
+            "type": "array",
+            "title": "Facts",
+            "description": "已知事实（须带证据与核查时间）。"
+          },
+          "assumptions": {
+            "items": {
+              "$ref": "#/components/schemas/CareerAssumption"
+            },
+            "type": "array",
+            "title": "Assumptions",
+            "description": "待验证假设。"
+          },
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/CareerOption"
+            },
+            "type": "array",
+            "title": "Options",
+            "description": "可选方向。"
+          },
+          "risks": {
+            "items": {
+              "$ref": "#/components/schemas/CareerRisk"
+            },
+            "type": "array",
+            "title": "Risks",
+            "description": "关键风险。"
+          },
+          "path": {
+            "items": {
+              "$ref": "#/components/schemas/CareerStage"
+            },
+            "type": "array",
+            "title": "Path",
+            "description": "分阶段成长路径。"
+          },
+          "suggestions": {
+            "items": {
+              "$ref": "#/components/schemas/CareerSuggestion"
+            },
+            "type": "array",
+            "title": "Suggestions",
+            "description": "近期学习建议。"
+          },
+          "boundary_statement": {
+            "type": "string",
+            "title": "Boundary Statement",
+            "description": "保证边界声明：不作就业/薪酬/录取保证，不替代持证顾问。"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Questions",
+            "description": "证据缺口与未决问题（含下一步核查方式）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "final_text",
+          "boundary_statement"
+        ],
+        "title": "CareerPlanningOutputContract",
+        "description": "生涯规划的模型输出合同（六类 + 正文 + 边界声明 + 未决问题）。\n\n完整性门：``final_text`` 与 ``boundary_statement`` 非空，且六类中至少\n一个类别有内容，否则不标记完成（缺一不完成）。"
+      },
+      "CareerPlanningProcessState": {
+        "type": "string",
+        "enum": [
+          "loading",
+          "empty",
+          "error",
+          "permission",
+          "recovery",
+          "done"
+        ],
+        "title": "CareerPlanningProcessState",
+        "description": "生涯规划过程卡状态（与 humanizer 五态一致，另加 done）。\n\n- ``loading``：进行中；\n- ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；\n- ``error``：不可重试错误；\n- ``permission``：凭据/能力未就绪；\n- ``recovery``：可重试错误；\n- ``done``：完成。"
+      },
+      "CareerPlanningProjection": {
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id",
+            "description": "稳定规划标识（与助手消息绑定）。"
+          },
+          "intent": {
+            "type": "string",
+            "title": "Intent",
+            "description": "用户原始生涯问题（截断）。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/CareerPlanningStatus",
+            "description": "终态。"
+          },
+          "profile_enabled": {
+            "type": "boolean",
+            "title": "Profile Enabled",
+            "description": "发送前是否启用了画像使用。"
+          },
+          "profile_used": {
+            "type": "boolean",
+            "title": "Profile Used",
+            "description": "本轮是否实际使用了画像切片。"
+          },
+          "verified_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Verified At",
+            "description": "整体核查时间（复核完成时间）。"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CareerPlanningOutputContract"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "交付的六类输出合同；失败/阻断时为 None。"
+          },
+          "evidence_sources": {
+            "items": {
+              "$ref": "#/components/schemas/CareerEvidenceSource"
+            },
+            "type": "array",
+            "title": "Evidence Sources",
+            "description": "本轮使用的全部证据（含核查时间）。"
+          },
+          "review": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CareerReviewResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "确定性复核结论（降级/未核实/冲突/过时/边界）。"
+          },
+          "process_state": {
+            "$ref": "#/components/schemas/CareerPlanningProcessState",
+            "description": "过程卡状态。"
+          },
+          "process_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Process Steps",
+            "description": "已完成的步骤中文轨迹。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作中文错误说明（含安全替代步骤）。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "intent",
+          "status",
+          "profile_enabled",
+          "profile_used",
+          "verified_at",
+          "process_state",
+          "created_at"
+        ],
+        "title": "CareerPlanningProjection",
+        "description": "一条助手消息的生涯规划结果投影（按账户隔离持久化）。\n\n刷新、退出重登与应用重启后由同一账户从消息历史恢复；其他账户不可读。"
+      },
+      "CareerPlanningStatus": {
+        "type": "string",
+        "enum": [
+          "done",
+          "error"
+        ],
+        "title": "CareerPlanningStatus",
+        "description": "一条规划消息的终态。"
+      },
+      "CareerReviewItem": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "被复核的条目标识。"
+          },
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "类别：facts/assumptions/options/risks/path/suggestions。"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CareerItemState",
+            "description": "复核后的证据状态。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "中文原因说明。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "category",
+          "state",
+          "reason"
+        ],
+        "title": "CareerReviewItem",
+        "description": "一条确定性复核结果（事实证据门/引用核验/过时/冲突标注）。"
+      },
+      "CareerReviewResult": {
+        "properties": {
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "是否可交付。"
+          },
+          "reviews": {
+            "items": {
+              "$ref": "#/components/schemas/CareerReviewItem"
+            },
+            "type": "array",
+            "title": "Reviews",
+            "description": "逐条复核结果。"
+          },
+          "boundary_violations": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Boundary Violations",
+            "description": "阻断性边界违反（承诺词命中原文片段）。"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Warnings",
+            "description": "非阻断提示（如引用缺失/关系未说明）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passed"
+        ],
+        "title": "CareerReviewResult",
+        "description": "生涯规划输出复核结论。\n\n``passed`` 为 False 表示存在阻断性边界违反（如就业/薪酬/录取承诺），\n此时不得交付规划正文，消息进入可恢复错误态。"
+      },
+      "CareerRisk": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "稳定条目标识（供逐项反馈定位，如 fact:1）。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "条目内容（自然中文，事实与推测分离）。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "引用的证据标识（可空，复核会标记状态）。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At",
+            "description": "本条核查时间（服务端复核时填充）。"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger",
+            "description": "风险的触发条件或情景。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "content"
+        ],
+        "title": "CareerRisk",
+        "description": "关键风险：带触发条件与影响，不作确定预言。"
+      },
+      "CareerStage": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "稳定条目标识（供逐项反馈定位，如 fact:1）。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "条目内容（自然中文，事实与推测分离）。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "引用的证据标识（可空，复核会标记状态）。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At",
+            "description": "本条核查时间（服务端复核时填充）。"
+          },
+          "timeline": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Timeline",
+            "description": "建议时间范围（如「第 1-3 个月」）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "content"
+        ],
+        "title": "CareerStage",
+        "description": "分阶段成长路径中的一步。"
+      },
+      "CareerSuggestion": {
+        "properties": {
+          "item_id": {
+            "type": "string",
+            "title": "Item Id",
+            "description": "稳定条目标识（供逐项反馈定位，如 fact:1）。"
+          },
+          "content": {
+            "type": "string",
+            "title": "Content",
+            "description": "条目内容（自然中文，事实与推测分离）。"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs",
+            "description": "引用的证据标识（可空，复核会标记状态）。"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note",
+            "description": "补充说明：核查方式/证据关系/降级原因等（模型或复核填写）。"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At",
+            "description": "本条核查时间（服务端复核时填充）。"
+          },
+          "verification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verification",
+            "description": "如何验证该建议是否适合自己。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item_id",
+          "content"
+        ],
+        "title": "CareerSuggestion",
+        "description": "近期学习建议：带验证方式，不替代持证职业顾问。"
+      },
       "ChartDataColumn": {
         "properties": {
           "name": {
@@ -25145,6 +25942,17 @@
             ],
             "description": "助手消息的 bridges-humanizer 结果投影（Issue 28）；非人味化消息为 None。"
           },
+          "career_planning": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CareerPlanningProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。"
+          },
           "error_code": {
             "anyOf": [
               {
@@ -25350,6 +26158,64 @@
         "title": "ChatStopResponse",
         "description": "停止生成的结果投影。"
       },
+      "ChatStreamCareerData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "career",
+            "title": "Kind",
+            "default": "career"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "state": {
+            "$ref": "#/components/schemas/CareerPlanningProcessState",
+            "description": "过程卡状态。"
+          },
+          "step_label": {
+            "type": "string",
+            "title": "Step Label",
+            "description": "当前步骤中文说明。"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail",
+            "description": "补充中文说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "是否可重试。",
+            "default": false
+          },
+          "progress_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Progress Steps",
+            "description": "已完成的步骤中文轨迹。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "state",
+          "step_label"
+        ],
+        "title": "ChatStreamCareerData",
+        "description": "career 事件载荷：驱动生涯规划过程卡五态（Issue 29）。\n\nloading/empty/error/permission/recovery 五态的中文状态与当前步骤\n说明由此载荷下发；终态由 done 事件携带完整规划投影。"
+      },
       "ChatStreamDeltaData": {
         "properties": {
           "kind": {
@@ -25543,6 +26409,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatStreamHumanizerData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamCareerData"
               }
             ],
             "title": "Data",
@@ -25550,6 +26419,7 @@
             "discriminator": {
               "propertyName": "kind",
               "mapping": {
+                "career": "#/components/schemas/ChatStreamCareerData",
                 "delta": "#/components/schemas/ChatStreamDeltaData",
                 "done": "#/components/schemas/ChatStreamDoneData",
                 "error": "#/components/schemas/ChatStreamErrorData",
@@ -25576,7 +26446,8 @@
           "error",
           "done",
           "profile",
-          "humanizer"
+          "humanizer",
+          "career"
         ],
         "title": "ChatStreamEventKind",
         "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"

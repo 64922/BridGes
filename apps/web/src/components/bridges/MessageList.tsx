@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { copyTextToClipboard } from "@/lib/clipboard";
+import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type {
   ArxivSearchProjection,
   ChatAttachmentProjection,
@@ -14,10 +15,17 @@ import type {
   TeachingTurnProjection,
   WebSearchProjection,
 } from "@/lib/api";
-import type { ChatStreamHumanizerData, HumanizerResultProjection } from "@/lib/api";
+import type {
+  CareerPlanningProjection,
+  ChatStreamCareerData,
+  ChatStreamHumanizerData,
+  HumanizerResultProjection,
+} from "@/lib/api";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
+import { CareerPlanningProcessCard } from "./CareerPlanningProcessCard";
+import { CareerPlanningResultCard } from "./CareerPlanningResultCard";
 import { ContextNoteCard } from "./ContextNoteCard";
 import { HumanizerProcessCard } from "@/components/bridges/HumanizerProcessCard";
 import { HumanizerResultCard } from "@/components/bridges/HumanizerResultCard";
@@ -75,6 +83,10 @@ export interface ChatMessage {
   skill?: unknown;
   /** Issue 28：流式中的文章人味化过程卡状态（五态中文） */
   humanizerProcess?: ChatStreamHumanizerData | null;
+  /** Issue 29：生涯规划结果投影（助手消息）；非规划消息为 null */
+  careerPlanning?: CareerPlanningProjection | null;
+  /** Issue 29：流式中的生涯规划过程卡状态（五态中文） */
+  careerProcess?: ChatStreamCareerData | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -94,6 +106,15 @@ interface MessageListProps {
   onRetryIngestion?: (objectId: string) => Promise<void>;
   /** 附件所属对话（摄取详情接口的上下文） */
   conversationId?: string;
+}
+
+/** Issue 29：该轮是否为生涯规划意图（显式前缀或强触发关键词命中；
+ *  与后端 intent.py 规则保持一致，最终意图裁决以服务端确定性检测为准）。 */
+function isCareerMessage(message: ChatMessage): boolean {
+  return (
+    CAREER_INTENT_PREFIXES.some((prefix) => message.plainText.startsWith(prefix)) ||
+    CAREER_INTENT_KEYWORDS.some((keyword) => message.plainText.includes(keyword))
+  );
 }
 
 const actionButtonStyle: React.CSSProperties = {
@@ -705,6 +726,27 @@ export function MessageList({
                 {conversationId && message.humanizer != null && (
                   <HumanizerResultCard
                     result={message.humanizer}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* Issue 29：生涯规划过程卡（五态中文）——流式中渲染过程
+                    事件；终态由结果卡接管。 */}
+                {conversationId && (message.careerProcess != null || (message.careerPlanning == null && message.status === "streaming" && isCareerMessage(message))) && (
+                  <CareerPlanningProcessCard
+                    data={message.careerProcess ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* Issue 29：生涯规划结果卡（六类分区 + 证据 + 边界声明 +
+                    逐项反馈），终态后随历史加载稳定呈现。 */}
+                {conversationId && message.careerPlanning != null && (
+                  <CareerPlanningResultCard
+                    result={message.careerPlanning}
+                    conversationId={conversationId}
+                    messageId={message.id}
                     onRetry={() => onRetry?.(message.id)}
                   />
                 )}

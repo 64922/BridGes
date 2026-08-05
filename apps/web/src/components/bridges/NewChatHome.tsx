@@ -8,10 +8,16 @@ import { Composer } from "@/components/bridges/Composer";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
+import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import type { HumanizerSkillInput } from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
-import { chatAttachmentKey, chatPromptKey, chatSkillKey } from "@/lib/chat-flow";
+import {
+  chatAttachmentKey,
+  chatNoProfileKey,
+  chatPromptKey,
+  chatSkillKey,
+} from "@/lib/chat-flow";
 import { ApiError, createChatConversation, updateChatConversationProject } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -57,6 +63,33 @@ export function NewChatHome() {
   };
 
   const [humanizerOpen, setHumanizerOpen] = useState(false);
+  const [careerOpen, setCareerOpen] = useState(false);
+
+  /** Issue 29：首页提交生涯规划任务——先建对话，暂存问题后跳转对话页
+   *  自动发送（真实消息流；画像开关语义与 Composer 一致）。 */
+  const handleCareerSubmit = async (
+    content: string,
+    useProfile: boolean
+  ): Promise<boolean> => {
+    try {
+      const conversationId =
+        preparedConversationRef.current ??
+        (await createChatConversation(undefined, mode)).conversation_id;
+      preparedConversationRef.current = conversationId;
+      sessionStorage.setItem(chatPromptKey(conversationId), content);
+      if (!useProfile) {
+        sessionStorage.setItem(chatNoProfileKey(conversationId), "1");
+      }
+      router.push(`/chat/${conversationId}`);
+      return true;
+    } catch (error) {
+      setSendError({
+        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
+        code: error instanceof ApiError ? error.code : undefined,
+      });
+      return false;
+    }
+  };
 
   /** Issue 28：首页提交人味化任务——先建对话，暂存 SKILL 载荷后跳转对话页自动发送。 */
   const handleHumanizerSubmit = async (
@@ -149,6 +182,7 @@ export function NewChatHome() {
                 learningProject={learningProject}
                 onSelectLearningProject={setLearningProject}
                 onOpenHumanizer={() => setHumanizerOpen(true)}
+                onOpenCareer={() => setCareerOpen(true)}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
@@ -161,6 +195,7 @@ export function NewChatHome() {
                   setPrefill({ text, nonce: prefillCounter.current });
                 }}
                 onHumanizer={() => setHumanizerOpen(true)}
+                onCareer={() => setCareerOpen(true)}
               />
               <p className={styles.blankStateNote}>
                 BridGes 的回答会标注依据与来源；重要内容请核对引用。
@@ -174,6 +209,12 @@ export function NewChatHome() {
         onClose={() => setHumanizerOpen(false)}
         ensureConversation={ensureConversation}
         onSubmit={(content, skillInput) => handleHumanizerSubmit(content, skillInput)}
+      />
+      <CareerPlanningDialog
+        open={careerOpen}
+        onClose={() => setCareerOpen(false)}
+        ensureConversation={ensureConversation}
+        onSubmit={handleCareerSubmit}
       />
     </AppShell>
   );

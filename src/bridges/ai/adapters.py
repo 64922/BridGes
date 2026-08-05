@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from bridges.contracts.ai import CapabilityRecord, ModelRunLock
-from bridges.contracts.chat import ChatStreamHumanizerData
+from bridges.contracts.chat import ChatStreamCareerData, ChatStreamHumanizerData
 from bridges.contracts.workflows import RunContextEnvelope
 
 
@@ -156,8 +156,9 @@ class StreamEvent:
     """网关对外产出的流式事件：增量、成功或失败（含运行锁）。
 
     ``lock`` 在 done/error 事件上必填；delta 事件上为 None。``humanizer``
-    只由人味化编排路径（Issue 28）产出：携带过程卡五态载荷，与 delta/
-    done/error 同一事件流。
+    只由人味化编排路径（Issue 28）产出：携带过程卡五态载荷；``career``
+    只由生涯规划编排路径（Issue 29）产出：携带规划过程卡五态载荷，
+    均与 delta/done/error 同一事件流。
     """
 
     kind: str = "delta"
@@ -167,6 +168,7 @@ class StreamEvent:
     lock: ModelRunLock | None = None
     usage: dict[str, Any] | None = field(default=None, repr=False)
     humanizer: ChatStreamHumanizerData | None = field(default=None, repr=False)
+    career: ChatStreamCareerData | None = field(default=None, repr=False)
 
 
 class StreamingCapabilityAdapter(Protocol):

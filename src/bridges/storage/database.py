@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 16
+SCHEMA_VERSION = 17
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -900,6 +900,17 @@ MIGRATIONS: dict[int, list[str]] = {
     16: [
         """
         ALTER TABLE messages ADD COLUMN skill TEXT
+        """,
+    ],
+    # Issue 29: 生涯规划助手结果投影（六类输出/证据/复核/过程状态），
+    # 与 skill 列同语义：助手消息携带规划结果快照，重试沿用原输入；
+    # 回答反馈增加 career_item_ref 列支持逐项反馈定位。
+    17: [
+        """
+        ALTER TABLE messages ADD COLUMN career_planning TEXT
+        """,
+        """
+        ALTER TABLE answer_feedback ADD COLUMN career_item_ref TEXT
         """,
     ],
 }

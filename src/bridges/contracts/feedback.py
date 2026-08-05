@@ -41,9 +41,11 @@ class AnswerFeedbackRequest(BaseModel):
 
     ``kind=answer_inappropriate`` 时 ``feedback_text`` 说明问题、
     ``preference`` 可给出希望的回答偏好；``kind=profile_incorrect`` 时
-    ``assertion_id`` 定位到使用的画像记录（来自上下文说明披露）。
-    同一账户对同一消息的相同反馈（kind + assertion_id + 文本）幂等去重，
-    失败重试不会产生重复记录。
+    ``assertion_id`` 定位到使用的画像记录（来自上下文说明）。
+    ``career_item_ref`` 可把反馈定位到生涯规划结果的具体条目
+    （如 ``fact:1``/``assumption:2``/``suggestion:3``，来自生涯规划结果卡）。
+    同一账户对同一消息的相同反馈（kind + assertion_id + career_item_ref +
+    文本）幂等去重，失败重试不会产生重复记录。
     """
 
     kind: FeedbackKind = Field(description="反馈类别。")
@@ -61,6 +63,11 @@ class AnswerFeedbackRequest(BaseModel):
         default=None,
         description="画像有误时定位的画像记录标识（来自上下文说明）。",
     )
+    career_item_ref: str | None = Field(
+        default=None,
+        max_length=40,
+        description="生涯规划结果的具体条目标识（逐项反馈定位，如 fact:1）。",
+    )
 
 
 class AnswerFeedback(BaseModel):
@@ -74,6 +81,9 @@ class AnswerFeedback(BaseModel):
     feedback_text: str = Field(description="反馈内容。")
     preference: str | None = Field(default=None, description="偏好修正（可选）。")
     assertion_id: str | None = Field(default=None, description="定位的画像记录（可选）。")
+    career_item_ref: str | None = Field(
+        default=None, description="定位的生涯规划条目标识（可选）。"
+    )
     status: FeedbackStatus = Field(description="反馈生命周期状态。")
     resolution_note: str | None = Field(
         default=None, description="已处理时的修正说明（可选）。"

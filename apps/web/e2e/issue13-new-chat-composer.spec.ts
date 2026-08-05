@@ -406,9 +406,11 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
       test.skip(true, "当前 API 实例未启用对话存储（BRIDGES_DATABASE_URL），跳过预检用例。");
     }
 
-    await page.getByTestId("suggestion-cards").getByRole("button", { name: "生涯规划助手" }).click();
+    // Issue 28/29：「文章人味化」「生涯规划助手」已改为打开真实任务对话框；
+    // 本用例语义是「预填后发送不跳过授权与审计」，改用仍预填的「论文搜索」卡。
+    await page.getByTestId("suggestion-cards").getByRole("button", { name: "论文搜索" }).click();
     const input = page.getByTestId("composer").getByLabel("输入消息");
-    await expect(input).toHaveValue(/^生涯规划助手：/);
+    await expect(input).toHaveValue(/^论文搜索：/);
     await input.type("研一如何安排论文阅读");
     await input.press("Enter");
 

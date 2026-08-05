@@ -3,7 +3,10 @@ import type {
   ChatThinking,
   ThreadModeEvent,
 } from "@/components/bridges/MessageList";
-import type { ChatMessageProjection, ChatModeEventProjection } from "@/lib/api";
+import type {
+  ChatMessageProjection,
+  ChatModeEventProjection,
+} from "@/lib/api";
 
 /**
  * 把服务端消息投影组装成线程渲染项（Issue 11/14）。
@@ -68,6 +71,8 @@ export function buildThreadMessages(
       // Issue 28：文章人味化结果投影（助手消息）与用户消息的 SKILL 载荷快照
       humanizer: latest.humanizer ?? null,
       skill: latest.skill ?? skillOfPreviousUser(items),
+      // Issue 29：生涯规划结果投影（助手消息）
+      careerPlanning: latest.career_planning ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({

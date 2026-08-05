@@ -38,11 +38,17 @@ import {
   type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
-import { chatAttachmentKey, chatPromptKey, chatSkillKey } from "@/lib/chat-flow";
+import {
+  chatAttachmentKey,
+  chatNoProfileKey,
+  chatPromptKey,
+  chatSkillKey,
+} from "@/lib/chat-flow";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
+import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
-import type { ChatStreamHumanizerData } from "@/lib/api";
+import type { ChatStreamCareerData, ChatStreamHumanizerData } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -60,6 +66,8 @@ interface ActiveRun {
   teaching: TeachingTurnProjection | null;
   /** Issue 28：流式中的文章人味化过程卡状态（五态中文）。 */
   humanizerProcess: ChatStreamHumanizerData | null;
+  /** Issue 29：流式中的生涯规划过程卡状态（五态中文）。 */
+  careerProcess: ChatStreamCareerData | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -94,7 +102,9 @@ export default function ChatConversationPage() {
   const [projectName, setProjectName] = useState<string | null>(null);
   // Issue 26：本轮用户消息触发的画像通知（明确记忆/自动写入/候选/单次情绪）
   // Issue 28：文章人味化任务对话框（改写/生成两条路径）
+  // Issue 29：生涯规划任务对话框（问题 + 画像开关）
   const [humanizerOpen, setHumanizerOpen] = useState(false);
+  const [careerOpen, setCareerOpen] = useState(false);
   const [profileNotifications, setProfileNotifications] = useState<
     ProfileNotification[]
   >([]);
@@ -249,8 +259,18 @@ export default function ChatConversationPage() {
           setSendError({ message: "人味化任务信息损坏，请重新提交。" });
         }
       }
+      // Issue 29：首页生涯规划对话框关闭画像时暂存标记（消费即删除）。
+      const rawNoProfile = sessionStorage.getItem(chatNoProfileKey(conversationId));
+      sessionStorage.removeItem(chatNoProfileKey(conversationId));
       sendingRef.current = true;
-      void sendMessage(prompt, attachmentIds, true, true, skillId, skillInput);
+      void sendMessage(
+        prompt,
+        attachmentIds,
+        true,
+        rawNoProfile ? false : true,
+        skillId,
+        skillInput
+      );
     }
   }, [loadState, conversation, conversationId]);
 
@@ -279,6 +299,7 @@ export default function ChatConversationPage() {
             arxivSearch: event.data.arxiv_search ?? null,
             teaching: event.data.teaching ?? null,
             humanizerProcess: null,
+            careerProcess: null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -303,6 +324,15 @@ export default function ChatConversationPage() {
               humanizerProcess: event.data,
             };
             setActiveRun((run) => (run ? { ...run, humanizerProcess: event.data } : run));
+          }
+        } else if (isChatStreamEventOf(event, "career")) {
+          // Issue 29：生涯规划过程卡五态事件（loading/empty/error/permission/recovery）
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            activeRunRef.current = {
+              ...activeRunRef.current,
+              careerProcess: event.data,
+            };
+            setActiveRun((run) => (run ? { ...run, careerProcess: event.data } : run));
           }
         } else if (isChatStreamEventOf(event, "profile")) {
           // 画像通知即时展示：已持久化并按账户隔离；重试轮次会重新下发
@@ -338,6 +368,7 @@ export default function ChatConversationPage() {
               arxivSearch: event.data.arxiv_search ?? current?.arxivSearch ?? null,
               teaching: event.data.teaching ?? current?.teaching ?? null,
               humanizerProcess: current?.humanizerProcess ?? null,
+              careerProcess: current?.careerProcess ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -428,6 +459,14 @@ export default function ChatConversationPage() {
         skillInput.skill_id,
         skillInput
       );
+    },
+    [sendMessage]
+  );
+
+  /** Issue 29：提交生涯规划任务（真实消息流；画像开关随本轮发送透传）。 */
+  const handleCareerSubmit = useCallback(
+    async (content: string, useProfile: boolean): Promise<boolean> => {
+      return sendMessage(content, [], true, useProfile);
     },
     [sendMessage]
   );
@@ -586,6 +625,7 @@ export default function ChatConversationPage() {
       arxivSearch: activeRun.arxivSearch,
       teaching: activeRun.teaching,
       humanizerProcess: activeRun.humanizerProcess,
+      careerProcess: activeRun.careerProcess,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -680,6 +720,7 @@ export default function ChatConversationPage() {
                     }
                     onSelectLearningProject={(project) => void changeLearningProject(project)}
                     onOpenHumanizer={() => setHumanizerOpen(true)}
+                    onOpenCareer={() => setCareerOpen(true)}
                   />
                 </div>
               </div>
@@ -692,6 +733,12 @@ export default function ChatConversationPage() {
         onClose={() => setHumanizerOpen(false)}
         conversationId={conversationId}
         onSubmit={handleHumanizerSubmit}
+      />
+      <CareerPlanningDialog
+        open={careerOpen}
+        onClose={() => setCareerOpen(false)}
+        conversationId={conversationId}
+        onSubmit={handleCareerSubmit}
       />
     </AppShell>
   );

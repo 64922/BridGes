@@ -45,6 +45,7 @@ from bridges.api import (
 )
 from bridges.api.media import router as media_router
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.career.service import CareerPlannerService
 from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
 from bridges.config import get_settings
 from bridges.contracts.ai import (
@@ -681,6 +682,17 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # T010: attach the observability service early so downstream services can
     # emit privacy-preserving audit events.
     app.state.observability_service = ObservabilityService()
+    # T021-T024: 学习域服务（纯内存，无数据库依赖）在聊天服务之前挂载——
+    # 生涯规划（Issue 29）需要按账户作用域读取学习使命/知识状态/学习记录。
+    learning_repository = InMemoryLearningRepository()
+    app.state.learning_service = LearningService(repository=learning_repository)
+    app.state.teaching_service = TeachingService(repository=learning_repository)
+    review_scheduling_service = ReviewSchedulingService(repository=learning_repository)
+    app.state.review_scheduling_service = review_scheduling_service
+    app.state.learning_path_service = LearningPathService(
+        repository=learning_repository,
+        review_scheduler=review_scheduling_service,
+    )
     # Issue 21：固定 DuckDuckGo 公网搜索；不读取账户 Key，也不把私有上下文
     # 传入客户端，搜索状态由聊天消息持久化并向桌面端公开。
     app.state.web_search_service = WebSearchService(
@@ -910,6 +922,14 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             web_search_service=getattr(app.state, "web_search_service", None),
             observability_service=app.state.observability_service,
         )
+        # Issue 29：生涯规划编排服务（复用画像切片编译、学习记录、检索与
+        # 联网证据合同；六类输出由结构化模型生成并确定性复核）。
+        app.state.career_planner_service = CareerPlannerService(
+            gateway=model_gateway,
+            profile_service=getattr(app.state, "profile_service", None),
+            learning_service=app.state.learning_service,
+            observability_service=app.state.observability_service,
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -920,6 +940,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             profile_service=getattr(app.state, "profile_service", None),
             observability_service=app.state.observability_service,
             humanizer_service=app.state.humanizer_service,
+            career_planner_service=app.state.career_planner_service,
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the
@@ -1217,28 +1238,6 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     domain_pack_lifecycle.register_pack_impact_source(
         PackImpactCategory.ARTIFACT, _pack_artifact_source
-    )
-
-    # T021: attach the in-memory learning service for missions and diagnosis.
-    learning_repository = InMemoryLearningRepository()
-    learning_service = LearningService(repository=learning_repository)
-    app.state.learning_service = learning_service
-
-    # T022: attach the in-memory teaching service for short lessons and retrieval.
-    app.state.teaching_service = TeachingService(repository=learning_repository)
-
-    # T024: attach the in-memory review scheduling service. It depends on the
-    # same learning repository and is injected into the learning-path service so
-    # that path changes automatically cancel or reschedule future review tasks.
-    review_scheduling_service = ReviewSchedulingService(repository=learning_repository)
-    app.state.review_scheduling_service = review_scheduling_service
-
-    # T023: attach the in-memory learning-path service for recording learning
-    # evidence, proposing knowledge-state updates, human confirmation and path
-    # recompilation. Rejected proposals cannot be silently reapplied.
-    app.state.learning_path_service = LearningPathService(
-        repository=learning_repository,
-        review_scheduler=review_scheduling_service,
     )
 
     app.include_router(auth.router)

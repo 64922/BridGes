@@ -25,6 +25,7 @@ from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.career.intent import is_career_intent
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
@@ -34,6 +35,10 @@ from bridges.chat.repository import (
     ModeEventRecord,
 )
 from bridges.contracts.ai import ModelRunLock
+from bridges.contracts.career import (
+    CareerPlanningProjection,
+    CareerPlanningStatus,
+)
 from bridges.contracts.chat import (
     ChatConversationListProjection,
     ChatConversationProjection,
@@ -43,6 +48,7 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatMode,
     ChatModeEventProjection,
+    ChatStreamCareerData,
     ChatStreamHumanizerData,
     ChatThinkingSummary,
     ContextNoteProfileItem,
@@ -311,6 +317,27 @@ class HumanizerOrchestrator(Protocol):
     ) -> Iterator[HumanizerRunEvent]: ...
 
 
+class CareerPlannerOrchestrator(Protocol):
+    """生涯规划编排接缝（Issue 29）：聊天分支只负责证据获取与终态收敛。"""
+
+    def run_task(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        intent: str,
+        *,
+        mode: str,
+        run_context: RunContextEnvelope,
+        profile_enabled: bool,
+        profile_used: bool,
+        profile_items: list[Any],
+        retrieval_round: RetrievalRoundProjection | None = None,
+        web_search_projection: Any | None = None,
+        arxiv_search_projection: Any | None = None,
+    ) -> Iterator[Any]: ...
+
+
 class ChatDomainError(Exception):
     """聊天领域的可预期失败（由 API 层映射为 HTTP 状态与错误体）。"""
 
@@ -336,6 +363,7 @@ class ChatService:
         profile_service: ProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
+        career_planner_service: CareerPlannerOrchestrator | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -355,6 +383,8 @@ class ChatService:
         #: 内置 bridges-humanizer SKILL 编排（Issue 28）；未挂载时携带
         #: SKILL 载荷的消息按普通消息处理（测试/内存环境）。
         self._humanizer = humanizer_service
+        #: 生涯规划编排（Issue 29）；未挂载时规划意图按普通消息处理。
+        self._career_planner = career_planner_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -829,6 +859,29 @@ class ChatService:
                     run_context,
                     until_user_message_id,
                     use_knowledge_base,
+                )
+                return
+            # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
+            # 走生涯规划编排——同一真实消息流程，六类输出经 career 过程事件
+            # 呈现，终态 done/error 收敛；非规划消息继续普通回答。
+            owner_message = _owner_user_message(
+                self._repo.list_messages(account_id, conversation_id),
+                assistant_message_id,
+            )
+            if (
+                owner_message is not None
+                and is_career_intent(owner_message.content)
+                and self._career_planner is not None
+            ):
+                yield from self._stream_career_planning(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    owner_message.content,
+                    run_context,
+                    until_user_message_id,
+                    use_knowledge_base,
+                    use_profile,
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
@@ -1840,6 +1893,218 @@ class ChatService:
                 error_message="人味化任务执行异常，请重试（输入已保留）。",
             )
 
+    def _stream_career_planning(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        intent: str,
+        run_context: RunContextEnvelope,
+        until_user_message_id: str | None,
+        use_knowledge_base: bool,
+        use_profile: bool,
+    ) -> Iterator[StreamEvent]:
+        """生涯规划编排（Issue 29）：证据获取 → 过程事件 → 终态收敛。
+
+        复用普通生成与 humanizer 编排的证据合同语义：本地检索 → 明确联网/
+        时效触发 DuckDuckGo/arXiv → 最小画像切片编译与披露（发送前关闭时
+        本轮不编译、不注入、披露 off 态）→ 生涯规划服务生成六类输出 →
+        确定性复核 → 结果投影落库。停止/失败绝不悬挂，重试新建尝试沿用
+        同一用户消息（意图与输入不丢失）。
+        """
+        started = time.monotonic()
+        if self._career_planner is None:
+            return
+        entry = self._lifecycle.signal_and_started(assistant_message_id)
+        stop_event = (
+            entry[0]
+            if entry is not None
+            else self._lifecycle.register(assistant_message_id)
+        )
+        conversation = self._repo.get_conversation(account_id, conversation_id)
+        mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+        thinking = _initial_thinking(mode)
+        retrieval_round: RetrievalRoundProjection | None = None
+        web_search_projection: WebSearchProjection | None = None
+        arxiv_search_projection: ArxivSearchProjection | None = None
+        # 检索与联网证据获取（复用 humanizer 分支的同一套证据合同）。
+        if self._retrieval is not None and not stop_event.is_set():
+            retrieval_round = self._retrieval.run_round(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                until_user_message_id,
+                intent,
+                use_knowledge_base=use_knowledge_base,
+            )
+            if retrieval_round is not None:
+                thinking = _retrieval_thinking(thinking, retrieval_round)
+        if not stop_event.is_set():
+            if self._web_search is not None:
+                search_plan = self._web_search.plan(intent, mode)
+                if search_plan.should_search:
+                    web_search_projection = self._web_search.search(
+                        account_id, search_plan, stop_event=stop_event
+                    )
+                    if web_search_projection is not None:
+                        self._repo.update_message_web_search(
+                            account_id,
+                            assistant_message_id,
+                            web_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        thinking = _web_search_thinking(thinking, web_search_projection)
+            if self._arxiv_search is not None:
+                arxiv_plan = self._arxiv_search.plan(intent, mode)
+                if arxiv_plan.should_search:
+                    arxiv_search_projection = self._arxiv_search.search(
+                        account_id, arxiv_plan, stop_event=stop_event
+                    )
+                    if arxiv_search_projection is not None:
+                        self._repo.update_message_arxiv_search(
+                            account_id,
+                            assistant_message_id,
+                            arxiv_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        thinking = _arxiv_search_thinking(
+                            thinking, arxiv_search_projection
+                        )
+        # 最小画像切片编译与「本次上下文说明」披露：模型提示词由编排服务
+        # 自行组装（这里只复用编译/披露/审计，空容器仅作为注入承载）。
+        payload: dict[str, Any] = {"messages": []}
+        context_note = self._compile_profile_slice(
+            account_id,
+            conversation_id,
+            assistant_message_id,
+            mode,
+            payload,
+            use_profile=use_profile,
+            retrieval_round=retrieval_round,
+            web_search_projection=web_search_projection,
+            arxiv_search_projection=arxiv_search_projection,
+        )
+        if context_note is not None:
+            thinking = _context_note_thinking(thinking, context_note)
+        profile_items = list(context_note.profile_items) if context_note else []
+        profile_used = (
+            context_note.state == ContextNoteState.READY if context_note else False
+        )
+        try:
+            for run_event in self._career_planner.run_task(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                intent,
+                mode=mode.value,
+                run_context=run_context,
+                profile_enabled=use_profile,
+                profile_used=profile_used,
+                profile_items=profile_items,
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+            ):
+                if stop_event.is_set():
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.STOPPED,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_stopped_thinking(thinking),
+                    )
+                    return
+                if run_event.kind == "process":
+                    if run_event.state is None:
+                        continue
+                    yield StreamEvent(
+                        kind="career",
+                        career=ChatStreamCareerData(
+                            message_id=assistant_message_id,
+                            state=run_event.state,
+                            step_label=run_event.step_label,
+                            detail=run_event.detail,
+                            retryable=run_event.retryable,
+                            progress_steps=run_event.progress_steps,
+                        ),
+                    )
+                    continue
+                result = run_event.result
+                if result is None:
+                    continue
+                now = datetime.now(UTC)
+                self._repo.update_message_career_planning(
+                    account_id,
+                    assistant_message_id,
+                    result.model_dump(mode="json"),
+                    now,
+                )
+                if result.status == CareerPlanningStatus.ERROR:
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code=result.error_code,
+                        error_message=result.error_message,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=now,
+                        thinking=_failed_thinking(thinking, result.error_code),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code=result.error_code or "career_failed",
+                        error_message=result.error_message
+                        or "生涯规划未完成，请重试。",
+                    )
+                    return
+                final_text = result.output.final_text if result.output else ""
+                self._repo.update_message_content(
+                    account_id, assistant_message_id, final_text, now
+                )
+                self._finalize_message(
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.DONE,
+                    error_code=None,
+                    error_message=None,
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=now,
+                    thinking=_done_thinking(thinking),
+                )
+                yield StreamEvent(kind="done")
+                return
+        except Exception:  # noqa: BLE001 - 编排意外异常收敛为可重试错误
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="career_failed",
+                error_message="生涯规划执行异常，请重试（输入已保留）。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=datetime.now(UTC),
+                thinking=_failed_thinking(thinking, "career_failed"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="career_failed",
+                error_message="生涯规划执行异常，请重试（输入已保留）。",
+            )
+
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -2129,11 +2394,21 @@ class ChatService:
                     raise ChatDomainError(
                         "assertion_not_found", "画像记录不存在或没有访问权限。", 404
                     ) from exc
+        career_item_ref = (
+            request.career_item_ref.strip() if request.career_item_ref else None
+        )
+        if career_item_ref is not None and message.career_planning is None:
+            raise ChatDomainError(
+                "career_item_not_found",
+                "该消息不是生涯规划结果，无法定位到具体条目。",
+                422,
+            )
         existing = self._repo.find_duplicate_feedback(
             account_id,
             message_id,
             request.kind,
             request.assertion_id,
+            career_item_ref,
             request.feedback_text.strip(),
         )
         if existing is not None:
@@ -2150,6 +2425,7 @@ class ChatService:
                 request.preference.strip() if request.preference is not None else None
             ),
             assertion_id=request.assertion_id,
+            career_item_ref=career_item_ref,
             status=FeedbackStatus.SUBMITTED,
             created_at=now,
             updated_at=now,
@@ -2165,6 +2441,7 @@ class ChatService:
                 details={
                     "kind": request.kind.value,
                     "assertion_id": request.assertion_id,
+                    "career_item_ref": career_item_ref,
                     "has_preference": request.preference is not None,
                 },
             )
@@ -2365,6 +2642,12 @@ class ChatService:
             humanizer=(
                 HumanizerResultProjection.model_validate(message.skill)
                 if message.skill is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            career_planning=(
+                CareerPlanningProjection.model_validate(message.career_planning)
+                if message.career_planning is not None
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),

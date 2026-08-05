@@ -408,6 +408,15 @@ def _generation_events(
                     event=ChatStreamEventKind.HUMANIZER,
                     data=data,
                 )
+        elif event.kind == "career":
+            # Issue 29：生涯规划过程卡五态事件，与 delta 同一事件流；
+            # 终态由 done/error 携带完整规划投影。
+            career_data = event.career
+            if career_data is not None:
+                yield ChatStreamEvent(
+                    event=ChatStreamEventKind.CAREER,
+                    data=career_data,
+                )
     if terminated:
         return
     # 生成器空产出：以消息当前状态补发终态
