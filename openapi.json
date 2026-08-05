@@ -22990,6 +22990,739 @@
         }
       }
     },
+    "/chat/conversations/{conversation_id}/image-tasks/{task_id}": {
+      "get": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Get Image Task",
+        "description": "返回任务投影（刷新/重登/重启后据此恢复任务状态）。\n\n呈现状态含 recovery（租约过期、后台恢复中）；不存在或跨账户一律\n404。",
+        "operationId": "get_image_task_chat_conversations__conversation_id__image_tasks__task_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageTaskProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/image-tasks/{task_id}/cancel": {
+      "post": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Cancel Image Task",
+        "description": "取消任务：本地标记为权威，尽力通知云端；迟到结果不发布。\n\n已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。",
+        "operationId": "cancel_image_task_chat_conversations__conversation_id__image_tasks__task_id__cancel_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageTaskProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/image-tasks/{task_id}/retry": {
+      "post": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Retry Image Task",
+        "description": "重试失败任务：同输入（提示/来源不变）重新入队，固定同一快照。\n\n重试需要图片能力仍可用（能力不可用时入口明确拒绝并说明原因）。",
+        "operationId": "retry_image_task_chat_conversations__conversation_id__image_tasks__task_id__retry_post",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "task_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Task Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageTaskProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/image-assets/{asset_id}": {
+      "get": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Get Image Asset",
+        "description": "返回资产投影：版本链（来源/提示/模型/时间）、替代文本与当前版本。",
+        "operationId": "get_image_asset_chat_conversations__conversation_id__image_assets__asset_id__get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAssetProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Delete Image Asset",
+        "description": "删除资产并返回影响说明：移除版本数、更新的消息引用与对象处置状态。\n\n删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理\n失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，\n可观察可恢复；幂等，已删除资产返回零计数投影。",
+        "operationId": "delete_image_asset_chat_conversations__conversation_id__image_assets__asset_id__delete",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageDeletionProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/image-assets/{asset_id}/alt-text": {
+      "put": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Update Image Alt Text",
+        "description": "修改资产替代文本（来源标记为 manual，替代自动生成值）。",
+        "operationId": "update_image_alt_text_chat_conversations__conversation_id__image_assets__asset_id__alt_text_put",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImageAltTextUpdateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImageAssetProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/image-assets/{asset_id}/versions/{version_id}/image": {
+      "get": {
+        "tags": [
+          "image"
+        ],
+        "summary": "Get Image Version Bytes",
+        "description": "返回指定版本图片字节（流式，账户授权校验 + 私有缓存头）。\n\n``download=1`` 时附加附件下载头（下载内容与所选版本一致）；默认\n内联显示。跨账户、已删除资产或版本不存在一律 404；缓存私有化杜绝\n跨账户缓存复用。",
+        "operationId": "get_image_version_bytes_chat_conversations__conversation_id__image_assets__asset_id__versions__version_id__image_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "asset_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Asset Id"
+            }
+          },
+          {
+            "name": "version_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Version Id"
+            }
+          },
+          {
+            "name": "download",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "default": 0,
+              "title": "Download"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "指定版本的图片字节流；下载内容与所选版本一致。",
+            "content": {
+              "application/json": {
+                "schema": {}
+              },
+              "image/png": {},
+              "image/jpeg": {}
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -26248,6 +26981,17 @@
               }
             ],
             "description": "SKILL 任务载荷（契约模型校验，标识须为内置注册）。"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "图片生成/编辑请求载荷（Issue 31）；携带时本轮创建图片异步任务而非普通回答。"
           }
         },
         "type": "object",
@@ -26397,6 +27141,17 @@
               }
             ],
             "description": "助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageTaskProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "助手消息的图片任务/资产状态快照（Issue 31）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。"
           },
           "read_aloud": {
             "anyOf": [
@@ -26868,6 +27623,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatStreamCareerData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamImageData"
               }
             ],
             "title": "Data",
@@ -26880,6 +27638,7 @@
                 "done": "#/components/schemas/ChatStreamDoneData",
                 "error": "#/components/schemas/ChatStreamErrorData",
                 "humanizer": "#/components/schemas/ChatStreamHumanizerData",
+                "image": "#/components/schemas/ChatStreamImageData",
                 "profile": "#/components/schemas/ChatStreamProfileData",
                 "started": "#/components/schemas/ChatStreamStartedData"
               }
@@ -26903,7 +27662,8 @@
           "done",
           "profile",
           "humanizer",
-          "career"
+          "career",
+          "image"
         ],
         "title": "ChatStreamEventKind",
         "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"
@@ -26965,6 +27725,32 @@
         ],
         "title": "ChatStreamHumanizerData",
         "description": "humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。\n\nloading/empty/error/permission/recovery 五态的中文状态与当前步骤\n说明由此载荷下发；终态由 done 事件携带完整结果投影。"
+      },
+      "ChatStreamImageData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "image",
+            "title": "Kind",
+            "default": "image"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "task": {
+            "$ref": "#/components/schemas/ImageTaskProjection",
+            "description": "任务状态快照。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "task"
+        ],
+        "title": "ChatStreamImageData",
+        "description": "image 事件载荷：驱动消息内图片任务卡（Issue 31）。\n\n任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器\n写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影\n是快照，刷新与重启后可恢复查询）。"
       },
       "ChatStreamProfileData": {
         "properties": {
@@ -34258,6 +35044,429 @@
         ],
         "title": "HumanizerTaskContract",
         "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text 或附件；生成路径必带 topic。"
+      },
+      "ImageAltTextSource": {
+        "type": "string",
+        "enum": [
+          "model",
+          "fallback",
+          "manual"
+        ],
+        "title": "ImageAltTextSource",
+        "description": "替代文本来源：模型自动生成 / 确定性降级 / 用户手动修改。"
+      },
+      "ImageAltTextUpdateRequest": {
+        "properties": {
+          "alt_text": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Alt Text",
+            "description": "新的替代文本。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "alt_text"
+        ],
+        "title": "ImageAltTextUpdateRequest",
+        "description": "修改替代文本的请求。"
+      },
+      "ImageAssetProjection": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id",
+            "description": "资产标识。"
+          },
+          "alt_text": {
+            "type": "string",
+            "title": "Alt Text",
+            "description": "当前替代文本（可修改）。",
+            "default": ""
+          },
+          "alt_text_source": {
+            "$ref": "#/components/schemas/ImageAltTextSource",
+            "description": "替代文本来源。",
+            "default": "fallback"
+          },
+          "current_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Version Id",
+            "description": "当前版本指针（删除后为 None）。"
+          },
+          "version_count": {
+            "type": "integer",
+            "title": "Version Count",
+            "description": "版本数量。",
+            "default": 0
+          },
+          "versions": {
+            "items": {
+              "$ref": "#/components/schemas/ImageVersionProjection"
+            },
+            "type": "array",
+            "title": "Versions",
+            "description": "版本列表（按创建时间升序）。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "资产创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近更新（含版本追加/替代文本）时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ImageAssetProjection",
+        "description": "图片资产的公开投影：版本链、替代文本与当前版本指针。"
+      },
+      "ImageDeletionProjection": {
+        "properties": {
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id",
+            "description": "已删除的资产标识。"
+          },
+          "removed_versions": {
+            "type": "integer",
+            "title": "Removed Versions",
+            "description": "实际移除的版本数量。"
+          },
+          "updated_messages": {
+            "type": "integer",
+            "title": "Updated Messages",
+            "description": "引用该资产的助手消息投影更新数量。"
+          },
+          "object_status": {
+            "type": "string",
+            "title": "Object Status",
+            "description": "对象处置：cleaned（已物理清理）或 pending_cleanup（待清理轮重试）。"
+          },
+          "deleted_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Deleted At",
+            "description": "删除完成时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "asset_id",
+          "removed_versions",
+          "updated_messages",
+          "object_status",
+          "deleted_at"
+        ],
+        "title": "ImageDeletionProjection",
+        "description": "删除资产的影响说明与结果（幂等：已删除资产返回零计数）。"
+      },
+      "ImageRequestPayload": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/ImageTaskKind",
+            "description": "生成或编辑。"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "生成要求或编辑指令。"
+          },
+          "source_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version Id",
+            "description": "编辑来源版本标识（kind=edit 时可选其一）。"
+          },
+          "source_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Object Id",
+            "description": "编辑来源聊天附件对象标识（kind=edit 时可选其一）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "kind",
+          "prompt"
+        ],
+        "title": "ImageRequestPayload",
+        "description": "图片生成/编辑请求（Issue 31）。\n\n生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源\n（本账户图片资产版本 ``source_version_id`` 或本账户聊天附件对象\n``source_object_id``）。编辑来源归属在服务层校验，跨账户一律 404。\n请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。"
+      },
+      "ImageTaskKind": {
+        "type": "string",
+        "enum": [
+          "generate",
+          "edit"
+        ],
+        "title": "ImageTaskKind",
+        "description": "图片任务类型：从提示词生成，或在来源图片上按指令编辑。"
+      },
+      "ImageTaskProjection": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id",
+            "description": "任务标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ImageTaskKind",
+            "description": "任务类型：生成或编辑。"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "用户提交的生成要求或编辑指令（用于追溯与前端展示）。"
+          },
+          "source_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Version Id",
+            "description": "编辑来源版本标识（kind=edit 时存在）。"
+          },
+          "source_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Object Id",
+            "description": "编辑来源聊天附件对象标识（kind=edit 时存在）。"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "实际使用的固定图片模型快照。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ImageTaskStatus",
+            "description": "当前呈现状态。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "稳定错误码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "失败后是否可原样重试同一输入。",
+            "default": false
+          },
+          "asset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Asset Id",
+            "description": "结果归属资产标识；编辑时为来源资产。"
+          },
+          "result_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result Version Id",
+            "description": "成功时创建的版本标识（下载/切换版本用）。"
+          },
+          "deleted": {
+            "type": "boolean",
+            "title": "Deleted",
+            "description": "资产已被删除（消息引用维护：删除资产时标记，前端据此显示已删除状态，不再请求资产详情）。",
+            "default": false
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "任务创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近状态更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "kind",
+          "prompt",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ImageTaskProjection",
+        "description": "一次图片任务的公开投影；不包含图片字节与账户信息。\n\n消息的 ``image`` 列直接保存同一投影：进行中渲染任务卡（状态芯片 +\n取消/重试），成功后前端据此拉取资产详情渲染资产卡。"
+      },
+      "ImageTaskStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "recovery",
+          "succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "ImageTaskStatus",
+        "description": "图片任务的呈现状态。\n\n- ``queued``：已提交，等待后台执行器领取；\n- ``running``：已领取，正在提交/轮询云端任务；\n- ``recovery``：处理被中断（租约过期），后台正在恢复重领；\n- ``succeeded``：真实模型结果已落为账户版本化资产；\n- ``failed``：失败，error_code/error_message 说明原因，可重试；\n- ``cancelled``：用户取消；迟到结果不会发布为成功资产。"
+      },
+      "ImageVersionProjection": {
+        "properties": {
+          "version_id": {
+            "type": "string",
+            "title": "Version Id",
+            "description": "版本标识（全局唯一）。"
+          },
+          "asset_id": {
+            "type": "string",
+            "title": "Asset Id",
+            "description": "所属资产标识。"
+          },
+          "parent_version_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent Version Id",
+            "description": "编辑来源版本；生成版本为 None。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ImageTaskKind",
+            "description": "本版本来源：生成或编辑。"
+          },
+          "prompt": {
+            "type": "string",
+            "title": "Prompt",
+            "description": "本版本使用的提示词。"
+          },
+          "model_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model Id",
+            "description": "本版本使用的固定模型快照（运行锁实际标识）。"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "账户对象库中的图片对象标识。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "图片媒体类型。"
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "图片字节数。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "版本创建时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version_id",
+          "asset_id",
+          "kind",
+          "prompt",
+          "object_id",
+          "media_type",
+          "content_length",
+          "created_at"
+        ],
+        "title": "ImageVersionProjection",
+        "description": "图片资产中的一个版本；每个成功任务恰好产生一个版本对象。"
       },
       "ImmediateFeedback": {
         "properties": {

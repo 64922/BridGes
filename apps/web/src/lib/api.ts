@@ -37,6 +37,16 @@ export type HumanizerEdit = components["schemas"]["HumanizerEdit"];
 export type HumanizerSkillInput = components["schemas"]["HumanizerSkillInput"];
 export type HumanizerTaskContract = components["schemas"]["HumanizerTaskContract"];
 export type HumanizerPath = components["schemas"]["HumanizerPath"];
+// Issue 31：图片生成与编辑契约（生成类型来自 openapi.json）。
+export type ImageTaskProjection = components["schemas"]["ImageTaskProjection"];
+export type ImageTaskKind = components["schemas"]["ImageTaskKind"];
+export type ImageTaskStatus = components["schemas"]["ImageTaskStatus"];
+export type ImageAssetProjection = components["schemas"]["ImageAssetProjection"];
+export type ImageVersionProjection = components["schemas"]["ImageVersionProjection"];
+export type ImageAltTextSource = components["schemas"]["ImageAltTextSource"];
+export type ImageDeletionProjection = components["schemas"]["ImageDeletionProjection"];
+export type ImageRequestPayload = components["schemas"]["ImageRequestPayload"];
+export type ChatStreamImageData = components["schemas"]["ChatStreamImageData"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
 export type CareerPlanningProjection = components["schemas"]["CareerPlanningProjection"];
 export type CareerPlanningProcessState = components["schemas"]["CareerPlanningProcessState"];
@@ -1222,7 +1232,8 @@ export async function streamChatMessage(
   useKnowledgeBase: boolean = true,
   useProfile: boolean = true,
   skillId?: string,
-  skillInput?: unknown
+  skillInput?: unknown,
+  image?: ImageRequestPayload
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -1236,6 +1247,8 @@ export async function streamChatMessage(
       // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
       ...(skillId !== undefined ? { skill_id: skillId } : {}),
       ...(skillInput !== undefined ? { skill_input: skillInput } : {}),
+      // Issue 31：图片生成/编辑载荷（图片对话框走真实消息流程，任务异步执行）
+      ...(image !== undefined ? { image } : {}),
     }),
     signal,
   });
@@ -1961,4 +1974,106 @@ export function readAloudAudioUrl(
   messageId: string
 ): string {
   return `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/read-aloud/audio`;
+}
+
+// ---------------------------------------------------------------------------
+// Issue 31：图片生成与编辑（任务操作面 + 资产操作面）
+// ---------------------------------------------------------------------------
+
+/** 查询任务投影（刷新/重登/重启后恢复任务状态；呈现态含 recovery）。 */
+export async function getImageTask(
+  conversationId: string,
+  taskId: string
+): Promise<ImageTaskProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-tasks/${encodeURIComponent(taskId)}`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 取消任务：本地标记为权威；迟到结果不会发布为成功资产。 */
+export async function cancelImageTask(
+  conversationId: string,
+  taskId: string
+): Promise<ImageTaskProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-tasks/${encodeURIComponent(taskId)}/cancel`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 重试失败任务：同输入（提示/来源不变）重新入队，固定同一模型快照。 */
+export async function retryImageTask(
+  conversationId: string,
+  taskId: string
+): Promise<ImageTaskProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-tasks/${encodeURIComponent(taskId)}/retry`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 查询资产投影：版本链、替代文本与当前版本指针。 */
+export async function getImageAsset(
+  conversationId: string,
+  assetId: string
+): Promise<ImageAssetProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}`,
+    { credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 修改替代文本（来源标记为 manual）。 */
+export async function updateImageAltText(
+  conversationId: string,
+  assetId: string,
+  altText: string
+): Promise<ImageAssetProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}/alt-text`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ alt_text: altText }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 删除资产并返回影响说明（版本数/消息引用/对象处置）；幂等。 */
+export async function deleteImageAsset(
+  conversationId: string,
+  assetId: string
+): Promise<ImageDeletionProjection> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}`,
+    { method: "DELETE", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 指定版本图片的同源地址（经账户授权校验 + 私有缓存头流式返回）。
+ * ``download=1`` 附加附件下载头；默认内联显示。
+ */
+export function imageVersionUrl(
+  conversationId: string,
+  assetId: string,
+  versionId: string,
+  download = false
+): string {
+  const base = `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/image-assets/${encodeURIComponent(assetId)}/versions/${encodeURIComponent(versionId)}/image`;
+  return download ? `${base}?download=1` : base;
 }

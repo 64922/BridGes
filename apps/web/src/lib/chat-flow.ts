@@ -22,3 +22,8 @@ export function chatSkillKey(conversationId: string): string {
 export function chatNoProfileKey(conversationId: string): string {
   return `bridges:chat:no-profile:${conversationId}`;
 }
+
+/** Issue 31：首页提交图片任务时暂存的图片请求载荷（对话页消费后删除）。 */
+export function chatImageKey(conversationId: string): string {
+  return `bridges:chat:image:${conversationId}`;
+}

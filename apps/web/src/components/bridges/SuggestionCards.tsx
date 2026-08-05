@@ -5,6 +5,7 @@ import {
   CAREER_TOOL_LABEL,
   CHAT_TOOL_INTENTS,
   HUMANIZER_TOOL_LABEL,
+  IMAGE_TOOL_LABEL,
 } from "@/lib/chat-tools";
 
 export interface SuggestionCard {
@@ -20,6 +21,7 @@ const CARD_DESCRIPTIONS: readonly string[] = [
   "描述研究主题，先聊清需求再检索",
   "改写或生成科学内容，保持事实锁与引用",
   "说明你的阶段与目标，一起排优先级",
+  "描述画面或选一张图，生成与编辑科学图片",
 ] as const;
 
 /**
@@ -43,13 +45,15 @@ interface SuggestionCardsProps {
   onHumanizer?: () => void;
   /** Issue 29：「生涯规划助手」卡片打开真实任务对话框（不再只是预填）。 */
   onCareer?: () => void;
+  /** Issue 31：「图片生成」卡片打开真实任务对话框（不再只是预填）。 */
+  onImage?: () => void;
 }
 
 /**
  * 建议卡列表：真实按钮，键盘可达；悬停与焦点有过渡反馈，
  * 长文案在窄列内折行，不破坏桌面布局。
  */
-export function SuggestionCards({ onPrefill, onHumanizer, onCareer }: SuggestionCardsProps) {
+export function SuggestionCards({ onPrefill, onHumanizer, onCareer, onImage }: SuggestionCardsProps) {
   return (
     <ul
       role="list"
@@ -74,6 +78,8 @@ export function SuggestionCards({ onPrefill, onHumanizer, onCareer }: Suggestion
                 onHumanizer();
               } else if (card.label === CAREER_TOOL_LABEL && onCareer) {
                 onCareer();
+              } else if (card.label === IMAGE_TOOL_LABEL && onImage) {
+                onImage();
               } else {
                 onPrefill(card.prefill);
               }

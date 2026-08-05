@@ -16,6 +16,7 @@ from bridges.ai import (
     ModelGateway,
     QwenApiClient,
     QwenAsrAdapter,
+    QwenImageAdapter,
     QwenOcrAdapter,
     QwenStructuredOutputAdapter,
     QwenTextChatAdapter,
@@ -43,6 +44,7 @@ from bridges.api import (
     vault,
     workflows,
 )
+from bridges.api.image import router as image_router
 from bridges.api.media import router as media_router
 from bridges.api.speech import router as speech_router
 from bridges.arxiv_mcp.service import ArxivSearchService
@@ -93,6 +95,7 @@ from bridges.evaluation import EvaluationService
 from bridges.expression import ExpressionService
 from bridges.health.probe import build_health_projection
 from bridges.identity import IdentityService
+from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.service import IngestionService
 from bridges.institution import InstitutionService
@@ -303,6 +306,25 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
+        )
+    )
+    # Issue 31: 图片生成与编辑（ADR-0009 固定绑定 qwen-image-2.0-pro-
+    # 2026-06-22）。异步任务经后台执行器轮询，不注册备用模型——失败
+    # 只重试同一绑定。
+    registry.register(
+        CapabilityRecord(
+            name="qwen_image",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen-image-2.0-pro-2026-06-22",
+            input_schema_version="image-prompt-v1",
+            output_schema_version="image-task-v1",
+            supported_modalities=["text", "image"],
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+            prompt_version="2026-08-05",
         )
     )
 
@@ -842,6 +864,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         # T062: TTS adapter for accessibility narration synthesis.
         tts_adapter = QwenTtsAdapter(qwen_client)
         model_gateway.register_adapter("qwen_tts", "1", tts_adapter)
+        # Issue 31: 图片生成与编辑异步任务适配器（submit/poll/fetch/cancel）。
+        image_adapter = QwenImageAdapter(qwen_client)
+        model_gateway.register_adapter("qwen_image", "1", image_adapter)
 
     # Issue 10：生产环境禁止为真实模型 ID 注册 Stub 成功。StubQwenAdapter
     # 只允许在显式测试开关（qwen_force_stub）下使用，或绑定在内置
@@ -909,6 +934,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 ),
                 probe_service=CapabilityProbeService(state_store=state_store),
             )
+            # Issue 31: 图片生成与编辑（固定 qwen-image-2.0-pro-2026-06-22）。
+            # API 进程只做提交/查询/取消/重试与资产管理；云端轮询在后台
+            # 执行器进程内按租约执行，任务与消息投影原子落库。
+            app.state.image_service = ImageService(
+                database=bridges_database,
+                gateway=model_gateway,
+                object_repository=object_repository,
+                chat_repository=ConversationRepository(bridges_database),
+                observability_service=app.state.observability_service,
+            )
         # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
         app.state.search_service = SearchService(bridges_database)
         # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
@@ -943,6 +978,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             observability_service=app.state.observability_service,
             humanizer_service=app.state.humanizer_service,
             career_planner_service=app.state.career_planner_service,
+            image_service=app.state.image_service,
         )
         # Issue 30: 听写与单条回答朗读（固定 ASR/TTS 快照）。复用同一
         # 模型网关（固定模型标识进运行记录）、账户对象库（朗读音频按
@@ -1273,6 +1309,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(media_router)
     app.include_router(learning_router)
     app.include_router(speech_router)
+    app.include_router(image_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

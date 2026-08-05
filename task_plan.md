@@ -2,6 +2,147 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 31 实施计划（交付图片生成与编辑）
+
+状态：已完成（2026-08-05）。全量验证：1699 pytest（+32 新增：image 适配器
+9 + 服务 17 + 聊天集成 6；3 条 runtime smoke 为干净树复现的既有 CLI 编码
+flake）、6 条 issue31 E2E（提交→任务卡→资产卡/刷新恢复/删除确认/失败重试/
+取消/能力停用）+ issue13 七入口契约同步更新全过、mypy 214 文件 0 错误、
+改动区域 ruff 干净（observability UP042 为既有问题）、npm typecheck/build
+通过。双轴 code-review 修复：编辑-删除竞态孤儿版本（asset_deleted 永久
+失败+对象回收）、云端失败自动重试不重新提交（_fail_task 清 cloud_task_id）、
+重试预算被轮询轮消耗（CASE WHEN failed）、生产替代文本恒降级（executor
+补注册 qwen_vision）、前端入口能力停用（Composer image 探测快照）、cancel
+终态审计语义（BLOCKED 不冒充取消）、invalid_alt_text 422、能力门重复收敛
+（image.py 公开函数）、IMAGE 事件前端消费（流式期间任务卡）、死代码清理
+（update_message_image）、冒烟脚本运行记录模型快照核对。Issue 31 验收状态
+已更新为 ready-for-human（AC 与 Verification 全部勾选附证据）。
+
+### 目标
+qwen-image-2.0-pro-2026-06-22 与 image 能力绑定（probe_kind="image"，探测
+已真实执行：POST /api/v1/services/aigc/text2image/image-synthesis 异步任务）；
+图片能力适配器尚未注册（需新建 QwenImageAdapter，DashScope 原生异步任务
+submit→poll→fetch）；ModelGateway/运行锁、账户对象库（create_object/
+delete_object/pending_cleanup 清理轮）、后台执行器 run_tick（可加任务轮）、
+能力门控（_ensure_capability_ready）、消息投影 JSON 列、SSE 事件、
+可编程适配器测试 harness 全部可复用；前端 Composer「+」菜单/Dialog 模式/
+MessageList 卡片挂载/issue30 E2E mock 模式可复用。
+
+### 目标
+交付由聊天真实触发的图片生成与图片编辑纵向链路，固定使用
+qwen-image-2.0-pro-2026-06-22。用户可输入生成要求，或选择当前账户有权
+访问的图片（本对话图片资产版本或本账户聊天附件对象）并给出编辑指令；
+请求进入可恢复的异步任务（后台执行器 worker 轮询 DashScope 云端任务），
+完成后成为账户隔离的版本化资产（版本链保留来源/提示/模型快照/时间关系，
+不覆盖原图）。界面显示排队/运行/成功/失败/取消/恢复状态，支持可编辑
+替代文本（核心视觉模型自动生成、失败确定性降级、可修改）、版本切换、
+下载与带影响说明的删除。不得以占位图、固定样例或本地假数据冒充模型结果。
+
+### 新增模块
+1. `contracts/image.py` — ImageTaskKind(generate/edit)、ImageTaskStatus
+   (queued/running/succeeded/failed/cancelled)、ImageTaskProjection
+   （task_id/kind/prompt/source_version_id/source_object_id/model_id/status/
+   error_code/error_message/retryable/asset_id/result_version_id/created_at/
+   updated_at）、ImageVersionProjection（version_id/asset_id/parent_version_id/
+   kind/prompt/model_id/object_id/media_type/content_length/created_at）、
+   ImageAssetProjection（asset_id/alt_text/alt_text_source(model|fallback|
+   manual)/current_version_id/versions 列表）、ImageAltTextUpdateRequest、
+   ImageDeletionProjection（removed_versions/updated_messages/object_status）、
+   ImageMessageProjection（消息内任务/资产状态快照）、ImageError
+2. `ai/qwen_image_adapter.py` — QwenImageAdapter（CapabilityAdapter）：
+   payload 三模式 submit（POST image-synthesis，生成或编辑带 base_image
+   data URL）→ cloud_task_id；poll（GET /api/v1/tasks/{id} 单次查询）→
+   RUNNING/SUCCEEDED(带结果 URL)/FAILED；fetch（下载结果 URL 字节）。
+   固定 actual_model_id=IMAGE_MODEL_ID；错误分类（429/401/5xx/超时）复用
+   qwen_client；qwen_client 增 dashscope_task_get（GET 任务查询 + 错误分类）
+3. `image/service.py` — ImageService：submit_generation/submit_edit（校验
+   编辑来源归属：版本属当前账户资产或对象属当前账户且 media_type image/*；
+   能力门在 API 层）→ 建 queued 任务；get_task（含租约过期 recovery 映射）；
+   cancel（尽力云端取消 + 本地标记，迟到结果隔离由 worker 条件 UPDATE
+   保证）；retry（仅 failed，重置计数同输入重入队）；get_asset；get_version_
+   image_bytes（账户授权流式字节）；update_alt_text；delete_asset（删全部
+   版本对象 pending_cleanup + 更新引用消息投影 + 资产 deleted 标记，幂等）；
+   worker 侧 process_pending（租约领取：queued/租约过期 running/可重试
+   failed → submit → poll → 成功：下载→存对象→建版本（编辑挂来源 parent）→
+   替代文本生成（qwen_vision 固定能力，失败确定性降级）→ 条件 UPDATE
+   succeeded → 更新助手消息 image 投影与正文；云端 RUNNING 超上限 →
+   failed 可重试）
+4. `storage/database.py` — SCHEMA_VERSION 19：image_tasks/image_assets/
+   image_versions 三表（全部 account_id 作用域）+ messages 加 image JSON 列
+
+### 修改
+5. `contracts/chat.py` — ChatMessageCreateRequest.image（ImageRequestPayload
+   载荷）；ChatMessageProjection.image（ImageMessageProjection）；ChatStream
+   EventKind.IMAGE + ChatStreamImageData（任务状态事件）
+6. `contracts/observability.py` — AuditAction.IMAGE_TASK_SUBMIT / IMAGE_TASK_
+   COMPLETE / IMAGE_TASK_CANCEL / IMAGE_ASSET_DELETE / IMAGE_ALT_TEXT_UPDATE
+   （details 只含 task_id/model_id/长度/版本数，不含图片与提示词正文）
+7. `chat/repository.py` — MessageRecord.image；insert/get 带 image；
+   update_message_image
+8. `chat/service.py` — start_generation 校验并落库 image 载荷；stream_generation
+   检出 image 载荷走 _stream_image_request 分支（能力门 → image service 建
+   任务 → SSE started/image(queued)/done，助手消息收敛正文「已提交…」+
+   image 投影）；retry 不适用（图片任务独立重试端点）
+9. `api/image.py` — 路由（prefix /chat）：POST image-tasks/{id}/cancel、
+   POST image-tasks/{id}/retry（能力门）、GET image-tasks/{id}、GET
+   image-assets/{asset_id}、PUT image-assets/{asset_id}/alt-text、GET
+   image-assets/{asset_id}/versions/{version_id}/image（流式字节 + private
+   cache + 下载 Content-Disposition）、DELETE image-assets/{asset_id}；
+   全部账户作用域校验，跨账户 404
+10. `api/chat.py` — SSE 透传 IMAGE 事件
+11. `api/main.py` — _register_builtin_capabilities 注册 qwen_image（固定
+    IMAGE_MODEL_ID）；注册 QwenImageAdapter；ImageService 挂载（gateway/
+    object_repository/chat_repository/observability）；ChatService 接入；
+    image_router 挂载
+12. `runtime/executor.py` — 惰性构造图片任务轮（settings 全局 key →
+    QwenApiClient → registry+gateway+QwenImageAdapter → ImageService）；
+    run_tick 加 image_service.process_pending() 处理轮（租约领取/恢复）
+13. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：任务状态卡 + 资产卡 + 版本切换器）
+14. api.ts — cancelImageTask/retryImageTask/getImageTask/getImageAsset/
+    updateImageAltText/deleteImageAsset/imageBytesUrl(URL 构造) + 类型导出；
+    streamChatMessage 支持 image 载荷
+15. chat-tools.ts — 「图片生成」工具意图（两模式「+」菜单与建议卡共用）
+16. ImageDialog（新）— 生成页签（提示词 textarea + 固定尺寸说明）与编辑
+    页签（选择当前对话图片资产版本/本账户图片附件 + 编辑指令）；提交走
+    真实 send（image 载荷）
+17. ImageTaskCard（新，挂助手消息）— 排队/运行/成功/失败/取消/恢复五态
+    状态芯片 + 取消/重试按钮 + 中文错误 + 键盘可达
+18. ImageAssetCard（新）— 图片显示（授权端点 URL）、替代文本内联编辑
+    （PUT）、版本切换器（切换显示对应版本）、下载（当前版本）、删除
+    （确认对话框显示影响说明：版本数/消息引用数）；任务完成后轮询消息
+    列表刷新出现资产卡
+19. MessageList/ChatThread 接入 image 卡片；page.tsx IMAGE 事件处理与
+    任务轮询；chat.module.css 样式（先 ui-ux-pro-max 设计建议）
+
+### 测试
+20. `tests/image/test_image_adapter.py` — submit/poll/fetch 三模式、
+    错误分类（429/401/5xx/超时/空结果）、固定模型标识、编辑带 base_image
+21. `tests/image/test_image_service.py` — 生成成功（对象+版本+替代文本）、
+    编辑版本链（parent 关系不覆盖原图）、取消（含迟到结果隔离：worker
+    条件 UPDATE）、重启恢复（租约过期重领）、失败重试同快照、云端 RUNNING
+    超限、对象清理（删除后 pending_cleanup）、替代文本（模型生成/降级/
+    手动修改）、删除影响（版本/消息引用/对象）、账户隔离（跨账户任务/
+    资产/版本/图片字节 404）、能力不可用提交拒绝
+22. `tests/chat/test_image_chat.py` — send 带 image 载荷：SSE started→
+    image(queued)→done；任务完成 → 消息 image 投影更新；编辑来源归属
+    校验；两账户隔离
+23. `tests/api/test_image_api.py` — 路由契约：提交/查询/取消/重试/资产/
+    替代文本/字节流/删除、错误码（no_api_key/capability_probing/
+    capability_unavailable/404）、私密缓存头
+24. E2E issue31 — 对话框提交生成/编辑、任务状态卡、刷新恢复、替代文本
+    修改、版本切换、下载、删除确认、错误重试（page.route mock）
+25. 真实冒烟：固定模型生成与编辑冒烟验证（scripts/smoke），核对运行
+    记录模型快照
+
+### 收尾
+26. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review 双轴
+    审查并修复；更新 Issue 31 验收状态（ready-for-human + 验收项打勾附
+    证据）；提交（工作内容+bug 修复两部分提交信息）
+
+
+
 ## Issue 30 实施计划（交付听写与单条回答朗读）
 
 状态：已完成（2026-08-05）。全量验证：1639 pytest（+25 新增：speech 服务/API

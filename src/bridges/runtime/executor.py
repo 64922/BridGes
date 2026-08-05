@@ -19,12 +19,30 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
+from bridges.ai import (
+    CapabilityRegistry,
+    CassetteStore,
+    ModelGateway,
+    QwenApiClient,
+    QwenImageAdapter,
+    QwenVisionAdapter,
+)
+from bridges.chat.repository import ConversationRepository
 from bridges.config import Settings
+from bridges.contracts.ai import (
+    CapabilityKind,
+    CapabilityRecord,
+    CapabilityStatus,
+    RetryPolicy,
+)
+from bridges.credentials.matrix import IMAGE_MODEL_ID
 from bridges.credentials.probes import CapabilityProbeService
 from bridges.credentials.store import EncryptedVolumeCredentialStore, OsCredentialStore
+from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
+from bridges.observability.service import ObservabilityService
 from bridges.persistence import (
     PersistenceError,
     build_state_store,
@@ -50,6 +68,7 @@ class BackgroundExecutor:
         self._repository: BridgesObjectRepository | None = None
         self._database: BridgesDatabase | None = None
         self._ingestion: IngestionService | None = None
+        self._image: ImageService | None = None
         self._idle_reason: str | None = None
 
     def _ensure_repository(self) -> BridgesObjectRepository | None:
@@ -141,6 +160,86 @@ class BackgroundExecutor:
             return None
         return self._ingestion
 
+    def _ensure_image_service(self) -> ImageService | None:
+        """惰性建立图片任务处理服务（Issue 31）。
+
+        与 API 进程共享同一数据目录：图片任务按租约领取、提交/轮询
+        DashScope 云端任务、完成转存账户对象库并更新消息投影。缺少
+        Qwen API Key 时待机（无凭据不假成功，任务保持排队等待用户
+        处理）；API 进程与 worker 共享同一运行载体配置，正常情况下
+        两者一致。
+        """
+        if self._image is not None or self._idle_reason is not None:
+            return self._image
+        repository = self._ensure_repository()
+        if repository is None:
+            return None
+        settings = self._settings
+        if settings.qwen_api_key is None or not settings.qwen_api_key.get_secret_value():
+            self._idle_reason = (
+                "worker: 未配置 Qwen API Key，图片任务处理待机。"
+            )
+            return None
+        try:
+            cassette_store = None
+            if settings.qwen_cassette_dir is not None:
+                cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
+            client = QwenApiClient(
+                api_key=settings.qwen_api_key,
+                workspace_id=settings.qwen_workspace_id,
+                region=settings.qwen_region,
+                cassette_store=cassette_store,
+                record_mode=settings.qwen_record_cassettes,
+            )
+            registry = CapabilityRegistry()
+            registry.register(
+                CapabilityRecord(
+                    name="qwen_image",
+                    version="1",
+                    kind=CapabilityKind.MODEL,
+                    vendor="qwen",
+                    region="cn-beijing",
+                    model_id=IMAGE_MODEL_ID,
+                    input_schema_version="image-prompt-v1",
+                    output_schema_version="image-task-v1",
+                    status=CapabilityStatus.VERIFIED,
+                    retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+                    prompt_version="2026-08-05",
+                )
+            )
+            # 替代文本由核心视觉模型（qwen_vision，固定矩阵）自动生成：
+            # 注册同一能力，失败时服务层确定性降级，不阻断生成完成。
+            registry.register(
+                CapabilityRecord(
+                    name="qwen_vision",
+                    version="1",
+                    kind=CapabilityKind.MODEL,
+                    vendor="qwen",
+                    region="cn-beijing",
+                    model_id="qwen3-vl-plus",
+                    input_schema_version="image-vision-v1",
+                    output_schema_version="vision-text-v1",
+                    status=CapabilityStatus.VERIFIED,
+                    retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
+                    prompt_version="2026-08-05",
+                )
+            )
+            gateway = ModelGateway(registry)
+            gateway.register_adapter("qwen_image", "1", QwenImageAdapter(client))
+            gateway.register_adapter("qwen_vision", "1", QwenVisionAdapter(client))
+            assert self._database is not None
+            self._image = ImageService(
+                database=self._database,
+                gateway=gateway,
+                object_repository=repository,
+                chat_repository=ConversationRepository(self._database),
+                observability_service=ObservabilityService(),
+            )
+        except (StorageError, PersistenceError, ValueError) as exc:
+            self._idle_reason = f"error: {exc}"
+            return None
+        return self._image
+
     def run_tick(self) -> str:
         """执行一轮后台任务并返回中文摘要；可重试错误只记录不退出。"""
         repository = self._ensure_repository()
@@ -148,12 +247,18 @@ class BackgroundExecutor:
             assert self._idle_reason is not None
             return self._idle_reason
         ingestion = self._ensure_ingestion()
+        image = self._ensure_image_service()
         summaries: list[str] = []
         if ingestion is not None:
             try:
                 summaries.append(ingestion.process_pending())
             except Exception as exc:  # noqa: BLE001 - 摄取失败记录但不退出循环
                 summaries.append(f"worker: 摄取处理出错：{exc}")
+        if image is not None:
+            try:
+                summaries.append(image.process_pending())
+            except Exception as exc:  # noqa: BLE001 - 图片任务失败记录但不退出循环
+                summaries.append(f"worker: 图片任务处理出错：{exc}")
         try:
             cleaned = repository.run_pending_cleanups()
             orphans = repository.cleanup_orphans()

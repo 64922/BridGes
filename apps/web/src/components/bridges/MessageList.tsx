@@ -20,8 +20,10 @@ import type {
   ChatStreamCareerData,
   ChatStreamHumanizerData,
   HumanizerResultProjection,
+  ImageTaskProjection,
   ReadAloudProjection,
 } from "@/lib/api";
+import { ImageTaskCard } from "./chat/ImageTaskCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
@@ -91,6 +93,8 @@ export interface ChatMessage {
   careerProcess?: ChatStreamCareerData | null;
   /** Issue 30：本条助手消息的朗读状态快照（服务端持久化，刷新一致） */
   readAloud?: ReadAloudProjection | null;
+  /** Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡） */
+  image?: ImageTaskProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -110,6 +114,8 @@ interface MessageListProps {
   onRetryIngestion?: (objectId: string) => Promise<void>;
   /** 附件所属对话（摄取详情接口的上下文） */
   conversationId?: string;
+  /** Issue 31：图片任务成功（资产落库）后刷新消息列表（正文/投影同步） */
+  onRefreshMessages?: () => void;
   /** Issue 30：TTS 能力可用性（账户级探测快照；不可用时禁用朗读入口并说明原因） */
   tts?: CapabilityAvailability;
 }
@@ -521,6 +527,7 @@ export function MessageList({
   onStop,
   onTeachingSkip,
   tts,
+  onRefreshMessages,
 }: MessageListProps) {
   // Issue 30：每条助手消息的朗读控制器句柄（供消息操作栏「朗读」按钮桥接）
   const readAloudRefs = useRef(new Map<string, ReadAloudControlsHandle>());
@@ -800,6 +807,17 @@ export function MessageList({
                           active ? message.id : current === message.id ? null : current
                         )
                       }
+                    />
+                  )}
+
+                {conversationId &&
+                  message.role === "assistant" &&
+                  message.image &&
+                  message.status !== "streaming" && (
+                    <ImageTaskCard
+                      conversationId={conversationId}
+                      task={message.image}
+                      onSucceeded={onRefreshMessages}
                     />
                   )}
               </div>

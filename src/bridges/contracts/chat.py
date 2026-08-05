@@ -23,6 +23,7 @@ from bridges.contracts.humanizer import (
     HumanizerResultProjection,
     HumanizerSkillInput,
 )
+from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.speech import ReadAloudProjection
@@ -228,6 +229,11 @@ class ChatMessageProjection(BaseModel):
         default=None,
         description="助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。",
     )
+    image: ImageTaskProjection | None = Field(
+        default=None,
+        description="助手消息的图片任务/资产状态快照（Issue 31）；进行中渲染"
+        "任务卡，成功后渲染资产卡；普通消息为 None。",
+    )
     read_aloud: ReadAloudProjection | None = Field(
         default=None,
         description="本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。",
@@ -362,6 +368,32 @@ class ChatMessageCreateRequest(BaseModel):
         default=None,
         description="SKILL 任务载荷（契约模型校验，标识须为内置注册）。",
     )
+    image: ImageRequestPayload | None = Field(
+        default=None,
+        description="图片生成/编辑请求载荷（Issue 31）；携带时本轮创建图片"
+        "异步任务而非普通回答。",
+    )
+
+
+class ImageRequestPayload(BaseModel):
+    """图片生成/编辑请求（Issue 31）。
+
+    生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源
+    （本账户图片资产版本 ``source_version_id`` 或本账户聊天附件对象
+    ``source_object_id``）。编辑来源归属在服务层校验，跨账户一律 404。
+    请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。
+    """
+
+    kind: ImageTaskKind = Field(description="生成或编辑。")
+    prompt: str = Field(
+        min_length=1, max_length=2000, description="生成要求或编辑指令。"
+    )
+    source_version_id: str | None = Field(
+        default=None, description="编辑来源版本标识（kind=edit 时可选其一）。"
+    )
+    source_object_id: str | None = Field(
+        default=None, description="编辑来源聊天附件对象标识（kind=edit 时可选其一）。"
+    )
 
 
 class ChatStopResponse(BaseModel):
@@ -380,6 +412,7 @@ class ChatStreamEventKind(StrEnum):
     PROFILE = "profile"
     HUMANIZER = "humanizer"
     CAREER = "career"
+    IMAGE = "image"
 
 
 class ChatStreamStartedData(BaseModel):
@@ -501,6 +534,19 @@ class ChatStreamCareerData(BaseModel):
     )
 
 
+class ChatStreamImageData(BaseModel):
+    """image 事件载荷：驱动消息内图片任务卡（Issue 31）。
+
+    任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器
+    写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影
+    是快照，刷新与重启后可恢复查询）。
+    """
+
+    kind: Literal["image"] = "image"
+    message_id: str = Field(description="助手消息标识。")
+    task: ImageTaskProjection = Field(description="任务状态快照。")
+
+
 class ChatStreamEvent(BaseModel):
     """一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
 
@@ -517,6 +563,7 @@ class ChatStreamEvent(BaseModel):
         | ChatStreamDoneData
         | ChatStreamProfileData
         | ChatStreamHumanizerData
-        | ChatStreamCareerData,
+        | ChatStreamCareerData
+        | ChatStreamImageData,
         Field(discriminator="kind", description="事件载荷。"),
     ] = Field(description="事件载荷。")

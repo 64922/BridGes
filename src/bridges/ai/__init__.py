@@ -17,6 +17,7 @@ from bridges.ai.model_gateway import ModelGateway, ModelGatewayError
 from bridges.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
 from bridges.ai.qwen_asr_adapter import QwenAsrAdapter
 from bridges.ai.qwen_client import CassetteStore, QwenApiClient
+from bridges.ai.qwen_image_adapter import QwenImageAdapter
 from bridges.ai.qwen_tts_adapter import QwenTtsAdapter
 from bridges.ai.qwen_vision_adapters import QwenOcrAdapter, QwenVisionAdapter
 
@@ -32,6 +33,7 @@ __all__ = [
     "ModelGatewayError",
     "QwenApiClient",
     "QwenAsrAdapter",
+    "QwenImageAdapter",
     "QwenOcrAdapter",
     "QwenStructuredOutputAdapter",
     "QwenTextChatAdapter",

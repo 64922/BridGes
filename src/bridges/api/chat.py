@@ -417,6 +417,16 @@ def _generation_events(
                     event=ChatStreamEventKind.CAREER,
                     data=career_data,
                 )
+        elif event.kind == "image":
+            # Issue 31：图片任务状态事件（提交即下发 queued 快照），与
+            # delta 同一事件流；任务完成/失败/取消由后台执行器写回消息
+            # 投影，前端刷新消息列表恢复。
+            image_data = event.image
+            if image_data is not None:
+                yield ChatStreamEvent(
+                    event=ChatStreamEventKind.IMAGE,
+                    data=image_data,
+                )
     if terminated:
         return
     # 生成器空产出：以消息当前状态补发终态
@@ -867,6 +877,11 @@ async def send_message(
     说明均不含任何画像切片。
     """
     _ensure_chat_capability_ready(subject, credential_service)
+    if body.image is not None:
+        # 图片能力门控（与图片 API 路由共享同一实现，避免双份分叉）。
+        from bridges.api.image import ensure_image_capability_ready
+
+        ensure_image_capability_ready(subject, credential_service)
     try:
         user_message, assistant_message = service.start_generation(
             subject.account_id,
@@ -876,6 +891,9 @@ async def send_message(
             skill_id=body.skill_id,
             skill_input=(
                 body.skill_input.model_dump(mode="json") if body.skill_input else None
+            ),
+            image=(
+                body.image.model_dump(mode="json") if body.image is not None else None
             ),
         )
     except ChatDomainError as exc:
@@ -991,6 +1009,15 @@ async def retry_message(
     沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。
     """
     _ensure_chat_capability_ready(subject, credential_service)
+    # Issue 31：图片任务消息不走消息级重试——任务卡内提供同输入重试
+    # （POST /image-tasks/{id}/retry），避免创建重复任务。
+    previous = service.message_projection(subject.account_id, message_id)
+    if previous is not None and previous.image is not None:
+        raise _error(
+            status.HTTP_409_CONFLICT,
+            "image_task_retry_via_card",
+            "图片任务请使用任务卡内的重试按钮。",
+        )
     try:
         user_message, assistant_message = service.retry_generation(
             subject.account_id, conversation_id, message_id

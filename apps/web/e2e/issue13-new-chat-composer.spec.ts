@@ -230,7 +230,7 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await expect(reducedQuote).toHaveAttribute("data-quote-index", "0");
   });
 
-  test("「+」菜单固定六入口，未实现入口给明确不可用原因", async ({ page }) => {
+  test("「+」菜单固定七入口，未实现入口给明确不可用原因", async ({ page }) => {
     await registerAndEnterHome(page);
     const composer = page.getByTestId("composer");
 
@@ -238,16 +238,28 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     const menu = page.getByRole("menu", { name: "更多功能" });
     await expect(menu).toBeVisible();
 
-    // 固定顺序六入口
+    // 固定顺序七入口（Issue 31：图片生成为真实任务对话框入口）
     const labels = await menu.getByRole("menuitem").allTextContents();
     expect(labels).toEqual([
       "上传文件/图片",
       "论文搜索",
       "文章人味化",
       "生涯规划助手",
+      "图片生成",
       "选择学习项目",
       "选择已启用插件",
     ]);
+
+    // Issue 31：「图片生成」已落地——打开真实任务对话框（生成页签），
+    // Esc 关闭后不产生假结果；对话框焦点陷阱收起时菜单同时关闭，需重新打开。
+    await menu.getByRole("menuitem", { name: "图片生成" }).click();
+    const imageDialog = page.getByRole("dialog", { name: "图片生成与编辑" });
+    await expect(imageDialog).toBeVisible();
+    await expect(imageDialog.getByTestId("image-prompt-input")).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await composer.getByRole("button", { name: "更多功能" }).click();
+    await expect(menu).toBeVisible();
 
     // Issue 19：「选择学习项目」已落地——打开真实选择对话框（当前账户无项目
     // 时给真实空状态），不再是不可用占位；Esc 关闭后不产生假结果。

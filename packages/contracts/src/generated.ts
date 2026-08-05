@@ -4951,6 +4951,145 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/image-tasks/{task_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image Task
+         * @description 返回任务投影（刷新/重登/重启后据此恢复任务状态）。
+         *
+         *     呈现状态含 recovery（租约过期、后台恢复中）；不存在或跨账户一律
+         *     404。
+         */
+        get: operations["get_image_task_chat_conversations__conversation_id__image_tasks__task_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/image-tasks/{task_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Image Task
+         * @description 取消任务：本地标记为权威，尽力通知云端；迟到结果不发布。
+         *
+         *     已成功/已取消的任务幂等返回当前投影；不存在或跨账户一律 404。
+         */
+        post: operations["cancel_image_task_chat_conversations__conversation_id__image_tasks__task_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/image-tasks/{task_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Image Task
+         * @description 重试失败任务：同输入（提示/来源不变）重新入队，固定同一快照。
+         *
+         *     重试需要图片能力仍可用（能力不可用时入口明确拒绝并说明原因）。
+         */
+        post: operations["retry_image_task_chat_conversations__conversation_id__image_tasks__task_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/image-assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image Asset
+         * @description 返回资产投影：版本链（来源/提示/模型/时间）、替代文本与当前版本。
+         */
+        get: operations["get_image_asset_chat_conversations__conversation_id__image_assets__asset_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Image Asset
+         * @description 删除资产并返回影响说明：移除版本数、更新的消息引用与对象处置状态。
+         *
+         *     删除同时维护消息引用、资产元数据与本地对象一致性：对象物理清理
+         *     失败时保留待清理记录（``pending_cleanup``），由后台清理轮重试，
+         *     可观察可恢复；幂等，已删除资产返回零计数投影。
+         */
+        delete: operations["delete_image_asset_chat_conversations__conversation_id__image_assets__asset_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/image-assets/{asset_id}/alt-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Update Image Alt Text
+         * @description 修改资产替代文本（来源标记为 manual，替代自动生成值）。
+         */
+        put: operations["update_image_alt_text_chat_conversations__conversation_id__image_assets__asset_id__alt_text_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/image-assets/{asset_id}/versions/{version_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image Version Bytes
+         * @description 返回指定版本图片字节（流式，账户授权校验 + 私有缓存头）。
+         *
+         *     ``download=1`` 时附加附件下载头（下载内容与所选版本一致）；默认
+         *     内联显示。跨账户、已删除资产或版本不存在一律 404；缓存私有化杜绝
+         *     跨账户缓存复用。
+         */
+        get: operations["get_image_version_bytes_chat_conversations__conversation_id__image_assets__asset_id__versions__version_id__image_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -6979,6 +7118,8 @@ export interface components {
             skill_id?: string | null;
             /** @description SKILL 任务载荷（契约模型校验，标识须为内置注册）。 */
             skill_input?: components["schemas"]["HumanizerSkillInput"] | null;
+            /** @description 图片生成/编辑请求载荷（Issue 31）；携带时本轮创建图片异步任务而非普通回答。 */
+            image?: components["schemas"]["ImageRequestPayload"] | null;
         };
         /**
          * ChatMessageProjection
@@ -7042,6 +7183,8 @@ export interface components {
             humanizer?: components["schemas"]["HumanizerResultProjection"] | null;
             /** @description 助手消息的生涯规划结果投影（Issue 29）；非规划消息为 None。 */
             career_planning?: components["schemas"]["CareerPlanningProjection"] | null;
+            /** @description 助手消息的图片任务/资产状态快照（Issue 31）；进行中渲染任务卡，成功后渲染资产卡；普通消息为 None。 */
+            image?: components["schemas"]["ImageTaskProjection"] | null;
             /** @description 本条助手消息的朗读状态快照（Issue 30）；未请求过朗读为 None。 */
             read_aloud?: components["schemas"]["ReadAloudProjection"] | null;
             /**
@@ -7309,14 +7452,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career";
+        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -7358,6 +7501,28 @@ export interface components {
              * @description 已完成的步骤中文轨迹。
              */
             progress_steps?: string[];
+        };
+        /**
+         * ChatStreamImageData
+         * @description image 事件载荷：驱动消息内图片任务卡（Issue 31）。
+         *
+         *     任务提交时下发 queued 状态快照；任务完成/失败/取消经后台执行器
+         *     写回消息投影，前端刷新消息列表即可恢复（任务表是权威、消息投影
+         *     是快照，刷新与重启后可恢复查询）。
+         */
+        ChatStreamImageData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "image";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 任务状态快照。 */
+            task: components["schemas"]["ImageTaskProjection"];
         };
         /**
          * ChatStreamProfileData
@@ -11853,6 +12018,288 @@ export interface components {
              * @description 来源显示名（文件名或用户粘贴说明）。
              */
             source_label?: string | null;
+        };
+        /**
+         * ImageAltTextSource
+         * @description 替代文本来源：模型自动生成 / 确定性降级 / 用户手动修改。
+         * @enum {string}
+         */
+        ImageAltTextSource: "model" | "fallback" | "manual";
+        /**
+         * ImageAltTextUpdateRequest
+         * @description 修改替代文本的请求。
+         */
+        ImageAltTextUpdateRequest: {
+            /**
+             * Alt Text
+             * @description 新的替代文本。
+             */
+            alt_text: string;
+        };
+        /**
+         * ImageAssetProjection
+         * @description 图片资产的公开投影：版本链、替代文本与当前版本指针。
+         */
+        ImageAssetProjection: {
+            /**
+             * Asset Id
+             * @description 资产标识。
+             */
+            asset_id: string;
+            /**
+             * Alt Text
+             * @description 当前替代文本（可修改）。
+             * @default
+             */
+            alt_text: string;
+            /**
+             * @description 替代文本来源。
+             * @default fallback
+             */
+            alt_text_source: components["schemas"]["ImageAltTextSource"];
+            /**
+             * Current Version Id
+             * @description 当前版本指针（删除后为 None）。
+             */
+            current_version_id?: string | null;
+            /**
+             * Version Count
+             * @description 版本数量。
+             * @default 0
+             */
+            version_count: number;
+            /**
+             * Versions
+             * @description 版本列表（按创建时间升序）。
+             */
+            versions?: components["schemas"]["ImageVersionProjection"][];
+            /**
+             * Created At
+             * Format: date-time
+             * @description 资产创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近更新（含版本追加/替代文本）时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * ImageDeletionProjection
+         * @description 删除资产的影响说明与结果（幂等：已删除资产返回零计数）。
+         */
+        ImageDeletionProjection: {
+            /**
+             * Asset Id
+             * @description 已删除的资产标识。
+             */
+            asset_id: string;
+            /**
+             * Removed Versions
+             * @description 实际移除的版本数量。
+             */
+            removed_versions: number;
+            /**
+             * Updated Messages
+             * @description 引用该资产的助手消息投影更新数量。
+             */
+            updated_messages: number;
+            /**
+             * Object Status
+             * @description 对象处置：cleaned（已物理清理）或 pending_cleanup（待清理轮重试）。
+             */
+            object_status: string;
+            /**
+             * Deleted At
+             * Format: date-time
+             * @description 删除完成时间。
+             */
+            deleted_at: string;
+        };
+        /**
+         * ImageRequestPayload
+         * @description 图片生成/编辑请求（Issue 31）。
+         *
+         *     生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源
+         *     （本账户图片资产版本 ``source_version_id`` 或本账户聊天附件对象
+         *     ``source_object_id``）。编辑来源归属在服务层校验，跨账户一律 404。
+         *     请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。
+         */
+        ImageRequestPayload: {
+            /** @description 生成或编辑。 */
+            kind: components["schemas"]["ImageTaskKind"];
+            /**
+             * Prompt
+             * @description 生成要求或编辑指令。
+             */
+            prompt: string;
+            /**
+             * Source Version Id
+             * @description 编辑来源版本标识（kind=edit 时可选其一）。
+             */
+            source_version_id?: string | null;
+            /**
+             * Source Object Id
+             * @description 编辑来源聊天附件对象标识（kind=edit 时可选其一）。
+             */
+            source_object_id?: string | null;
+        };
+        /**
+         * ImageTaskKind
+         * @description 图片任务类型：从提示词生成，或在来源图片上按指令编辑。
+         * @enum {string}
+         */
+        ImageTaskKind: "generate" | "edit";
+        /**
+         * ImageTaskProjection
+         * @description 一次图片任务的公开投影；不包含图片字节与账户信息。
+         *
+         *     消息的 ``image`` 列直接保存同一投影：进行中渲染任务卡（状态芯片 +
+         *     取消/重试），成功后前端据此拉取资产详情渲染资产卡。
+         */
+        ImageTaskProjection: {
+            /**
+             * Task Id
+             * @description 任务标识。
+             */
+            task_id: string;
+            /** @description 任务类型：生成或编辑。 */
+            kind: components["schemas"]["ImageTaskKind"];
+            /**
+             * Prompt
+             * @description 用户提交的生成要求或编辑指令（用于追溯与前端展示）。
+             */
+            prompt: string;
+            /**
+             * Source Version Id
+             * @description 编辑来源版本标识（kind=edit 时存在）。
+             */
+            source_version_id?: string | null;
+            /**
+             * Source Object Id
+             * @description 编辑来源聊天附件对象标识（kind=edit 时存在）。
+             */
+            source_object_id?: string | null;
+            /**
+             * Model Id
+             * @description 实际使用的固定图片模型快照。
+             */
+            model_id?: string | null;
+            /** @description 当前呈现状态。 */
+            status: components["schemas"]["ImageTaskStatus"];
+            /**
+             * Error Code
+             * @description 稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Retryable
+             * @description 失败后是否可原样重试同一输入。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Asset Id
+             * @description 结果归属资产标识；编辑时为来源资产。
+             */
+            asset_id?: string | null;
+            /**
+             * Result Version Id
+             * @description 成功时创建的版本标识（下载/切换版本用）。
+             */
+            result_version_id?: string | null;
+            /**
+             * Deleted
+             * @description 资产已被删除（消息引用维护：删除资产时标记，前端据此显示已删除状态，不再请求资产详情）。
+             * @default false
+             */
+            deleted: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 任务创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近状态更新时间。
+             */
+            updated_at: string;
+        };
+        /**
+         * ImageTaskStatus
+         * @description 图片任务的呈现状态。
+         *
+         *     - ``queued``：已提交，等待后台执行器领取；
+         *     - ``running``：已领取，正在提交/轮询云端任务；
+         *     - ``recovery``：处理被中断（租约过期），后台正在恢复重领；
+         *     - ``succeeded``：真实模型结果已落为账户版本化资产；
+         *     - ``failed``：失败，error_code/error_message 说明原因，可重试；
+         *     - ``cancelled``：用户取消；迟到结果不会发布为成功资产。
+         * @enum {string}
+         */
+        ImageTaskStatus: "queued" | "running" | "recovery" | "succeeded" | "failed" | "cancelled";
+        /**
+         * ImageVersionProjection
+         * @description 图片资产中的一个版本；每个成功任务恰好产生一个版本对象。
+         */
+        ImageVersionProjection: {
+            /**
+             * Version Id
+             * @description 版本标识（全局唯一）。
+             */
+            version_id: string;
+            /**
+             * Asset Id
+             * @description 所属资产标识。
+             */
+            asset_id: string;
+            /**
+             * Parent Version Id
+             * @description 编辑来源版本；生成版本为 None。
+             */
+            parent_version_id?: string | null;
+            /** @description 本版本来源：生成或编辑。 */
+            kind: components["schemas"]["ImageTaskKind"];
+            /**
+             * Prompt
+             * @description 本版本使用的提示词。
+             */
+            prompt: string;
+            /**
+             * Model Id
+             * @description 本版本使用的固定模型快照（运行锁实际标识）。
+             */
+            model_id?: string | null;
+            /**
+             * Object Id
+             * @description 账户对象库中的图片对象标识。
+             */
+            object_id: string;
+            /**
+             * Media Type
+             * @description 图片媒体类型。
+             */
+            media_type: string;
+            /**
+             * Content Length
+             * @description 图片字节数。
+             */
+            content_length: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 版本创建时间。
+             */
+            created_at: string;
         };
         /**
          * ImmediateFeedback
@@ -36093,6 +36540,460 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_task_chat_conversations__conversation_id__image_tasks__task_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    cancel_image_task_chat_conversations__conversation_id__image_tasks__task_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    retry_image_task_chat_conversations__conversation_id__image_tasks__task_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                task_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageTaskProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_image_asset_chat_conversations__conversation_id__image_assets__asset_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageAssetProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    delete_image_asset_chat_conversations__conversation_id__image_assets__asset_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageDeletionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    update_image_alt_text_chat_conversations__conversation_id__image_assets__asset_id__alt_text_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ImageAltTextUpdateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageAssetProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    get_image_version_bytes_chat_conversations__conversation_id__image_assets__asset_id__versions__version_id__image_get: {
+        parameters: {
+            query?: {
+                download?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+                asset_id: string;
+                version_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 指定版本的图片字节流；下载内容与所选版本一致。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
                 };
             };
         };

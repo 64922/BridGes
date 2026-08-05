@@ -63,6 +63,7 @@ class MessageRecord:
     skill: dict[str, Any] | None = None
     career_planning: dict[str, Any] | None = None
     read_aloud: dict[str, Any] | None = None
+    image: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -294,8 +295,8 @@ class ConversationRepository:
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                     " web_search, arxiv_search, teaching, context_note, skill,"
-                    " career_planning)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " career_planning, image)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -320,6 +321,7 @@ class ConversationRepository:
                         _json_dumps(record.career_planning)
                         if record.career_planning
                         else None,
+                        _json_dumps(record.image) if record.image else None,
                     ),
                 )
         except StorageError:
@@ -343,8 +345,9 @@ class ConversationRepository:
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                         " web_search, arxiv_search, teaching, context_note, skill,"
-                        " career_planning)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " career_planning, image)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -369,6 +372,7 @@ class ConversationRepository:
                             _json_dumps(record.career_planning)
                             if record.career_planning
                             else None,
+                            _json_dumps(record.image) if record.image else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -409,7 +413,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill, career_planning, read_aloud"
+            " teaching, context_note, skill, career_planning, read_aloud, image"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -422,7 +426,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note, skill, career_planning, read_aloud"
+            " teaching, context_note, skill, career_planning, read_aloud, image"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -934,6 +938,7 @@ class ConversationRepository:
             skill=_json_loads_any(row["skill"]),
             career_planning=_json_loads_any(row["career_planning"]),
             read_aloud=_json_loads_any(row["read_aloud"]),
+            image=_json_loads_any(row["image"]),
         )
 
 

@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 18
+SCHEMA_VERSION = 19
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -920,6 +920,79 @@ MIGRATIONS: dict[int, list[str]] = {
     18: [
         """
         ALTER TABLE messages ADD COLUMN read_aloud TEXT
+        """,
+    ],
+    # Issue 31：图片生成与编辑纵向链路。image_tasks 是可恢复异步任务
+    # 状态机（后台执行器按租约领取并轮询 DashScope 云端任务，取消后
+    # 迟到结果不发布）；image_assets/image_versions 是账户隔离的版本化
+    # 资产（编辑创建新版本并保留来源/提示/模型快照/时间关系，不覆盖
+    # 原图）；messages.image 列保存助手消息上的任务/资产状态快照，
+    # 刷新与重启后可恢复查询。
+    19: [
+        """
+        CREATE TABLE IF NOT EXISTS image_tasks (
+            task_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            message_id TEXT,
+            kind TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            source_version_id TEXT,
+            source_object_id TEXT,
+            cloud_task_id TEXT,
+            status TEXT NOT NULL DEFAULT 'queued',
+            lease_expires_at TEXT,
+            claimed_at TEXT,
+            poll_count INTEGER NOT NULL DEFAULT 0,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            error_code TEXT,
+            error_message TEXT,
+            model_id TEXT,
+            asset_id TEXT,
+            result_version_id TEXT,
+            cancelled_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_image_tasks_account_status
+            ON image_tasks(account_id, status)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS image_assets (
+            asset_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            alt_text TEXT NOT NULL DEFAULT '',
+            alt_text_source TEXT NOT NULL DEFAULT 'fallback',
+            current_version_id TEXT,
+            deleted INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS image_versions (
+            version_id TEXT PRIMARY KEY,
+            asset_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            parent_version_id TEXT,
+            kind TEXT NOT NULL,
+            prompt TEXT NOT NULL,
+            model_id TEXT,
+            object_id TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            content_length INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_image_versions_asset
+            ON image_versions(asset_id, created_at)
+        """,
+        """
+        ALTER TABLE messages ADD COLUMN image TEXT
         """,
     ],
 }

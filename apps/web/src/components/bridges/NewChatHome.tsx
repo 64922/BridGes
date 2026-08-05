@@ -9,11 +9,13 @@ import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
-import type { HumanizerSkillInput } from "@/lib/api";
+import { ImageDialog } from "@/components/bridges/ImageDialog";
+import type { HumanizerSkillInput, ImageTaskKind } from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
 import {
   chatAttachmentKey,
+  chatImageKey,
   chatNoProfileKey,
   chatPromptKey,
   chatSkillKey,
@@ -64,6 +66,7 @@ export function NewChatHome() {
 
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
+  const [imageOpen, setImageOpen] = useState(false);
 
   /** Issue 29：首页提交生涯规划任务——先建对话，暂存问题后跳转对话页
    *  自动发送（真实消息流；画像开关语义与 Composer 一致）。 */
@@ -80,6 +83,31 @@ export function NewChatHome() {
       if (!useProfile) {
         sessionStorage.setItem(chatNoProfileKey(conversationId), "1");
       }
+      router.push(`/chat/${conversationId}`);
+      return true;
+    } catch (error) {
+      setSendError({
+        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
+        code: error instanceof ApiError ? error.code : undefined,
+      });
+      return false;
+    }
+  };
+
+  /** Issue 31：首页提交图片任务——先建对话，暂存 image 载荷后跳转对话页自动发送。 */
+  const handleImageSubmit = async (payload: {
+    kind: ImageTaskKind;
+    prompt: string;
+    sourceVersionId?: string;
+    sourceObjectId?: string;
+  }): Promise<boolean> => {
+    try {
+      const conversationId =
+        preparedConversationRef.current ??
+        (await createChatConversation(undefined, mode)).conversation_id;
+      preparedConversationRef.current = conversationId;
+      sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
+      sessionStorage.setItem(chatImageKey(conversationId), JSON.stringify(payload));
       router.push(`/chat/${conversationId}`);
       return true;
     } catch (error) {
@@ -183,6 +211,7 @@ export function NewChatHome() {
                 onSelectLearningProject={setLearningProject}
                 onOpenHumanizer={() => setHumanizerOpen(true)}
                 onOpenCareer={() => setCareerOpen(true)}
+                onOpenImage={() => setImageOpen(true)}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
@@ -196,6 +225,7 @@ export function NewChatHome() {
                 }}
                 onHumanizer={() => setHumanizerOpen(true)}
                 onCareer={() => setCareerOpen(true)}
+                onImage={() => setImageOpen(true)}
               />
               <p className={styles.blankStateNote}>
                 BridGes 的回答会标注依据与来源；重要内容请核对引用。
@@ -215,6 +245,13 @@ export function NewChatHome() {
         onClose={() => setCareerOpen(false)}
         ensureConversation={ensureConversation}
         onSubmit={handleCareerSubmit}
+      />
+      <ImageDialog
+        open={imageOpen}
+        onClose={() => setImageOpen(false)}
+        assets={[]}
+        attachmentOptions={[]}
+        onSubmit={handleImageSubmit}
       />
     </AppShell>
   );

@@ -44,15 +44,23 @@ import { readAloudSession } from "@/lib/read-aloud";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
 import {
   chatAttachmentKey,
+  chatImageKey,
   chatNoProfileKey,
   chatPromptKey,
   chatSkillKey,
 } from "@/lib/chat-flow";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
+import { ImageDialog } from "@/components/bridges/ImageDialog";
 import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
-import type { ChatStreamCareerData, ChatStreamHumanizerData } from "@/lib/api";
+import type {
+  ChatStreamCareerData,
+  ChatStreamHumanizerData,
+  ChatStreamImageData,
+} from "@/lib/api";
+import type { ImageAssetProjection, ImageRequestPayload, ImageTaskKind } from "@/lib/api";
+import { getImageAsset } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -95,6 +103,8 @@ interface ActiveRun {
   humanizerProcess: ChatStreamHumanizerData | null;
   /** Issue 29：流式中的生涯规划过程卡状态（五态中文）。 */
   careerProcess: ChatStreamCareerData | null;
+  /** Issue 31：流式中的图片任务状态快照（提交即下发，任务卡即时呈现）。 */
+  imageProcess: ChatStreamImageData | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -132,6 +142,9 @@ export default function ChatConversationPage() {
   // Issue 29：生涯规划任务对话框（问题 + 画像开关）
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
+  // Issue 31：图片生成/编辑任务对话框（生成页签 + 编辑页签）
+  const [imageOpen, setImageOpen] = useState(false);
+  const [imageAssets, setImageAssets] = useState<ImageAssetProjection[]>([]);
   const [profileNotifications, setProfileNotifications] = useState<
     ProfileNotification[]
   >([]);
@@ -305,6 +318,27 @@ export default function ChatConversationPage() {
       // Issue 29：首页生涯规划对话框关闭画像时暂存标记（消费即删除）。
       const rawNoProfile = sessionStorage.getItem(chatNoProfileKey(conversationId));
       sessionStorage.removeItem(chatNoProfileKey(conversationId));
+      // Issue 31：首页提交的图片任务载荷（消费即删除，防 StrictMode 双发）。
+      const rawImage = sessionStorage.getItem(chatImageKey(conversationId));
+      sessionStorage.removeItem(chatImageKey(conversationId));
+      let imagePayload: ImageRequestPayload | undefined;
+      if (rawImage) {
+        try {
+          const parsed: unknown = JSON.parse(rawImage);
+          if (
+            parsed &&
+            typeof parsed === "object" &&
+            "kind" in parsed &&
+            typeof (parsed as { kind: unknown }).kind === "string" &&
+            "prompt" in parsed &&
+            typeof (parsed as { prompt: unknown }).prompt === "string"
+          ) {
+            imagePayload = parsed as ImageRequestPayload;
+          }
+        } catch {
+          setSendError({ message: "图片任务信息损坏，请重新提交。" });
+        }
+      }
       sendingRef.current = true;
       void sendMessage(
         prompt,
@@ -312,7 +346,8 @@ export default function ChatConversationPage() {
         true,
         rawNoProfile ? false : true,
         skillId,
-        skillInput
+        skillInput,
+        imagePayload
       );
     }
   }, [loadState, conversation, conversationId]);
@@ -343,6 +378,7 @@ export default function ChatConversationPage() {
             teaching: event.data.teaching ?? null,
             humanizerProcess: null,
             careerProcess: null,
+            imageProcess: null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -376,6 +412,16 @@ export default function ChatConversationPage() {
               careerProcess: event.data,
             };
             setActiveRun((run) => (run ? { ...run, careerProcess: event.data } : run));
+          }
+        } else if (isChatStreamEventOf(event, "image")) {
+          // Issue 31：图片任务状态事件（提交即下发 queued 快照）；任务卡
+          // 在流式期间即时呈现，终态由 done 后权威历史的消息投影接管。
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            activeRunRef.current = {
+              ...activeRunRef.current,
+              imageProcess: event.data,
+            };
+            setActiveRun((run) => (run ? { ...run, imageProcess: event.data } : run));
           }
         } else if (isChatStreamEventOf(event, "profile")) {
           // 画像通知即时展示：已持久化并按账户隔离；重试轮次会重新下发
@@ -412,6 +458,7 @@ export default function ChatConversationPage() {
               teaching: event.data.teaching ?? current?.teaching ?? null,
               humanizerProcess: current?.humanizerProcess ?? null,
               careerProcess: current?.careerProcess ?? null,
+              imageProcess: current?.imageProcess ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -439,7 +486,8 @@ export default function ChatConversationPage() {
       useKnowledgeBase: boolean = true,
       useProfile: boolean = true,
       skillId?: string,
-      skillInput?: unknown
+      skillInput?: unknown,
+      image?: ImageRequestPayload
     ): Promise<boolean> => {
       setSendError(null);
       setProfileNotifications([]);
@@ -464,7 +512,9 @@ export default function ChatConversationPage() {
           useProfile,
           // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
           skillId,
-          skillInput
+          skillInput,
+          // Issue 31：图片生成/编辑载荷（图片对话框走真实消息流程）
+          image
         );
         return true;
       } catch (error) {
@@ -513,6 +563,63 @@ export default function ChatConversationPage() {
     },
     [sendMessage]
   );
+
+  /** Issue 31：提交图片生成/编辑任务（真实消息流：image 载荷创建异步任务，
+   *  状态卡与资产卡在消息流中呈现，不在此处伪造图片结果）。 */
+  const handleImageSubmit = useCallback(
+    async (payload: {
+      kind: ImageTaskKind;
+      prompt: string;
+      sourceVersionId?: string;
+      sourceObjectId?: string;
+    }): Promise<boolean> => {
+      const imagePayload: ImageRequestPayload = {
+        kind: payload.kind,
+        prompt: payload.prompt,
+        ...(payload.sourceVersionId
+          ? { source_version_id: payload.sourceVersionId }
+          : {}),
+        ...(payload.sourceObjectId
+          ? { source_object_id: payload.sourceObjectId }
+          : {}),
+      };
+      return sendMessage(payload.prompt, [], true, true, undefined, undefined, imagePayload);
+    },
+    [sendMessage]
+  );
+
+  // Issue 31：图片编辑对话框的可选来源——当前对话中已成功且未删除的
+  // 图片资产（打开对话框时按消息流收集一次；资产详情含版本链）。
+  useEffect(() => {
+    if (!imageOpen || !conversation) return;
+    let cancelled = false;
+    const assetIds = new Set<string>();
+    for (const message of conversation.messages ?? []) {
+      const image = message.image;
+      if (
+        image &&
+        image.status === "succeeded" &&
+        image.asset_id &&
+        !image.deleted
+      ) {
+        assetIds.add(image.asset_id);
+      }
+    }
+    Promise.all(
+      Array.from(assetIds).map((assetId) =>
+        getImageAsset(conversationId, assetId).catch(() => null)
+      )
+    ).then((results) => {
+      if (!cancelled) {
+        setImageAssets(
+          results.filter((result): result is ImageAssetProjection => result !== null)
+        );
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [imageOpen, conversation, conversationId]);
 
   const downloadAttachment = useCallback(
     async (attachment: ChatAttachmentProjection) => {
@@ -669,6 +776,7 @@ export default function ChatConversationPage() {
       teaching: activeRun.teaching,
       humanizerProcess: activeRun.humanizerProcess,
       careerProcess: activeRun.careerProcess,
+      image: activeRun.imageProcess?.task ?? undefined,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -733,6 +841,7 @@ export default function ChatConversationPage() {
                 onRetryIngestion={retryIngestion}
                 conversationId={conversationId}
                 tts={speechAvailability(speechCapabilities, "tts", "语音朗读")}
+                onRefreshMessages={() => void load(true)}
                 announcement={announcement}
               />
               {profileNotifications.length > 0 && (
@@ -765,6 +874,8 @@ export default function ChatConversationPage() {
                     onSelectLearningProject={(project) => void changeLearningProject(project)}
                     onOpenHumanizer={() => setHumanizerOpen(true)}
                     onOpenCareer={() => setCareerOpen(true)}
+                    onOpenImage={() => setImageOpen(true)}
+                    image={speechAvailability(speechCapabilities, "image", "图片生成与编辑")}
                     asr={speechAvailability(speechCapabilities, "asr", "语音转写")}
                   />
                 </div>
@@ -785,6 +896,38 @@ export default function ChatConversationPage() {
         conversationId={conversationId}
         onSubmit={handleCareerSubmit}
       />
+      <ImageDialog
+        open={imageOpen}
+        onClose={() => setImageOpen(false)}
+        assets={imageAssets}
+        attachmentOptions={imageAttachmentOptions(threadMessages)}
+        onSubmit={handleImageSubmit}
+      />
     </AppShell>
   );
+}
+
+/** Issue 31：从消息流收集图片附件作为编辑来源（本账户聊天附件对象）。 */
+function imageAttachmentOptions(
+  messages: (ChatMessageLike | { kind: string; event_id: string; to_mode: string })[]
+): {
+  key: string;
+  objectId: string;
+  label: string;
+  hint: string;
+}[] {
+  const options: { key: string; objectId: string; label: string; hint: string }[] = [];
+  for (const message of messages) {
+    if ("kind" in message || message.role !== "user") continue;
+    for (const attachment of message.attachments ?? []) {
+      if (!attachment.media_type.startsWith("image/")) continue;
+      options.push({
+        key: `object:${attachment.object_id}`,
+        objectId: attachment.object_id,
+        label: attachment.original_filename,
+        hint: attachment.media_type,
+      });
+    }
+  }
+  return options;
 }

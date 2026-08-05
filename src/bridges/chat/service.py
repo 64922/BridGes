@@ -50,10 +50,12 @@ from bridges.contracts.chat import (
     ChatModeEventProjection,
     ChatStreamCareerData,
     ChatStreamHumanizerData,
+    ChatStreamImageData,
     ChatThinkingSummary,
     ContextNoteProfileItem,
     ContextNoteProjection,
     ContextNoteState,
+    ImageRequestPayload,
 )
 from bridges.contracts.feedback import (
     AnswerFeedback,
@@ -66,6 +68,7 @@ from bridges.contracts.humanizer import (
     HumanizerResultStatus,
     HumanizerSkillInput,
 )
+from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
     PROFILE_DIMENSION_LABELS,
@@ -339,6 +342,28 @@ class CareerPlannerOrchestrator(Protocol):
     ) -> Iterator[Any]: ...
 
 
+class ImageOrchestrator(Protocol):
+    """图片生成与编辑编排接缝（Issue 31，运行时由 ImageService 实现）。
+
+    聊天分支只负责把请求载荷转成异步任务并收敛消息；云端轮询、资产
+    落库与迟到结果隔离都在后台执行器进程内完成，不阻塞消息流。
+    """
+
+    def submit_generation(
+        self, account_id: str, conversation_id: str, message_id: str, prompt: str
+    ) -> ImageTaskProjection: ...
+
+    def submit_edit(
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        prompt: str,
+        source_version_id: str | None = None,
+        source_object_id: str | None = None,
+    ) -> ImageTaskProjection: ...
+
+
 class ChatDomainError(Exception):
     """聊天领域的可预期失败（由 API 层映射为 HTTP 状态与错误体）。"""
 
@@ -365,6 +390,7 @@ class ChatService:
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
+        image_service: ImageOrchestrator | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -386,6 +412,9 @@ class ChatService:
         self._humanizer = humanizer_service
         #: 生涯规划编排（Issue 29）；未挂载时规划意图按普通消息处理。
         self._career_planner = career_planner_service
+        #: 图片生成与编辑编排（Issue 31）；未挂载时携带 image 载荷的
+        #: 消息按错误收敛（测试/内存环境不假装生成）。
+        self._image = image_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -643,18 +672,22 @@ class ChatService:
         attachment_ids: list[str] | None = None,
         skill_id: str | None = None,
         skill_input: dict[str, Any] | None = None,
+        image: dict[str, Any] | None = None,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
         """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。
 
         ``skill_id``/``skill_input``（Issue 28）：携带时本轮走内置 SKILL
         编排（bridges-humanizer）；载荷随用户消息落库，重试沿用同一份
         任务契约。SKILL 载荷必须通过注册校验，未注册标识直接拒绝。
+        ``image``（Issue 31）：图片生成/编辑请求载荷；与 SKILL 载荷
+        互斥，携带时本轮创建图片异步任务而非普通回答。
         """
         now = datetime.now(UTC)
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
         skill_payload = self._validate_skill_payload(skill_id, skill_input)
+        image_payload = _validate_image_payload(image, skill_payload is not None)
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError(
@@ -716,6 +749,7 @@ class ChatService:
             created_at=now,
             updated_at=now,
             skill=skill_payload,
+            image=image_payload,
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -862,13 +896,45 @@ class ChatService:
                     use_knowledge_base,
                 )
                 return
-            # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
-            # 走生涯规划编排——同一真实消息流程，六类输出经 career 过程事件
-            # 呈现，终态 done/error 收敛；非规划消息继续普通回答。
+            # Issue 31：用户消息携带图片生成/编辑载荷（前端图片对话框提交）
+            # 走图片异步任务编排——创建任务并立即收敛消息（任务卡状态由
+            # 后台执行器写回消息投影），绝不阻塞等待云端生成。
             owner_message = _owner_user_message(
                 self._repo.list_messages(account_id, conversation_id),
                 assistant_message_id,
             )
+            owner_image = _image_payload_from(owner_message)
+            if owner_image is not None:
+                if self._image is None:
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="image_unavailable",
+                        error_message="图片能力暂不可用，请稍后重试。",
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_failed_thinking(thinking, "image_unavailable"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="image_unavailable",
+                        error_message="图片能力暂不可用，请稍后重试。",
+                    )
+                    return
+                yield from self._stream_image_request(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    owner_image,
+                )
+                return
+            # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
+            # 走生涯规划编排——同一真实消息流程，六类输出经 career 过程事件
+            # 呈现，终态 done/error 收敛；非规划消息继续普通回答。
             if (
                 owner_message is not None
                 and is_career_intent(owner_message.content)
@@ -2106,6 +2172,108 @@ class ChatService:
                 error_message="生涯规划执行异常，请重试（输入已保留）。",
             )
 
+    def _stream_image_request(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        payload: ImageRequestPayload,
+    ) -> Iterator[StreamEvent]:
+        """图片生成/编辑编排：创建异步任务 → IMAGE 事件 → 收敛 DONE。
+
+        任务创建（含助手消息投影）在图片服务的事务内原子完成；本方法
+        只发事件与收敛消息状态，不调用任何模型。任务完成/失败/取消由
+        后台执行器写回消息投影，前端刷新消息列表即可恢复——任务表是
+        权威，消息投影是快照。
+        """
+        started = time.monotonic()
+        now = datetime.now(UTC)
+        assert self._image is not None
+        try:
+            if payload.kind == ImageTaskKind.EDIT:
+                projection = self._image.submit_edit(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    payload.prompt,
+                    source_version_id=payload.source_version_id,
+                    source_object_id=payload.source_object_id,
+                )
+            else:
+                projection = self._image.submit_generation(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    payload.prompt,
+                )
+        except ImageError as exc:
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code=exc.code,
+                error_message=exc.message,
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=_failed_thinking(_initial_thinking(CHAT_MODE), exc.code),
+            )
+            yield StreamEvent(kind="error", error_code=exc.code, error_message=exc.message)
+            return
+        except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="image_submit_failed",
+                error_message="图片任务提交异常，请重试。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=_failed_thinking(_initial_thinking(CHAT_MODE), "image_submit_failed"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="image_submit_failed",
+                error_message="图片任务提交异常，请重试。",
+            )
+            return
+
+        # 图片任务不再流式产出文本：正文收敛为提交摘要，状态由任务卡呈现。
+        summary = (
+            "已提交图片编辑请求，正在处理…"
+            if payload.kind == ImageTaskKind.EDIT
+            else "已提交图片生成请求，正在处理…"
+        )
+        self._repo.update_message_content(
+            account_id, assistant_message_id, summary, now
+        )
+        self._finalize_message(
+            account_id,
+            assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            model_id=None,
+            run_lock_id=None,
+            started=started,
+            now=now,
+            thinking=_done_thinking(_initial_thinking(CHAT_MODE)),
+        )
+        yield StreamEvent(
+            kind="image",
+            image=ChatStreamImageData(
+                message_id=assistant_message_id,
+                task=projection,
+            ),
+        )
+        yield StreamEvent(kind="done")
+
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -2658,6 +2826,14 @@ class ChatService:
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
+            # 助手消息的 image 列只承载任务/资产状态快照（请求载荷只在
+            # 用户消息，由 stream 分支按角色读取，不外发为任务投影）。
+            image=(
+                ImageTaskProjection.model_validate(message.image)
+                if message.image is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
             error_code=message.error_code,
             error_message=message.error_message,
             duration_ms=message.duration_ms,
@@ -2727,6 +2903,47 @@ def _skill_input_from(owner: MessageRecord | None) -> HumanizerSkillInput | None
         return None
     try:
         return HumanizerSkillInput.model_validate(owner.skill)
+    except ValidationError:
+        return None
+
+
+def _validate_image_payload(
+    image: dict[str, Any] | None, has_skill: bool
+) -> dict[str, Any] | None:
+    """校验图片请求载荷并落库为用户消息快照（与 SKILL 载荷互斥）。"""
+    if image is None:
+        return None
+    if has_skill:
+        raise ChatDomainError(
+            "conflicting_payload", "SKILL 与图片请求不能同时携带。", 422
+        )
+    try:
+        payload = ImageRequestPayload.model_validate(image)
+    except ValidationError as exc:
+        raise ChatDomainError(
+            "invalid_image_request", "图片请求载荷无效。", 422
+        ) from exc
+    if payload.kind == ImageTaskKind.EDIT and bool(payload.source_version_id) == bool(
+        payload.source_object_id
+    ):
+        raise ChatDomainError(
+            "invalid_image_request", "编辑必须且只能选择一个来源图片。", 422
+        )
+    return payload.model_dump(mode="json")
+
+
+def _image_payload_from(owner: MessageRecord | None) -> ImageRequestPayload | None:
+    """从用户消息的 image 列还原图片请求载荷（重试沿用同一份输入）。
+
+    用户消息的 image 列只存请求载荷；任务状态快照只写在助手消息的
+    image 列（含 task_id/status 字段），据此判别避免误解析。
+    """
+    if owner is None or not owner.image:
+        return None
+    if "task_id" in owner.image or "status" in owner.image:
+        return None
+    try:
+        return ImageRequestPayload.model_validate(owner.image)
     except ValidationError:
         return None
 

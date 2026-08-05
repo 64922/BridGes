@@ -229,6 +229,156 @@ class QwenApiClient:
         url = f"https://dashscope.aliyuncs.com{path}"
         return self._post_dashscope(url, request_body, "Qwen DashScope", "native_error")
 
+    def dashscope_task_get(self, task_id: str) -> dict[str, Any]:
+        """GET a DashScope native asynchronous task status (Issue 31).
+
+        The image generation service submits a task with
+        :meth:`dashscope_native` and then polls this endpoint once per worker
+        tick. A synthetic request body is used as the cassette key so the
+        record/playback path works identically to POST calls; it contains no
+        secret parameters.
+        """
+        url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}"
+        return self._get_dashscope(url, {"task_id": task_id}, "Qwen DashScope")
+
+    def dashscope_task_cancel(self, task_id: str) -> dict[str, Any]:
+        """Cancel a DashScope native asynchronous task (Issue 31, best effort).
+
+        The image service calls this when the user cancels a task; local
+        cancellation is authoritative, so failures here are suppressed by the
+        caller and never block the user-visible cancel result.
+        """
+        url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}?action=cancel"
+        return self._put_dashscope(
+            url, {"task_id": task_id, "action": "cancel"}, "Qwen DashScope"
+        )
+
+    def _get_dashscope(
+        self,
+        url: str,
+        cassette_key: dict[str, Any],
+        noun: str,
+    ) -> dict[str, Any]:
+        """GET a DashScope-native endpoint with cassette and error taxonomy."""
+        if self._cassette_store is not None and not self._record_mode:
+            recorded = self._cassette_store.load(cassette_key)
+            if recorded is not None:
+                return recorded
+            if self._api_key is None:
+                raise AdapterError(
+                    code="cassette_missing",
+                    message="No cassette for this request and no API key configured.",
+                    retryable=False,
+                )
+        if self._record_mode and self._cassette_store is not None:
+            recorded = self._cassette_store.load(cassette_key)
+            if recorded is not None:
+                return recorded
+
+        headers: dict[str, str] = {}
+        if self._api_key is not None:
+            headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
+
+        try:
+            response = self._client.get(url, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise TransientError(f"{noun} request timeout: {exc}") from exc
+        except httpx.ConnectError as exc:
+            raise RegionError(f"{noun} endpoint unreachable: {exc}") from exc
+        except httpx.NetworkError as exc:
+            raise TransientError(f"{noun} network error: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise TransientError(f"{noun} HTTP error: {exc}") from exc
+
+        if response.status_code == 429:
+            raise RateLimitError(f"{noun} rate limit (429).")
+        if response.status_code in (401, 403):
+            raise AuthError(f"{noun} authentication/authorization failed.")
+        if response.status_code >= 500:
+            raise TransientError(f"{noun} server error ({response.status_code}).")
+        if response.status_code >= 400:
+            raise AdapterError(
+                code=f"client_error_{response.status_code}",
+                message=f"{noun} client error ({response.status_code}).",
+                retryable=False,
+            )
+
+        try:
+            response_body = response.json()
+        except Exception as exc:
+            raise TransientError(f"{noun} returned invalid JSON: {exc}") from exc
+
+        if not isinstance(response_body, dict):
+            raise TransientError(f"{noun} returned a non-object JSON response.")
+
+        if self._record_mode and self._cassette_store is not None:
+            self._cassette_store.save(cassette_key, response_body)
+
+        return response_body
+
+    def _put_dashscope(
+        self,
+        url: str,
+        cassette_key: dict[str, Any],
+        noun: str,
+    ) -> dict[str, Any]:
+        """PUT to a DashScope-native endpoint with cassette and error taxonomy."""
+        if self._cassette_store is not None and not self._record_mode:
+            recorded = self._cassette_store.load(cassette_key)
+            if recorded is not None:
+                return recorded
+            if self._api_key is None:
+                raise AdapterError(
+                    code="cassette_missing",
+                    message="No cassette for this request and no API key configured.",
+                    retryable=False,
+                )
+        if self._record_mode and self._cassette_store is not None:
+            recorded = self._cassette_store.load(cassette_key)
+            if recorded is not None:
+                return recorded
+
+        headers: dict[str, str] = {}
+        if self._api_key is not None:
+            headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
+
+        try:
+            response = self._client.put(url, headers=headers)
+        except httpx.TimeoutException as exc:
+            raise TransientError(f"{noun} request timeout: {exc}") from exc
+        except httpx.ConnectError as exc:
+            raise RegionError(f"{noun} endpoint unreachable: {exc}") from exc
+        except httpx.NetworkError as exc:
+            raise TransientError(f"{noun} network error: {exc}") from exc
+        except httpx.HTTPError as exc:
+            raise TransientError(f"{noun} HTTP error: {exc}") from exc
+
+        if response.status_code == 429:
+            raise RateLimitError(f"{noun} rate limit (429).")
+        if response.status_code in (401, 403):
+            raise AuthError(f"{noun} authentication/authorization failed.")
+        if response.status_code >= 500:
+            raise TransientError(f"{noun} server error ({response.status_code}).")
+        if response.status_code >= 400:
+            raise AdapterError(
+                code=f"client_error_{response.status_code}",
+                message=f"{noun} client error ({response.status_code}).",
+                retryable=False,
+            )
+
+        try:
+            response_body = response.json()
+        except Exception as exc:
+            raise TransientError(f"{noun} returned invalid JSON: {exc}") from exc
+
+        if not isinstance(response_body, dict):
+            raise TransientError(f"{noun} returned a non-object JSON response.")
+
+        if self._record_mode and self._cassette_store is not None:
+            self._cassette_store.save(cassette_key, response_body)
+
+        return response_body
+
     def _post_openai(
         self,
         path: str,

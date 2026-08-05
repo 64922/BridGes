@@ -5,7 +5,12 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { LearningProjectPickerDialog } from "@/components/learning-projects/LearningProjectPickerDialog";
-import { CAREER_TOOL_LABEL, CHAT_TOOL_INTENTS, HUMANIZER_TOOL_LABEL } from "@/lib/chat-tools";
+import {
+  CAREER_TOOL_LABEL,
+  CHAT_TOOL_INTENTS,
+  HUMANIZER_TOOL_LABEL,
+  IMAGE_TOOL_LABEL,
+} from "@/lib/chat-tools";
 import {
   cancelChatAttachment,
   cancelChatAttachmentUpload,
@@ -51,6 +56,10 @@ interface ComposerProps {
   onOpenHumanizer?: () => void;
   /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
   onOpenCareer?: () => void;
+  /** Issue 31：打开「图片生成与编辑」任务对话框（由宿主渲染对话框）。 */
+  onOpenImage?: () => void;
+  /** Issue 31：图片生成与编辑能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
+  image?: CapabilityAvailability;
   /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   asr?: CapabilityAvailability;
 }
@@ -93,6 +102,8 @@ export function Composer({
   onSelectLearningProject,
   onOpenHumanizer,
   onOpenCareer,
+  onOpenImage,
+  image = { available: true },
   asr = { available: true },
 }: ComposerProps) {
   const [text, setText] = useState("");
@@ -932,7 +943,20 @@ export function Composer({
                         setToolNotice("");
                         onOpenCareer?.();
                       }
-                    : () => insertToolPrefix(tool.prefix),
+                    : tool.label === IMAGE_TOOL_LABEL && onOpenImage
+                      ? () => {
+                          // Issue 31：图片能力不可用时入口明确停用并说明
+                          // 原因（探测快照；服务端仍做权威校验）。
+                          if (!image.available) {
+                            setToolNotice(
+                              image.reason ?? "图片生成与编辑能力当前不可用。"
+                            );
+                            return;
+                          }
+                          setToolNotice("");
+                          onOpenImage?.();
+                        }
+                      : () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
             ...(onSelectLearningProject

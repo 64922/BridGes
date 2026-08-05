@@ -23,6 +23,8 @@ interface ChatThreadProps {
   conversationId?: string;
   /** Issue 30：TTS 能力可用性（账户级探测快照） */
   tts?: { available: boolean; reason?: string };
+  /** Issue 31：图片任务成功（资产落库）后刷新消息列表 */
+  onRefreshMessages?: () => void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -43,6 +45,7 @@ export function ChatThread({
   onRetryIngestion,
   conversationId,
   tts,
+  onRefreshMessages,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -74,6 +77,7 @@ export function ChatThread({
           onRetryIngestion={onRetryIngestion}
           conversationId={conversationId}
           tts={tts}
+          onRefreshMessages={onRefreshMessages}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">
