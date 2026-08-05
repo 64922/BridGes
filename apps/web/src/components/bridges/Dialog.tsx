@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react";
 
 const FOCUSABLE_SELECTOR =
-  'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  'button:not([disabled]):not([tabindex="-1"]), [href]:not([tabindex="-1"]), input:not([disabled]):not([tabindex="-1"]), select:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]):not([tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
 
 interface DialogProps {
   open: boolean;
@@ -51,10 +51,13 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         if (items.length === 0) return;
         const first = items[0];
         const last = items[items.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        const inside = dialog.contains(document.activeElement);
+        // 焦点不在对话框内（内容切换导致焦点丢失）时，Tab 收回第一个
+        // 可聚焦元素，避免键盘焦点逃逸到页面背景（Issue 34 键盘路径）。
+        if (event.shiftKey && (!inside || document.activeElement === first)) {
           event.preventDefault();
           last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
+        } else if (!event.shiftKey && (!inside || document.activeElement === last)) {
           event.preventDefault();
           first.focus();
         }

@@ -47,6 +47,7 @@ from bridges.api import (
 )
 from bridges.api.image import router as image_router
 from bridges.api.media import router as media_router
+from bridges.api.plugins import router as plugins_router
 from bridges.api.reminder import router as reminder_router
 from bridges.api.speech import router as speech_router
 from bridges.api.video import router as video_router
@@ -132,6 +133,7 @@ from bridges.persistence import (
     StateStore,
     build_state_store,
 )
+from bridges.plugins.service import PluginService
 from bridges.profiles import InMemoryProfileRepository, ProfileService
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
@@ -948,6 +950,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # 路由返回"对话存储未启用"，绝不静默降级到内存。
     bridges_database = getattr(app.state, "bridges_database", None)
     if bridges_database is not None:
+        # Issue 28：内置只读 SKILL 注册表（humanizer 与插件中心共用同源）。
+        skill_registry = create_builtin_registry()
+        app.state.skill_registry = skill_registry
         object_repository = getattr(app.state, "object_repository", None)
         if object_repository is not None:
             app.state.chat_attachment_service = ChatAttachmentService(
@@ -1015,13 +1020,20 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 chat_repository=ConversationRepository(bridges_database),
                 observability_service=app.state.observability_service,
             )
+            # Issue 34：SKILL 插件中心。内置包随应用发布（humanizer 条目
+            # 与 SKILL 注册表同源），用户包经安全闭锁后按账户安装到对象库
+            # 与 skill_packages 表；启停/卸载/演示全部账户作用域并写审计。
+            app.state.plugin_service = PluginService(
+                database=bridges_database,
+                object_repository=object_repository,
+                observability_service=app.state.observability_service,
+                skill_registry=skill_registry,
+            )
         # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
         app.state.search_service = SearchService(bridges_database)
         # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
         # SKILL 随应用发布、版本固定、只读来源；编排复用同一模型网关与
         # 附件/检索/联网证据合同，不依赖用户手工上传或 `.env`。
-        skill_registry = create_builtin_registry()
-        app.state.skill_registry = skill_registry
         app.state.humanizer_service = HumanizerService(
             registry=skill_registry,
             gateway=model_gateway,
@@ -1409,6 +1421,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(image_router)
     app.include_router(video_router)
     app.include_router(reminder_router)
+    app.include_router(plugins_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

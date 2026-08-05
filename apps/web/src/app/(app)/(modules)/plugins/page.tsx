@@ -1,4 +1,4 @@
-import { StateBlock } from "@/components/bridges/StateBlock";
+import { PluginCenter } from "@/components/plugins/PluginCenter";
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
@@ -6,25 +6,23 @@ export const metadata = {
 };
 
 /**
- * 插件（Issue 12 稳定入口）。
+ * 插件（Issue 34）：SKILL 插件中心。
  *
- * 后端尚无插件管理能力，因此这里呈现真实、可操作的空状态：
- * 说明当前账户没有可用插件的原因，并给出真实的下一步（返回新聊天）。
+ * 内置插件（PDF / Documents / bridges-humanizer）随应用发布、版本固定、
+ * 只读不可卸载，账户可启停并真实演示；用户可上传声明式 SKILL 包，
+ * 安装前完成安全闭锁检查与内容预览确认，按账户启停、卸载与失败恢复。
  */
 export default function PluginsPage() {
   return (
     <MainContent>
-      <section aria-labelledby="plugins-title" style={{ maxWidth: "46rem", marginInline: "auto" }}>
+      <section
+        aria-labelledby="plugins-title"
+        style={{ maxWidth: "52rem", marginInline: "auto" }}
+      >
         <h1 id="plugins-title" className="sc-section-title">
           插件
         </h1>
-        <StateBlock
-          kind="empty"
-          title="当前账户没有可用插件"
-          description="当前版本尚未开放插件管理，因此没有任何插件可以查看或启用。你可以先回到新聊天继续使用内置对话能力；插件能力开放后，本页会展示可真实启用的插件。"
-          actionLabel="返回新聊天"
-          actionHref="/"
-        />
+        <PluginCenter />
       </section>
     </MainContent>
   );

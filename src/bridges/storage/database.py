@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 21
+SCHEMA_VERSION = 22
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1119,6 +1119,49 @@ MIGRATIONS: dict[int, list[str]] = {
             smtp_error_code TEXT,
             smtp_error_message TEXT,
             smtp_updated_at TEXT
+        )
+        """,
+    ],
+    # Issue 34：SKILL 插件中心。skill_packages 是用户上传声明式包的
+    # 安装记录（按账户隔离，UNIQUE(account_id, plugin_id)；install_failed
+    # 是可恢复失败态，不进入运行注册表）；account_skill_states 是内置
+    # 只读插件的账户级启停状态（内置清单本体来自 plugins/registry，不
+    # 入库，版本固定随应用发布）。zip 包字节存加密对象库（账户作用域），
+    # 本库只存元数据与状态，绝不复制包内容。
+    22: [
+        """
+        CREATE TABLE IF NOT EXISTS skill_packages (
+            package_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            plugin_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            name TEXT NOT NULL,
+            description TEXT,
+            source TEXT,
+            license TEXT,
+            capabilities TEXT NOT NULL DEFAULT '[]',
+            data_categories TEXT NOT NULL DEFAULT '[]',
+            status TEXT NOT NULL DEFAULT 'install_failed',
+            object_id TEXT,
+            file_count INTEGER NOT NULL DEFAULT 0,
+            content_length INTEGER NOT NULL DEFAULT 0,
+            failure_reason TEXT,
+            installed_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, plugin_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_skill_packages_account
+            ON skill_packages(account_id, status)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS account_skill_states (
+            account_id TEXT NOT NULL,
+            plugin_id TEXT NOT NULL,
+            enabled INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, plugin_id)
         )
         """,
     ],

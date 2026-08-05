@@ -2,6 +2,139 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 34 实施计划（交付 SKILL 插件中心）
+
+状态：已完成（2026-08-06）。全量验证：1876 pytest（+84 新增：checker 38 +
+service 24 + api 21 + schema v22 3）、issue34 E2E 8 条全过（内置展示与
+启停/上传预览确认安装/坏包拒绝与修正重装/缺版本拒绝/两账户隔离/真实解析
+演示/humanizer 跳转/纯键盘安装调用卸载）、全量 E2E 221 通过（4 条失败均
+为既有：issue04/08 环境 flake、issue13 视频入口为 Issue 32 遗留、issue14
+为并行 flake 串行通过；另修复 issue12 插件旧占位断言为真实页面契约+画像
+双空态既有断言）、mypy 230 文件 0 错误、改动区域 ruff 干净（全仓 257 个
+为基线既有）、npm typecheck/build 通过、openapi 同步通过。双轴 code-review
+修复：AC8 审计补数据类别与失败（BLOCKED）事件、检查器清理死代码/死参数/
+空 plugin_id 必填/SKILL.md 大小写/frontmatter 解析防御、set_enabled 幻影
+返回与内置分支贯通、内置同名坏包不落失败卡、演示 10MB 死分支消除（API
+与检查器上限同源）、失败卡空版本徽标、busy 禁用演示按钮、Dialog 焦点陷阱
+强化（隐藏 input 排除+焦点逃逸收回，修复键盘路径）、PDF 真实解析演示测试
+补 Verification 2。Issue 34 验收状态已更新为 ready-for-human（AC 与
+Verification 全部勾选附证据）。
+
+### 目标
+交付完整电脑端插件中心：内置（bridges-pdf/bridges-documents/
+bridges-humanizer）只读随应用发布并默认安装，展示固定版本、能力、来源与
+授权，账户可启停不可篡改/卸载；用户可上传只含 SKILL.md/静态参考/模板/
+资源的声明式 zip 包，安装前完成安全闭锁检查（脚本/可执行/符号链接/路径
+穿越/越界引用/不支持文件/损坏包/zip 超限）与内容预览确认，按账户启停/
+卸载；安装失败进入可恢复失败状态不污染注册表；PDF/Documents 演示走真实
+解析（parse_document），humanizer 跳转聊天既有合同；全部动作审计（不含
+包内容与正文）；两账户完全隔离。
+
+### 新增模块
+1. `contracts/plugins.py` — PluginKind（builtin/user）、PluginStatus
+   （installed/disabled/install_failed）、BuiltinPluginManifest（skill_id/
+   name/version/description/source/license/capabilities/data_categories/
+   read_only）、PluginFileEntry（path/size/kind: skill_md|reference|
+   template|resource）、PluginCheckResult（ok/manifest/files 清单/
+   rejected_reasons 中文原因列表）、BuiltinPluginProjection（manifest+
+   enabled）、UserPluginProjection（package_id/plugin_id/version/status/
+   object_id/file_count/content_length/failure_reason/installed_at）、
+   PluginListProjection（builtin+user）、PluginDemoProjection（skill_id/
+   version/parser_version/pages/sections/char_count/preview）、PluginError
+2. `plugins/checker.py` — PluginPackageChecker：大小/条目数上限、zipfile
+   读取（BadZipFile 拒绝）、逐条目路径穿越（normpath 后必须包内、绝对
+   路径/盘符/.. 拒绝）、符号链接（external_attr S_IFLNK 0o120000 拒绝）、
+   扩展名白名单（md/txt/json/yaml/yml/csv/html/css/xml + 图片 png/jpg/
+   jpeg/svg/gif/webp/ico + 字体 woff/woff2；脚本/可执行/无扩展名/隐藏
+   文件拒绝并说明类别）、SKILL.md 必选（根目录）+ frontmatter 解析
+   （name/version 必填、description/capabilities/data_categories/source/
+   license 可选）、SKILL.md 相对引用越界检查（](…) 与 ![…](…) 规范化
+   后必须解析到包内）、每项拒绝给具体中文原因
+3. `plugins/registry.py` — 内置包清单：bridges-pdf（固定版本/来源/授权/
+   能力：PDF 附件真实解析）、bridges-documents（DOCX/TXT/MD/图片附件
+   解析）、bridges-humanizer（从 SkillRegistry 派生保持单一事实源，
+   data_categories 声明接收的文本类别）
+4. `plugins/service.py` — PluginService：list_plugins（内置惰性建账户
+   installed 状态 + 用户包列表，scoped 强制）；check_package（纯检查不
+   落库不落对象）；install_package（再检查→通过则 zip 存对象库+写
+   skill_packages 行+审计 PLUGIN_INSTALL；同名同版本已装冲突 409；失败
+   记录可覆盖重新安装）；uninstall（对象 pending_cleanup+删记录+审计
+   PLUGIN_UNINSTALL，幂等）；set_enabled（内置/用户包启停+审计 PLUGIN_
+   ENABLE/DISABLE）；demo（内置 pdf/documents 走 parsers.parse_document
+   真实解析→统计+预览片段+审计 PLUGIN_INVOKE 不含正文）
+5. `storage/database.py` — SCHEMA_VERSION 22：skill_packages（package_id/
+   account_id/plugin_id/version/name/description/source/license/
+   capabilities JSON/data_categories JSON/status/object_id/file_count/
+   content_length/failure_reason/installed_at/updated_at，UNIQUE(account,
+   plugin_id)）、account_skill_states（account_id/plugin_id/enabled/
+   updated_at，复合 PK）
+6. `contracts/observability.py` — AuditAction 新增 PLUGIN_INSTALL /
+   PLUGIN_UNINSTALL / PLUGIN_ENABLE / PLUGIN_DISABLE / PLUGIN_INVOKE
+   （details 只含 plugin_id/version/文件数/解析器版本/页数/章节数，
+   不含 zip 内容、正文与数据类别原文之外的信息）
+
+### 修改
+7. `api/plugins.py` — 路由（prefix /plugins）：GET 列表、POST check
+   （multipart 原始字节 + X-Bridges-Filename）、POST install、POST
+   {plugin_id}/enable、POST {plugin_id}/disable、DELETE {plugin_id}
+   （仅用户包）、POST builtin/{skill_id}/demo（仅 pdf/documents 内置）；
+   全部账户作用域跨账户 404；错误码 plugin_unavailable(503)/
+   unsupported_package(422 带原因清单)/package_conflict(409)/
+   plugin_not_found(404)/builtin_not_mutable(403)/demo_unsupported(400)
+8. `api/main.py` — 挂载 PluginService（database/object_repository/
+   observability/skill_registry）；plugins_router 注册
+9. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：插件卡网格 + 上传检查对话框 + 演示对话框）
+10. api.ts — listPlugins/checkPluginPackage/installPluginPackage/
+    enablePlugin/disablePlugin/uninstallPlugin/demoBuiltinPlugin +
+    类型导出（复用 uploadRawBytes 上传 zip）
+11. `components/plugins/PluginCenter.tsx` + PluginCenter.module.css —
+    页面五态（loading/error/permission/empty/内容）；内置插件卡网格
+    （图标/名称/版本徽标/描述/能力展开/来源/许可证/数据类别/启停开关/
+    演示按钮——humanizer 跳转新聊天触发 HumanizerDialog 意图，PDF/
+    Documents 打开演示对话框上传附件真实解析展示）；我的插件分区
+    （已安装/已停用/安装失败卡：原因+重新上传）；卸载确认对话框；
+    账户切换清态（accountRevision 重挂）；全部键盘可达
+12. UploadPluginDialog — 步骤一选 zip（隐藏 input+按钮）→ 检查中 →
+    结果（通过：包名/版本/能力/数据类别/内容清单表格（路径/大小/类型）
+    + 确认安装按钮（再次上传同文件→安装中→成功提示+刷新）；拒绝：
+    具体原因 ErrorSummary + 重新选择）；取消不留任何半安装状态
+13. `app/(app)/(modules)/plugins/page.tsx` — 薄壳替换占位 StateBlock
+
+### 测试
+14. `tests/plugins/fixtures_builder.py` 或内存构造 — 合法包/脚本包/可执行
+    包/符号链接包（external_attr 手工设置）/路径穿越包（../、绝对路径、
+    反斜杠）/越界引用包/不支持文件包/损坏包/超限包夹具
+15. `tests/plugins/test_checker.py` — 全部夹具的接受/拒绝矩阵，每项拒绝
+    断言具体中文原因与类别
+16. `tests/plugins/test_plugin_service.py` — _Harness（内存 db + 真实
+    对象仓库 tmp_path + recording observability + 真实 registry）：
+    内置惰性安装/启停/不可卸载/不可篡改、用户包安装（对象+记录+审计）、
+    检查失败不落库不落对象、同名冲突、失败覆盖重装、启停/卸载（对象
+    pending_cleanup+审计幂等）、重启一致（重建 service 读库）、两账户
+    隔离（跨账户查看/卸载/启停 404）、demo 真实解析（md 附件）+ 审计
+    不含正文、安装/启停/卸载审计只有白名单 details
+17. `tests/plugins/test_plugin_api.py` — 路由契约：列表/检查/安装/启停/
+    卸载/demo、坏包 422 带原因、跨账户 404、内置不可卸载 403、未挂载
+    服务 503、登录会话必需
+18. `tests/storage/test_schema_v22.py` — v21→v22 迁移（旧表数据保留+
+    新表存在）、重启不重复迁移
+19. E2E issue34-plugin-center.spec.ts — 内置三卡展示与启停；上传合法包
+    （夹具 zip）→预览清单→确认安装→成功卡；停用/启用/卸载确认；
+    坏包拒绝原因展示；失败修复（同 skill_id 失败后重装成功）；两账户
+    隔离（B 看不到 A 的包）；纯键盘完成安装/调用/卸载；PDF/Documents
+    演示对话框上传 md 附件真实解析结果
+20. 夹具 zip 预生成提交至 apps/web/e2e/fixtures/（Python zipfile 生成，
+    含 symlink external_attr 构造）
+
+### 收尾
+21. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review
+    双轴审查并修复；更新 Issue 34 验收状态（ready-for-human + AC 与
+    Verification 勾选附证据）；提交（工作内容+bug 修复两部分提交信息）
+
+
+
 ## Issue 33 实施计划（交付 QQ SMTP 任务提醒）
 
 状态：已完成（2026-08-06）。全量验证：1792 pytest（+80 新增：解析器

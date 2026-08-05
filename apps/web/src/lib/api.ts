@@ -68,6 +68,15 @@ export type ReminderDeliveryProjection = components["schemas"]["ReminderDelivery
 export type ReminderDeliveryKind = components["schemas"]["ReminderDeliveryKind"];
 export type ReminderDeliveryOutcome = components["schemas"]["ReminderDeliveryOutcome"];
 export type ReminderRepeatRule = components["schemas"]["ReminderRepeatRule"];
+// Issue 34：SKILL 插件中心契约（生成类型来自 openapi.json）。
+export type PluginListProjection = components["schemas"]["PluginListProjection"];
+export type BuiltinPluginProjection = components["schemas"]["BuiltinPluginProjection"];
+export type UserPluginProjection = components["schemas"]["UserPluginProjection"];
+export type PluginStatus = components["schemas"]["PluginStatus"];
+export type PluginCheckResult = components["schemas"]["PluginCheckResult"];
+export type PluginFileEntry = components["schemas"]["PluginFileEntry"];
+export type PluginFileKind = components["schemas"]["PluginFileKind"];
+export type PluginDemoProjection = components["schemas"]["PluginDemoProjection"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
 export type CareerPlanningProjection = components["schemas"]["CareerPlanningProjection"];
 export type CareerPlanningProcessState = components["schemas"]["CareerPlanningProcessState"];
@@ -2382,4 +2391,89 @@ export async function listReminderDeliveries(
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Issue 34：SKILL 插件中心
+// ---------------------------------------------------------------------------
+
+export async function listPlugins(): Promise<PluginListProjection> {
+  const res = await fetch(`${API_BASE}/plugins`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 安装前检查：上传 zip 原始字节，返回安全闭锁结果与内容清单（纯检查）。 */
+export function checkPluginPackage(
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<PluginCheckResult> {
+  return uploadRawBytes<PluginCheckResult>(
+    `${API_BASE}/plugins/check`,
+    file,
+    `plugin-check-${Date.now()}`,
+    onProgress,
+    signal
+  );
+}
+
+/** 确认安装：再次上传同一 zip，后端重跑安全闭锁后按账户持久化。 */
+export function installPluginPackage(
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<UserPluginProjection> {
+  return uploadRawBytes<UserPluginProjection>(
+    `${API_BASE}/plugins/install`,
+    file,
+    `plugin-install-${Date.now()}`,
+    onProgress,
+    signal
+  );
+}
+
+async function togglePlugin(pluginId: string, enabled: boolean): Promise<PluginListProjection> {
+  const res = await fetch(
+    `${API_BASE}/plugins/${encodeURIComponent(pluginId)}/${enabled ? "enable" : "disable"}`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export function enablePlugin(pluginId: string): Promise<PluginListProjection> {
+  return togglePlugin(pluginId, true);
+}
+
+export function disablePlugin(pluginId: string): Promise<PluginListProjection> {
+  return togglePlugin(pluginId, false);
+}
+
+export async function uninstallPlugin(pluginId: string): Promise<PluginListProjection> {
+  const res = await fetch(`${API_BASE}/plugins/${encodeURIComponent(pluginId)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 内置 PDF/Documents 演示：上传受支持附件，后端真实解析并返回统计。 */
+export function demoBuiltinPlugin(
+  skillId: string,
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<PluginDemoProjection> {
+  return uploadRawBytes<PluginDemoProjection>(
+    `${API_BASE}/plugins/builtin/${encodeURIComponent(skillId)}/demo`,
+    file,
+    `plugin-demo-${Date.now()}`,
+    onProgress,
+    signal
+  );
 }

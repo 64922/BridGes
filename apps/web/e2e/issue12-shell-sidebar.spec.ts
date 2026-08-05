@@ -175,7 +175,7 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
     await freshAccount(page, "i12-modules");
     const sidebar = page.getByTestId("app-sidebar");
 
-    const cases: { name: string; url: string; heading: string; emptyText?: string }[] = [
+    const cases: { name: string; url: string; heading: string; emptyText?: string; emptyAction?: string }[] = [
       {
         name: "本地知识库",
         url: "/knowledge-base",
@@ -190,7 +190,14 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
         // Issue 33：任务安排已交付真实页面，空态为真实说明（未验证邮箱）
         emptyText: "还没有提醒",
       },
-      { name: "插件", url: "/plugins", heading: "插件", emptyText: "当前账户没有可用插件" },
+      {
+        name: "插件",
+        url: "/plugins",
+        heading: "插件",
+        // Issue 34：插件中心已交付真实页面，空态为真实说明（用户插件空 + 安装入口）
+        emptyText: "当前账户还没有用户插件",
+        emptyAction: "安装插件",
+      },
     ];
 
     for (const item of cases) {
@@ -199,9 +206,9 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       await expect(page.getByRole("heading", { name: item.heading })).toBeVisible();
       await expect(page.locator("body")).not.toContainText("将在这里呈现");
       if (item.emptyText) {
-        // 真实空状态：解释原因 + 可操作下一步（返回新聊天，不依赖浏览器后退）
+        // 真实空状态：解释原因 + 可操作下一步（返回新聊天或真实能力入口）
         await expect(page.getByTestId("state-empty")).toContainText(item.emptyText);
-        await expect(page.getByRole("button", { name: "返回新聊天" })).toBeVisible();
+        await expect(page.getByRole("button", { name: item.emptyAction ?? "返回新聊天" }).first()).toBeVisible();
       }
     }
 
@@ -211,7 +218,10 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
     await page.waitForURL("/account/profile");
     await expect(page.getByRole("heading", { name: "数字分身画像" })).toBeVisible();
     await expect(page.locator("body")).not.toContainText("将在这里呈现");
-    await expect(page.getByTestId("state-empty")).toContainText("该类别还没有记录");
+    // 画像九类分区中未填写的类别各有一个真实空态（多空态共存合法）。
+    await expect(
+      page.getByTestId("state-empty").filter({ hasText: "该类别还没有记录" }).first()
+    ).toBeVisible();
     await expect(page.getByRole("link", { name: "返回新聊天" })).toBeVisible();
 
     // 返回新聊天是真实导航（画像中心顶部为链接形式）

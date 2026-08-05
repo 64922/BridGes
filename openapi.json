@@ -25855,6 +25855,652 @@
         }
       }
     },
+    "/plugins": {
+      "get": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "List Plugins",
+        "description": "返回内置插件（含当前账户启停状态）与当前账户用户包列表。",
+        "operationId": "list_plugins_plugins_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/check": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Check Package",
+        "description": "安装前检查：安全闭锁 + 内容清单预览；纯检查，无副作用。",
+        "operationId": "check_package_plugins_check_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginCheckResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/install": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Install Package",
+        "description": "确认安装：重跑安全闭锁，通过后按账户持久化并审计。",
+        "operationId": "install_package_plugins_install_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserPluginProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/plugins/{plugin_id}/enable": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Enable Plugin",
+        "description": "启用插件（内置与用户包统一入口）。",
+        "operationId": "enable_plugin_plugins__plugin_id__enable_post",
+        "parameters": [
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plugin Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{plugin_id}/disable": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Disable Plugin",
+        "description": "停用插件（内置与用户包统一入口）。",
+        "operationId": "disable_plugin_plugins__plugin_id__disable_post",
+        "parameters": [
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plugin Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/{plugin_id}": {
+      "delete": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Uninstall Plugin",
+        "description": "卸载用户包（内置插件拒绝，只能停用）。",
+        "operationId": "uninstall_plugin_plugins__plugin_id__delete",
+        "parameters": [
+          {
+            "name": "plugin_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Plugin Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginListProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/plugins/builtin/{skill_id}/demo": {
+      "post": {
+        "tags": [
+          "plugins"
+        ],
+        "summary": "Demo Builtin",
+        "description": "内置 PDF/Documents 演示：对附件执行真实解析并返回统计与预览。",
+        "operationId": "demo_builtin_plugins_builtin__skill_id__demo_post",
+        "parameters": [
+          {
+            "name": "skill_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Skill Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginDemoProjection"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -27396,6 +28042,91 @@
         ],
         "title": "BoundingBox",
         "description": "Normalized or pixel bounding box within an image."
+      },
+      "BuiltinPluginProjection": {
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "title": "Skill Id",
+            "description": "稳定注册标识。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "显示名。"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "固定版本。"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description",
+            "description": "能力说明。"
+          },
+          "source": {
+            "type": "string",
+            "title": "Source",
+            "description": "来源说明。"
+          },
+          "license": {
+            "type": "string",
+            "title": "License",
+            "description": "许可证声明。"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "能力清单。"
+          },
+          "data_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Categories",
+            "description": "将接收的数据类别。"
+          },
+          "read_only": {
+            "type": "boolean",
+            "title": "Read Only",
+            "description": "内置只读标记。",
+            "default": true
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "当前账户是否启用。"
+          },
+          "demo_kind": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Demo Kind",
+            "description": "演示方式：parse 或 chat。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_id",
+          "name",
+          "version",
+          "description",
+          "source",
+          "license",
+          "enabled"
+        ],
+        "title": "BuiltinPluginProjection",
+        "description": "插件页展示的内置包：固定清单 + 当前账户启停状态。"
       },
       "CandidateDecision": {
         "properties": {
@@ -42375,6 +43106,276 @@
         "title": "PlaybackState",
         "description": "一个无障碍包的播放状态，支持暂停、时间控制和减少动画。"
       },
+      "PluginCheckResult": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "description": "检查是否通过。"
+          },
+          "skill_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Id",
+            "description": "声明或推断的插件标识。"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "声明或推断的显示名。"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "SKILL.md 声明的固定版本。"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "声明的能力说明（可选）。"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "声明的来源（可选）。"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License",
+            "description": "声明的许可证（可选）。"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "声明的能力清单（可选）。"
+          },
+          "data_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Categories",
+            "description": "声明将接收的数据类别（可选）。"
+          },
+          "files": {
+            "items": {
+              "$ref": "#/components/schemas/PluginFileEntry"
+            },
+            "type": "array",
+            "title": "Files",
+            "description": "内容清单（仅检查通过时非空）。"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "description": "包内文件总数（不含目录）。",
+            "default": 0
+          },
+          "total_bytes": {
+            "type": "integer",
+            "title": "Total Bytes",
+            "description": "包内文件解压后总大小。",
+            "default": 0
+          },
+          "rejected_reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Rejected Reasons",
+            "description": "拒绝原因（具体中文，逐条可操作）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "title": "PluginCheckResult",
+        "description": "一次安装检查的结果：通过时携带清单与声明，拒绝时携带具体原因。"
+      },
+      "PluginDemoProjection": {
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "title": "Skill Id",
+            "description": "演示的内置插件标识。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "插件显示名。"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "固定版本。"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "演示的附件文件名。"
+          },
+          "parser_version": {
+            "type": "string",
+            "title": "Parser Version",
+            "description": "实际使用的解析器版本标识。"
+          },
+          "pages": {
+            "type": "integer",
+            "title": "Pages",
+            "description": "解析页数（非分页类型为 0）。",
+            "default": 0
+          },
+          "sections": {
+            "type": "integer",
+            "title": "Sections",
+            "description": "解析章节数。",
+            "default": 0
+          },
+          "char_count": {
+            "type": "integer",
+            "title": "Char Count",
+            "description": "解析文本字符数。",
+            "default": 0
+          },
+          "preview": {
+            "type": "string",
+            "title": "Preview",
+            "description": "文本预览片段（最多 500 字符）。",
+            "default": ""
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "识别到的媒体类型。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_id",
+          "name",
+          "version",
+          "filename",
+          "parser_version"
+        ],
+        "title": "PluginDemoProjection",
+        "description": "内置能力演示结果：真实解析的统计与预览片段，不含全文。"
+      },
+      "PluginFileEntry": {
+        "properties": {
+          "path": {
+            "type": "string",
+            "title": "Path",
+            "description": "包内相对路径（正斜杠）。"
+          },
+          "size": {
+            "type": "integer",
+            "title": "Size",
+            "description": "文件大小（字节）。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/PluginFileKind",
+            "description": "文件类别（SKILL.md/参考/模板/资源）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "size",
+          "kind"
+        ],
+        "title": "PluginFileEntry",
+        "description": "安装检查内容清单中的一条文件记录。"
+      },
+      "PluginFileKind": {
+        "type": "string",
+        "enum": [
+          "skill_md",
+          "reference",
+          "template",
+          "resource"
+        ],
+        "title": "PluginFileKind",
+        "description": "包内文件类别（内容清单展示用）。"
+      },
+      "PluginListProjection": {
+        "properties": {
+          "builtin": {
+            "items": {
+              "$ref": "#/components/schemas/BuiltinPluginProjection"
+            },
+            "type": "array",
+            "title": "Builtin",
+            "description": "内置只读插件（随应用发布）。"
+          },
+          "user": {
+            "items": {
+              "$ref": "#/components/schemas/UserPluginProjection"
+            },
+            "type": "array",
+            "title": "User",
+            "description": "当前账户的用户包（含安装失败记录）。"
+          }
+        },
+        "type": "object",
+        "title": "PluginListProjection",
+        "description": "插件中心完整呈现：内置（含账户启停）+ 用户包（含失败态）。"
+      },
+      "PluginStatus": {
+        "type": "string",
+        "enum": [
+          "installed",
+          "disabled",
+          "install_failed"
+        ],
+        "title": "PluginStatus",
+        "description": "用户包的安装状态机。\n\ninstalled 与 disabled 是运行注册表中的有效状态；install_failed 是\n可恢复的失败态——同一插件标识重新安装成功后即退出，绝不让失败记录\n冒充已安装包进入运行注册表。"
+      },
       "PopularScienceElement": {
         "properties": {
           "element_id": {
@@ -51943,6 +52944,150 @@
         ],
         "title": "UserFeedbackTarget",
         "description": "Routing target for user feedback on an expression draft."
+      },
+      "UserPluginProjection": {
+        "properties": {
+          "package_id": {
+            "type": "string",
+            "title": "Package Id",
+            "description": "安装记录标识。"
+          },
+          "plugin_id": {
+            "type": "string",
+            "title": "Plugin Id",
+            "description": "插件标识（包内声明）。"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "显示名。"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "安装时的固定版本。"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description",
+            "description": "能力说明。"
+          },
+          "source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source",
+            "description": "来源说明。"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License",
+            "description": "许可证声明。"
+          },
+          "capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Capabilities",
+            "description": "能力清单。"
+          },
+          "data_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Data Categories",
+            "description": "将接收的数据类别。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/PluginStatus",
+            "description": "安装状态。"
+          },
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "当前是否启用。",
+            "default": true
+          },
+          "object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Object Id",
+            "description": "包内容对象标识（账户隔离存储）。"
+          },
+          "file_count": {
+            "type": "integer",
+            "title": "File Count",
+            "description": "包内文件数。",
+            "default": 0
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "包压缩后大小。",
+            "default": 0
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason",
+            "description": "安装失败的具体原因（中文）。"
+          },
+          "installed_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Installed At",
+            "description": "安装时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近状态变更时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "package_id",
+          "plugin_id",
+          "name",
+          "version",
+          "status"
+        ],
+        "title": "UserPluginProjection",
+        "description": "插件页展示的用户包：安装状态、固定版本与失败原因。"
       },
       "ValidationError": {
         "properties": {

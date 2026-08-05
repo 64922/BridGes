@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
@@ -21,6 +21,7 @@ import {
   chatPromptKey,
   chatSkillKey,
   chatVideoKey,
+  pluginHumanizerKey,
 } from "@/lib/chat-flow";
 import { ApiError, createChatConversation, updateChatConversationProject } from "@/lib/api";
 
@@ -70,6 +71,14 @@ export function NewChatHome() {
   const [careerOpen, setCareerOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
+
+  // Issue 34：插件页「在聊天中使用 humanizer」意图——消费即删除，
+  // 防止刷新或 StrictMode 双触发重复打开。
+  useEffect(() => {
+    if (!sessionStorage.getItem(pluginHumanizerKey())) return;
+    sessionStorage.removeItem(pluginHumanizerKey());
+    setHumanizerOpen(true);
+  }, []);
 
   /** Issue 29：首页提交生涯规划任务——先建对话，暂存问题后跳转对话页
    *  自动发送（真实消息流；画像开关语义与 Composer 一致）。 */

@@ -83,6 +83,11 @@ class AuditAction(str, Enum):
     REMINDER_CATCH_UP = "reminder_catch_up"
     WEB_SEARCH = "web_search"
     ARXIV_SEARCH = "arxiv_search"
+    PLUGIN_INSTALL = "plugin_install"
+    PLUGIN_UNINSTALL = "plugin_uninstall"
+    PLUGIN_ENABLE = "plugin_enable"
+    PLUGIN_DISABLE = "plugin_disable"
+    PLUGIN_INVOKE = "plugin_invoke"
 
 
 class AuditResult(str, Enum):

@@ -32,3 +32,8 @@ export function chatImageKey(conversationId: string): string {
 export function chatVideoKey(conversationId: string): string {
   return `bridges:chat:video:${conversationId}`;
 }
+
+/** Issue 34：插件页「在聊天中使用 humanizer」的意图桥（首页消费后删除）。 */
+export function pluginHumanizerKey(): string {
+  return "bridges:plugin:open-humanizer";
+}

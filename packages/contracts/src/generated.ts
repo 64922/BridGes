@@ -5452,6 +5452,146 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Plugins
+         * @description 返回内置插件（含当前账户启停状态）与当前账户用户包列表。
+         */
+        get: operations["list_plugins_plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Package
+         * @description 安装前检查：安全闭锁 + 内容清单预览；纯检查，无副作用。
+         */
+        post: operations["check_package_plugins_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Package
+         * @description 确认安装：重跑安全闭锁，通过后按账户持久化并审计。
+         */
+        post: operations["install_package_plugins_install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{plugin_id}/enable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Enable Plugin
+         * @description 启用插件（内置与用户包统一入口）。
+         */
+        post: operations["enable_plugin_plugins__plugin_id__enable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{plugin_id}/disable": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disable Plugin
+         * @description 停用插件（内置与用户包统一入口）。
+         */
+        post: operations["disable_plugin_plugins__plugin_id__disable_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/{plugin_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Uninstall Plugin
+         * @description 卸载用户包（内置插件拒绝，只能停用）。
+         */
+        delete: operations["uninstall_plugin_plugins__plugin_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/plugins/builtin/{skill_id}/demo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Demo Builtin
+         * @description 内置 PDF/Documents 演示：对附件执行真实解析并返回统计与预览。
+         */
+        post: operations["demo_builtin_plugins_builtin__skill_id__demo_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -6457,6 +6597,68 @@ export interface components {
              * @default pixel
              */
             unit: string;
+        };
+        /**
+         * BuiltinPluginProjection
+         * @description 插件页展示的内置包：固定清单 + 当前账户启停状态。
+         */
+        BuiltinPluginProjection: {
+            /**
+             * Skill Id
+             * @description 稳定注册标识。
+             */
+            skill_id: string;
+            /**
+             * Name
+             * @description 显示名。
+             */
+            name: string;
+            /**
+             * Version
+             * @description 固定版本。
+             */
+            version: string;
+            /**
+             * Description
+             * @description 能力说明。
+             */
+            description: string;
+            /**
+             * Source
+             * @description 来源说明。
+             */
+            source: string;
+            /**
+             * License
+             * @description 许可证声明。
+             */
+            license: string;
+            /**
+             * Capabilities
+             * @description 能力清单。
+             */
+            capabilities?: string[];
+            /**
+             * Data Categories
+             * @description 将接收的数据类别。
+             */
+            data_categories?: string[];
+            /**
+             * Read Only
+             * @description 内置只读标记。
+             * @default true
+             */
+            read_only: boolean;
+            /**
+             * Enabled
+             * @description 当前账户是否启用。
+             */
+            enabled: boolean;
+            /**
+             * Demo Kind
+             * @description 演示方式：parse 或 chat。
+             */
+            demo_kind?: string | null;
         };
         /**
          * CandidateDecision
@@ -15685,6 +15887,190 @@ export interface components {
             updated_at: string;
         };
         /**
+         * PluginCheckResult
+         * @description 一次安装检查的结果：通过时携带清单与声明，拒绝时携带具体原因。
+         */
+        PluginCheckResult: {
+            /**
+             * Ok
+             * @description 检查是否通过。
+             */
+            ok: boolean;
+            /**
+             * Skill Id
+             * @description 声明或推断的插件标识。
+             */
+            skill_id?: string | null;
+            /**
+             * Name
+             * @description 声明或推断的显示名。
+             */
+            name?: string | null;
+            /**
+             * Version
+             * @description SKILL.md 声明的固定版本。
+             */
+            version?: string | null;
+            /**
+             * Description
+             * @description 声明的能力说明（可选）。
+             */
+            description?: string | null;
+            /**
+             * Source
+             * @description 声明的来源（可选）。
+             */
+            source?: string | null;
+            /**
+             * License
+             * @description 声明的许可证（可选）。
+             */
+            license?: string | null;
+            /**
+             * Capabilities
+             * @description 声明的能力清单（可选）。
+             */
+            capabilities?: string[];
+            /**
+             * Data Categories
+             * @description 声明将接收的数据类别（可选）。
+             */
+            data_categories?: string[];
+            /**
+             * Files
+             * @description 内容清单（仅检查通过时非空）。
+             */
+            files?: components["schemas"]["PluginFileEntry"][];
+            /**
+             * File Count
+             * @description 包内文件总数（不含目录）。
+             * @default 0
+             */
+            file_count: number;
+            /**
+             * Total Bytes
+             * @description 包内文件解压后总大小。
+             * @default 0
+             */
+            total_bytes: number;
+            /**
+             * Rejected Reasons
+             * @description 拒绝原因（具体中文，逐条可操作）。
+             */
+            rejected_reasons?: string[];
+        };
+        /**
+         * PluginDemoProjection
+         * @description 内置能力演示结果：真实解析的统计与预览片段，不含全文。
+         */
+        PluginDemoProjection: {
+            /**
+             * Skill Id
+             * @description 演示的内置插件标识。
+             */
+            skill_id: string;
+            /**
+             * Name
+             * @description 插件显示名。
+             */
+            name: string;
+            /**
+             * Version
+             * @description 固定版本。
+             */
+            version: string;
+            /**
+             * Filename
+             * @description 演示的附件文件名。
+             */
+            filename: string;
+            /**
+             * Parser Version
+             * @description 实际使用的解析器版本标识。
+             */
+            parser_version: string;
+            /**
+             * Pages
+             * @description 解析页数（非分页类型为 0）。
+             * @default 0
+             */
+            pages: number;
+            /**
+             * Sections
+             * @description 解析章节数。
+             * @default 0
+             */
+            sections: number;
+            /**
+             * Char Count
+             * @description 解析文本字符数。
+             * @default 0
+             */
+            char_count: number;
+            /**
+             * Preview
+             * @description 文本预览片段（最多 500 字符）。
+             * @default
+             */
+            preview: string;
+            /**
+             * Media Type
+             * @description 识别到的媒体类型。
+             * @default
+             */
+            media_type: string;
+        };
+        /**
+         * PluginFileEntry
+         * @description 安装检查内容清单中的一条文件记录。
+         */
+        PluginFileEntry: {
+            /**
+             * Path
+             * @description 包内相对路径（正斜杠）。
+             */
+            path: string;
+            /**
+             * Size
+             * @description 文件大小（字节）。
+             */
+            size: number;
+            /** @description 文件类别（SKILL.md/参考/模板/资源）。 */
+            kind: components["schemas"]["PluginFileKind"];
+        };
+        /**
+         * PluginFileKind
+         * @description 包内文件类别（内容清单展示用）。
+         * @enum {string}
+         */
+        PluginFileKind: "skill_md" | "reference" | "template" | "resource";
+        /**
+         * PluginListProjection
+         * @description 插件中心完整呈现：内置（含账户启停）+ 用户包（含失败态）。
+         */
+        PluginListProjection: {
+            /**
+             * Builtin
+             * @description 内置只读插件（随应用发布）。
+             */
+            builtin?: components["schemas"]["BuiltinPluginProjection"][];
+            /**
+             * User
+             * @description 当前账户的用户包（含安装失败记录）。
+             */
+            user?: components["schemas"]["UserPluginProjection"][];
+        };
+        /**
+         * PluginStatus
+         * @description 用户包的安装状态机。
+         *
+         *     installed 与 disabled 是运行注册表中的有效状态；install_failed 是
+         *     可恢复的失败态——同一插件标识重新安装成功后即退出，绝不让失败记录
+         *     冒充已安装包进入运行注册表。
+         * @enum {string}
+         */
+        PluginStatus: "installed" | "disabled" | "install_failed";
+        /**
          * PopularScienceElement
          * @description A structural element required by the popular-science genre contract.
          *
@@ -21681,6 +22067,99 @@ export interface components {
          * @enum {string}
          */
         UserFeedbackTarget: "current_version" | "candidate_preference" | "learning_record" | "fact_review";
+        /**
+         * UserPluginProjection
+         * @description 插件页展示的用户包：安装状态、固定版本与失败原因。
+         */
+        UserPluginProjection: {
+            /**
+             * Package Id
+             * @description 安装记录标识。
+             */
+            package_id: string;
+            /**
+             * Plugin Id
+             * @description 插件标识（包内声明）。
+             */
+            plugin_id: string;
+            /**
+             * Name
+             * @description 显示名。
+             */
+            name: string;
+            /**
+             * Version
+             * @description 安装时的固定版本。
+             */
+            version: string;
+            /**
+             * Description
+             * @description 能力说明。
+             */
+            description?: string | null;
+            /**
+             * Source
+             * @description 来源说明。
+             */
+            source?: string | null;
+            /**
+             * License
+             * @description 许可证声明。
+             */
+            license?: string | null;
+            /**
+             * Capabilities
+             * @description 能力清单。
+             */
+            capabilities?: string[];
+            /**
+             * Data Categories
+             * @description 将接收的数据类别。
+             */
+            data_categories?: string[];
+            /** @description 安装状态。 */
+            status: components["schemas"]["PluginStatus"];
+            /**
+             * Enabled
+             * @description 当前是否启用。
+             * @default true
+             */
+            enabled: boolean;
+            /**
+             * Object Id
+             * @description 包内容对象标识（账户隔离存储）。
+             */
+            object_id?: string | null;
+            /**
+             * File Count
+             * @description 包内文件数。
+             * @default 0
+             */
+            file_count: number;
+            /**
+             * Content Length
+             * @description 包压缩后大小。
+             * @default 0
+             */
+            content_length: number;
+            /**
+             * Failure Reason
+             * @description 安装失败的具体原因（中文）。
+             */
+            failure_reason?: string | null;
+            /**
+             * Installed At
+             * Format: date-time
+             * @description 安装时间。
+             */
+            installed_at?: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 最近状态变更时间。
+             */
+            updated_at?: string;
+        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -39486,6 +39965,465 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_plugins_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    check_package_plugins_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginCheckResult"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    install_package_plugins_install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UserPluginProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    enable_plugin_plugins__plugin_id__enable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plugin_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    disable_plugin_plugins__plugin_id__disable_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plugin_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    uninstall_plugin_plugins__plugin_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                plugin_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginListProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    demo_builtin_plugins_builtin__skill_id__demo_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                skill_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginDemoProjection"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
                 };
             };
         };
