@@ -399,6 +399,15 @@ def _generation_events(
                 ),
             )
             return
+        elif event.kind == "humanizer":
+            # Issue 28：人味化过程卡五态事件（loading/empty/error/permission/
+            # recovery），与 delta 同一事件流；终态由 done/error 携带。
+            data = event.humanizer
+            if data is not None:
+                yield ChatStreamEvent(
+                    event=ChatStreamEventKind.HUMANIZER,
+                    data=data,
+                )
     if terminated:
         return
     # 生成器空产出：以消息当前状态补发终态
@@ -851,7 +860,14 @@ async def send_message(
     _ensure_chat_capability_ready(subject, credential_service)
     try:
         user_message, assistant_message = service.start_generation(
-            subject.account_id, conversation_id, body.content, body.attachment_ids
+            subject.account_id,
+            conversation_id,
+            body.content,
+            body.attachment_ids,
+            skill_id=body.skill_id,
+            skill_input=(
+                body.skill_input.model_dump(mode="json") if body.skill_input else None
+            ),
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc

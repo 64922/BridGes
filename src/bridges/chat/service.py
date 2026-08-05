@@ -14,7 +14,12 @@ import secrets
 import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
+
+if TYPE_CHECKING:
+    from bridges.skills.humanizer.service import HumanizerRunEvent
+
+from pydantic import ValidationError
 
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
@@ -38,6 +43,7 @@ from bridges.contracts.chat import (
     ChatMessageStatus,
     ChatMode,
     ChatModeEventProjection,
+    ChatStreamHumanizerData,
     ChatThinkingSummary,
     ContextNoteProfileItem,
     ContextNoteProjection,
@@ -48,6 +54,11 @@ from bridges.contracts.feedback import (
     AnswerFeedbackRequest,
     FeedbackKind,
     FeedbackStatus,
+)
+from bridges.contracts.humanizer import (
+    HumanizerResultProjection,
+    HumanizerResultStatus,
+    HumanizerSkillInput,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
@@ -213,6 +224,20 @@ _ERROR_MESSAGES: dict[str, str] = {
     "arxiv_startup": "arXiv 搜索服务启动失败，请重试。",
     "arxiv_no_results": "没有找到匹配的 arXiv 论文，请调整领域或约束后重试。",
     "arxiv_citation_invalid": "论文回答缺少可核实的 arXiv 引用，请重试。",
+    # Issue 28：bridges-humanizer SKILL 编排错误（中文可操作提示）。
+    "empty_source": "没有可改写的原文：请粘贴文本或选择当前账户文件。",
+    "empty_topic": "缺少主题：请填写要生成的文章主题。",
+    "skill_unavailable": "SKILL 能力暂不可用，请稍后重试。",
+    "skill_version_conflict": "SKILL 版本固定，不支持自定义版本，请重新发起任务。",
+    "humanizer_generation_failed": "人味化生成失败，请重试（输入已保留）。",
+    "humanizer_failed": "人味化任务执行异常，请重试（输入已保留）。",
+    "empty_output": "生成结果缺少最终文本，请重试。",
+    "output_contract_incomplete": "输出合同不完整，请重试（输入已保留）。",
+    "genre_check_failed": "体裁规则复核未通过，请调整任务后重试。",
+    "fact_lock_conflict": (
+        "事实锁冲突，已停止交付：请核对原文中的数值、单位、公式与"
+        "限定条件后重试。"
+    ),
 }
 
 #: 用户点击重试后有望成功的错误码（限流/瞬时故障/断流/内部错误）。
@@ -239,6 +264,12 @@ _RETRYABLE_CODES = frozenset(
         "arxiv_startup",
         "arxiv_no_results",
         "arxiv_citation_invalid",
+        # Issue 28：人味化任务可重试错误（原任务输入保留）。
+        "humanizer_generation_failed",
+        "humanizer_failed",
+        "empty_output",
+        "output_contract_incomplete",
+        "genre_check_failed",
     }
 )
 
@@ -256,6 +287,28 @@ def user_facing_error(error_code: str | None, fallback: str | None = None) -> st
 def error_is_retryable(error_code: str | None) -> bool:
     """错误是否可通过"重试新建助手尝试"恢复。"""
     return error_code in _RETRYABLE_CODES
+
+
+class HumanizerOrchestrator(Protocol):
+    """内置 SKILL 编排的最小接缝（Issue 28，运行时由 HumanizerService 实现）。
+
+    用 Protocol 而非直接类型避免 chat → skills.humanizer → chat 的包级
+    导入环：消息链路只依赖编排语义（注册校验 + 任务事件流）。
+    """
+
+    def resolve_skill(self, skill_input: HumanizerSkillInput) -> str: ...
+
+    def run_task(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        skill_input: HumanizerSkillInput,
+        run_context: RunContextEnvelope,
+        retrieval_round: RetrievalRoundProjection | None = None,
+        web_search_projection: Any | None = None,
+        arxiv_search_projection: Any | None = None,
+    ) -> Iterator[HumanizerRunEvent]: ...
 
 
 class ChatDomainError(Exception):
@@ -282,6 +335,7 @@ class ChatService:
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
         observability_service: ObservabilityService | None = None,
+        humanizer_service: HumanizerOrchestrator | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -298,6 +352,9 @@ class ChatService:
         self._profiles = profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
+        #: 内置 bridges-humanizer SKILL 编排（Issue 28）；未挂载时携带
+        #: SKILL 载荷的消息按普通消息处理（测试/内存环境）。
+        self._humanizer = humanizer_service
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
 
@@ -553,12 +610,20 @@ class ChatService:
         conversation_id: str,
         content: str,
         attachment_ids: list[str] | None = None,
+        skill_id: str | None = None,
+        skill_input: dict[str, Any] | None = None,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
-        """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。"""
+        """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。
+
+        ``skill_id``/``skill_input``（Issue 28）：携带时本轮走内置 SKILL
+        编排（bridges-humanizer）；载荷随用户消息落库，重试沿用同一份
+        任务契约。SKILL 载荷必须通过注册校验，未注册标识直接拒绝。
+        """
         now = datetime.now(UTC)
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
+        skill_payload = self._validate_skill_payload(skill_id, skill_input)
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError(
@@ -586,19 +651,21 @@ class ChatService:
 
         mode = ChatMode(record.mode)
         thinking = _initial_thinking(mode)
+        # Issue 28：SKILL 任务不需要搜索/教学初始计划（其证据合同由
+        # 人味化编排按需执行），避免把任务摘要误当搜索查询。
         web_search = (
             self._web_search.initial_projection(self._web_search.plan(content, mode))
-            if self._web_search is not None
+            if self._web_search is not None and skill_payload is None
             else None
         )
         arxiv_search = (
             self._arxiv_search.initial_projection(self._arxiv_search.plan(content, mode))
-            if self._arxiv_search is not None
+            if self._arxiv_search is not None and skill_payload is None
             else None
         )
         teaching = (
             self._teaching.initial(content)
-            if mode == ChatMode.STUDY
+            if mode == ChatMode.STUDY and skill_payload is None
             else None
         )
         user_message = MessageRecord(
@@ -617,6 +684,7 @@ class ChatService:
             run_lock_id=None,
             created_at=now,
             updated_at=now,
+            skill=skill_payload,
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -723,6 +791,46 @@ class ChatService:
                 account_id, conversation_id, until_user_message_id
             )
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            # Issue 28：用户消息携带 SKILL 载荷（bridges-humanizer）时走
+            # 内置 SKILL 编排路径——同一真实消息流程（持久化/重试/审计），
+            # 过程卡五态经 humanizer SSE 事件下发，终态 done/error 收敛。
+            owner_skill = _skill_input_from(
+                _owner_user_message(
+                    self._repo.list_messages(account_id, conversation_id),
+                    assistant_message_id,
+                )
+            )
+            if owner_skill is not None:
+                if self._humanizer is None:
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="skill_unavailable",
+                        error_message="SKILL 能力暂不可用，请稍后重试。",
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_failed_thinking(thinking, "skill_unavailable"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="skill_unavailable",
+                        error_message="SKILL 能力暂不可用，请稍后重试。",
+                    )
+                    return
+                yield from self._stream_humanizer(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    owner_skill,
+                    run_context,
+                    until_user_message_id,
+                    use_knowledge_base,
+                )
+                return
             retrieval_round: RetrievalRoundProjection | None = None
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
@@ -1493,6 +1601,245 @@ class ChatService:
             self._project_message(new_attempt),
         )
 
+    # ------------------------------------------------------------------
+    # Issue 28：内置 SKILL 编排路径（bridges-humanizer）
+    # ------------------------------------------------------------------
+
+    def _validate_skill_payload(
+        self,
+        skill_id: str | None,
+        skill_input: dict[str, Any] | None,
+    ) -> dict[str, Any] | None:
+        """校验发送请求的 SKILL 载荷；通过后返回落库 JSON（用户消息快照）。"""
+        if skill_id is None and skill_input is None:
+            return None
+        if skill_id is None or skill_input is None:
+            raise ChatDomainError(
+                "invalid_skill_payload",
+                "SKILL 请求必须同时提供标识与任务载荷。",
+                422,
+            )
+        if self._humanizer is None:
+            raise ChatDomainError(
+                "skill_unavailable", "SKILL 能力暂不可用，请稍后重试。", 503
+            )
+        try:
+            parsed = HumanizerSkillInput.model_validate(
+                {**skill_input, "skill_id": skill_id}
+            )
+        except ValidationError:
+            raise ChatDomainError(
+                "invalid_skill_payload", "SKILL 任务载荷不合法，请重新填写。", 422
+            ) from None
+        # 注册校验：标识必须内置、版本固定（resolve_skill 内部校验）。
+        # 未注册标识拒绝发送，绝不当作普通消息静默处理。
+        try:
+            self._humanizer.resolve_skill(parsed)
+        except Exception as exc:  # noqa: BLE001 - 注册表错误统一映射为可操作失败
+            code = getattr(exc, "code", "skill_unavailable")
+            raise ChatDomainError(
+                code,
+                getattr(exc, "message", "SKILL 能力暂不可用，请稍后重试。"),
+                404 if code == "skill_not_found" else 422,
+            ) from exc
+        return parsed.model_dump(mode="json")
+
+    def _stream_humanizer(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        skill_input: HumanizerSkillInput,
+        run_context: RunContextEnvelope,
+        until_user_message_id: str | None,
+        use_knowledge_base: bool,
+    ) -> Iterator[StreamEvent]:
+        """SKILL 编排：证据合同检索 → 过程事件 → 终态收敛（done/error）。
+
+        与普通生成共用停止信号与终态收敛语义：停止/失败绝不悬挂，重试
+        新建尝试沿用原用户消息上的任务契约（输入不丢失）。
+        """
+        started = time.monotonic()
+        if self._humanizer is None:
+            return
+        entry = self._lifecycle.signal_and_started(assistant_message_id)
+        stop_event = (
+            entry[0] if entry is not None else self._lifecycle.register(assistant_message_id)
+        )
+        conversation = self._repo.get_conversation(account_id, conversation_id)
+        thinking = _initial_thinking(
+            ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+        )
+        retrieval_round: RetrievalRoundProjection | None = None
+        if self._retrieval is not None and not stop_event.is_set():
+            messages = self._repo.list_messages(account_id, conversation_id)
+            owner = _owner_user_message(messages, assistant_message_id)
+            round_query = owner.content if owner is not None else ""
+            retrieval_round = self._retrieval.run_round(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                until_user_message_id
+                or (owner.message_id if owner is not None else None),
+                round_query,
+                use_knowledge_base=use_knowledge_base,
+            )
+            if retrieval_round is not None:
+                thinking = _retrieval_thinking(thinking, retrieval_round)
+        # Spec AC8：可引用来源经本地/联网证据合同呈现。联网与 arXiv 按
+        # 既有触发器（明确要求/时效/核查等）决定是否执行；结果投影传入
+        # 人味化编排，只可引用清单内材料，新增引用一律标记未核实。
+        web_search_projection: WebSearchProjection | None = None
+        arxiv_search_projection: ArxivSearchProjection | None = None
+        if not stop_event.is_set():
+            messages = self._repo.list_messages(account_id, conversation_id)
+            owner = _owner_user_message(messages, assistant_message_id)
+            round_query = owner.content if owner is not None else ""
+            if self._web_search is not None:
+                search_plan = self._web_search.plan(
+                    round_query,
+                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
+                )
+                if search_plan.should_search:
+                    web_search_projection = self._web_search.search(
+                        account_id, search_plan, stop_event=stop_event
+                    )
+                    if web_search_projection is not None:
+                        self._repo.update_message_web_search(
+                            account_id,
+                            assistant_message_id,
+                            web_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        thinking = _web_search_thinking(thinking, web_search_projection)
+            if self._arxiv_search is not None:
+                arxiv_plan = self._arxiv_search.plan(
+                    round_query,
+                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
+                )
+                if arxiv_plan.should_search:
+                    arxiv_search_projection = self._arxiv_search.search(
+                        account_id, arxiv_plan, stop_event=stop_event
+                    )
+                    if arxiv_search_projection is not None:
+                        self._repo.update_message_arxiv_search(
+                            account_id,
+                            assistant_message_id,
+                            arxiv_search_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        thinking = _arxiv_search_thinking(thinking, arxiv_search_projection)
+        try:
+            for run_event in self._humanizer.run_task(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                skill_input,
+                run_context,
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+            ):
+                if stop_event.is_set():
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.STOPPED,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=_stopped_thinking(thinking),
+                    )
+                    return
+                if run_event.kind == "process":
+                    if run_event.state is None:
+                        continue
+                    yield StreamEvent(
+                        kind="humanizer",
+                        humanizer=ChatStreamHumanizerData(
+                            message_id=assistant_message_id,
+                            state=run_event.state,
+                            step_label=run_event.step_label,
+                            detail=run_event.detail,
+                            retryable=run_event.retryable,
+                            progress_steps=run_event.progress_steps,
+                        ),
+                    )
+                    continue
+                result = run_event.result
+                if result is None:
+                    continue
+                now = datetime.now(UTC)
+                self._repo.update_message_humanizer(
+                    account_id,
+                    assistant_message_id,
+                    result.model_dump(mode="json"),
+                    now,
+                )
+                if result.status == HumanizerResultStatus.ERROR:
+                    self._finalize_message(
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code=result.error_code,
+                        error_message=result.error_message,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=now,
+                        thinking=_failed_thinking(thinking, result.error_code),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code=result.error_code or "humanizer_failed",
+                        error_message=result.error_message
+                        or "人味化任务未完成，请重试。",
+                    )
+                    return
+                final_text = result.output.final_text if result.output else ""
+                self._repo.update_message_content(
+                    account_id, assistant_message_id, final_text, now
+                )
+                self._finalize_message(
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.DONE,
+                    error_code=None,
+                    error_message=None,
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=now,
+                    thinking=_done_thinking(thinking),
+                )
+                yield StreamEvent(kind="done")
+                return
+        except Exception:  # noqa: BLE001 - 编排意外异常收敛为可重试错误
+            self._finalize_message(
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="humanizer_failed",
+                error_message="人味化任务执行异常，请重试（输入已保留）。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=datetime.now(UTC),
+                thinking=_failed_thinking(thinking, "humanizer_failed"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="humanizer_failed",
+                error_message="人味化任务执行异常，请重试（输入已保留）。",
+            )
+
     def profile_notifications_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[ProfileNotification]:
@@ -2012,6 +2359,15 @@ class ChatService:
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
+            skill=message.skill,
+            # 助手消息的 skill 列只承载人味化结果投影（输入快照只在用户消息），
+            # 直接按结果投影解析，无需魔数判别。
+            humanizer=(
+                HumanizerResultProjection.model_validate(message.skill)
+                if message.skill is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
             error_code=message.error_code,
             error_message=message.error_message,
             duration_ms=message.duration_ms,
@@ -2073,6 +2429,16 @@ def _owner_user_message(
         elif message.message_id == assistant_message_id:
             return owner
     return None
+
+
+def _skill_input_from(owner: MessageRecord | None) -> HumanizerSkillInput | None:
+    """从用户消息的 SKILL 载荷快照还原任务契约（重试沿用同一份输入）。"""
+    if owner is None or not owner.skill:
+        return None
+    try:
+        return HumanizerSkillInput.model_validate(owner.skill)
+    except ValidationError:
+        return None
 
 
 def _previous_teaching_turn(

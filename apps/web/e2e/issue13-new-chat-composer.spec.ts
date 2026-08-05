@@ -314,11 +314,16 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await expect(menu).not.toBeVisible();
     await expect(plusButton).toBeFocused();
 
-    // 键盘触发建议卡：聚焦 + Enter → 预填结构化意图
+    // 键盘触发建议卡：聚焦 + Enter → 进入真实任务流程
+    // （Issue 28：「文章人味化」打开任务对话框而非预填；「论文搜索」仍预填）
     await page.getByTestId("suggestion-cards").getByRole("button", { name: "文章人味化" }).focus();
     await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: /文章人味化/ })).toBeVisible();
+    await page.getByTestId("humanizer-cancel").click();
     const input = composer.getByLabel("输入消息");
-    await expect(input).toHaveValue(/^文章人味化：/);
+    await page.getByTestId("suggestion-cards").getByRole("button", { name: "论文搜索" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(input).toHaveValue(/^论文搜索：/);
 
     // 键盘发送：生成中出现停止入口，Esc 停止
     await input.fill("");

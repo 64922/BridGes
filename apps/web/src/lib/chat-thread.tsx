@@ -32,12 +32,15 @@ export function buildThreadMessages(
         role: "user",
         plainText: message.content,
         attachments: message.attachments ?? [],
+        // Issue 28：用户消息的 SKILL 载荷快照（人味化任务标识）
+        skill: message.skill ?? null,
         content: <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{message.content}</p>,
       });
       continue;
     }
 
-    // 收集同一轮用户消息之下的连续助手尝试
+    // 收集同一轮用户消息之下的连续助手尝试；助手消息继承该轮用户消息的
+    // SKILL 载荷标识（供过程卡在流式期间判定人味化任务）。
     const group: ChatMessageProjection[] = [message];
     while (index + 1 < messages.length && messages[index + 1].role === "assistant") {
       index += 1;
@@ -62,6 +65,9 @@ export function buildThreadMessages(
       teaching: latest.teaching ?? null,
       // Issue 27：本次上下文说明披露；无披露为 null
       contextNote: latest.context_note ?? null,
+      // Issue 28：文章人味化结果投影（助手消息）与用户消息的 SKILL 载荷快照
+      humanizer: latest.humanizer ?? null,
+      skill: latest.skill ?? skillOfPreviousUser(items),
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({
@@ -76,6 +82,15 @@ export function buildThreadMessages(
     items.push({ kind: "mode-event", ...events.shift()! });
   }
   return items;
+}
+
+/** 该轮之前的最近一条用户消息的 SKILL 载荷（人味化任务标识）。 */
+function skillOfPreviousUser(items: (ChatMessage | ThreadModeEvent)[]): unknown {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if ("role" in item && item.role === "user") return item.skill ?? null;
+  }
+  return null;
 }
 
 /** 把服务端思考摘要投影换算为渲染形态（耗时基于真实 duration_ms）。 */

@@ -38,8 +38,11 @@ import {
   type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
-import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
+import { chatAttachmentKey, chatPromptKey, chatSkillKey } from "@/lib/chat-flow";
+import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
+import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
+import type { ChatStreamHumanizerData } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -55,6 +58,8 @@ interface ActiveRun {
   arxivSearch: ArxivSearchProjection | null;
   /** 流式中的学习模式教学卡片与证据门 */
   teaching: TeachingTurnProjection | null;
+  /** Issue 28：流式中的文章人味化过程卡状态（五态中文）。 */
+  humanizerProcess: ChatStreamHumanizerData | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -88,6 +93,8 @@ export default function ChatConversationPage() {
   // 对话所属学习项目名称（Issue 19）：由 project_id 解析，仅供 chip 展示
   const [projectName, setProjectName] = useState<string | null>(null);
   // Issue 26：本轮用户消息触发的画像通知（明确记忆/自动写入/候选/单次情绪）
+  // Issue 28：文章人味化任务对话框（改写/生成两条路径）
+  const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [profileNotifications, setProfileNotifications] = useState<
     ProfileNotification[]
   >([]);
@@ -226,8 +233,24 @@ export default function ChatConversationPage() {
           setSendError({ message: "附件发送信息损坏，请重新上传后重试。" });
         }
       }
+      // Issue 28：首页提交的人味化任务载荷（消费即删除，防 StrictMode 双发）
+      const rawSkill = sessionStorage.getItem(chatSkillKey(conversationId));
+      sessionStorage.removeItem(chatSkillKey(conversationId));
+      let skillId: string | undefined;
+      let skillInput: unknown;
+      if (rawSkill) {
+        try {
+          const parsed: unknown = JSON.parse(rawSkill);
+          if (parsed && typeof parsed === "object" && "skill_id" in parsed) {
+            skillId = (parsed as { skill_id: string }).skill_id;
+            skillInput = parsed;
+          }
+        } catch {
+          setSendError({ message: "人味化任务信息损坏，请重新提交。" });
+        }
+      }
       sendingRef.current = true;
-      void sendMessage(prompt, attachmentIds);
+      void sendMessage(prompt, attachmentIds, true, true, skillId, skillInput);
     }
   }, [loadState, conversation, conversationId]);
 
@@ -255,6 +278,7 @@ export default function ChatConversationPage() {
             webSearch: event.data.web_search ?? null,
             arxivSearch: event.data.arxiv_search ?? null,
             teaching: event.data.teaching ?? null,
+            humanizerProcess: null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -271,6 +295,15 @@ export default function ChatConversationPage() {
             content: activeRunRef.current.content + event.data.delta,
           };
           setActiveRun((run) => (run ? { ...run, content: run.content + event.data.delta } : run));
+        } else if (isChatStreamEventOf(event, "humanizer")) {
+          // Issue 28：文章人味化过程卡五态事件（loading/empty/error/permission/recovery）
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            activeRunRef.current = {
+              ...activeRunRef.current,
+              humanizerProcess: event.data,
+            };
+            setActiveRun((run) => (run ? { ...run, humanizerProcess: event.data } : run));
+          }
         } else if (isChatStreamEventOf(event, "profile")) {
           // 画像通知即时展示：已持久化并按账户隔离；重试轮次会重新下发
           // 同一份通知，本地按 notification_id 去重。
@@ -304,6 +337,7 @@ export default function ChatConversationPage() {
               webSearch: event.data.web_search ?? current?.webSearch ?? null,
               arxivSearch: event.data.arxiv_search ?? current?.arxivSearch ?? null,
               teaching: event.data.teaching ?? current?.teaching ?? null,
+              humanizerProcess: current?.humanizerProcess ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -329,7 +363,9 @@ export default function ChatConversationPage() {
       text: string,
       attachmentIds: string[] = [],
       useKnowledgeBase: boolean = true,
-      useProfile: boolean = true
+      useProfile: boolean = true,
+      skillId?: string,
+      skillInput?: unknown
     ): Promise<boolean> => {
       setSendError(null);
       setProfileNotifications([]);
@@ -351,7 +387,10 @@ export default function ChatConversationPage() {
           // Issue 20：本轮知识库开关（关闭后检索与引用不含知识库候选）
           useKnowledgeBase,
           // Issue 27：本轮画像使用开关（关闭后请求与披露均不含画像内容）
-          useProfile
+          useProfile,
+          // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
+          skillId,
+          skillInput
         );
         return true;
       } catch (error) {
@@ -371,6 +410,26 @@ export default function ChatConversationPage() {
       }
     },
     [conversationId, handleStreamEvent, load]
+  );
+
+  /** Issue 28：提交人味化任务（真实消息流：任务契约随消息落库，可重试）。
+   *  消息正文由对话框统一组装（单一来源），这里只转发发送。 */
+  const handleHumanizerSubmit = useCallback(
+    async (
+      content: string,
+      skillInput: HumanizerSkillInput,
+      attachmentIds: string[]
+    ): Promise<boolean> => {
+      return sendMessage(
+        content,
+        attachmentIds,
+        true,
+        true,
+        skillInput.skill_id,
+        skillInput
+      );
+    },
+    [sendMessage]
   );
 
   const downloadAttachment = useCallback(
@@ -526,6 +585,7 @@ export default function ChatConversationPage() {
       webSearch: activeRun.webSearch,
       arxivSearch: activeRun.arxivSearch,
       teaching: activeRun.teaching,
+      humanizerProcess: activeRun.humanizerProcess,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -619,6 +679,7 @@ export default function ChatConversationPage() {
                         : null
                     }
                     onSelectLearningProject={(project) => void changeLearningProject(project)}
+                    onOpenHumanizer={() => setHumanizerOpen(true)}
                   />
                 </div>
               </div>
@@ -626,6 +687,12 @@ export default function ChatConversationPage() {
           )}
         </main>
       </div>
+      <HumanizerDialog
+        open={humanizerOpen}
+        onClose={() => setHumanizerOpen(false)}
+        conversationId={conversationId}
+        onSubmit={handleHumanizerSubmit}
+      />
     </AppShell>
   );
 }

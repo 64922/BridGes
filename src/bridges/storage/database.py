@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 15
+SCHEMA_VERSION = 16
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -892,6 +892,14 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_answer_feedback_dedup
         ON answer_feedback(account_id, message_id, kind, assertion_id)
+        """,
+    ],
+    # Issue 28：内置 bridges-humanizer SKILL 走真实消息流程。用户消息
+    # 携带 skill JSON（标识+任务契约快照，重试沿用）；助手消息的人味化
+    # 结果投影（输出合同/事实锁/引用/五态过程）同样固化在 skill 列。
+    16: [
+        """
+        ALTER TABLE messages ADD COLUMN skill TEXT
         """,
     ],
 }

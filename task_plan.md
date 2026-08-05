@@ -2,6 +2,97 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 28 实施计划（原创净室 bridges-humanizer SKILL）
+
+状态：已完成（2026-08-05）。全量验证：1545 pytest（+46 新增：skills 注册表、
+humanizer 事实锁/体裁/服务/聊天集成）、7 条 issue28 E2E、全量 E2E 182 通过
+（3 条失败均为干净树复现的既有环境 flake：issue04/issue08/issue12）、mypy 200
+文件 0 错误、改动区域 ruff 干净、npm typecheck/build 通过。双轴 code-review
+修复：联网证据合同实际接线（Spec AC8）、生成路径 fact_check 恒空必败一轮、
+嵌套 button 无效 HTML、契约死代码 HumanizerError、genre_rules 死字段、
+标签表重复、process_state 终态语义、kind 魔数、前端重复组装、tabs 半成品、
+单位 token 顺序契约注释、task_id 魔数判别等。Issue 28 验收状态已更新为
+ready-for-human。
+
+### 目标
+以原创净室方式实现默认内置、只读、版本固定的 `bridges-humanizer` SKILL，接入两种
+对话模式的"+"菜单与空白对话建议卡并进入真实消息流程。改写路径（粘贴文本/当前账户
+文件）先提取任务契约与事实锁再人性化；主题生成路径收集/确认主题、受众、体裁、渠道
+与硬约束后生成并复核。科普文案、课程讲稿、科研汇报、论文写作各自使用可测试表达
+规则，不共用单一模板。每次输出固定含最终文本、逐项修改细节、每项理由、事实核查
+结果与未决问题；数值/单位/对象关系/限定条件/公式/引用/结论强度受事实锁检查，冲突
+时停止或标注人工确认。过程卡五态中文；失败可从原任务重试不丢输入；注册为默认内置
+能力供插件页（Issue 34）展示；完成许可证与来源清洁审计。
+
+### 新增模块
+1. `contracts/humanizer.py` — HumanizerPath(REWRITE/GENERATE)、HumanizerSkillInput
+   （skill_id+任务契约：体裁复用 expression.Genre 四值、受众/渠道/长度/硬约束/原文/
+   附件）、FactLockKind 七类(数值/单位/对象关系/限定条件/公式/引用/结论强度)、
+   FactLockEntry/CheckResult（preserved/changed/removed/added + 阻断/需人工）、
+   HumanizerEdit（原文/新文/类别/理由/体裁规则）、HumanizerFactCheckItem、
+   HumanizerOutputContract（final_text/edits/fact_check/open_questions + 完整性门）、
+   HumanizerResultProjection、HumanizerProcessState(loading/empty/error/permission/
+   recovery)
+2. `skills/registry.py` — SkillRegistry：内置只读 SKILL 注册表（稳定标识/版本/只读
+   来源/能力说明），启动注册 bridges-humanizer v1.0.0，供 Issue 34 插件页消费
+3. `skills/humanizer/skill/` — SKILL.md（完整说明/规则/证据边界/输出合同/版本）+
+   genres/ 四体裁合同（popular_science/lecture_script/research_report/paper_assist，
+   各自必含/允许省略/禁止/保留规则与人工责任，不共用泛化模板）+ fixtures/（两条
+   路径固定语料）+ CLEAN_ROOM.md（来源清洁记录：scientific-humanization 仅方法
+   研究、零 MIT 复用声明）
+4. `skills/humanizer/factlock.py` — 确定性文本事实锁引擎：数值+单位/公式/引用/限定
+   词/结论强度/对象关系正则提取、规范化（全半角/单位统一）、前后比较
+5. `skills/humanizer/genre_rules.py` — 四体裁确定性规则加载与校验（required/
+   prohibited/preserved 断言，中文可测试）
+6. `skills/humanizer/service.py` — HumanizerService：改写/生成两条路径编排（任务契约
+   提取 → 事实锁提取 → SKILL+体裁规则组装 → Qwen 结构化生成 → 确定性复核（事实锁
+   前后比较/体裁规则/输出合同完整性/引用保持）→ 结果投影）；冲突→needs_human 或
+   停止；证据合同复用本地检索/联网搜索；失败可重试
+
+### 修改
+7. `contracts/chat.py` — ChatMessageCreateRequest.skill_id/skill_input；
+   ChatMessageProjection.skill(用户消息任务摘要)+humanizer(结果投影)；
+   ChatStreamEventKind.HUMANIZER + ChatStreamHumanizerData（过程卡五态事件）
+8. `contracts/observability.py` — AuditAction.HUMANIZER_GENERATE（details 不含正文）
+9. `storage/database.py` — SCHEMA_VERSION 16：messages 加 skill JSON 列
+10. `chat/repository.py` — MessageRecord.skill；insert/get 带 skill；update_message_humanizer
+11. `chat/service.py` — start_generation 接收 skill_id/skill_input 落库；stream_generation
+    检出 skill 走 HumanizerService 编排（发 HUMANIZER 过程事件→done 带结果投影）；
+    retry 复用原任务输入不丢；_project_message 映射 humanizer/skill
+12. `api/chat.py` — send/retry 透传 skill 字段、SSE 透传 HUMANIZER 事件；humanizer
+    结果详情路由（如需）；_ensure_chat_capability_ready 复用（权限态）
+13. `api/main.py` — 挂 SkillRegistry（内置注册）与 HumanizerService（复用 gateway/
+    attachments/retrieval/web_search/observability）；附件文本经 ingestion parsers 提取
+14. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：AI-Native 风格、五态过程卡、空态带行动）
+15. chat-tools.ts："文章人味化"意图由预填改为打开 HumanizerDialog（两模式"+"菜单与
+    建议卡共用，原创 humanize 图标）
+16. HumanizerDialog（新）— 改写/生成两页签：粘贴文本或选当前账户附件、体裁四选、
+    渠道/长度/硬约束；提交走真实 send（skill 载荷）
+17. HumanizerProcessCard — 五态中文过程卡（loading/empty/error/permission/recovery）
+18. HumanizerResultCard — 可展开结果详情：最终文本/修改明细/每项理由/事实核查/未决
+    问题/事实锁冲突标注/引用保持
+19. api.ts streamChatMessage/retry 支持 skill 载荷；chat-thread.tsx/MessageList 渲染
+    humanizer 卡；page.tsx 事件处理
+
+### 测试
+20. `tests/skills/` — 注册表（内置只读/版本/标识）
+21. `tests/humanizer/` — 事实锁提取与前后比较（固定语料含数值/单位/公式/限定/引用，
+    冲突阻断与人工标注）；四体裁规则可测试性（不共用模板）；输出合同完整性门（缺一
+    不完成）；引用保持；改写/生成两路径（可编程捕获适配器）；失败恢复重试不丢输入；
+    许可证/净室声明存在性
+22. `tests/chat/test_humanizer_chat.py` — 真实消息流集成（send 带 skill、SSE 过程事件、
+    重试、账户隔离、权限态）
+23. E2E issue28 — 菜单入口、建议卡、文件改写、主题生成、结果详情、错误重试
+24. 许可证与来源审计：CLEAN_ROOM.md 记录净室方法与零复用声明
+
+### 收尾
+25. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review 双轴审查并修复；
+    更新 Issue 28 验收状态（ready-for-human + 验收项打勾附证据）；提交
+
+
+
 ## Issue 27 实施计划（最小画像切片、披露与反馈闭环）
 
 状态：已完成（2026-08-05）。全量验证：1490 pytest（含新增 25 条，3 个

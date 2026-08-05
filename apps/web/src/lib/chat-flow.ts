@@ -12,3 +12,8 @@ export function chatPromptKey(conversationId: string): string {
 export function chatAttachmentKey(conversationId: string): string {
   return `bridges:chat:attachments:${conversationId}`;
 }
+
+/** Issue 28：首页提交人味化任务时暂存的 SKILL 载荷（对话页消费后删除）。 */
+export function chatSkillKey(conversationId: string): string {
+  return `bridges:chat:skill:${conversationId}`;
+}

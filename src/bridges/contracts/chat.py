@@ -9,11 +9,16 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.contracts.humanizer import (
+    HumanizerProcessState,
+    HumanizerResultProjection,
+    HumanizerSkillInput,
+)
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.teaching import TeachingTurnProjection
@@ -206,6 +211,14 @@ class ChatMessageProjection(BaseModel):
         default=None,
         description="本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。",
     )
+    skill: dict[str, Any] | None = Field(
+        default=None,
+        description="用户消息的 SKILL 载荷快照（标识+任务契约，重试沿用）；普通消息为 None。",
+    )
+    humanizer: HumanizerResultProjection | None = Field(
+        default=None,
+        description="助手消息的 bridges-humanizer 结果投影（Issue 28）；非人味化消息为 None。",
+    )
     error_code: str | None = Field(default=None, description="失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文错误说明。")
     duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
@@ -328,6 +341,14 @@ class ChatMessageCreateRequest(BaseModel):
     use_profile: bool = Field(
         default=True, description="本轮是否使用画像切片（可在发送前关闭）。"
     )
+    skill_id: str | None = Field(
+        default=None,
+        description="内置 SKILL 注册标识（Issue 28）；携带时本轮走 SKILL 编排而非普通回答。",
+    )
+    skill_input: HumanizerSkillInput | None = Field(
+        default=None,
+        description="SKILL 任务载荷（契约模型校验，标识须为内置注册）。",
+    )
 
 
 class ChatStopResponse(BaseModel):
@@ -344,6 +365,7 @@ class ChatStreamEventKind(StrEnum):
     ERROR = "error"
     DONE = "done"
     PROFILE = "profile"
+    HUMANIZER = "humanizer"
 
 
 class ChatStreamStartedData(BaseModel):
@@ -429,6 +451,24 @@ class ChatStreamProfileData(BaseModel):
     )
 
 
+class ChatStreamHumanizerData(BaseModel):
+    """humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
+
+    loading/empty/error/permission/recovery 五态的中文状态与当前步骤
+    说明由此载荷下发；终态由 done 事件携带完整结果投影。
+    """
+
+    kind: Literal["humanizer"] = "humanizer"
+    message_id: str = Field(description="助手消息标识。")
+    state: HumanizerProcessState = Field(description="过程卡状态。")
+    step_label: str = Field(description="当前步骤中文说明。")
+    detail: str | None = Field(default=None, description="补充中文说明。")
+    retryable: bool = Field(default=False, description="是否可重试。")
+    progress_steps: list[str] = Field(
+        default_factory=list, description="已完成的步骤中文轨迹。"
+    )
+
+
 class ChatStreamEvent(BaseModel):
     """一次 SSE 流事件的公开契约（前端类型与事件名从此模型生成）。
 
@@ -443,6 +483,7 @@ class ChatStreamEvent(BaseModel):
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData
-        | ChatStreamProfileData,
+        | ChatStreamProfileData
+        | ChatStreamHumanizerData,
         Field(discriminator="kind", description="事件载荷。"),
     ] = Field(description="事件载荷。")

@@ -60,6 +60,7 @@ class MessageRecord:
     arxiv_search: dict[str, Any] | None = None
     teaching: dict[str, Any] | None = None
     context_note: dict[str, Any] | None = None
+    skill: dict[str, Any] | None = None
 
 
 def _parse_iso(value: str) -> datetime:
@@ -290,8 +291,8 @@ class ConversationRepository:
                     "(message_id, conversation_id, account_id, role, attempt_number,"
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                    " web_search, arxiv_search, teaching, context_note)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " web_search, arxiv_search, teaching, context_note, skill)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -312,6 +313,7 @@ class ConversationRepository:
                         _json_dumps(record.arxiv_search) if record.arxiv_search else None,
                         _json_dumps(record.teaching) if record.teaching else None,
                         _json_dumps(record.context_note) if record.context_note else None,
+                        _json_dumps(record.skill) if record.skill else None,
                     ),
                 )
         except StorageError:
@@ -334,8 +336,8 @@ class ConversationRepository:
                         "(message_id, conversation_id, account_id, role, attempt_number,"
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                        " web_search, arxiv_search, teaching, context_note)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " web_search, arxiv_search, teaching, context_note, skill)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -356,6 +358,7 @@ class ConversationRepository:
                             _json_dumps(record.arxiv_search) if record.arxiv_search else None,
                             _json_dumps(record.teaching) if record.teaching else None,
                             _json_dumps(record.context_note) if record.context_note else None,
+                            _json_dumps(record.skill) if record.skill else None,
                         ),
                     )
                 placeholders = ",".join("?" for _ in attachment_ids)
@@ -396,7 +399,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note"
+            " teaching, context_note, skill"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -409,7 +412,7 @@ class ConversationRepository:
             "SELECT message_id, conversation_id, account_id, role, attempt_number,"
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
-            " teaching, context_note"
+            " teaching, context_note, skill"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -510,6 +513,26 @@ class ConversationRepository:
                 "UPDATE messages SET context_note = ?, updated_at = ?"
                 " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
                 (_json_dumps(context_note), _iso(updated_at), message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_message_humanizer(
+        self,
+        account_id: str,
+        message_id: str,
+        humanizer: dict[str, Any],
+        updated_at: datetime,
+    ) -> int:
+        """落库人味化结果投影（Issue 28）；只允许写入仍在生成的助手消息。
+
+        结果投影在终态前写入（skill 列），终态收敛不会覆盖；重试新尝试
+        携带各自的结果投影。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE messages SET skill = ?, updated_at = ?"
+                " WHERE message_id = ? AND account_id = ? AND status = 'streaming'",
+                (_json_dumps(humanizer), _iso(updated_at), message_id, account_id),
             )
             return cursor.rowcount
 
@@ -844,6 +867,7 @@ class ConversationRepository:
             arxiv_search=_json_loads_any(row["arxiv_search"]),
             teaching=_json_loads_any(row["teaching"]),
             context_note=_json_loads_any(row["context_note"]),
+            skill=_json_loads_any(row["skill"]),
         )
 
 

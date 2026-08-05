@@ -97,6 +97,10 @@ export function Dialog({ open, onClose, title, description, children }: DialogPr
         style={{
           width: "100%",
           maxWidth: "28rem",
+          // Issue 28：对话框内容可超过视口高度（人味化任务表单较长）——
+          // 限制高度并允许滚动，保证底部操作始终可达（键盘可达）。
+          maxHeight: "min(85vh, 100%)",
+          overflowY: "auto",
           backgroundColor: "var(--color-surface)",
           border: "1px solid var(--color-border)",
           borderRadius: "var(--radius-xl)",

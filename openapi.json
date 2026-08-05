@@ -24983,6 +24983,29 @@
             "title": "Use Profile",
             "description": "本轮是否使用画像切片（可在发送前关闭）。",
             "default": true
+          },
+          "skill_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Id",
+            "description": "内置 SKILL 注册标识（Issue 28）；携带时本轮走 SKILL 编排而非普通回答。"
+          },
+          "skill_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerSkillInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SKILL 任务载荷（契约模型校验，标识须为内置注册）。"
           }
         },
         "type": "object",
@@ -25097,6 +25120,30 @@
               }
             ],
             "description": "本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。"
+          },
+          "skill": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill",
+            "description": "用户消息的 SKILL 载荷快照（标识+任务契约，重试沿用）；普通消息为 None。"
+          },
+          "humanizer": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerResultProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "助手消息的 bridges-humanizer 结果投影（Issue 28）；非人味化消息为 None。"
           },
           "error_code": {
             "anyOf": [
@@ -25493,6 +25540,9 @@
               },
               {
                 "$ref": "#/components/schemas/ChatStreamProfileData"
+              },
+              {
+                "$ref": "#/components/schemas/ChatStreamHumanizerData"
               }
             ],
             "title": "Data",
@@ -25503,6 +25553,7 @@
                 "delta": "#/components/schemas/ChatStreamDeltaData",
                 "done": "#/components/schemas/ChatStreamDoneData",
                 "error": "#/components/schemas/ChatStreamErrorData",
+                "humanizer": "#/components/schemas/ChatStreamHumanizerData",
                 "profile": "#/components/schemas/ChatStreamProfileData",
                 "started": "#/components/schemas/ChatStreamStartedData"
               }
@@ -25524,10 +25575,69 @@
           "delta",
           "error",
           "done",
-          "profile"
+          "profile",
+          "humanizer"
         ],
         "title": "ChatStreamEventKind",
         "description": "SSE 流事件类型（Issue 11/14 起稳定的事件名）。"
+      },
+      "ChatStreamHumanizerData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "humanizer",
+            "title": "Kind",
+            "default": "humanizer"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "state": {
+            "$ref": "#/components/schemas/HumanizerProcessState",
+            "description": "过程卡状态。"
+          },
+          "step_label": {
+            "type": "string",
+            "title": "Step Label",
+            "description": "当前步骤中文说明。"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail",
+            "description": "补充中文说明。"
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "是否可重试。",
+            "default": false
+          },
+          "progress_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Progress Steps",
+            "description": "已完成的步骤中文轨迹。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "state",
+          "step_label"
+        ],
+        "title": "ChatStreamHumanizerData",
+        "description": "humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。\n\nloading/empty/error/permission/recovery 五态的中文状态与当前步骤\n说明由此载荷下发；终态由 done 事件携带完整结果投影。"
       },
       "ChatStreamProfileData": {
         "properties": {
@@ -31274,6 +31384,123 @@
         "title": "FactLock",
         "description": "A single locked fact derived from a claim and its evidence.\n\nFact locks are immutable boundaries that downstream expression and\nmultimodal nodes may not cross. Each lock records the canonical value,\nallowed transformations, forbidden transformations, required qualifiers,\nand the evidence/citations that justify it."
       },
+      "FactLockCheckResult": {
+        "properties": {
+          "check_id": {
+            "type": "string",
+            "title": "Check Id",
+            "description": "稳定检查标识。"
+          },
+          "source_text": {
+            "type": "string",
+            "title": "Source Text",
+            "description": "比较的原文（改写路径为源文，生成路径为约束集合）。"
+          },
+          "entries": {
+            "items": {
+              "$ref": "#/components/schemas/FactLockEntry"
+            },
+            "type": "array",
+            "title": "Entries",
+            "description": "全部事实锁条目。"
+          },
+          "blocking_conflicts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Blocking Conflicts",
+            "description": "阻断性冲突的中文描述（必须停止或人工确认）。"
+          },
+          "needs_human": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Needs Human",
+            "description": "需人工确认事项的中文描述。"
+          },
+          "passed": {
+            "type": "boolean",
+            "title": "Passed",
+            "description": "无阻断冲突即为通过；需人工事项不阻断但必须披露。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "check_id",
+          "source_text",
+          "passed"
+        ],
+        "title": "FactLockCheckResult",
+        "description": "一次事实锁前后比较的整体结果。"
+      },
+      "FactLockEntry": {
+        "properties": {
+          "entry_id": {
+            "type": "string",
+            "title": "Entry Id",
+            "description": "稳定条目标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FactLockKind",
+            "description": "事实锁类别。"
+          },
+          "surface_before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface Before",
+            "description": "原文中的表面形式；新增条目为 None。"
+          },
+          "surface_after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Surface After",
+            "description": "新文中的表面形式；删除条目为 None。"
+          },
+          "canonical": {
+            "type": "string",
+            "title": "Canonical",
+            "description": "规范化可比键（全半角/单位统一后）。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FactLockStatus",
+            "description": "比较判定。"
+          },
+          "severity": {
+            "$ref": "#/components/schemas/FactLockSeverity",
+            "description": "冲突严重度。"
+          },
+          "note": {
+            "type": "string",
+            "title": "Note",
+            "description": "中文说明（为何判定、需人工处理什么）。",
+            "default": ""
+          }
+        },
+        "type": "object",
+        "required": [
+          "entry_id",
+          "kind",
+          "canonical",
+          "status",
+          "severity"
+        ],
+        "title": "FactLockEntry",
+        "description": "前后文本比较中的一条事实锁记录。"
+      },
       "FactLockInvariance": {
         "properties": {
           "original_span_text": {
@@ -31343,6 +31570,20 @@
         "title": "FactLockInvariance",
         "description": "Evidence that a patch or rewrite preserved scientific boundaries.\n\nThe comparison covers fact locks, claim ids, citation ids and the evidence-\nderived wording strength ceiling."
       },
+      "FactLockKind": {
+        "type": "string",
+        "enum": [
+          "number",
+          "unit",
+          "object_relation",
+          "qualifier",
+          "formula",
+          "citation",
+          "conclusion_strength"
+        ],
+        "title": "FactLockKind",
+        "description": "文本级事实锁类别（对应 Issue 28 受保护的信息集合）。"
+      },
       "FactLockSet": {
         "properties": {
           "set_id": {
@@ -31395,6 +31636,27 @@
         ],
         "title": "FactLockSet",
         "description": "Collection of fact locks compiled from a claim graph."
+      },
+      "FactLockSeverity": {
+        "type": "string",
+        "enum": [
+          "blocking",
+          "needs_human",
+          "info"
+        ],
+        "title": "FactLockSeverity",
+        "description": "事实锁冲突严重度：阻断必须停止，需人工则明确标注。"
+      },
+      "FactLockStatus": {
+        "type": "string",
+        "enum": [
+          "preserved",
+          "changed",
+          "removed",
+          "added"
+        ],
+        "title": "FactLockStatus",
+        "description": "一次前后比较中单个事实锁的判定结果。"
       },
       "FactLockType": {
         "type": "string",
@@ -32101,6 +32363,484 @@
         ],
         "title": "HumanTodoStatus",
         "description": "Status of a named human decision attached to a run."
+      },
+      "HumanizerEdit": {
+        "properties": {
+          "edit_id": {
+            "type": "string",
+            "title": "Edit Id",
+            "description": "稳定修改条目标识。"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/HumanizerEditKind",
+            "description": "修改类别。"
+          },
+          "original": {
+            "type": "string",
+            "title": "Original",
+            "description": "原文片段（生成路径为对应的表达决策基线）。"
+          },
+          "revised": {
+            "type": "string",
+            "title": "Revised",
+            "description": "新文片段。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "每项理由：对应哪条体裁规则或表达目标。"
+          },
+          "genre_rule": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Genre Rule",
+            "description": "触发的体裁规则标识（可溯源）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "edit_id",
+          "kind",
+          "original",
+          "revised",
+          "reason"
+        ],
+        "title": "HumanizerEdit",
+        "description": "一次修改细节：原文片段、新文片段、类别与理由。"
+      },
+      "HumanizerEditKind": {
+        "type": "string",
+        "enum": [
+          "rewrite",
+          "restructure",
+          "word_choice",
+          "audience_adapt",
+          "no_change"
+        ],
+        "title": "HumanizerEditKind",
+        "description": "逐项修改细节的类别。"
+      },
+      "HumanizerFactCheckItem": {
+        "properties": {
+          "item": {
+            "type": "string",
+            "title": "Item",
+            "description": "核查对象（数值/单位/公式/引用/结论强度/来源）。"
+          },
+          "result": {
+            "type": "string",
+            "title": "Result",
+            "description": "核查结果：已核实 / 需人工确认 / 存在虚构风险。"
+          },
+          "evidence": {
+            "type": "string",
+            "title": "Evidence",
+            "description": "依据（本地检索/联网来源/原文事实锁/无来源需人工核实）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "item",
+          "result",
+          "evidence"
+        ],
+        "title": "HumanizerFactCheckItem",
+        "description": "事实核查结果中的一项。"
+      },
+      "HumanizerOutputContract": {
+        "properties": {
+          "final_text": {
+            "type": "string",
+            "title": "Final Text",
+            "description": "最终文本。"
+          },
+          "edits": {
+            "items": {
+              "$ref": "#/components/schemas/HumanizerEdit"
+            },
+            "type": "array",
+            "title": "Edits",
+            "description": "逐项修改细节（每项必带理由）。"
+          },
+          "fact_check": {
+            "items": {
+              "$ref": "#/components/schemas/HumanizerFactCheckItem"
+            },
+            "type": "array",
+            "title": "Fact Check",
+            "description": "事实核查结果。"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Questions",
+            "description": "尚未解决的问题（可空但必须存在）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "final_text"
+        ],
+        "title": "HumanizerOutputContract",
+        "description": "人味化输出合同：缺一不标记完成。\n\n五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、\nopen_questions 字段存在且可空列表已说明）才视为完成。"
+      },
+      "HumanizerPath": {
+        "type": "string",
+        "enum": [
+          "rewrite",
+          "generate"
+        ],
+        "title": "HumanizerPath",
+        "description": "人味化任务的两条端到端路径。"
+      },
+      "HumanizerProcessState": {
+        "type": "string",
+        "enum": [
+          "loading",
+          "empty",
+          "error",
+          "permission",
+          "recovery",
+          "done"
+        ],
+        "title": "HumanizerProcessState",
+        "description": "人味化过程卡的可见状态（中文五态 + 终态 done）。\n\ndone 只出现在结果投影的终态快照上（过程卡已由结果卡接管），\nSSE 过程事件只下发前五种状态。"
+      },
+      "HumanizerReference": {
+        "properties": {
+          "reference_id": {
+            "type": "string",
+            "title": "Reference Id",
+            "description": "稳定引用标识。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "中文显示名（文件/文章/来源标题）。"
+          },
+          "source_type": {
+            "type": "string",
+            "title": "Source Type",
+            "description": "来源类型：attachment/retrieval/web/arxiv/原文。"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "description": "定位细节（页码/章节/网址/访问时间）。",
+            "default": ""
+          },
+          "citation_surface": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Citation Surface",
+            "description": "正文中的引用表面形式（如 (Smith, 2020)）。"
+          },
+          "preserved": {
+            "type": "boolean",
+            "title": "Preserved",
+            "description": "是否在改写前后保持（未被删改）。",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "reference_id",
+          "label",
+          "source_type"
+        ],
+        "title": "HumanizerReference",
+        "description": "人味化结果保持的引用条目（经本地/联网证据合同呈现）。"
+      },
+      "HumanizerResultProjection": {
+        "properties": {
+          "task_id": {
+            "type": "string",
+            "title": "Task Id",
+            "description": "稳定任务标识（与消息尝试一致）。"
+          },
+          "skill_id": {
+            "type": "string",
+            "title": "Skill Id",
+            "description": "SKILL 注册标识。"
+          },
+          "skill_version": {
+            "type": "string",
+            "title": "Skill Version",
+            "description": "使用的 SKILL 固定版本。"
+          },
+          "path": {
+            "$ref": "#/components/schemas/HumanizerPath",
+            "description": "任务路径。"
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "使用的体裁合同。"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/HumanizerTaskContract",
+            "description": "任务契约快照。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/HumanizerResultStatus",
+            "description": "任务终态。"
+          },
+          "output": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerOutputContract"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "输出合同；失败时可能为 None。"
+          },
+          "fact_lock_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FactLockCheckResult"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "事实锁前后比较结果。"
+          },
+          "references": {
+            "items": {
+              "$ref": "#/components/schemas/HumanizerReference"
+            },
+            "type": "array",
+            "title": "References",
+            "description": "保持的引用清单。"
+          },
+          "genre_check": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Genre Check",
+            "description": "体裁规则复核结果的中文摘要。"
+          },
+          "process_state": {
+            "$ref": "#/components/schemas/HumanizerProcessState",
+            "description": "过程卡当前状态。",
+            "default": "loading"
+          },
+          "process_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Process Steps",
+            "description": "已完成的编排步骤中文名（过程卡轨迹）。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "失败分类码（recovery 态展示）。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "可操作的中文错误说明。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "创建时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "task_id",
+          "skill_id",
+          "skill_version",
+          "path",
+          "genre",
+          "contract",
+          "status"
+        ],
+        "title": "HumanizerResultProjection",
+        "description": "人味化任务的结果投影（挂载到助手消息）。"
+      },
+      "HumanizerResultStatus": {
+        "type": "string",
+        "enum": [
+          "done",
+          "needs_human",
+          "error"
+        ],
+        "title": "HumanizerResultStatus",
+        "description": "人味化任务的终态；needs_human 表示事实锁冲突或待核事项。"
+      },
+      "HumanizerSkillInput": {
+        "properties": {
+          "skill_id": {
+            "type": "string",
+            "title": "Skill Id",
+            "description": "稳定 SKILL 注册标识，如 bridges-humanizer。"
+          },
+          "contract": {
+            "$ref": "#/components/schemas/HumanizerTaskContract",
+            "description": "本次人味化任务契约。"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version",
+            "description": "请求声明版本；空则使用注册的默认版本。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "skill_id",
+          "contract"
+        ],
+        "title": "HumanizerSkillInput",
+        "description": "发送消息时携带的 SKILL 载荷（skill_id 须为内置注册标识）。"
+      },
+      "HumanizerTaskContract": {
+        "properties": {
+          "path": {
+            "$ref": "#/components/schemas/HumanizerPath",
+            "description": "改写或生成路径。"
+          },
+          "genre": {
+            "$ref": "#/components/schemas/Genre",
+            "description": "四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）。"
+          },
+          "topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic",
+            "description": "生成路径的主题；改写路径可为空。"
+          },
+          "audience": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Audience",
+            "description": "目标受众（如：大一新生、课题组同行）。"
+          },
+          "channel": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Channel",
+            "description": "发布或展示渠道（如：公众号、课堂、组会汇报）。"
+          },
+          "length_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Length Target",
+            "description": "长度或时长目标（如：800 字、10 分钟）。"
+          },
+          "hard_constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Hard Constraints",
+            "description": "用户声明的硬约束（不得删减/必须保留等）。"
+          },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text",
+            "description": "改写路径的粘贴原文（与附件互斥或互补）。"
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Attachment Ids",
+            "description": "改写路径引用的当前账户文件（对话附件）。"
+          },
+          "source_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Label",
+            "description": "来源显示名（文件名或用户粘贴说明）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "path",
+          "genre"
+        ],
+        "title": "HumanizerTaskContract",
+        "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text 或附件；生成路径必带 topic。"
       },
       "ImmediateFeedback": {
         "properties": {

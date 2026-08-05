@@ -340,6 +340,17 @@
     }
   }
 
+  /* Issue 28：文章人味化过程卡 loading 图标旋转（reduced-motion 由全局规则静止） */
+  @keyframes humanizer-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .humanizer-spin {
+    animation: humanizer-spin 0.8s linear infinite;
+  }
+
   /* Issue 14：思考摘要流式状态的旋转指示（reduced-motion 由全局规则静止） */
   @keyframes thinking-spin {
     to {

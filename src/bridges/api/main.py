@@ -142,6 +142,8 @@ from bridges.science.service import build_source_impact_resolver
 from bridges.scope import ScopeEnforcer
 from bridges.search import SearchService
 from bridges.sharing import SharingService
+from bridges.skills import create_builtin_registry
+from bridges.skills.humanizer.service import HumanizerService
 from bridges.storage import (
     BridgesDatabase,
     BridgesObjectRepository,
@@ -895,6 +897,19 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             )
         # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
         app.state.search_service = SearchService(bridges_database)
+        # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
+        # SKILL 随应用发布、版本固定、只读来源；编排复用同一模型网关与
+        # 附件/检索/联网证据合同，不依赖用户手工上传或 `.env`。
+        skill_registry = create_builtin_registry()
+        app.state.skill_registry = skill_registry
+        app.state.humanizer_service = HumanizerService(
+            registry=skill_registry,
+            gateway=model_gateway,
+            attachment_service=getattr(app.state, "chat_attachment_service", None),
+            retrieval_service=getattr(app.state, "retrieval_service", None),
+            web_search_service=getattr(app.state, "web_search_service", None),
+            observability_service=app.state.observability_service,
+        )
         app.state.chat_service = ChatService(
             repository=ConversationRepository(bridges_database),
             gateway=model_gateway,
@@ -904,6 +919,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             profile_service=getattr(app.state, "profile_service", None),
             observability_service=app.state.observability_service,
+            humanizer_service=app.state.humanizer_service,
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the

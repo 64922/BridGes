@@ -7,9 +7,11 @@ import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBann
 import { Composer } from "@/components/bridges/Composer";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
+import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
+import type { HumanizerSkillInput } from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
-import { chatAttachmentKey, chatPromptKey } from "@/lib/chat-flow";
+import { chatAttachmentKey, chatPromptKey, chatSkillKey } from "@/lib/chat-flow";
 import { ApiError, createChatConversation, updateChatConversationProject } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -51,6 +53,31 @@ export function NewChatHome() {
         code: error instanceof ApiError ? error.code : undefined,
       });
       return undefined;
+    }
+  };
+
+  const [humanizerOpen, setHumanizerOpen] = useState(false);
+
+  /** Issue 28：首页提交人味化任务——先建对话，暂存 SKILL 载荷后跳转对话页自动发送。 */
+  const handleHumanizerSubmit = async (
+    content: string,
+    skillInput: HumanizerSkillInput
+  ): Promise<boolean> => {
+    try {
+      const conversationId =
+        preparedConversationRef.current ??
+        (await createChatConversation(undefined, mode)).conversation_id;
+      preparedConversationRef.current = conversationId;
+      sessionStorage.setItem(chatPromptKey(conversationId), content);
+      sessionStorage.setItem(chatSkillKey(conversationId), JSON.stringify(skillInput));
+      router.push(`/chat/${conversationId}`);
+      return true;
+    } catch (error) {
+      setSendError({
+        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
+        code: error instanceof ApiError ? error.code : undefined,
+      });
+      return false;
     }
   };
 
@@ -121,6 +148,7 @@ export function NewChatHome() {
                 prefill={prefill}
                 learningProject={learningProject}
                 onSelectLearningProject={setLearningProject}
+                onOpenHumanizer={() => setHumanizerOpen(true)}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
@@ -132,6 +160,7 @@ export function NewChatHome() {
                   prefillCounter.current += 1;
                   setPrefill({ text, nonce: prefillCounter.current });
                 }}
+                onHumanizer={() => setHumanizerOpen(true)}
               />
               <p className={styles.blankStateNote}>
                 BridGes 的回答会标注依据与来源；重要内容请核对引用。
@@ -140,6 +169,12 @@ export function NewChatHome() {
           </div>
         </main>
       </div>
+      <HumanizerDialog
+        open={humanizerOpen}
+        onClose={() => setHumanizerOpen(false)}
+        ensureConversation={ensureConversation}
+        onSubmit={(content, skillInput) => handleHumanizerSubmit(content, skillInput)}
+      />
     </AppShell>
   );
 }

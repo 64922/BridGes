@@ -52,6 +52,7 @@ class AuditAction(str, Enum):
     PROFILE_SLICE_USED = "profile_slice_used"
     ANSWER_FEEDBACK = "answer_feedback"
     FEEDBACK_RESOLVED = "feedback_resolved"
+    HUMANIZER_GENERATE = "humanizer_generate"
     KEY_SAVE = "key_save"
     KEY_DELETE = "key_delete"
     KEY_PROBE = "key_probe"

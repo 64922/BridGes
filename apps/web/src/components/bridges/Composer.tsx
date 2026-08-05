@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { LearningProjectPickerDialog } from "@/components/learning-projects/LearningProjectPickerDialog";
-import { CHAT_TOOL_INTENTS } from "@/lib/chat-tools";
+import { CHAT_TOOL_INTENTS, HUMANIZER_TOOL_LABEL } from "@/lib/chat-tools";
 import {
   cancelChatAttachment,
   cancelChatAttachmentUpload,
@@ -44,6 +44,8 @@ interface ComposerProps {
   learningProject?: { project_id: string; name: string } | null;
   /** 「选择学习项目」入口；选择/清除后回调（传 null 表示清除）。 */
   onSelectLearningProject?: (project: { project_id: string; name: string } | null) => void;
+  /** Issue 28：打开「文章人味化」任务对话框（由宿主渲染对话框）。 */
+  onOpenHumanizer?: () => void;
 }
 
 interface SpeechRecognitionResultEventLike {
@@ -103,6 +105,7 @@ export function Composer({
   prefill = null,
   learningProject = null,
   onSelectLearningProject,
+  onOpenHumanizer,
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
@@ -744,10 +747,19 @@ export function Composer({
               icon: "uploadFile",
               onSelect: () => fileInputRef.current?.click(),
             },
+            // Issue 28：文章人味化进入真实任务对话框（改写/生成两条路径），
+            // 不再只是预填前缀；其它意图仍为结构化预填，不伪造工具结果。
+            // 菜单顺序与入口数保持不变（Issue 13 固定六入口契约）。
             ...TOOL_PROMPTS.map((tool) => ({
               label: tool.label,
               icon: tool.icon,
-              onSelect: () => insertToolPrefix(tool.prefix),
+              onSelect:
+                tool.label === HUMANIZER_TOOL_LABEL && onOpenHumanizer
+                  ? () => {
+                      setToolNotice("");
+                      onOpenHumanizer?.();
+                    }
+                  : () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
             ...(onSelectLearningProject

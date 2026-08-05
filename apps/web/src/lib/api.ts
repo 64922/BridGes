@@ -28,6 +28,15 @@ export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
 export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
+// Issue 28：内置 bridges-humanizer SKILL 契约（生成类型来自 openapi.json）。
+export type HumanizerResultProjection = components["schemas"]["HumanizerResultProjection"];
+export type HumanizerProcessState = components["schemas"]["HumanizerProcessState"];
+export type ChatStreamHumanizerData = components["schemas"]["ChatStreamHumanizerData"];
+export type HumanizerFactCheckItem = components["schemas"]["HumanizerFactCheckItem"];
+export type HumanizerEdit = components["schemas"]["HumanizerEdit"];
+export type HumanizerSkillInput = components["schemas"]["HumanizerSkillInput"];
+export type HumanizerTaskContract = components["schemas"]["HumanizerTaskContract"];
+export type HumanizerPath = components["schemas"]["HumanizerPath"];
 export type DocumentIngestionProjection = components["schemas"]["DocumentIngestionProjection"];
 export type KnowledgeBaseMaterialProjection = components["schemas"]["KnowledgeBaseMaterialProjection"];
 export type IngestionStatus = components["schemas"]["IngestionStatus"];
@@ -1190,7 +1199,9 @@ export async function streamChatMessage(
   signal?: AbortSignal,
   attachmentIds: string[] = [],
   useKnowledgeBase: boolean = true,
-  useProfile: boolean = true
+  useProfile: boolean = true,
+  skillId?: string,
+  skillInput?: unknown
 ): Promise<void> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
@@ -1201,6 +1212,9 @@ export async function streamChatMessage(
       attachment_ids: attachmentIds,
       use_knowledge_base: useKnowledgeBase,
       use_profile: useProfile,
+      // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
+      ...(skillId !== undefined ? { skill_id: skillId } : {}),
+      ...(skillInput !== undefined ? { skill_input: skillInput } : {}),
     }),
     signal,
   });

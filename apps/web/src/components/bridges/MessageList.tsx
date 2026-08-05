@@ -14,10 +14,13 @@ import type {
   TeachingTurnProjection,
   WebSearchProjection,
 } from "@/lib/api";
+import type { ChatStreamHumanizerData, HumanizerResultProjection } from "@/lib/api";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
 import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
 import { ContextNoteCard } from "./ContextNoteCard";
+import { HumanizerProcessCard } from "@/components/bridges/HumanizerProcessCard";
+import { HumanizerResultCard } from "@/components/bridges/HumanizerResultCard";
 import { RetrievalCard } from "./RetrievalCard";
 import { TeachingCard } from "./TeachingCard";
 import { WebSearchCard } from "./WebSearchCard";
@@ -66,6 +69,12 @@ export interface ChatMessage {
   teaching?: TeachingTurnProjection | null;
   /** Issue 27：本次上下文说明披露（画像切片/材料类别/用途）；无披露为 null */
   contextNote?: ContextNoteProjection | null;
+  /** Issue 28：文章人味化结果投影（助手消息）；非人味化消息为 null */
+  humanizer?: HumanizerResultProjection | null;
+  /** Issue 28：用户消息的 SKILL 载荷快照（任务摘要展示）；普通消息为 null */
+  skill?: unknown;
+  /** Issue 28：流式中的文章人味化过程卡状态（五态中文） */
+  humanizerProcess?: ChatStreamHumanizerData | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -680,6 +689,26 @@ export function MessageList({
                   />
                 )}
 
+                {/* Issue 28：文章人味化过程卡（五态中文）——流式中渲染过程
+                    事件；终态由结果卡接管。 */}
+                {conversationId && (message.humanizerProcess != null || (message.humanizer == null && message.status === "streaming" && message.skill != null)) && (
+                  <HumanizerProcessCard
+                    data={message.humanizerProcess ?? null}
+                    streaming={message.status === "streaming"}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
+                {/* Issue 28：文章人味化结果卡（输出合同五要素 + 事实锁/引用/
+                    体裁复核），终态后随历史加载稳定呈现；失败态在卡内提供
+                    从原任务重试（输入保留）。 */}
+                {conversationId && message.humanizer != null && (
+                  <HumanizerResultCard
+                    result={message.humanizer}
+                    onRetry={() => onRetry?.(message.id)}
+                  />
+                )}
+
                 {message.thinking && (
                   <ThinkingSummary
                     thinking={message.thinking}
@@ -687,7 +716,7 @@ export function MessageList({
                   />
                 )}
 
-                {message.status === "error" ? (
+                {message.status === "error" && message.skill == null ? (
                   <div
                     role="alert"
                     style={{

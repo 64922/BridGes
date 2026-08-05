@@ -18,3 +18,6 @@ export const CHAT_TOOL_INTENTS: readonly ChatToolIntent[] = [
   { label: "文章人味化", icon: "humanize", prefix: "文章人味化：" },
   { label: "生涯规划助手", icon: "career", prefix: "生涯规划助手：" },
 ] as const;
+
+/** Issue 28：「文章人味化」入口已接入真实任务对话框（不再预填前缀）。 */
+export const HUMANIZER_TOOL_LABEL = "文章人味化" as const;

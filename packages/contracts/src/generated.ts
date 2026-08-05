@@ -6416,6 +6416,13 @@ export interface components {
              * @default true
              */
             use_profile: boolean;
+            /**
+             * Skill Id
+             * @description 内置 SKILL 注册标识（Issue 28）；携带时本轮走 SKILL 编排而非普通回答。
+             */
+            skill_id?: string | null;
+            /** @description SKILL 任务载荷（契约模型校验，标识须为内置注册）。 */
+            skill_input?: components["schemas"]["HumanizerSkillInput"] | null;
         };
         /**
          * ChatMessageProjection
@@ -6468,6 +6475,15 @@ export interface components {
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
             /** @description 本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。 */
             context_note?: components["schemas"]["ContextNoteProjection"] | null;
+            /**
+             * Skill
+             * @description 用户消息的 SKILL 载荷快照（标识+任务契约，重试沿用）；普通消息为 None。
+             */
+            skill?: {
+                [key: string]: unknown;
+            } | null;
+            /** @description 助手消息的 bridges-humanizer 结果投影（Issue 28）；非人味化消息为 None。 */
+            humanizer?: components["schemas"]["HumanizerResultProjection"] | null;
             /**
              * Error Code
              * @description 失败分类码。
@@ -6691,14 +6707,56 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile";
+        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer";
+        /**
+         * ChatStreamHumanizerData
+         * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
+         *
+         *     loading/empty/error/permission/recovery 五态的中文状态与当前步骤
+         *     说明由此载荷下发；终态由 done 事件携带完整结果投影。
+         */
+        ChatStreamHumanizerData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "humanizer";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /** @description 过程卡状态。 */
+            state: components["schemas"]["HumanizerProcessState"];
+            /**
+             * Step Label
+             * @description 当前步骤中文说明。
+             */
+            step_label: string;
+            /**
+             * Detail
+             * @description 补充中文说明。
+             */
+            detail?: string | null;
+            /**
+             * Retryable
+             * @description 是否可重试。
+             * @default false
+             */
+            retryable: boolean;
+            /**
+             * Progress Steps
+             * @description 已完成的步骤中文轨迹。
+             */
+            progress_steps?: string[];
+        };
         /**
          * ChatStreamProfileData
          * @description profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。
@@ -10263,6 +10321,80 @@ export interface components {
             verification_method: string;
         };
         /**
+         * FactLockCheckResult
+         * @description 一次事实锁前后比较的整体结果。
+         */
+        FactLockCheckResult: {
+            /**
+             * Check Id
+             * @description 稳定检查标识。
+             */
+            check_id: string;
+            /**
+             * Source Text
+             * @description 比较的原文（改写路径为源文，生成路径为约束集合）。
+             */
+            source_text: string;
+            /**
+             * Entries
+             * @description 全部事实锁条目。
+             */
+            entries?: components["schemas"]["FactLockEntry"][];
+            /**
+             * Blocking Conflicts
+             * @description 阻断性冲突的中文描述（必须停止或人工确认）。
+             */
+            blocking_conflicts?: string[];
+            /**
+             * Needs Human
+             * @description 需人工确认事项的中文描述。
+             */
+            needs_human?: string[];
+            /**
+             * Passed
+             * @description 无阻断冲突即为通过；需人工事项不阻断但必须披露。
+             */
+            passed: boolean;
+        };
+        /**
+         * FactLockEntry
+         * @description 前后文本比较中的一条事实锁记录。
+         */
+        FactLockEntry: {
+            /**
+             * Entry Id
+             * @description 稳定条目标识。
+             */
+            entry_id: string;
+            /** @description 事实锁类别。 */
+            kind: components["schemas"]["FactLockKind"];
+            /**
+             * Surface Before
+             * @description 原文中的表面形式；新增条目为 None。
+             */
+            surface_before?: string | null;
+            /**
+             * Surface After
+             * @description 新文中的表面形式；删除条目为 None。
+             */
+            surface_after?: string | null;
+            /**
+             * Canonical
+             * @description 规范化可比键（全半角/单位统一后）。
+             */
+            canonical: string;
+            /** @description 比较判定。 */
+            status: components["schemas"]["FactLockStatus"];
+            /** @description 冲突严重度。 */
+            severity: components["schemas"]["FactLockSeverity"];
+            /**
+             * Note
+             * @description 中文说明（为何判定、需人工处理什么）。
+             * @default
+             */
+            note: string;
+        };
+        /**
          * FactLockInvariance
          * @description Evidence that a patch or rewrite preserved scientific boundaries.
          *
@@ -10322,6 +10454,12 @@ export interface components {
             passed: boolean;
         };
         /**
+         * FactLockKind
+         * @description 文本级事实锁类别（对应 Issue 28 受保护的信息集合）。
+         * @enum {string}
+         */
+        FactLockKind: "number" | "unit" | "object_relation" | "qualifier" | "formula" | "citation" | "conclusion_strength";
+        /**
          * FactLockSet
          * @description Collection of fact locks compiled from a claim graph.
          */
@@ -10355,6 +10493,18 @@ export interface components {
              */
             created_at: string;
         };
+        /**
+         * FactLockSeverity
+         * @description 事实锁冲突严重度：阻断必须停止，需人工则明确标注。
+         * @enum {string}
+         */
+        FactLockSeverity: "blocking" | "needs_human" | "info";
+        /**
+         * FactLockStatus
+         * @description 一次前后比较中单个事实锁的判定结果。
+         * @enum {string}
+         */
+        FactLockStatus: "preserved" | "changed" | "removed" | "added";
         /**
          * FactLockType
          * @description Kind of fact locked for a claim.
@@ -10755,6 +10905,294 @@ export interface components {
          * @enum {string}
          */
         HumanTodoStatus: "open" | "resolved" | "blocked";
+        /**
+         * HumanizerEdit
+         * @description 一次修改细节：原文片段、新文片段、类别与理由。
+         */
+        HumanizerEdit: {
+            /**
+             * Edit Id
+             * @description 稳定修改条目标识。
+             */
+            edit_id: string;
+            /** @description 修改类别。 */
+            kind: components["schemas"]["HumanizerEditKind"];
+            /**
+             * Original
+             * @description 原文片段（生成路径为对应的表达决策基线）。
+             */
+            original: string;
+            /**
+             * Revised
+             * @description 新文片段。
+             */
+            revised: string;
+            /**
+             * Reason
+             * @description 每项理由：对应哪条体裁规则或表达目标。
+             */
+            reason: string;
+            /**
+             * Genre Rule
+             * @description 触发的体裁规则标识（可溯源）。
+             */
+            genre_rule?: string | null;
+        };
+        /**
+         * HumanizerEditKind
+         * @description 逐项修改细节的类别。
+         * @enum {string}
+         */
+        HumanizerEditKind: "rewrite" | "restructure" | "word_choice" | "audience_adapt" | "no_change";
+        /**
+         * HumanizerFactCheckItem
+         * @description 事实核查结果中的一项。
+         */
+        HumanizerFactCheckItem: {
+            /**
+             * Item
+             * @description 核查对象（数值/单位/公式/引用/结论强度/来源）。
+             */
+            item: string;
+            /**
+             * Result
+             * @description 核查结果：已核实 / 需人工确认 / 存在虚构风险。
+             */
+            result: string;
+            /**
+             * Evidence
+             * @description 依据（本地检索/联网来源/原文事实锁/无来源需人工核实）。
+             */
+            evidence: string;
+        };
+        /**
+         * HumanizerOutputContract
+         * @description 人味化输出合同：缺一不标记完成。
+         *
+         *     五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、
+         *     open_questions 字段存在且可空列表已说明）才视为完成。
+         */
+        HumanizerOutputContract: {
+            /**
+             * Final Text
+             * @description 最终文本。
+             */
+            final_text: string;
+            /**
+             * Edits
+             * @description 逐项修改细节（每项必带理由）。
+             */
+            edits?: components["schemas"]["HumanizerEdit"][];
+            /**
+             * Fact Check
+             * @description 事实核查结果。
+             */
+            fact_check?: components["schemas"]["HumanizerFactCheckItem"][];
+            /**
+             * Open Questions
+             * @description 尚未解决的问题（可空但必须存在）。
+             */
+            open_questions?: string[];
+        };
+        /**
+         * HumanizerPath
+         * @description 人味化任务的两条端到端路径。
+         * @enum {string}
+         */
+        HumanizerPath: "rewrite" | "generate";
+        /**
+         * HumanizerProcessState
+         * @description 人味化过程卡的可见状态（中文五态 + 终态 done）。
+         *
+         *     done 只出现在结果投影的终态快照上（过程卡已由结果卡接管），
+         *     SSE 过程事件只下发前五种状态。
+         * @enum {string}
+         */
+        HumanizerProcessState: "loading" | "empty" | "error" | "permission" | "recovery" | "done";
+        /**
+         * HumanizerReference
+         * @description 人味化结果保持的引用条目（经本地/联网证据合同呈现）。
+         */
+        HumanizerReference: {
+            /**
+             * Reference Id
+             * @description 稳定引用标识。
+             */
+            reference_id: string;
+            /**
+             * Label
+             * @description 中文显示名（文件/文章/来源标题）。
+             */
+            label: string;
+            /**
+             * Source Type
+             * @description 来源类型：attachment/retrieval/web/arxiv/原文。
+             */
+            source_type: string;
+            /**
+             * Detail
+             * @description 定位细节（页码/章节/网址/访问时间）。
+             * @default
+             */
+            detail: string;
+            /**
+             * Citation Surface
+             * @description 正文中的引用表面形式（如 (Smith, 2020)）。
+             */
+            citation_surface?: string | null;
+            /**
+             * Preserved
+             * @description 是否在改写前后保持（未被删改）。
+             * @default true
+             */
+            preserved: boolean;
+        };
+        /**
+         * HumanizerResultProjection
+         * @description 人味化任务的结果投影（挂载到助手消息）。
+         */
+        HumanizerResultProjection: {
+            /**
+             * Task Id
+             * @description 稳定任务标识（与消息尝试一致）。
+             */
+            task_id: string;
+            /**
+             * Skill Id
+             * @description SKILL 注册标识。
+             */
+            skill_id: string;
+            /**
+             * Skill Version
+             * @description 使用的 SKILL 固定版本。
+             */
+            skill_version: string;
+            /** @description 任务路径。 */
+            path: components["schemas"]["HumanizerPath"];
+            /** @description 使用的体裁合同。 */
+            genre: components["schemas"]["Genre"];
+            /** @description 任务契约快照。 */
+            contract: components["schemas"]["HumanizerTaskContract"];
+            /** @description 任务终态。 */
+            status: components["schemas"]["HumanizerResultStatus"];
+            /** @description 输出合同；失败时可能为 None。 */
+            output?: components["schemas"]["HumanizerOutputContract"] | null;
+            /** @description 事实锁前后比较结果。 */
+            fact_lock_check?: components["schemas"]["FactLockCheckResult"] | null;
+            /**
+             * References
+             * @description 保持的引用清单。
+             */
+            references?: components["schemas"]["HumanizerReference"][];
+            /**
+             * Genre Check
+             * @description 体裁规则复核结果的中文摘要。
+             */
+            genre_check?: string[];
+            /**
+             * @description 过程卡当前状态。
+             * @default loading
+             */
+            process_state: components["schemas"]["HumanizerProcessState"];
+            /**
+             * Process Steps
+             * @description 已完成的编排步骤中文名（过程卡轨迹）。
+             */
+            process_steps?: string[];
+            /**
+             * Error Code
+             * @description 失败分类码（recovery 态展示）。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 可操作的中文错误说明。
+             */
+            error_message?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 创建时间。
+             */
+            created_at?: string;
+        };
+        /**
+         * HumanizerResultStatus
+         * @description 人味化任务的终态；needs_human 表示事实锁冲突或待核事项。
+         * @enum {string}
+         */
+        HumanizerResultStatus: "done" | "needs_human" | "error";
+        /**
+         * HumanizerSkillInput
+         * @description 发送消息时携带的 SKILL 载荷（skill_id 须为内置注册标识）。
+         */
+        HumanizerSkillInput: {
+            /**
+             * Skill Id
+             * @description 稳定 SKILL 注册标识，如 bridges-humanizer。
+             */
+            skill_id: string;
+            /** @description 本次人味化任务契约。 */
+            contract: components["schemas"]["HumanizerTaskContract"];
+            /**
+             * Version
+             * @description 请求声明版本；空则使用注册的默认版本。
+             */
+            version?: string | null;
+        };
+        /**
+         * HumanizerTaskContract
+         * @description 一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。
+         *
+         *     与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。
+         *     改写路径必带 source_text 或附件；生成路径必带 topic。
+         */
+        HumanizerTaskContract: {
+            /** @description 改写或生成路径。 */
+            path: components["schemas"]["HumanizerPath"];
+            /** @description 四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）。 */
+            genre: components["schemas"]["Genre"];
+            /**
+             * Topic
+             * @description 生成路径的主题；改写路径可为空。
+             */
+            topic?: string | null;
+            /**
+             * Audience
+             * @description 目标受众（如：大一新生、课题组同行）。
+             */
+            audience?: string | null;
+            /**
+             * Channel
+             * @description 发布或展示渠道（如：公众号、课堂、组会汇报）。
+             */
+            channel?: string | null;
+            /**
+             * Length Target
+             * @description 长度或时长目标（如：800 字、10 分钟）。
+             */
+            length_target?: string | null;
+            /**
+             * Hard Constraints
+             * @description 用户声明的硬约束（不得删减/必须保留等）。
+             */
+            hard_constraints?: string[];
+            /**
+             * Source Text
+             * @description 改写路径的粘贴原文（与附件互斥或互补）。
+             */
+            source_text?: string | null;
+            /**
+             * Attachment Ids
+             * @description 改写路径引用的当前账户文件（对话附件）。
+             */
+            attachment_ids?: string[];
+            /**
+             * Source Label
+             * @description 来源显示名（文件名或用户粘贴说明）。
+             */
+            source_label?: string | null;
+        };
         /**
          * ImmediateFeedback
          * @description Specific feedback for a single exercise attempt, bound to evidence.
