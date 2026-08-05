@@ -4,14 +4,20 @@
 
 ## Issue 33 实施计划（交付 QQ SMTP 任务提醒）
 
-状态：实施完成，全量验证与 code-review 进行中（2026-08-05）。
-进度：后端（契约/SMTP 适配器/解析器/适配/服务/存储 v21/调度器接入/
-API 路由/审计/凭据命名空间/reminder 画像模式）完成；前端（任务安排页
-SMTP 配置卡/时区/新建编辑对话框/提醒列表/投递记录 + api.ts + openapi
-再生成）完成；pytest 新增 75 条（解析器 25 + 适配 5 + SMTP 适配器 7 +
-服务 26 + API 12）+ issue33 E2E 3 条通过；全量 pytest 1786 通过（3 条
-失败为 E2E 并行抢 8000 端口 + 秘密扫描误报，已分别复验通过）；mypy
-干净、改动区域 ruff 干净、npm typecheck/build 通过。
+状态：已完成（2026-08-06）。全量验证：1792 pytest（+80 新增：解析器
+25 + 适配 5 + SMTP 适配器 7 + 服务 31 + API 12）、issue33 E2E 3 条
+（全流程/验证失败路径/切换账户不残留）、全量 E2E 213 通过（4 条失败
+均为既有问题：issue04/08 环境 flake、issue12 画像双空态为 Issue 26
+遗留、issue13 视频生成入口为 Issue 32 遗留）、mypy 干净、改动区域
+ruff 干净（observability UP042 为既有问题）、npm typecheck/build 通过、
+秘密扫描通过。双轴 code-review 修复：退避重试不豁免 24h 补发窗口
+（AC7 边界，停机超窗记错过）、发送期间暂停的重复投递竞态（本次执行
+被消费）、授权失效暂停账户全部启用提醒（AC8）、验证/投递错误固定
+中文文案不泄漏原始异常（Verification 4 硬化）、画像切片不可用映射
+4xx、前端会话过期 loading 不收敛、注释失实与 imap_login 死代码清理、
+_period_adjust 死参数。Issue 33 验收状态已更新为 ready-for-human
+（AC 全勾附证据；真实 QQ 冒烟项待用户执行 scripts/smoke_qq_smtp_
+reminder.py）。提交：0567750。
 
 ### 目标
 交付完整的「任务安排」电脑端页面与本地提醒链路：账户配置并验证 QQ SMTP
