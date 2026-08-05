@@ -1,0 +1,21 @@
+---
+mcp_id: bridges-note
+name: 笔记助手
+version: 1.0.0
+description: 演示敏感操作确认：经确认后把授权数据切片写入声明目录。
+source: local
+command:
+  - python
+  - -m
+  - bridges.mcp.servers.note
+network_domains: []
+filesystem_read: []
+filesystem_write:
+  - C:\e2e-mcp-notes
+external_commands: []
+data_categories:
+  - current_message_text
+  - attachment_files
+sensitive_operations:
+  - write_file
+---

@@ -2,7 +2,7 @@
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, cast
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse
@@ -46,6 +46,7 @@ from bridges.api import (
     workflows,
 )
 from bridges.api.image import router as image_router
+from bridges.api.mcp import router as mcp_router
 from bridges.api.media import router as media_router
 from bridges.api.plugins import router as plugins_router
 from bridges.api.reminder import router as reminder_router
@@ -114,6 +115,8 @@ from bridges.learning import (
 )
 from bridges.learning.api import router as learning_router
 from bridges.learning_projects import LearningProjectService
+from bridges.mcp.runtime import McpRuntime
+from bridges.mcp.service import McpService
 from bridges.media import (
     AccessibilityService,
     InMemoryAudioStorage,
@@ -770,6 +773,13 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     app.router.add_event_handler("shutdown", app.state.arxiv_search_service.close)
 
+    def _shutdown_mcp_servers() -> None:
+        service: McpService | None = getattr(app.state, "mcp_service", None)
+        if service is not None:
+            service.shutdown()
+
+    app.router.add_event_handler("shutdown", _shutdown_mcp_servers)
+
     # Issue 10: 账户级百炼凭据存储与固定能力探测。
     # 源码环境使用操作系统凭据库（keyring，Windows 兜底 DPAPI）；容器环境
     # 使用自动生成主密钥保护的加密凭据卷（数据目录 credentials/ 子目录）。
@@ -1029,6 +1039,21 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 observability_service=app.state.observability_service,
                 skill_registry=skill_registry,
             )
+            # Issue 35：显式授权 MCP 插件管理。安装描述按账户持久化（版本锁/
+            # 来源/完整性哈希），进程在独立受限环境中惰性运行；pid 文件落数据
+            # 目录用于重启后回收异常退出遗留的孤儿进程（AC3 重启恢复合法配置，
+            # 不继承僵尸进程）；关闭时停止全部进程。
+            # isinstance 收窄在联合类型上不保留：显式 cast。
+            mcp_pid_dir = Path(cast(SqliteStateStore, state_store).path).parent / "mcp-pids"
+            mcp_service = McpService(
+                database=bridges_database,
+                object_repository=object_repository,
+                observability_service=app.state.observability_service,
+                runtime=McpRuntime(pid_dir=mcp_pid_dir),
+            )
+            # 应用启动：回收上次异常退出遗留的孤儿 MCP 进程（pid 文件兜底）。
+            mcp_service.reap_orphans()
+            app.state.mcp_service = mcp_service
         # Issue 24: 跨内容统一桌面搜索（只读实时 SQL，无进程内缓存）。
         app.state.search_service = SearchService(bridges_database)
         # Issue 28：内置只读 SKILL 注册表 + bridges-humanizer 编排服务。
@@ -1422,6 +1447,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(video_router)
     app.include_router(reminder_router)
     app.include_router(plugins_router)
+    app.include_router(mcp_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

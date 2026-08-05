@@ -1,0 +1,18 @@
+---
+mcp_id: bridges-echo
+name: 回显演示
+version: 1.0.0
+description: 内置受控回显服务器：只回显本次调用授权的最小数据切片。
+source: local
+command:
+  - python
+  - -m
+  - bridges.mcp.servers.echo
+network_domains: []
+filesystem_read: []
+filesystem_write: []
+external_commands: []
+data_categories:
+  - current_message_text
+sensitive_operations: []
+---

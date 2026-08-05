@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 22
+SCHEMA_VERSION = 23
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1163,6 +1163,54 @@ MIGRATIONS: dict[int, list[str]] = {
             updated_at TEXT NOT NULL,
             PRIMARY KEY (account_id, plugin_id)
         )
+        """,
+    ],
+    # Issue 35: 显式授权 MCP 插件管理。mcp_servers 按账户保存固定版本
+    # 安装描述（命令/权限清单/完整性锁定哈希）与运行状态；mcp_calls
+    # 保存真实调用记录（次数/最近结果/失败原因），不含输入正文与秘密。
+    23: [
+        """
+        CREATE TABLE IF NOT EXISTS mcp_servers (
+            mcp_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            version TEXT NOT NULL,
+            description TEXT,
+            source TEXT NOT NULL,
+            integrity TEXT,
+            integrity_sha256 TEXT NOT NULL,
+            command TEXT NOT NULL,
+            permissions TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'healthy',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            object_id TEXT,
+            failure_reason TEXT,
+            installed_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, mcp_id)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_mcp_servers_account
+            ON mcp_servers(account_id, status)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS mcp_calls (
+            call_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            mcp_id TEXT NOT NULL,
+            tool TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error_code TEXT,
+            error_message TEXT,
+            latency_ms INTEGER NOT NULL DEFAULT 0,
+            sensitive_ops INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_mcp_calls_account
+            ON mcp_calls(account_id, mcp_id, created_at DESC)
         """,
     ],
 }

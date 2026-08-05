@@ -2477,3 +2477,151 @@ export function demoBuiltinPlugin(
     signal
   );
 }
+
+// ---------------------------------------------------------------------------
+// Issue 35：显式授权 MCP 插件管理
+// ---------------------------------------------------------------------------
+
+export type McpListProjection = components["schemas"]["McpListProjection"];
+export type McpServerProjection = components["schemas"]["McpServerProjection"];
+export type McpStatus = components["schemas"]["McpStatus"];
+export type McpSensitiveKind = components["schemas"]["McpSensitiveKind"];
+export type McpPermissionManifest = components["schemas"]["McpPermissionManifest"];
+export type McpCheckResult = components["schemas"]["McpCheckResult"];
+export type McpCallRequest = components["schemas"]["McpCallRequest"];
+export type McpDataSlice = components["schemas"]["McpDataSlice"];
+export type McpCallResult = components["schemas"]["McpCallResult"];
+export type McpSensitiveConfirmation = components["schemas"]["McpSensitiveConfirmation"];
+export type McpCallRecord = components["schemas"]["McpCallRecord"];
+
+/** 返回当前账户的全部 MCP 服务器与真实调用统计。 */
+export async function listMcpServers(): Promise<McpListProjection> {
+  const res = await fetch(`${API_BASE}/mcp`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 安装前检查：上传 MCP.yaml 原始字节，返回权限清单预览（纯检查）。 */
+export function checkMcpDescriptor(
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<McpCheckResult> {
+  return uploadRawBytes<McpCheckResult>(
+    `${API_BASE}/mcp/check`,
+    file,
+    `mcp-check-${Date.now()}`,
+    onProgress,
+    signal
+  );
+}
+
+/** 确认安装：再次上传同一 MCP.yaml，后端重跑安全闭锁后按账户持久化。 */
+export function installMcpDescriptor(
+  file: File,
+  onProgress?: (loaded: number, total: number) => void,
+  signal?: AbortSignal
+): Promise<McpServerProjection> {
+  return uploadRawBytes<McpServerProjection>(
+    `${API_BASE}/mcp/install`,
+    file,
+    `mcp-install-${Date.now()}`,
+    onProgress,
+    signal
+  );
+}
+
+async function toggleMcp(mcpId: string, enabled: boolean): Promise<McpListProjection> {
+  const res = await fetch(
+    `${API_BASE}/mcp/${encodeURIComponent(mcpId)}/${enabled ? "enable" : "disable"}`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export function enableMcp(mcpId: string): Promise<McpListProjection> {
+  return toggleMcp(mcpId, true);
+}
+
+export function disableMcp(mcpId: string): Promise<McpListProjection> {
+  return toggleMcp(mcpId, false);
+}
+
+/** 撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。 */
+export async function revokeMcpPermissions(
+  mcpId: string,
+  manifest: McpPermissionManifest
+): Promise<McpServerProjection> {
+  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}/permissions`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(manifest),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function uninstallMcp(mcpId: string): Promise<McpListProjection> {
+  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}`, {
+    method: "DELETE",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 执行一次真实调用；敏感操作挂起时返回确认载荷。 */
+export async function invokeMcp(
+  mcpId: string,
+  request: McpCallRequest
+): Promise<McpCallResult> {
+  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}/invoke`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(request),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 确认敏感操作（仅对本次调用有效）。 */
+export async function approveMcpConfirmation(
+  mcpId: string,
+  confirmationId: string
+): Promise<McpCallResult> {
+  const res = await fetch(
+    `${API_BASE}/mcp/${encodeURIComponent(mcpId)}/confirmations/${encodeURIComponent(confirmationId)}/approve`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 拒绝敏感操作：调用安全终止，不执行任何操作。 */
+export async function denyMcpConfirmation(
+  mcpId: string,
+  confirmationId: string
+): Promise<McpCallResult> {
+  const res = await fetch(
+    `${API_BASE}/mcp/${encodeURIComponent(mcpId)}/confirmations/${encodeURIComponent(confirmationId)}/deny`,
+    { method: "POST", credentials: "same-origin" }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 返回最近调用记录（真实次数/最近结果/失败原因，不含正文）。 */
+export async function listMcpCalls(mcpId: string): Promise<McpCallRecord[]> {
+  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}/calls`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}

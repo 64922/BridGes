@@ -206,8 +206,11 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       await expect(page.getByRole("heading", { name: item.heading })).toBeVisible();
       await expect(page.locator("body")).not.toContainText("将在这里呈现");
       if (item.emptyText) {
-        // 真实空状态：解释原因 + 可操作下一步（返回新聊天或真实能力入口）
-        await expect(page.getByTestId("state-empty")).toContainText(item.emptyText);
+        // 真实空状态：解释原因 + 可操作下一步（返回新聊天或真实能力入口）。
+        // 插件页含 SKILL 与 MCP 两个分区（Issue 35），多空态共存合法，
+        // 按文案精确过滤。
+        const emptyState = page.getByTestId("state-empty").filter({ hasText: item.emptyText });
+        await expect(emptyState).toBeVisible();
         await expect(page.getByRole("button", { name: item.emptyAction ?? "返回新聊天" }).first()).toBeVisible();
       }
     }

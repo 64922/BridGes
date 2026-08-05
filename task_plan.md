@@ -2,6 +2,171 @@
 
 状态：进行中（2026-08-05）
 
+## Issue 35 实施计划（交付显式授权 MCP 插件管理）
+
+状态：已完成（2026-08-06）。全量验证：1958 pytest（+82 新增：检查器
+19 + 进程 12 + 服务 29 + API 19 + schema v23 3）、issue35 E2E 7 条全过、
+全量 E2E 226 通过（4 条失败均为既有基线：issue04/08 环境 flake、issue13
+视频入口为 Issue 32 遗留、issue14 并行 flake 串行通过；另修 issue12
+插件页多空态断言）、mypy 241 文件 0 错误、改动区域 ruff 干净、npm
+typecheck/build 通过、openapi 同步通过。双轴 code-review 修复：多敏感
+操作调用链二次确认误判、重启恢复生产接线（pid_dir+reap_orphans）、
+崩溃错误剥离 stderr 防正文落库、STOPPED 状态可观察、Windows 反斜杠
+解析、覆盖重装对象回收、死代码清理、卸载文案与信任边界披露、键盘 E2E
+补敏感确认与撤权。Issue 35 验收状态已更新为 ready-for-human（AC 与
+Verification 全部勾选附证据）。
+
+### 目标
+在插件中心交付按账户安装和治理 MCP 的完整纵向链路：用户提交固定版本 +
+完整性 + 来源匹配的 MCP 安装描述（单个 MCP.yaml），安装前逐项预览网络
+域名/文件读写目录/外部命令/数据类别/敏感操作，未声明或未同意权限一律
+不可用；安装成功的 MCP 在独立受限进程中惰性启动运行，状态机
+starting/healthy/disabled/failed/stopped，重启后从持久化配置恢复并清理
+僵尸进程；文件/网络/外部命令/数据访问全部经宿主工具注入并校验允许清单
+（平台无法施加限制即拒绝启用而非无限权限）；进程 clean env 不继承百炼
+密钥/SMTP 码/内部密钥，直接与间接读取尝试均被拦截并审计；每次调用只
+接收当前消息明确授权的数据切片；敏感操作（写文件/运行外部命令/向外部
+服务提交私人内容）每次调用独立再确认，拒绝则调用安全终止；用户可预览
+与撤回权限、启停/卸载；插件中心展示真实调用次数/最近结果/失败原因；
+全部审计按账户隔离且不保存秘密与完整私人正文。前端按 ui-ux-pro-max
+建议实现 MCP 分区（卡网格 + 权限预览表格 + 敏感确认对话框），纯键盘
+可达。
+
+### 设计决策
+1. 安装描述 = 单个 MCP.yaml（与 SKILL 的 zip 包区分：MCP 是命令声明，
+   不是内容包），必填 mcp_id/name/version（精确版本，拒绝 latest/*/^
+   前缀/空）/command（启动命令列表）/source（来源，https URL 或
+   local）/permissions（network_domains/filesystem_read/
+   filesystem_write/external_commands/data_categories/
+   sensitive_operations）；integrity 可选声明 sha256:<hex>，安装时对
+   描述原文计算 sha256 锁定入库，运行时加载校验哈希防篡改；来源不匹配
+   （域名不在 https 白名单且非 local）拒绝
+2. 平台强制层：MCP 服务器程序 = 遵循 BridGes JSONL 协议的外部命令
+   （stdio，与 arXiv worker 同风格）；文件/网络/外部命令/数据访问只能
+   经宿主工具调用（tool_call 请求），宿主按允许清单校验——读取秘密
+   （clean env）、访问未授权路径、连接未声明域名、启动未声明命令、
+   跨账户读取全部在平台层闭锁；调用载荷只含 data_slice（当前调用明确
+   授权的文本/附件元数据），不含画像/历史/项目
+3. 敏感操作确认：每次敏感工具调用（写文件/run_command/外发）宿主返回
+   sensitive_pending 挂起 → 前端对话框展示目标与影响 → approve（仅本次
+   调用）或 deny（本次调用安全终止）；不扩展成永久授权
+4. 进程管理：惰性启动（首次调用/启用时），initialize 握手含启动超时与
+   健康校验；进程意外退出 → failed + 原因；应用重启 → runtime 重建读库，
+   发现残留孤儿进程先终止再恢复合法配置；撤权（PUT permissions）→ 移除
+   敏感权限时终止仍依赖该权限的运行；shutdown 事件停止全部进程
+5. 调用统计：mcp_calls 表持久化每次调用（状态/工具/失败原因/耗时/敏感
+   确认），投影展示真实调用次数与最近结果；审计新动作 MCP_INSTALL/
+   UNINSTALL/ENABLE/DISABLE/INVOKE/INVOKE_DENIED/SENSITIVE_APPROVE/
+   SENSITIVE_DENY/SECRET_ATTEMPT/START_FAILED，details 白名单不含秘密
+   与正文
+
+### 新增模块
+1. `contracts/mcp.py` — McpStatus（starting/healthy/disabled/failed/
+   stopped）、McpPermissionManifest（network_domains/filesystem_read/
+   filesystem_write/external_commands/data_categories/
+   sensitive_operations）、McpInstallDescriptor（mcp_id/name/version/
+   description/source/integrity/command/permissions）、McpCheckResult、
+   McpSensitiveOperation（kind: write_file|run_command|send_external）、
+   McpSensitiveConfirmation（confirmation_id/tool/arguments 摘要/status:
+   pending|approved|denied/target 与 impact 中文）、McpCallRequest
+   （tool/input/data_slice）、McpCallResult（success|failed|
+   sensitive_pending）、McpCallRecord、McpServerProjection（含状态/
+   调用次数/最近结果/失败原因）、McpListProjection、McpError
+2. `mcp/manifest.py` — 权限清单模型与 YAML 子集解析（复用插件检查器
+   frontmatter 解析风格）、命令/域名/目录格式校验
+3. `mcp/checker.py` — McpDescriptorChecker：描述解析、必填校验、版本锁
+   （latest/*/^/空拒绝）、来源匹配、完整性（sha256 格式 + 安装锁定）、
+   权限清单校验（域名无路径/目录绝对路径/命令无 shell 元字符/数据类别
+   与敏感操作受控集合）、逐项中文拒绝原因
+4. `mcp/process.py` — McpProcessClient：clean env（白名单 PYTHONPATH +
+   必要 PATH）启动 command、JSONL 协议、initialize 握手（启动超时 →
+   start_timeout 失败）、invoke（tool_call/tool_result/sensitive_pending
+   循环）、响应超时、崩溃检测（进程退出）、close/terminate/kill
+5. `mcp/runtime.py` — McpRuntime：每账户进程注册表与状态机（惰性启动/
+   健康/停用/失败/停止/卸载）、重启孤儿清理、撤权终止、shutdown 回收
+6. `mcp/service.py` — McpService：check（纯函数）/install（锁定哈希+对象
+   库+记录+审计）/list（含调用统计）/set_enabled/uninstall/revoke_
+   permissions/invoke（数据切片校验→进程调用→敏感挂起）/approve/deny/
+   get_calls；全部账户作用域，跨账户 404
+7. `mcp/servers/echo.py` + `mcp/servers/note.py` — 内置受控演示 MCP
+   服务器（JSONL 协议：echo 回显；note 演示 write_file 敏感确认路径），
+   供安装描述引用与 E2E 演示
+8. `storage/database.py` — SCHEMA_VERSION 23：mcp_servers（mcp_id/
+   account_id/name/version/description/source/integrity_sha256/command
+   JSON/permissions JSON/status/enabled/object_id/failure_reason/
+   installed_at/updated_at，UNIQUE(account,mcp_id)）+ mcp_calls
+   （call_id/account_id/mcp_id/tool/status/error_code/error_message/
+   latency_ms/sensitive_ops/created_at）
+9. `contracts/observability.py` — AuditAction 新增 MCP_INSTALL/
+   MCP_UNINSTALL/MCP_ENABLE/MCP_DISABLE/MCP_INVOKE/MCP_INVOKE_DENIED/
+   MCP_SENSITIVE_APPROVE/MCP_SENSITIVE_DENY/MCP_SECRET_ATTEMPT/
+   MCP_START_FAILED（details 白名单只含 mcp_id/version/tool/类别/计数/
+   原因，不含秘密与正文）
+10. `api/mcp.py` — 路由（prefix /mcp）：GET 列表、POST check（上传
+    MCP.yaml 原文）、POST install、POST {id}/enable、POST {id}/disable、
+    DELETE {id}、PUT {id}/permissions（撤权）、POST {id}/invoke（同步
+    调用，敏感挂起 202 + confirmation）、POST {id}/confirmations/{cid}/
+    approve、POST {id}/confirmations/{cid}/deny、GET {id}/calls；全部
+    账户作用域跨账户 404；错误码 mcp_unavailable(503)/invalid_descriptor
+    (422 带原因)/mcp_conflict(409)/mcp_not_found(404)/invoke_failed/
+    sensitive_pending(202)/sensitive_denied(403)
+11. `api/main.py` — McpService 挂载（database/object_repository/
+    observability/settings 数据目录）+ shutdown 停止全部 MCP 进程；
+    mcp_router 注册
+12. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：MCP 卡 + 权限预览表格 + 敏感确认对话框）
+13. api.ts — listMcpServers/checkMcpDescriptor/installMcpDescriptor/
+    enableMcp/disableMcp/uninstallMcp/revokeMcpPermissions/invokeMcp/
+    approveMcpConfirmation/denyMcpConfirmation/listMcpCalls + 类型导出
+14. `components/mcp/McpCenter.tsx` + McpCenter.module.css — /plugins
+    页面「MCP 服务器」分区：页五态、MCP 卡（状态徽标/版本/来源/完整性
+    徽章/权限清单展开表格（域名/目录/命令/数据类别/敏感操作逐项）/
+    调用统计（次数/最近结果/失败原因）/启停/撤权对话框/卸载确认）、
+    账户切换清态
+15. McpInstallDialog — 上传 MCP.yaml → 检查中 → 权限预览表格（逐项
+    域名/读写目录/外部命令/数据类别/敏感操作 + 固定版本/来源/完整性）→
+    确认安装；拒绝原因 ErrorSummary；取消无残留
+16. McpSensitiveConfirmDialog — 调用挂起时弹出：工具名/目标/影响/数据
+    类别 → 确认或拒绝；拒绝后调用失败态展示
+17. 纯键盘可达：安装/确认/撤权/卸载全流程
+
+### 测试
+18. `tests/mcp/fixtures.py` — 描述夹具（合法 echo/note、缺版本/latest
+    版本/损坏 YAML/来源不匹配/完整性不匹配/未声明权限/非法域名/相对
+    目录/命令含 shell 元字符）+ 恶意服务器夹具（secret_reader 读 env/
+    path_reader 读未授权路径/network_connector 连未声明域名/
+    command_launcher 启动未声明命令/cross_account 跨账户读）— 全部
+    JSONL 协议服务器脚本（PYTHONPATH 注入启动）
+19. `tests/mcp/test_checker.py` — 描述检查矩阵（逐项拒绝断言中文原因）
+20. `tests/mcp/test_process.py` — 真实子进程：clean env 不含秘密（断言
+    os.environ 秘密不进子进程）、initialize 握手、启动超时、调用往返、
+    崩溃检测、terminate/kill
+21. `tests/mcp/test_mcp_service.py` — _Harness（内存 db + tmp_path 对象
+    库 + recording observability + 真实 checker/runtime）：安装锁定
+    （哈希防篡改）、冲突、失败覆盖重装、启停/卸载、调用成功/失败/拒绝、
+    敏感确认 approve/deny（拒绝后调用终止）、撤权（新调用新清单/敏感
+    权限移除终止运行）、数据切片校验（未授权类别拒绝）、调用统计、
+    审计白名单（不含秘密与正文）、重启恢复（重建 service 读库+清理
+    孤儿）、两账户隔离
+22. `tests/mcp/test_mcp_api.py` — 路由契约：列表/检查/安装/启停/卸载/
+    撤权/调用/确认/记录、坏描述 422 带原因、跨账户 404、敏感挂起 202、
+    拒绝 403、未挂载 503、登录必需
+23. `tests/storage/test_schema_v23.py` — v22→v23 迁移（旧数据保留+新表
+    存在）、重启不重复迁移
+24. E2E issue35-mcp-center.spec.ts — 上传 MCP.yaml 预览权限表格→确认
+    安装→状态 healthy→真实调用（echo）→敏感确认路径（note write_file
+    →对话框展示目标与影响→确认→结果）→调用统计展示→停用/启用→卸载
+    确认；坏描述拒绝原因；两账户隔离；纯键盘完成安装/调用/敏感确认/
+    撤权/卸载；重启恢复（API 层）
+25. 秘密泄漏检查：子进程 env 断言 + 审计 details 扫描 + 错误响应不含
+    秘密与完整私人正文
+
+### 收尾
+26. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review
+    双轴审查并修复；更新 Issue 35 验收状态（ready-for-human + AC 与
+    Verification 勾选附证据）；提交（工作内容+bug 修复两部分提交信息）
+
 ## Issue 34 实施计划（交付 SKILL 插件中心）
 
 状态：已完成（2026-08-06）。全量验证：1876 pytest（+84 新增：checker 38 +

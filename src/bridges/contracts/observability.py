@@ -88,6 +88,16 @@ class AuditAction(str, Enum):
     PLUGIN_ENABLE = "plugin_enable"
     PLUGIN_DISABLE = "plugin_disable"
     PLUGIN_INVOKE = "plugin_invoke"
+    MCP_INSTALL = "mcp_install"
+    MCP_UNINSTALL = "mcp_uninstall"
+    MCP_ENABLE = "mcp_enable"
+    MCP_DISABLE = "mcp_disable"
+    MCP_INVOKE = "mcp_invoke"
+    MCP_INVOKE_DENIED = "mcp_invoke_denied"
+    MCP_SENSITIVE_APPROVE = "mcp_sensitive_approve"
+    MCP_SENSITIVE_DENY = "mcp_sensitive_deny"
+    MCP_START_FAILED = "mcp_start_failed"
+    MCP_PERMISSIONS_REVOKE = "mcp_permissions_revoke"
 
 
 class AuditResult(str, Enum):
