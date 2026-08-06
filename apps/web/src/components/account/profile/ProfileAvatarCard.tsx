@@ -187,6 +187,7 @@ export function ProfileAvatarCard() {
                 type="file"
                 accept="image/png,image/jpeg"
                 className="sc-visually-hidden"
+                aria-label="上传头像图片"
                 onChange={(event) => selectFile(event.target.files?.[0] ?? null)}
               />
               <Button

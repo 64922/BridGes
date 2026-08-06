@@ -161,6 +161,16 @@ export function Menu({ trigger, ariaLabel, items, openUp = false, triggerStyle }
               tabIndex={-1}
               onClick={() => {
                 item.onSelect?.();
+                if (item.returnFocus === false) {
+                  // returnFocus:false 通常表示「随后打开模态框」：菜单面板
+                  // 卸载会把焦点丢到 body，Dialog 打开时捕获的「归还目标」
+                  // 就会变成 body。这里同步把焦点还给触发按钮（触发按钮
+                  // 不在面板内、不会卸载），Dialog 因此捕获到正确的 Escape
+                  // 归还目标（Issue 38 AC5）。对不打开对话框的项（如 Composer
+                  // 工具前缀插入），焦点落到触发按钮也是合理兜底——比丢到
+                  // body 更好，且调用方可用默认 returnFocus 保持既有行为。
+                  triggerRef.current?.focus();
+                }
                 close(item.returnFocus !== false);
               }}
               style={{

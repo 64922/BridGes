@@ -1,6 +1,125 @@
 # Task Plan — 架构审查候选逐项修复（M01–M05 审查后深化）
 
-状态：进行中（2026-08-06，Issue 37 已完成待提交）
+状态：已完成（2026-08-06，Issue 38 已完成待提交）
+
+## Issue 38 实施计划（完成电脑端视觉、可访问性与页面状态）
+
+状态：进行中（2026-08-06）。已先调 ui-ux-pro-max（设计建议：aria-live
+错误播报/空态引导/焦点环/导航当前态/无水平滚动/skip link/reduced-motion，
+与既有令牌一致），并完成现状盘点（Explore 全仓扫描 + 关键页面抽查）。
+
+### 实施进展与双轴 code-review 修复（2026-08-06 下午）
+
+已交付（新增/修复）：
+1. `e2e/issue38-a11y.spec.ts`（16 条）：10 页结构扫描（恰一 h1/标题层级
+   不跳级/main 地标/nav aria-label/表单控件名称/图标按钮名称/图片 alt/
+   无空链接/导航 aria-current 单一点）+ 6 条键盘黄金路径（登录字段错误
+   焦点与 role=alert、侧栏 Tab 顺序与折叠展开焦点归还、菜单→对话框
+   Escape 焦点归还、菜单 Enter/方向键/Escape、聊天 Enter 发送
+   Shift+Enter 换行、对话页结构）
+2. `e2e/issue38-zoom.spec.ts`（12 条）：8 页 × 3 视口 × 100/125/150/200%
+   缩放（CSS 视口换算法模拟浏览器 zoom，WCAG 1.4.10 同法）：无水平滚动、
+   关键操作可达、目标尺寸两维 ≥ 44/zoom；对话框 200% 缩放（640×360）
+   可达与 Escape 关闭
+3. `e2e/issue38-visual.spec.ts`（9 条 + 27 快照）：正式路由关键页面
+   1280/1440/1920 视觉回归（真实数据 + mask 遮罩动态区：账户名/最近
+   对话时间戳/任务页 QQ 邮箱段落；prefers-reduced-motion 稳定轮换名言；
+   内容态标志等待防加载态入库；retries: 2 兼容并行负载瞬时抖动）
+4. `scripts/check_frontend_completeness.py`：正式路由静态完整性扫描
+   （品牌黑名单/占位文案/空链接/无 handler 按钮/疑似硬编码状态）
+5. 源码修复：Menu.tsx 菜单项激活对话框时同步归还焦点给触发按钮
+   （修复 Dialog Escape 后焦点落 body 的 AC5 缺陷）；对话页视觉隐藏
+   h1（会话标题，AC6）；ProfileAvatarCard 头像上传 input aria-label
+   （AC6）；TaskSchedule/PluginCenter 的 h1 重复（页壳已有）在审查中
+   发现并还原
+
+双轴 code-review 修复（Standards+Spec 并行子代理）：
+- 硬违规：扫描脚本 docstring 与 SCOPE_DIRS 不一致（漏扫 account 正式
+  路由造成假通过）→ 补 profile/settings/projects 路由目录、删除死配置
+  EXCLUDE_COMPONENTS；漏扫后重新扫描通过
+- AC4：注册/画像/学习项目/对话页从单视口升级为 3 视口全矩阵；补
+  「对话框在 200% 缩放可达」测试（不可达对话框零覆盖）
+- AC5：补菜单键盘路径（Enter 开菜单聚焦首项/方向键/Escape 归还）
+- AC6：结构扫描补导航 aria-current 单一点断言
+- 内容态标志：知识库/学习项目页 h1 在加载态即渲染（壳层），补
+  state-loading 消失等待，防加载态假扫描
+- Menu 注释修正（returnFocus:false 不承诺全为对话框场景，非对话框
+  路径焦点落触发按钮为合理兜底）；visual spec 对话页 Key 环境契约
+  注释（e2e 环境固定无 Qwen Key，横幅确定性出现）
+
+验证状态：三 spec 37/37 通过；全量 E2E 272 通过 + 5 失败（issue04/08
+为 stash 验证的既有环境 flake、issue14/30 并行 flake 串行通过、
+issue38-visual 画像中心页并行负载 flake 单独 3/3 通过且已加 retries）；
+pytest 2032 通过 + 4 失败（runtime_smoke CLI 编码环境 flake，无后端
+改动）；typecheck/build 通过（build 为 Next Windows chunk 竞态 flake，
+第三次 EXIT 0）；ruff/mypy 新脚本通过；check_contrast.py 37/37 AA。
+
+### 现状盘点（2026-08-06 探索结论）
+
+正式电脑端路由（login/register、/ 新聊天、/chat/[id]、/search、
+/knowledge-base、/tasks、/plugins、/account/projects、/account/profile、
+/account/settings 三页）在 Issue 07–37 纵向切片中已全部真实实现：
+- 页面五态：StateBlock（loading/empty/error/permission/success/recovery）
+  覆盖全部正式模块页与聊天页；登录/注册有字段级错误+焦点移动+ErrorSummary
+- 品牌：正式路由无 "Science Companion" 字符串；BrandLogo 全站 BridGes
+  （/public/brand SVG 资产）；"科学项目空间"等仅存于旧工作台
+  （SidebarNav/ProjectHeader/TaskStage，Issue 41 清理范围，本次不动）
+- 侧栏（AppSidebar）：Logo→新聊天、搜索、收起、功能模块五入口、最近对话
+  四态、底部账户菜单（切换账号/密钥/个人资料/退出登录）；aria-current
+  单一点、折叠持久化（localStorage+内联脚本防闪烁）、收起/展开焦点归还
+- Dialog 焦点陷阱/Escape/焦点恢复已实现（Issue 34 修复后全组件共用）
+- 对比度：scripts/check_contrast.py 37 对全过 WCAG AA（浅/深双主题）
+- Playwright 矩阵已只含 Desktop Chrome（ADR-0023），无 375px/触屏断言
+- 无假按钮/空 href/无 handler 按钮；CareerPlanning 反馈"已提交"为真实
+  API 成功后才显示（非假成功）
+
+### 本次缺口（Issue 38 真正要交付的收口）
+
+1. 缩放自动检查（AC4/V2）：3 视口 × 100/125/150/200% 浏览器缩放，自动
+   检查无水平滚动/可见操作/焦点目标尺寸 —— 现完全缺失（t002 仅 font-size
+   模拟且只测旧工作台）
+2. a11y 自动扫描（AC5/AC6/V3）：标题层级/地标/表单标签/错误关联/aria-live/
+   当前导航/图标语义的结构断言 + 键盘黄金路径回归 —— 无统一自动扫描
+3. 视觉回归补全（V1）：真实路由关键页面 1280/1440/1920 截图（现有仅
+   templates/登录/注册/账户菜单/画像/密钥）
+4. 静态完整性扫描（V5）：正式路由无占位文案/空链接/无 handler 按钮/
+   硬编码成功 —— 落成可重复脚本
+5. 上述扫描暴露缺陷的修复
+
+### 设计决策
+
+1. 缩放模拟：浏览器 zoom 100/125/150/200% = CSS 布局视口按 1280/1.25/
+   1.5/2 换算（640×360 @200% 覆盖 WCAG 1.4.10 reflow 同法），Playwright
+   setViewportSize 直接按换算后的 CSS 像素设置；断言
+   documentElement.scrollWidth <= clientWidth、关键操作 boundingBox 在
+   视口内、焦点目标 ≥ 44px（--target-size 令牌）；覆盖关键正式路由
+2. a11y 扫描：issue38-a11y.spec.ts 对关键页面做结构断言（恰一 h1、标题
+   层级不跳级、main 地标、nav aria-label、input 有 label、错误 role=alert、
+   状态 role=status、图标按钮 aria-label、aria-current、无空链接/占位
+   文案/无 handler 按钮）+ 键盘黄金路径（侧栏 Tab 可达、对话框 Escape
+   关闭焦点归还、折叠/展开、Logo 新聊天）
+3. 视觉回归：issue38-visual.spec.ts —— 真实路由关键页面在 1280/1440/1920
+   截图（登录/注册由 issue07 覆盖不重复），首次 --update-snapshots 生成
+   基线，后续防回归
+4. 静态扫描：scripts/check_frontend_completeness.py —— 正式路由
+   src/app/(app)、(public) 与 src/components 黑名单扫描（占位文案/
+   假按钮/空 href/Science Companion/硬编码成功），退出码非零即失败
+5. 缺陷修复以扫描/测试结果为据逐个修复，不预先猜测
+
+### 新增
+1. `apps/web/e2e/issue38-zoom.spec.ts` — 视口×缩放矩阵自动检查
+2. `apps/web/e2e/issue38-a11y.spec.ts` — 结构断言 + 键盘黄金路径
+3. `apps/web/e2e/issue38-visual.spec.ts` + 快照 — 真实路由视觉回归
+4. `scripts/check_frontend_completeness.py` — 静态完整性扫描
+
+### 修改（按扫描结果）
+5. 扫描/测试暴露缺陷的正式路由组件修复（占位/溢出/焦点/ARIA）
+
+### 收尾
+6. 全量 pytest / ruff / mypy / npm typecheck+build / E2E（含新 issue38
+   三条）；code-review 双轴审查并修复；更新 Issue 38 验收状态
+   （ready-for-human + AC 与 Verification 勾选附证据）；提交（工作内容+
+   bug 修复两部分提交信息）
 
 ## Issue 37 实施计划（交付导出、删除、备份与恢复）
 

@@ -1038,6 +1038,7 @@ export default function ChatConversationPage() {
           data-testid="main-content"
           className={styles.chatMain}
         >
+          <h1 className="sc-visually-hidden">{conversation?.title || "新对话"}</h1>
           {loadState === "loading" ? (
             <StateBlock kind="loading" title="正在加载对话" description="读取消息历史与生成状态。" />
           ) : loadState === "error" ? (
