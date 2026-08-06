@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
@@ -16,9 +16,19 @@ import {
   type VideoTaskProjection,
   type VideoTaskStatus,
 } from "@/lib/api";
+import { useApiMutation, useApiQuery } from "@/lib/data";
 
 /** 轮询间隔（毫秒）：任务进行中每 5 秒查询一次云端进度。 */
 const POLL_INTERVAL_MS = 5000;
+
+/** 进行中状态：轮询与取消入口的条件（终态停轮询）。 */
+const ACTIVE_STATUSES: VideoTaskStatus[] = [
+  "queued",
+  "submitting",
+  "generating",
+  "recovery",
+  "cancelling",
+];
 
 /** 固定模型快照展示文案（ADR-0007：Wan 是矩阵唯一非 Qwen 系列例外）。 */
 const VIDEO_MODEL_LABEL = "wan2.7-t2v-2026-06-12";
@@ -94,17 +104,42 @@ const cardStyle: React.CSSProperties = {
  * 停止轮询，不遗留跨对话/跨账户的请求。
  */
 export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }: VideoTaskCardProps) {
-  const [task, setTask] = useState(initialTask);
+  // 轮询任务投影（任务表是权威，消息投影是快照）：useApiQuery 统一
+  // loading/error/reload 生命周期——首次立即拉取、每 5 秒一轮、终态停
+  // 轮询、卸载自动清理。
+  const { data: polled, reload } = useApiQuery(
+    `video-task:${conversationId}:${initialTask.task_id}`,
+    () => getVideoTask(conversationId, initialTask.task_id),
+    {
+      pollMs: POLL_INTERVAL_MS,
+      stopWhen: (latest) => !ACTIVE_STATUSES.includes(latest.status),
+    }
+  );
+  // 换任务（key 变化）后、新数据到达前的旧轮询结果不用于渲染。
+  const task = polled?.task_id === initialTask.task_id ? polled : initialTask;
+
   const [asset, setAsset] = useState<VideoAssetProjection | null>(null);
   const [assetError, setAssetError] = useState("");
-  const [busy, setBusy] = useState<string>("");
   const [deleted, setDeleted] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const notifiedRef = useRef(false);
 
+  // 取消/重试/删除：pending 与 error 由 useApiMutation 统一管理。
+  const { run: runCancel, pending: cancelling, error: cancelError } = useApiMutation(() =>
+    cancelVideoTask(conversationId, task.task_id)
+  );
+  const { run: runRetry, pending: retrying, error: retryError } = useApiMutation(() =>
+    retryVideoTask(conversationId, task.task_id)
+  );
+  const { run: runDelete, pending: deleting, error: deleteError } = useApiMutation(() =>
+    deleteVideoAsset(conversationId, task.asset_id ?? "")
+  );
+
+  const busy = cancelling ? "cancel" : retrying ? "retry" : deleting ? "delete" : "";
+  const actionError = cancelError ?? retryError ?? deleteError;
+
   // 消息投影变化时同步（刷新/重登后从消息投影恢复）。
   useEffect(() => {
-    setTask(initialTask);
     if (initialTask.status !== "succeeded") {
       setAsset(null);
       setAssetError("");
@@ -127,68 +162,43 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
     };
   }, [conversationId, task.status, task.asset_id]);
 
-  // 进行中：轮询任务投影直到终态；成功时通知宿主刷新消息列表。
+  // 轮询发现任务成功（资产落库）时通知宿主刷新消息列表（正文与投影同步）。
   useEffect(() => {
-    if (["queued", "submitting", "generating", "recovery", "cancelling"].includes(task.status) === false)
-      return;
-    let cancelled = false;
-    const tick = async () => {
-      try {
-        const latest = await getVideoTask(conversationId, task.task_id);
-        if (cancelled) return;
-        setTask(latest);
-        if (latest.status === "succeeded" && !notifiedRef.current) {
-          notifiedRef.current = true;
-          onSucceeded?.();
-        }
-      } catch {
-        // 轮询失败静默：下一轮重试；终态由下次查询或刷新恢复。
-      }
-    };
-    void tick();
-    const timer = window.setInterval(() => void tick(), POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [conversationId, task.task_id, task.status, onSucceeded]);
-
-  const handleCancel = useCallback(async () => {
-    if (busy) return;
-    setBusy("cancel");
-    try {
-      setTask(await cancelVideoTask(conversationId, task.task_id));
-    } catch (error) {
-      setAssetError(error instanceof Error ? error.message : "取消失败，请重试。");
-    } finally {
-      setBusy("");
+    if (polled?.status === "succeeded" && !notifiedRef.current) {
+      notifiedRef.current = true;
+      onSucceeded?.();
     }
-  }, [busy, conversationId, task.task_id]);
+  }, [polled?.status, onSucceeded]);
 
-  const handleRetry = useCallback(async () => {
+  const handleCancel = async () => {
     if (busy) return;
-    setBusy("retry");
     try {
-      setTask(await retryVideoTask(conversationId, task.task_id));
+      await runCancel();
+      reload();
+    } catch {
+      // 错误已进入 mutation error，由下方提示区展示。
+    }
+  };
+
+  const handleRetry = async () => {
+    if (busy) return;
+    try {
+      await runRetry();
       notifiedRef.current = false;
-    } catch (error) {
-      setAssetError(error instanceof Error ? error.message : "重试失败，请重试。");
-    } finally {
-      setBusy("");
+      reload();
+    } catch {
+      // 错误已进入 mutation error，由下方提示区展示。
     }
-  }, [busy, conversationId, task.task_id]);
+  };
 
   const handleDelete = async () => {
     if (busy || !task.asset_id) return;
-    setBusy("delete");
     try {
-      await deleteVideoAsset(conversationId, task.asset_id);
+      await runDelete();
       setDeleted(true);
       setShowDeleteConfirm(false);
-    } catch (error) {
-      setAssetError(error instanceof Error ? error.message : "删除失败，请重试。");
-    } finally {
-      setBusy("");
+    } catch {
+      // 错误已进入 mutation error，由下方提示区展示。
     }
   };
 
@@ -215,7 +225,7 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
           />
         ) : (
           <div role="status" style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
-            {assetError || "正在加载视频…"}
+            {assetError || actionError?.message || "正在加载视频…"}
           </div>
         )}
         {showDeleteConfirm && (
@@ -225,9 +235,9 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
             onConfirm={() => void handleDelete()}
           />
         )}
-        {assetError && (
+        {(assetError || actionError) && (
           <p role="alert" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-            {assetError}
+            {assetError || actionError?.message}
           </p>
         )}
       </div>
@@ -296,9 +306,9 @@ export function VideoTaskCard({ conversationId, task: initialTask, onSucceeded }
           )}
         </div>
       )}
-      {assetError && (
+      {(assetError || actionError) && (
         <p role="alert" style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-          {assetError}
+          {assetError || actionError?.message}
         </p>
       )}
     </div>

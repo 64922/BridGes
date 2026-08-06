@@ -12,7 +12,7 @@
  * 切换账户清态。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Dialog } from "@/components/bridges/Dialog";
 import { StateBlock } from "@/components/bridges/StateBlock";
@@ -40,10 +40,9 @@ import {
   type McpServerProjection,
   type McpStatus,
 } from "@/lib/api";
+import { useApiQuery } from "@/lib/data";
 
 import styles from "./McpCenter.module.css";
-
-type PageState = "loading" | "ready" | "reauth" | "error";
 
 // 与后端 checker.MAX_DESCRIPTOR_BYTES 一致（前端仅预检）。
 const MAX_DESCRIPTOR_BYTES = 256 * 1024;
@@ -752,9 +751,7 @@ function McpRevokeDialog({
 
 export function McpCenter() {
   const { refreshSession } = useAuth();
-  const [pageState, setPageState] = useState<PageState>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [servers, setServers] = useState<McpServerProjection[] | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [installOpen, setInstallOpen] = useState(false);
   const [invokeTarget, setInvokeTarget] = useState<McpServerProjection | null>(null);
   const [confirmation, setConfirmation] = useState<McpSensitiveConfirmation | null>(null);
@@ -762,53 +759,30 @@ export function McpCenter() {
   const [uninstallTarget, setUninstallTarget] = useState<McpServerProjection | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const loaded = useRef(false);
 
-  const load = useCallback(async (silent = false) => {
-    if (!silent) {
-      setPageState("loading");
-    }
-    setLoadError(null);
-    try {
-      const list = await listMcpServers();
-      setServers(list.servers ?? []);
-      setPageState("ready");
-    } catch (cause) {
-      const kind = classifyApiError(cause);
-      if (kind === "reauth") {
-        setPageState("reauth");
-        return;
-      }
-      if (kind === "session") {
-        await refreshSession();
-        setReloadKey((key) => key + 1);
-        return;
-      }
-      setLoadError(cause instanceof Error ? cause.message : "MCP 状态读取失败，请稍后重试。");
-      setPageState("error");
-    }
-  }, [refreshSession]);
+  // 列表加载：loading/error/reload 由 useApiQuery 统一管理。
+  const { data, error, loading, reload } = useApiQuery("mcp", () => listMcpServers());
+  const servers = data?.servers ?? [];
 
+  // 加载错误分类：reauth 直接显示权限页；session 过期先刷新会话再重载。
   useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (reloadKey === 0) return;
-    void load();
-  }, [reloadKey, load]);
+    if (!error) return;
+    const kind = classifyApiError(error);
+    if (kind === "reauth") {
+      setPermissionDenied(true);
+    } else if (kind === "session") {
+      void refreshSession().then(() => reload());
+    }
+  }, [error, refreshSession, reload]);
 
   const guard = (cause: unknown): boolean => {
     const kind = classifyApiError(cause);
     if (kind === "reauth") {
-      setPageState("reauth");
+      setPermissionDenied(true);
       return true;
     }
     if (kind === "session") {
-      void refreshSession().then(() => setReloadKey((key) => key + 1));
+      void refreshSession().then(() => reload());
       return true;
     }
     return false;
@@ -818,8 +792,8 @@ export function McpCenter() {
     setBusyId(server.mcp_id);
     setNotice(null);
     try {
-      const list = server.enabled ? await disableMcp(server.mcp_id) : await enableMcp(server.mcp_id);
-      setServers(list.servers ?? []);
+      await (server.enabled ? disableMcp(server.mcp_id) : enableMcp(server.mcp_id));
+      reload();
       setNotice(server.enabled ? `已停用 ${server.name}` : `已启用 ${server.name}`);
     } catch (cause) {
       if (!guard(cause)) {
@@ -835,9 +809,9 @@ export function McpCenter() {
     setBusyId(uninstallTarget.mcp_id);
     setNotice(null);
     try {
-      const list = await uninstallMcp(uninstallTarget.mcp_id);
-      setServers(list.servers ?? []);
+      await uninstallMcp(uninstallTarget.mcp_id);
       setUninstallTarget(null);
+      reload();
       setNotice(`已卸载 ${uninstallTarget.name}`);
     } catch (cause) {
       if (!guard(cause)) {
@@ -861,7 +835,7 @@ export function McpCenter() {
       } else {
         setNotice(outcome.error_message ?? "调用已终止。");
       }
-      void load(true);
+      reload();
     } catch (cause) {
       if (!guard(cause)) {
         setNotice("确认失败，请重试。");
@@ -869,10 +843,10 @@ export function McpCenter() {
     }
   };
 
-  if (pageState === "loading") {
+  if (loading) {
     return <LoadingStatus message="MCP 插件中心加载中…" />;
   }
-  if (pageState === "reauth") {
+  if (permissionDenied) {
     return (
       <StateBlock
         kind="permission"
@@ -881,14 +855,14 @@ export function McpCenter() {
       />
     );
   }
-  if (pageState === "error") {
+  if (error) {
     return (
       <StateBlock
         kind="error"
         title="MCP 插件中心加载失败"
-        description={loadError ?? "请稍后重试。"}
+        description={error.message ?? "请稍后重试。"}
         actionLabel="重试"
-        onAction={() => void load()}
+        onAction={reload}
       />
     );
   }
@@ -947,7 +921,7 @@ export function McpCenter() {
         onClose={() => setInstallOpen(false)}
         onInstalled={() => {
           setNotice("MCP 安装成功。");
-          void load();
+          reload();
         }}
       />
       <McpInvokeDialog
@@ -955,7 +929,7 @@ export function McpCenter() {
         open={invokeTarget !== null}
         onClose={() => setInvokeTarget(null)}
         onSensitivePending={(item) => setConfirmation(item)}
-        onInvoked={() => void load(true)}
+        onInvoked={reload}
       />
       <McpSensitiveConfirmDialog
         confirmation={confirmation}
@@ -968,7 +942,7 @@ export function McpCenter() {
         onRevoked={() => {
           setRevokeTarget(null);
           setNotice("权限已更新。");
-          void load();
+          reload();
         }}
       />
       {uninstallTarget ? (

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { CandidateEditDialog } from "@/components/account/profile/CandidateEditDialog";
 import { ProfileAvatarCard } from "@/components/account/profile/ProfileAvatarCard";
@@ -33,6 +33,7 @@ import {
   type ProfileCandidate,
   type ProfileDimension,
 } from "@/lib/api";
+import { useApiQuery } from "@/lib/data";
 
 import styles from "./ProfileCenter.module.css";
 
@@ -110,15 +111,47 @@ interface ConfirmState {
   target: ProfileAssertion | ProfileCandidate | null;
 }
 
+/** 画像中心数据包：断言 + 候选 + 观察来源（观察失败不阻塞主数据）。 */
+async function loadProfileCenterData() {
+  const [assertionsResult, candidatesResult] = await Promise.all([
+    listProfileAssertions(),
+    listProfileCandidates(),
+  ]);
+  const observations = await listProfileObservations().catch(() => []);
+  return {
+    assertions: assertionsResult,
+    candidates: candidatesResult.filter(
+      (candidate) => candidate.review_status === "proposed"
+    ),
+    // Issue 26：观察 → 来源消息全文（候选"为何提出/来源消息"展示）
+    observationSources: Object.fromEntries(
+      observations.map((observation) => [
+        observation.observation_id,
+        observation.source_ref,
+      ])
+    ),
+    observationContents: Object.fromEntries(
+      observations.map((observation) => [
+        observation.observation_id,
+        observation.observed_content,
+      ])
+    ),
+  };
+}
+
 /** 数字分身画像中心：九类画像记录、候选确认、历史、导出与静态头像。 */
 export function ProfileCenter() {
-  const [assertions, setAssertions] = useState<ProfileAssertion[] | null>(null);
-  const [candidates, setCandidates] = useState<ProfileCandidate[]>([]);
-  const [observationSources, setObservationSources] = useState<Record<string, string>>({});
-  // Issue 26：观察 → 来源消息全文（候选"为何提出/来源消息"展示）
-  const [observationContents, setObservationContents] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // 页面数据加载：loading/error/reload 由 useApiQuery 统一管理。
+  const { data, error: queryError, loading, reload } = useApiQuery(
+    "profile-center",
+    loadProfileCenterData
+  );
+  const assertions = data?.assertions ?? null;
+  const candidates = data?.candidates ?? [];
+  const observationSources = data?.observationSources ?? {};
+  const observationContents = data?.observationContents ?? {};
+  // 操作类错误（批量处理/导出等）单独展示，与页面加载错误互不覆盖。
+  const [actionError, setActionError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ProfileDimension>("basic_information");
   const [formState, setFormState] = useState<
     { record: ProfileAssertion | null; dimension: ProfileDimension } | null
@@ -130,48 +163,6 @@ export function ProfileCenter() {
   const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<string>>(new Set());
   const [editCandidate, setEditCandidate] = useState<ProfileCandidate | null>(null);
   const [batchBusy, setBatchBusy] = useState<"accept" | "reject" | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const [assertionsResult, candidatesResult] = await Promise.all([
-        listProfileAssertions(),
-        listProfileCandidates(),
-      ]);
-      setAssertions(assertionsResult);
-      setCandidates(
-        candidatesResult.filter((candidate) => candidate.review_status === "proposed")
-      );
-      // 观察来源与来源消息全文用于展示每条记录的来源证据与候选的"为何提出"。
-      const observations = await listProfileObservations().catch(() => []);
-      setObservationSources(
-        Object.fromEntries(
-          observations.map((observation) => [
-            observation.observation_id,
-            observation.source_ref,
-          ])
-        )
-      );
-      setObservationContents(
-        Object.fromEntries(
-          observations.map((observation) => [
-            observation.observation_id,
-            observation.observed_content,
-          ])
-        )
-      );
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "画像加载失败，请稍后重试。");
-      setAssertions(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
 
   const recordsByDimension = useMemo(() => {
     const map = new Map<ProfileDimension, ProfileAssertion[]>();
@@ -187,10 +178,6 @@ export function ProfileCenter() {
     }
     return map;
   }, [assertions]);
-
-  const refresh = async () => {
-    await load();
-  };
 
   // Issue 27：上下文说明「查看记录」深链 —— 携带 assertion query 时切到
   // 对应维度并滚动高亮目标记录。
@@ -216,7 +203,7 @@ export function ProfileCenter() {
   const handleCreate = async (payload: ManualAssertionCreateRequest, reason: string) => {
     await createManualAssertion(payload);
     void reason;
-    await refresh();
+    await reload();
   };
 
   const handleEdit = async (payload: ManualAssertionCreateRequest, reason: string) => {
@@ -226,7 +213,7 @@ export function ProfileCenter() {
       applicable_scenes: payload.applicable_scenes,
       reason,
     });
-    await refresh();
+    await reload();
   };
 
   const handleConfirm = async (reason: string) => {
@@ -243,7 +230,7 @@ export function ProfileCenter() {
     } else if (action === "reject-batch") {
       await runBatch("reject", reason);
     }
-    await refresh();
+    await reload();
   };
 
   // Issue 26：批量决策（幂等，失败可安全重试；不重复写入）
@@ -251,7 +238,7 @@ export function ProfileCenter() {
     const ids = Array.from(selectedCandidateIds);
     if (ids.length === 0) return;
     setBatchBusy(decision);
-    setError(null);
+    setActionError(null);
     try {
       const result = await decideCandidatesBatch({
         candidate_ids: ids,
@@ -259,14 +246,14 @@ export function ProfileCenter() {
         reason: reason || (decision === "accept" ? "用户批量确认候选画像" : "用户批量拒绝候选画像"),
       });
       if ((result.failed ?? []).length > 0) {
-        setError(
+        setActionError(
           `${(result.failed ?? []).length} 条候选处理失败，请重试；已成功的不会重复写入。`
         );
       }
       setSelectedCandidateIds(new Set());
-      await refresh();
+      await reload();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "批量处理失败，请稍后重试。");
+      setActionError(cause instanceof Error ? cause.message : "批量处理失败，请稍后重试。");
     } finally {
       setBatchBusy(null);
     }
@@ -277,7 +264,7 @@ export function ProfileCenter() {
     if (!editCandidate) return;
     await decideCandidate(editCandidate.candidate_id, "modify", "用户编辑后确认", value, scenes);
     setEditCandidate(null);
-    await refresh();
+    await reload();
   };
 
   const toggleCandidateSelection = (candidateId: string) => {
@@ -296,7 +283,7 @@ export function ProfileCenter() {
       toVersion,
       "回滚到历史版本"
     );
-    await refresh();
+    await reload();
   };
 
   const handleExport = async () => {
@@ -313,28 +300,29 @@ export function ProfileCenter() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "导出失败，请稍后重试。");
+      setActionError(cause instanceof Error ? cause.message : "导出失败，请稍后重试。");
     } finally {
       setExporting(false);
     }
   };
 
-  if (loading && !assertions) {
+  if (loading) {
     return (
       <StateBlock kind="loading" title="正在加载画像中心…" description="正在读取九类画像记录与候选。"
       />
     );
   }
 
-  if (error && !assertions) {
-    const kind = error ? (classifyApiError(error) === "session" ? "permission" : "error") : "error";
+  if (queryError) {
+    // session 过期归为权限问题；其余展示为加载失败。
+    const kind = classifyApiError(queryError) === "session" ? "permission" : "error";
     return (
       <StateBlock
         kind={kind}
         title={kind === "permission" ? "登录状态已失效" : "画像加载失败"}
-        description={error}
+        description={queryError.message}
         actionLabel="重新加载"
-        onAction={refresh}
+        onAction={reload}
       />
     );
   }
@@ -499,7 +487,7 @@ export function ProfileCenter() {
                                 "accept",
                                 "用户确认候选画像"
                               );
-                              await refresh();
+                              await reload();
                             }}
                           >
                             确认
@@ -529,9 +517,9 @@ export function ProfileCenter() {
             </section>
           )}
 
-          {error && (
+          {actionError && (
             <p role="alert" className={styles.errorText}>
-              {error}
+              {actionError}
             </p>
           )}
 

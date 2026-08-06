@@ -16,7 +16,7 @@
  * 近期密码确认门；切换账户由 accountRevision 重挂本组件。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Dialog } from "@/components/bridges/Dialog";
 import { PasswordField } from "@/components/bridges/PasswordField";
@@ -50,10 +50,10 @@ import {
   type ReminderRepeatRule,
   type SmtpSettingsProjection,
 } from "@/lib/api";
+import { useApiQuery } from "@/lib/data";
 
 import styles from "./TaskSchedule.module.css";
 
-type PageState = "loading" | "ready" | "reauth" | "error";
 
 // ---------------------------------------------------------------------------
 // 状态与标签（永不只靠颜色表达状态：图标 + 文字）
@@ -823,64 +823,53 @@ function ReminderCard({
 // 页面主组件
 // ---------------------------------------------------------------------------
 
+/** 主数据包：SMTP 设置 + 时区设置 + 提醒列表（一次加载，hook 统一重载）。 */
+async function loadTaskScheduleData() {
+  const [smtpSettings, reminderSettings, reminderList] = await Promise.all([
+    fetchSmtpSettings(),
+    fetchReminderSettings(),
+    listReminders(),
+  ]);
+  return { smtpSettings, timezone: reminderSettings.timezone, reminders: reminderList };
+}
+
 export function TaskSchedule() {
   const { refreshSession } = useAuth();
-  const [pageState, setPageState] = useState<PageState>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [smtp, setSmtp] = useState<SmtpSettingsProjection | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
+  // 验证轮询期间的实时覆盖：smtp 展示优先用轮询结果，主数据刷新后丢弃。
+  const [liveSmtp, setLiveSmtp] = useState<SmtpSettingsProjection | null>(null);
   const [timezone, setTimezone] = useState("Asia/Shanghai");
-  const [reminders, setReminders] = useState<ReminderProjection[]>([]);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ReminderProjection | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const loaded = useRef(false);
 
-  const load = useCallback(async () => {
-    setPageState("loading");
-    setLoadError(null);
-    try {
-      const [smtpSettings, reminderSettings, reminderList] = await Promise.all([
-        fetchSmtpSettings(),
-        fetchReminderSettings(),
-        listReminders(),
-      ]);
-      setSmtp(smtpSettings);
-      setTimezone(reminderSettings.timezone);
-      setReminders(reminderList);
-      setPageState("ready");
-    } catch (cause) {
-      const kind = classifyApiError(cause);
-      if (kind === "reauth") {
-        setPageState("reauth");
-        return;
-      }
-      if (kind === "session") {
-        // 会话过期：刷新会话后触发重载（reloadKey 变化重新执行 load，
-        // 避免页面永久停留在 loading 态）。
-        await refreshSession();
-        setReloadKey((key) => key + 1);
-        return;
-      }
-      setLoadError(
-        cause instanceof Error ? cause.message : "任务状态读取失败，请稍后重试。"
-      );
-      setPageState("error");
+  // 主数据加载（SMTP 设置/时区/提醒列表）：loading/error/reload 由
+  // useApiQuery 统一管理；会话过期经 error 分类后刷新会话再重载。
+  const { data, error: queryError, loading, reload } = useApiQuery(
+    "task-schedule",
+    loadTaskScheduleData
+  );
+  const smtp = liveSmtp ?? data?.smtpSettings ?? null;
+  const reminders = data?.reminders ?? [];
+
+  // 主数据更新后同步时区并丢弃轮询覆盖（回到服务端权威值）。
+  useEffect(() => {
+    if (!data) return;
+    setTimezone(data.timezone);
+    setLiveSmtp(null);
+  }, [data]);
+
+  // 加载错误分类：reauth 直接显示重登录页；session 过期先刷新会话再重载。
+  useEffect(() => {
+    if (!queryError) return;
+    const kind = classifyApiError(queryError);
+    if (kind === "reauth") {
+      setPermissionDenied(true);
+    } else if (kind === "session") {
+      void refreshSession().then(() => reload());
     }
-  }, [refreshSession]);
+  }, [queryError, refreshSession, reload]);
 
-  useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
-    void load();
-  }, [load]);
-
-  // 会话过期刷新后的重载（reloadKey 变化重新拉取数据）
-  useEffect(() => {
-    if (reloadKey === 0) return;
-    void load();
-  }, [reloadKey, load]);
-
-  // 验证进行中轮询（保存/重新验证后状态自动收敛）。
+  // 验证进行中轮询（保存/重新验证后状态自动收敛；成功 verified 时触发主数据重载）。
   useEffect(() => {
     if (!smtp || smtp.status !== "verifying") return;
     let attempts = 0;
@@ -892,35 +881,30 @@ export function TaskSchedule() {
       }
       fetchSmtpSettings()
         .then((next) => {
-          setSmtp(next);
+          setLiveSmtp(next);
           if (next.status !== "verifying") {
             window.clearInterval(timer);
             if (next.status === "verified") {
-              void load();
+              reload();
             }
           }
         })
         .catch(() => window.clearInterval(timer));
     }, POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [smtp, load]);
-
-  const onSaved = (saved: ReminderProjection) => {
-    setReminders((current) => [
-      saved,
-      ...current.filter((item) => item.reminder_id !== saved.reminder_id),
-    ]);
-  };
+    // smtp 仅用于起始守卫；轮询回调不读它，只按状态变化重启。
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smtp?.status, reload]);
 
   const openCreate = () => {
     setEditing(null);
     setDialogOpen(true);
   };
 
-  if (pageState === "loading") {
+  if (loading) {
     return <LoadingStatus message="任务安排加载中…" />;
   }
-  if (pageState === "reauth") {
+  if (permissionDenied) {
     return (
       <StateBlock
         kind="error"
@@ -929,8 +913,8 @@ export function TaskSchedule() {
       />
     );
   }
-  if (pageState === "error") {
-    return <StateBlock kind="error" title="任务安排加载失败" description={loadError ?? ""} />;
+  if (queryError) {
+    return <StateBlock kind="error" title="任务安排加载失败" description={queryError.message} />;
   }
 
   const verified = smtp?.status === "verified";
@@ -939,8 +923,8 @@ export function TaskSchedule() {
     <>
       <SmtpSetupCard
         settings={smtp}
-        onChanged={setSmtp}
-        onRequireReauth={() => setPageState("reauth")}
+        onChanged={setLiveSmtp}
+        onRequireReauth={() => setPermissionDenied(true)}
         onSessionExpired={() => void refreshSession()}
       />
 
@@ -965,9 +949,8 @@ export function TaskSchedule() {
           onChange={(event) => {
             const next = event.target.value;
             setTimezone(next);
-            void updateReminderSettings(next).catch(() =>
-              setLoadError("时区保存失败，请稍后重试。")
-            );
+            // 时区保存失败静默（原实现 setLoadError 在 ready 态也不展示）。
+            void updateReminderSettings(next).catch(() => {});
           }}
           data-testid="reminder-timezone"
         >
@@ -1015,21 +998,15 @@ export function TaskSchedule() {
           <ul className={styles.reminderList}>
             {reminders.map((reminder) => (
               <ReminderCard
-                key={`${reloadKey}-${reminder.reminder_id}`}
+                key={reminder.reminder_id}
                 reminder={reminder}
                 timezone={timezone}
-                onChanged={(next) =>
-                  setReminders((current) =>
-                    current.map((item) =>
-                      item.reminder_id === next.reminder_id ? next : item
-                    )
-                  )
-                }
+                onChanged={reload}
                 onEdit={(target) => {
                   setEditing(target);
                   setDialogOpen(true);
                 }}
-                onRequireReauth={() => setPageState("reauth")}
+                onRequireReauth={() => setPermissionDenied(true)}
                 onSessionExpired={() => void refreshSession()}
               />
             ))}
@@ -1042,8 +1019,8 @@ export function TaskSchedule() {
         onClose={() => setDialogOpen(false)}
         timezone={timezone}
         editing={editing}
-        onSaved={onSaved}
-        onRequireReauth={() => setPageState("reauth")}
+        onSaved={reload}
+        onRequireReauth={() => setPermissionDenied(true)}
         onSessionExpired={() => void refreshSession()}
       />
     </>

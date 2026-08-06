@@ -9,15 +9,14 @@ import { Button } from "@/components/design-system/Button";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { MainContent } from "@/components/layout/MainContent";
 import {
-  ApiError,
   classifyApiError,
   fetchKnowledgeBaseMaterialBlob,
   searchUnified,
-  type SearchResponse,
   type SearchResultItem,
   type SearchResultType,
   type SearchSegment,
 } from "@/lib/api";
+import { useApiQuery } from "@/lib/data";
 import { useLearningProjects } from "@/lib/learning-projects";
 import { restoreSearchReturnFocus } from "@/lib/search-shortcut";
 
@@ -179,17 +178,10 @@ export default function SearchPageClient() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
-  const [response, setResponse] = useState<SearchResponse | null>(null);
-  const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
-  const [errorState, setErrorState] = useState<
-    { kind: "error" | "permission"; message: string; projectGone?: boolean } | null
-  >(null);
-  const [retrySeq, setRetrySeq] = useState(0);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [preview, setPreview] = useState<{ objectId: string; title: string } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
-  const requestSeqRef = useRef(0);
   const restoreOnLeaveRef = useRef(false);
 
   // 进入页面聚焦输入框；经 Esc 返回原上下文时归还焦点给 Ctrl+K 触发元素。
@@ -206,50 +198,40 @@ export default function SearchPageClient() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  // 查询词或筛选变化时重新搜索；序号 + AbortController 双重防止竞态。
+  // 查询词或筛选变化时重新搜索：竞态由 useApiQuery 的 key 切换清理旧请求
+  // 保证（不再需要序号 + AbortController 双重守卫）；空查询时禁用请求。
+  const { data: response, error: queryError, isFetching, reload } = useApiQuery(
+    `search:${submittedQuery}|${typeFilter}|${projectFilter}|${fromDate}|${toDate}`,
+    () =>
+      searchUnified({
+        q: submittedQuery,
+        types: typeFilter === "all" ? undefined : [typeFilter],
+        projectId: projectFilter || undefined,
+        from: dayStartIso(fromDate),
+        to: dayEndIso(toDate),
+        limit: SEARCH_LIMIT,
+      }),
+    { enabled: submittedQuery.trim() !== "" }
+  );
+
+  // 项目筛选指向已删除的项目时重试无意义：识别后引导清除筛选。
+  const errorState = queryError
+    ? {
+        kind: classifyApiError(queryError) === "other" ? "error" : "permission",
+        message: queryError.message,
+        projectGone: queryError.code === "project_not_found",
+      }
+    : null;
+
+  // 空查询时重置键盘选择（与旧实现的空分支一致）。
   useEffect(() => {
-    const q = submittedQuery.trim();
-    if (!q) {
-      requestSeqRef.current += 1;
-      setResponse(null);
-      setStatus("idle");
-      setErrorState(null);
-      setActiveIndex(-1);
-      return;
-    }
-    const seq = ++requestSeqRef.current;
-    const controller = new AbortController();
-    setStatus("loading");
-    setErrorState(null);
-    searchUnified({
-      q,
-      types: typeFilter === "all" ? undefined : [typeFilter],
-      projectId: projectFilter || undefined,
-      from: dayStartIso(fromDate),
-      to: dayEndIso(toDate),
-      limit: SEARCH_LIMIT,
-      signal: controller.signal,
-    })
-      .then((data) => {
-        if (seq !== requestSeqRef.current) return;
-        setResponse(data);
-        setStatus("success");
-        setActiveIndex(-1);
-      })
-      .catch((error) => {
-        if (seq !== requestSeqRef.current) return;
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        // 项目筛选指向已删除的项目时重试无意义：识别后引导清除筛选。
-        const projectGone = error instanceof ApiError && error.code === "project_not_found";
-        setErrorState({
-          kind: classifyApiError(error) === "other" ? "error" : "permission",
-          message: error instanceof Error ? error.message : "搜索请求失败，请稍后重试。",
-          projectGone,
-        });
-        setStatus("error");
-      });
-    return () => controller.abort();
-  }, [submittedQuery, typeFilter, projectFilter, fromDate, toDate, retrySeq]);
+    if (!submittedQuery.trim()) setActiveIndex(-1);
+  }, [submittedQuery]);
+
+  // 新结果就位时重置键盘选择。
+  useEffect(() => {
+    if (response) setActiveIndex(-1);
+  }, [response]);
 
   const groups = useMemo(
     () =>
@@ -419,7 +401,7 @@ export default function SearchPageClient() {
         />
       );
     }
-    if (status === "error" && errorState) {
+    if (errorState) {
       return errorState.kind === "permission" ? (
         <StateBlock
           kind="permission"
@@ -438,11 +420,7 @@ export default function SearchPageClient() {
               : errorState.message
           }
           actionLabel={errorState.projectGone ? "清除项目筛选" : "重试"}
-          onAction={
-            errorState.projectGone
-              ? clearFilters
-              : () => setRetrySeq((current) => current + 1)
-          }
+          onAction={errorState.projectGone ? clearFilters : reload}
         />
       );
     }
@@ -462,7 +440,7 @@ export default function SearchPageClient() {
             title="索引尚未就绪"
             description="正在为你的内容建立索引，完成后即可搜索文档与图片，请稍后重试。"
             actionLabel="重试"
-            onAction={() => setRetrySeq((current) => current + 1)}
+            onAction={reload}
           />
         );
       }
@@ -489,7 +467,7 @@ export default function SearchPageClient() {
               <span>文档与图片索引尚未就绪，当前结果可能不完整，完成后将自动包含更多内容。</span>
             </div>
           )}
-          {status === "loading" && (
+          {isFetching && (
             <p role="status" style={{ marginBottom: "var(--space-2)", fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
               正在搜索…
             </p>

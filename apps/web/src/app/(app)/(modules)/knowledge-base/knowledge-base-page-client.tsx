@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { IngestionStatusChip } from "@/components/bridges/AttachmentIngestion";
 import { Dialog } from "@/components/bridges/Dialog";
@@ -10,7 +10,6 @@ import { Button } from "@/components/design-system/Button";
 import { Icon, type IconName } from "@/components/design-system/Icon";
 import { MainContent } from "@/components/layout/MainContent";
 import {
-  ApiError,
   deleteKnowledgeBaseMaterial,
   downloadKnowledgeBaseMaterial,
   listKnowledgeBaseMaterials,
@@ -19,6 +18,7 @@ import {
   uploadKnowledgeBaseMaterial,
   type KnowledgeBaseMaterialProjection,
 } from "@/lib/api";
+import { useApiQuery } from "@/lib/data";
 
 const MAX_MATERIAL_BYTES = 10 * 1024 * 1024;
 const ACCEPT_ATTRIBUTE = ".pdf,.docx,.txt,.md,.markdown,.png,.jpg,.jpeg,.gif,.webp";
@@ -289,8 +289,6 @@ function ConfirmActionDialog({
  * 向量降级同时有页面级横幅与行级徽标，绝不把降级的知识库整体呈现为可用。
  */
 export default function KnowledgeBasePageClient() {
-  const [materials, setMaterials] = useState<KnowledgeBaseMaterialProjection[] | null>(null);
-  const [loadError, setLoadError] = useState<{ kind: "error" | "permission"; message: string } | null>(null);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [searchText, setSearchText] = useState("");
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
@@ -309,40 +307,22 @@ export default function KnowledgeBasePageClient() {
   // Issue 24：?material= URL 定位只处理一次（避免轮询刷新重复打开对话框）
   const urlAnchorHandledRef = useRef(false);
 
-  const reload = useCallback(async (silent: boolean) => {
-    try {
-      const list = await listKnowledgeBaseMaterials();
-      setMaterials(list);
-      setLoadError(null);
-    } catch (error) {
-      if (silent) return; // 轮询失败保留现有列表，下一轮继续
-      const message = errorMessage(error, "知识库材料加载失败，请稍后重试。");
-      const kind = error instanceof ApiError && error.status === 403 ? "permission" : "error";
-      setLoadError({ kind, message });
-      setMaterials((current) => current ?? []);
-    }
-  }, []);
-
-  useEffect(() => {
-    void reload(false);
-  }, [reload]);
-
-  // 处理中（等待/解析/恢复）或索引重建中时轮询，稳定后自动停止；卸载时清理计时器。
-  const needsPolling = useMemo(
-    () =>
-      (materials ?? []).some(
+  // 列表加载 + 轮询：处理中（等待/解析/恢复）或索引重建中时每 2.5 秒刷新，
+  // 全部稳定后自动停止；轮询失败静默保留现有列表（useApiQuery 统一生命周期）。
+  const {
+    data: materials,
+    error: queryError,
+    loading,
+    reload,
+  } = useApiQuery("knowledge-base", () => listKnowledgeBaseMaterials(), {
+    pollMs: POLL_INTERVAL_MS,
+    stopWhen: (list) =>
+      !list.some(
         (material) =>
           ["queued", "processing", "recovery"].includes(material.status) ||
           material.index_rebuilding
       ),
-    [materials]
-  );
-
-  useEffect(() => {
-    if (!needsPolling) return;
-    const timer = window.setTimeout(() => void reload(true), POLL_INTERVAL_MS);
-    return () => window.clearTimeout(timer);
-  }, [needsPolling, materials, reload]);
+  });
 
   useEffect(() => {
     const controllers = uploadControllersRef.current;
@@ -406,7 +386,7 @@ export default function KnowledgeBasePageClient() {
       // 上传成功后移除临时条目并刷新列表；材料以服务端投影为准（通常进入 queued）。
       uploadControllersRef.current.delete(entry.id);
       setPendingUploads((current) => current.filter((item) => item.id !== entry.id));
-      void reload(true);
+      reload();
     } catch (error) {
       uploadControllersRef.current.delete(entry.id);
       if (error instanceof DOMException && error.name === "AbortError") {
@@ -488,7 +468,7 @@ export default function KnowledgeBasePageClient() {
           ? { ...current, material: updated }
           : current
       );
-      await reload(true);
+      await reload();
     });
 
   const doDownload = (material: KnowledgeBaseMaterialProjection) =>
@@ -502,7 +482,7 @@ export default function KnowledgeBasePageClient() {
     try {
       await deleteKnowledgeBaseMaterial(material.object_id);
       setDialog(null);
-      await reload(true);
+      await reload();
     } catch (error) {
       // 409 material_processing 等可恢复错误：对话框内展示中文原因，材料保留在列表中。
       setDialogError(errorMessage(error, "删除失败，请稍后重试。"));
@@ -517,7 +497,7 @@ export default function KnowledgeBasePageClient() {
     try {
       await rebuildKnowledgeBaseMaterial(material.object_id);
       setDialog(null);
-      await reload(true);
+      await reload();
     } catch (error) {
       setDialogError(errorMessage(error, "重建索引失败，请稍后重试。"));
     } finally {
@@ -1048,15 +1028,15 @@ export default function KnowledgeBasePageClient() {
         )}
 
         <div style={{ marginTop: "var(--space-6)" }}>
-          {materials === null && !loadError ? (
+          {loading ? (
             <StateBlock kind="loading" title="正在加载知识库材料" description="读取当前账户的全局材料列表。" />
-          ) : loadError ? (
+          ) : queryError ? (
             <StateBlock
-              kind={loadError.kind}
-              title={loadError.kind === "permission" ? "没有访问知识库的权限" : "知识库加载失败"}
-              description={loadError.message}
+              kind={queryError.status === 403 ? "permission" : "error"}
+              title={queryError.status === 403 ? "没有访问知识库的权限" : "知识库加载失败"}
+              description={queryError.message}
               actionLabel="重试"
-              onAction={() => void reload(false)}
+              onAction={reload}
             />
           ) : (materials ?? []).length === 0 ? (
             <div>

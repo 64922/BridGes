@@ -14,7 +14,7 @@
  * AppShell 的 accountRevision 重挂本组件清态。
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { Dialog } from "@/components/bridges/Dialog";
@@ -46,7 +46,7 @@ import { pluginHumanizerKey } from "@/lib/chat-flow";
 
 import styles from "./PluginCenter.module.css";
 
-type PageState = "loading" | "ready" | "reauth" | "error";
+import { useApiQuery } from "@/lib/data";
 
 // 与后端 checker.MAX_PLUGIN_BYTES 一致（语言边界必须复制，前端仅预检）。
 const MAX_ZIP_BYTES = 5 * 1024 * 1024;
@@ -619,60 +619,35 @@ function DemoDialog({
 export function PluginCenter() {
   const router = useRouter();
   const { refreshSession } = useAuth();
-  const [pageState, setPageState] = useState<PageState>("loading");
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [list, setList] = useState<PluginListProjection | null>(null);
+  const [permissionDenied, setPermissionDenied] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [demoPlugin, setDemoPlugin] = useState<BuiltinPluginProjection | null>(null);
   const [uninstallTarget, setUninstallTarget] = useState<UserPluginProjection | null>(null);
   const [busyPluginId, setBusyPluginId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [reloadKey, setReloadKey] = useState(0);
-  const loaded = useRef(false);
 
-  const load = useCallback(async () => {
-    setPageState("loading");
-    setLoadError(null);
-    try {
-      setList(await listPlugins());
-      setPageState("ready");
-    } catch (cause) {
-      const kind = classifyApiError(cause);
-      if (kind === "reauth") {
-        setPageState("reauth");
-        return;
-      }
-      if (kind === "session") {
-        await refreshSession();
-        setReloadKey((key) => key + 1);
-        return;
-      }
-      setLoadError(
-        cause instanceof Error ? cause.message : "插件状态读取失败，请稍后重试。"
-      );
-      setPageState("error");
+  // 列表加载：loading/error/reload 由 useApiQuery 统一管理。
+  const { data: list, error, loading, reload } = useApiQuery("plugins", () => listPlugins());
+
+  // 加载错误分类：reauth 直接显示权限页；session 过期先刷新会话再重载。
+  useEffect(() => {
+    if (!error) return;
+    const kind = classifyApiError(error);
+    if (kind === "reauth") {
+      setPermissionDenied(true);
+    } else if (kind === "session") {
+      void refreshSession().then(() => reload());
     }
-  }, [refreshSession]);
-
-  useEffect(() => {
-    if (loaded.current) return;
-    loaded.current = true;
-    void load();
-  }, [load]);
-
-  useEffect(() => {
-    if (reloadKey === 0) return;
-    void load();
-  }, [reloadKey, load]);
+  }, [error, refreshSession, reload]);
 
   const guard = (cause: unknown): boolean => {
     const kind = classifyApiError(cause);
     if (kind === "reauth") {
-      setPageState("reauth");
+      setPermissionDenied(true);
       return true;
     }
     if (kind === "session") {
-      void refreshSession().then(() => setReloadKey((key) => key + 1));
+      void refreshSession().then(() => reload());
       return true;
     }
     return false;
@@ -682,7 +657,8 @@ export function PluginCenter() {
     setBusyPluginId(plugin.plugin_id);
     setNotice(null);
     try {
-      setList(plugin.enabled ? await disablePlugin(plugin.plugin_id) : await enablePlugin(plugin.plugin_id));
+      await (plugin.enabled ? disablePlugin(plugin.plugin_id) : enablePlugin(plugin.plugin_id));
+      reload();
     } catch (cause) {
       if (!guard(cause)) {
         setNotice("操作失败，请稍后重试。");
@@ -696,11 +672,12 @@ export function PluginCenter() {
     setBusyPluginId(plugin.skill_id);
     setNotice(null);
     try {
-      setList(
+      await (
         plugin.enabled
-          ? await disablePlugin(plugin.skill_id)
-          : await enablePlugin(plugin.skill_id)
+          ? disablePlugin(plugin.skill_id)
+          : enablePlugin(plugin.skill_id)
       );
+      reload();
       setNotice(plugin.enabled ? `已停用 ${plugin.name}` : `已启用 ${plugin.name}`);
     } catch (cause) {
       if (!guard(cause)) {
@@ -716,8 +693,9 @@ export function PluginCenter() {
     setBusyPluginId(uninstallTarget.plugin_id);
     setNotice(null);
     try {
-      setList(await uninstallPlugin(uninstallTarget.plugin_id));
+      await uninstallPlugin(uninstallTarget.plugin_id);
       setUninstallTarget(null);
+      reload();
       setNotice(`已卸载 ${uninstallTarget.name}`);
     } catch (cause) {
       if (!guard(cause)) {
@@ -733,10 +711,10 @@ export function PluginCenter() {
     router.push("/");
   };
 
-  if (pageState === "loading") {
+  if (loading) {
     return <LoadingStatus message="插件中心加载中…" />;
   }
-  if (pageState === "reauth") {
+  if (permissionDenied) {
     return (
       <StateBlock
         kind="permission"
@@ -745,14 +723,14 @@ export function PluginCenter() {
       />
     );
   }
-  if (pageState === "error") {
+  if (error) {
     return (
       <StateBlock
         kind="error"
         title="插件中心加载失败"
-        description={loadError ?? "请稍后重试。"}
+        description={error.message ?? "请稍后重试。"}
         actionLabel="重试"
-        onAction={() => void load()}
+        onAction={reload}
       />
     );
   }
@@ -833,7 +811,7 @@ export function PluginCenter() {
         onClose={() => setUploadOpen(false)}
         onInstalled={(message) => {
           setNotice(message);
-          void load();
+          reload();
         }}
       />
       <DemoDialog plugin={demoPlugin} onClose={() => setDemoPlugin(null)} />
