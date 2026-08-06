@@ -81,12 +81,16 @@ BridGes 是**电脑端产品**：只面向桌面浏览器（Windows、Linux、ma
 持久化数据库必须同时配置 `BRIDGES_SECRET_KEY`（或文件引用），用于保护
 本地状态加密。后台执行器与提醒调度器也可以在需要时单独启动：
 `BridGes worker`（周期性清理待删除对象与孤立文件）与 `BridGes scheduler`
-（提醒调度；提醒功能由后续版本交付）。
+（提醒调度：按任务安排把提醒投递到账户 QQ 邮箱，需在账户设置中配置并
+验证 QQ 邮箱 SMTP 授权码）。
 
-联网模型能力（Qwen 文本、结构化输出、OCR、视觉、ASR、TTS 等）需要
-`BRIDGES_QWEN_API_KEY`；未配置时使用离线桩能力，`BridGes doctor` 会给出
-中文可操作提示。启动本身不会主动调用 Qwen，实际使用相关功能时才会发起
-网络请求。
+联网模型能力（Qwen 文本、结构化输出、OCR、视觉、ASR、TTS、图片、Wan
+视频等）由全局环境密钥 `BRIDGES_QWEN_API_KEY` 驱动；登录后受保护设置中
+配置的账户级百炼密钥用于逐项真实能力探测与知识库 Embedding 检索。**
+未配置密钥或供应商不可用时，对应能力明确停用并显示真实不可用状态**
+（生产配置不注册离线桩或固定样例，也不会静默降级模型），`BridGes doctor`
+会给出中文可操作提示。启动本身不会主动调用 Qwen，实际使用相关功能时才
+会发起网络请求。模型绑定为固定矩阵（ADR-0009），用户不能切换模型。
 
 ### Docker / Podman 部署
 
@@ -127,7 +131,7 @@ Compose 由同一源码构建 **API、Web、后台执行器与提醒调度器**�
 BridGes api          # API 进程，http://127.0.0.1:8000
 BridGes web          # Web 进程（默认生产构建；--dev 用开发服务器）
 BridGes worker       # 后台执行器（清理待删除对象与孤立文件）
-BridGes scheduler    # 提醒调度器（提醒功能由后续版本交付）
+BridGes scheduler    # 提醒调度器（按任务安排投递 QQ 邮箱提醒）
 ```
 
 手动分进程：
@@ -147,8 +151,9 @@ Web UI 首页读取同一健康投影并展示存活、就绪与降级语义。
 
 ## 配置与密钥引用
 
-所有生产运行方式共享同一配置 Schema，环境变量前缀为 `BRIDGES_`（迁移期
-同时接受旧前缀 `SCIENCE_COMPANION_*`，新前缀优先）：
+所有生产运行方式共享同一配置 Schema，环境变量前缀为 `BRIDGES_`（旧前缀
+`SCIENCE_COMPANION_*` 与旧命令入口 `science-companion` 已随 Issue 41
+退役）：
 
 ```bash
 export BRIDGES_ENVIRONMENT=production
@@ -168,12 +173,26 @@ CLI 参数回显、日志或 API 响应；账户级凭据通过登录后的受�
 
 ## 品牌迁移说明
 
-本仓库正在从旧的 Science Companion 工作台纵向替换为 BridGes。产品品牌
-迁移（包名、命令入口、网页标题、运行日志与用户可见中文文案统一为
-`BridGes`）由本阶段 Issue 完成；**Logo 与视觉资产设计属于后续视觉 Issue**，
-本阶段不产出临时 Logo 或最终页面视觉。旧包名 `science_companion` 与旧命令
-入口 `science-companion` 在迁移期作为兼容层保留（与 `bridges` / `BridGes`
-指向同一实现），由退出 Issue 删除。
+BridGes 已从旧 Science Companion 工作台完成纵向替换：普通用户正式导航
+只保留 BridGes 聊天优先产品面，旧项目制教学工作台、空壳页面与旧品牌入口
+已退役删除（Issue 41）。旧包名 `science_companion`、旧命令入口
+`science-companion` 与旧前缀 `SCIENCE_COMPANION_*` 的迁移兼容层已随退出
+Issue 移除，规范入口仅为 `bridges` / `BridGes` / `BRIDGES_*`。历史规划材料
+（`.scratch/science-companion-plan/` 与根目录 `tickets.md`）保持只读原样，
+仅作为历史记录。
+
+## 数据备份与恢复
+
+账户数据（对话、画像、学习项目、提醒、设置）保存在本地 `bridges.db`，
+加密对象与凭据保存在同一数据目录。在账户设置 →「数据与隐私」中可以：
+
+- **导出**：下载当前账户的完整数据导出包；
+- **备份**：创建当前账户的备份，可在同一设备或迁移后恢复；
+- **删除**：删除当前账户及其全部数据（需再次认证）。
+
+备份/恢复只针对 BridGes 正式数据模型（`bridges.db`）；旧 Science Companion
+原型数据库（`science_companion.db`）按封存清单保留为只读历史，不参与备份
+与恢复。
 
 ## 常见问题
 
@@ -181,7 +200,7 @@ CLI 参数回显、日志或 API 响应；账户级凭据通过登录后的受�
 |---|---|
 | 进程能启动，但 `/health/ready` 为 `fail` | 通常是配置了数据库却没有配置 `BRIDGES_SECRET_KEY`，或生产模式没有数据库地址；补齐环境变量后重启 API。 |
 | API 返回 `503` 且提示持久化不可用 | 系统为避免数据静默写入内存而主动拒绝业务请求；检查数据库 URL、密钥和数据库目录权限。 |
-| Qwen 功能报网络或鉴权错误 | 检查 API Key 是否有效、`BRIDGES_QWEN_FORCE_STUB=false` 是否生效，以及评委机器是否能访问 Qwen 服务；这不会影响 API 进程启动。 |
+| Qwen 功能显示不可用或报网络/鉴权错误 | 未配置账户级百炼密钥或密钥无效、供应商不可用；登录后在账户设置中配置密钥并通过能力探测，页面会显示真实可用/不可用状态，不伪装成功。 |
 | Web 无法打开 | 先确认 API 的 `/health/ready` 为 `pass`，再检查 8000 和 3000 端口是否被其他程序占用。 |
 | 改了环境变量但配置未生效 | 停止并重新启动 API；同时确认命令是在项目根目录执行。 |
 
@@ -192,6 +211,23 @@ pytest -q
 mypy src
 cd apps/web && npm run typecheck
 ```
+
+## 发布评测与发布门
+
+BridGes 提供可复现 A/B 科学评测套件（Issue 40）与发布阈值门（供发行收口使用）：
+
+```bash
+BridGes evaluate run        # 运行评测套件（确定性模式，双跑可复现）
+BridGes evaluate replay     # 一键重放既有运行，核对运行锁一致
+BridGes evaluate blind-review  # 匿名盲评与一致性复核
+BridGes evaluate report     # 生成点估计/CI/显著性报告
+BridGes evaluate gates      # 按锁定发布阈值判定报告是否达到发行资格
+```
+
+安全攻击矩阵与修复证据见 `docs/security/issue39-security-report.md`；评测
+发布阈值低于锁定线时 `evaluate gates` 会阻止发行（高风险安全失败、事实门
+失败或账户串号均阻止发布）；生产 Stub 由注册表契约测试与静态扫描阻止
+（`evaluate gates` 的指标判定不包含 Stub 扫描）。
 
 ## 生产运行合同
 

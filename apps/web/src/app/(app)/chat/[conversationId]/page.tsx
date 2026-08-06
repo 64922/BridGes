@@ -1047,7 +1047,7 @@ export default function ChatConversationPage() {
   const currentMode: ChatMode = conversation?.mode ?? "companion";
 
   return (
-    <AppShell mode="account">
+    <AppShell>
       <div className={styles.chatShell}>
         <main
           id="main-content"

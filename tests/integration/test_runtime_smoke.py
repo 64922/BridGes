@@ -43,11 +43,13 @@ def _clean_env(extra: dict[str, str] | None = None) -> dict[str, str]:
     merged.update(
         {
             "BRIDGES_ENVIRONMENT": "test",
-            "BRIDGES_QWEN_FORCE_STUB": "true",
             "BRIDGES_QWEN_API_KEY": "",
             "BRIDGES_QWEN_RECORD_CASSETTES": "false",
             "BRIDGES_DATABASE_URL": "",
             "BRIDGES_SECRET_KEY": "",
+            # Windows 控制台默认 GBK 编码：强制子进程以 UTF-8 输出，与父进程
+            # 的 encoding="utf-8" 解码一致（既有 GBK flaky 的根因修复）。
+            "PYTHONIOENCODING": "utf-8",
         }
     )
     if extra:
@@ -124,26 +126,15 @@ def test_migrate_smoke() -> None:
 
 
 def test_doctor_hints_when_external_capability_unconfigured() -> None:
-    """缺少外部能力（Qwen Key）时给出中文可操作提示，而非导入失败或假成功。"""
+    """缺少外部能力（Qwen Key）时给出中文可操作提示，而非导入失败或假成功。
+
+    Issue 41（AC3）：未配置密钥时能力明确停用（无离线桩），提示真实不可用
+    状态与配置路径。
+    """
     result = _run_cli("doctor")
     assert result.returncode == 0, result.stderr
     assert "BRIDGES_QWEN_API_KEY" in result.stdout
-    assert "离线桩" in result.stdout
-
-
-def test_legacy_compat_module_runs_same_implementation() -> None:
-    """迁移兼容层：旧 ``science_companion`` 模块入口与规范入口同一实现。"""
-    result = subprocess.run(
-        [sys.executable, "-m", "science_companion.cli.main", "doctor"],
-        cwd=REPO_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=_clean_env(),
-        check=False,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "doctor: passed" in result.stdout
+    assert "保持停用" in result.stdout
 
 
 def _get_json(url: str) -> dict[str, Any]:

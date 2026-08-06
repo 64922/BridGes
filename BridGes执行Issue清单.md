@@ -62,7 +62,7 @@
 | 38 | `ready-for-agent` | [完成电脑端视觉、无障碍与页面状态](.scratch/bridges-improvement/issues/38-complete-desktop-visual-accessibility-and-page-states.md) | 07, 12, 18, 19, 24, 25, 33, 34, 35, 36 | 全页面 Claude-inspired 成品与三档桌面验收 |
 | 39 | `ready-for-agent` | [强化安全、隐私与账户隔离](.scratch/bridges-improvement/issues/39-harden-security-privacy-and-account-isolation.md) | 09, 20, 27, 35, 37, 38 | Cookie、跨账户、路径、日志、云披露和扩展攻击测试 |
 | 40 | `ready-for-agent` | [建立可复现 A/B 科学评测](.scratch/bridges-improvement/issues/40-build-reproducible-ab-science-evaluation.md) | 23, 27–33, 39 | 画像、人味、低幻觉、风险、多模态和对比报告 |
-| 41 | `ready-for-agent` | [退出旧产品并通过正式发行门](.scratch/bridges-improvement/issues/41-retire-legacy-and-pass-release-gates.md) | 01, 02, 06, 24, 29–40 | 清除旧壳、空壳与 Stub，双部署从空环境验收 |
+| 41 | `ready-for-human` | [退出旧产品并通过正式发行门](.scratch/bridges-improvement/issues/41-retire-legacy-and-pass-release-gates.md) | 01, 02, 06, 24, 29–40 | 清除旧壳、空壳与 Stub，双部署从空环境验收 |
 
 ## 原始需求反向覆盖矩阵
 

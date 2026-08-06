@@ -61,8 +61,8 @@ async function setUpAuthenticatedPage(page: Page) {
   await page.route("**/api/auth/session", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(alice, "s-alice")) })
   );
-  await page.route("**/api/projects", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ active: [], archived: [] }) })
+  await page.route("**/api/learning-projects", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ projects: [] }) })
   );
   // Issue 12：全局侧栏会拉取真实对话列表；mock 会话对真实 API 无效（后端会
   // 清除无效会话 Cookie），注入空列表保证后续导航不被登出。
@@ -189,7 +189,8 @@ test.describe("Issue 09 — 同设备账户切换与再认证", () => {
       route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(alice, "s-alice")) })
     );
     let projectCalls = 0;
-    await page.route("**/api/projects", async (route) => {
+    // Issue 41：账户首页改拉真实学习项目（/api/learning-projects）。
+    await page.route("**/api/learning-projects", async (route) => {
       projectCalls += 1;
       const isAliceRequest = projectCalls === 1;
       if (isAliceRequest) {
@@ -201,16 +202,17 @@ test.describe("Issue 09 — 同设备账户切换与再认证", () => {
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          active: isAliceRequest
+          projects: isAliceRequest
             ? [
                 {
+                  project_id: "p-slow-1",
                   name: "Alice 的慢速项目",
-                  status: "active",
-                  ref: { object_id: "p-slow-1", version: 1, domain: "project" },
+                  description: "",
+                  created_at: "2026-08-03T00:00:00Z",
+                  updated_at: "2026-08-03T00:00:00Z",
                 },
               ]
             : [],
-          archived: [],
         }),
       });
     });

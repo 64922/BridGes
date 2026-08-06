@@ -10,5 +10,5 @@ export default function AccountLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell mode="account">{children}</AppShell>;
+  return <AppShell>{children}</AppShell>;
 }

@@ -233,7 +233,7 @@ export function NewChatHome() {
   };
 
   return (
-    <AppShell mode="account" showSkipLink={false}>
+    <AppShell showSkipLink={false}>
       <div className={styles.chatShell}>
         <main
           id="main-content"

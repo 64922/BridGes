@@ -139,11 +139,6 @@ export type LearningProjectSummary = components["schemas"]["LearningProjectSumma
 export type LearningProjectDetail = components["schemas"]["LearningProjectDetail"];
 export type LearningProjectConversation = components["schemas"]["LearningProjectConversation"];
 export type LearningProjectFile = components["schemas"]["LearningProjectFile"];
-export type Project = components["schemas"]["Project"];
-export type ProjectCreateRequest = components["schemas"]["ProjectCreateRequest"];
-export type ProjectListProjection = components["schemas"]["ProjectListProjection"];
-export type ProjectSummary = components["schemas"]["ProjectSummary"];
-export type ProjectError = components["schemas"]["ProjectError"];
 export type WorkbenchPackRecord = components["schemas"]["WorkbenchPackRecord"];
 export type ReviewAttestation = components["schemas"]["ReviewAttestation"];
 export type SemanticDiff = components["schemas"]["SemanticDiff"];
@@ -491,40 +486,6 @@ export async function reauthenticate(password: string): Promise<void> {
   }
 }
 
-export async function createProject(request: ProjectCreateRequest): Promise<Project> {
-  const res = await fetch(`${API_BASE}/projects`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify(request),
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function listProjects(): Promise<ProjectListProjection> {
-  const res = await fetch(`${API_BASE}/projects`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function getProject(projectId: string): Promise<Project> {
-  const res = await fetch(`${API_BASE}/projects/${encodeURIComponent(projectId)}`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
 
 
 export async function listWorkbenchPacks(): Promise<WorkbenchPackRecord[]> {

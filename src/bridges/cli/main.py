@@ -9,9 +9,9 @@ Supports the production run contracts:
 Conda `agent` is only used for local development; this CLI never detects or
 requires a Conda environment at runtime.
 
-The legacy ``science-companion`` console entry and ``python -m
-science_companion.cli.main`` point at this same app as a migration
-compatibility layer; they are scheduled for removal by the exit issue.
+Issue 41：旧 ``science-companion`` 控制台入口与 ``python -m
+science_companion.cli.main`` 迁移兼容层已随退出 Issue 移除，规范入口仅
+``BridGes``。
 """
 
 from __future__ import annotations
@@ -95,14 +95,16 @@ def doctor() -> None:
     typer.echo("ok: config schema loaded")
 
     # 外部能力未配置时给出中文可操作提示：不导入失败，也不假成功。
+    # Issue 41（AC3）：未配置密钥时能力明确停用（无离线桩），页面显示真实
+    # 错误，配置后经真实能力探测才可用。
     qwen_key = settings.qwen_api_key
     if qwen_key is None or not qwen_key.get_secret_value():
         typer.echo("提示：未配置 BRIDGES_QWEN_API_KEY，Qwen 文本/语音/图像等"
-                   "能力将使用离线桩。")
+                   "能力保持停用，并显示真实不可用状态。")
         typer.echo("  配置方式：设置环境变量 BRIDGES_QWEN_API_KEY，或登录后"
-                   "在账户设置中配置百炼密钥。")
+                   "在账户设置中配置百炼密钥并通过能力探测。")
     else:
-        typer.echo("ok: Qwen API key 已配置（离线桩关闭）")
+        typer.echo("ok: Qwen API key 已配置")
 
     # Production runtime contract must not depend on Conda.
     conda_prefix = os.environ.get("CONDA_PREFIX")

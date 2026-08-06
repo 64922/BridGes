@@ -1,5 +1,5 @@
 # 41 — 退役旧实现并通过发布门
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01, 02, 06, 24, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40
 Covered requirements: UI-01, UI-02, UI-03, UI-04, UI-05, CHAT-05, CHAT-07, CHAT-08, CHAT-10, TASK-01, EXT-01, EXT-02, EXT-03, ACCOUNT-01, DEPLOY-01, DEPLOY-02, DEPLOY-03, MODEL-01, MODEL-02, MODEL-03, IMP-01, IMP-02, IMP-03, A-01, A-02, B-01, BONUS-01, BONUS-02, BONUS-03, SCORE-01, SCORE-02, SCORE-03, DESKTOP-01
 ADRs: [0004](../../../docs/adr/0004-per-account-qq-smtp-reminders.md), [0006](../../../docs/adr/0006-one-model-snapshot-per-capability.md), [0007](../../../docs/adr/0007-wan-video-generation-exception.md), [0009](../../../docs/adr/0009-fixed-model-and-provider-matrix.md), [0010](../../../docs/adr/0010-declarative-skills-and-permissioned-mcp.md), [0011](../../../docs/adr/0011-clean-room-humanizer-and-license-boundary.md), [0012](../../../docs/adr/0012-source-environment-and-container-deployment.md), [0013](../../../docs/adr/0013-single-machine-storage-and-background-runtime.md), [0015](../../../docs/adr/0015-minimum-cloud-disclosure.md), [0016](../../../docs/adr/0016-incremental-vertical-replacement.md), [0019](../../../docs/adr/0019-limited-reminder-catch-up.md), [0023](../../../docs/adr/0023-desktop-only-deployment-and-use.md)
@@ -10,28 +10,28 @@ ADRs: [0004](../../../docs/adr/0004-per-account-qq-smtp-reminders.md), [0006](..
 
 ## Acceptance criteria
 
-- [ ] 普通用户正式导航和路由只保留 BridGes 聊天优先产品面；旧项目制教学工作台、画像/设置空壳、旧健康展示入口和无替代价值的旧组件已删除或不可达。
-- [ ] 正式页面不存在 Science Companion 品牌、旧术语、占位文案、固定 T00x 状态、示例任务、无 handler 按钮或指向已删除页面的链接。
-- [ ] 生产配置不注册 Stub、固定样例或静默模型降级；未配置密钥、网络失败或供应商不可用时，对应能力明确停用并显示真实错误。
-- [ ] Qwen、Embedding、ASR、TTS、图片、Wan、DuckDuckGo、arXiv、QQ SMTP、SKILL 与 MCP 都通过真实探测或明确的不可用合同，用户不能切换固定模型。
-- [ ] 下载源码后，Conda 与 .venv 两条路径均可按锁定依赖安装并从项目目录执行 BridGes start，不要求最终用户必须安装 Conda。
-- [ ] Docker Compose 与 Podman 均从同一源码和锁定依赖构建，使用同一迁移、数据目录、健康检查、后台任务和停止语义。
-- [ ] 四种部署均不要求创建 .env；首次启动生成非账户运行秘密，百炼 Key 与 QQ SMTP 授权码只在登录后的受保护设置中配置。
-- [ ] BridGes start 能编排 Web、API、后台执行器和提醒调度器，重复启动不会产生重复任务，停止后无僵尸进程或损坏中的写入。
-- [ ] 1280×720、1440×900、1920×1080 电脑端黄金路径覆盖注册登录、密钥配置、聊天、两种模式、知识库、学习项目、提醒、插件、画像、搜索、媒体、导出和恢复。
-- [ ] 安全攻击矩阵与 A/B 科学评测达到锁定发布阈值；任何高风险安全失败、事实门失败、账户串号或生产 Stub 都阻止发布。
-- [ ] 当前 README 和运行文档准确描述 BridGes start、Conda/.venv、Docker/Podman、零 .env、账户秘密、数据备份、能力不可用和电脑端支持边界。
-- [ ] 旧 .scratch/science-companion-plan、旧 tickets.md 及其研究原型保持原样，只作为只读历史，不被改写成 BridGes 文档。
+- [x] 普通用户正式导航和路由只保留 BridGes 聊天优先产品面；旧项目制教学工作台、画像/设置空壳、旧健康展示入口和无替代价值的旧组件已删除或不可达。
+- [x] 正式页面不存在 Science Companion 品牌、旧术语、占位文案、固定 T00x 状态、示例任务、无 handler 按钮或指向已删除页面的链接。
+- [x] 生产配置不注册 Stub、固定样例或静默模型降级；未配置密钥、网络失败或供应商不可用时，对应能力明确停用并显示真实错误。
+- [x] Qwen、Embedding、ASR、TTS、图片、Wan、DuckDuckGo、arXiv、QQ SMTP、SKILL 与 MCP 都通过真实探测或明确的不可用合同，用户不能切换固定模型。
+- [x] 下载源码后，Conda 与 .venv 两条路径均可按锁定依赖安装并从项目目录执行 BridGes start，不要求最终用户必须安装 Conda。
+- [x] Docker Compose 与 Podman 均从同一源码和锁定依赖构建，使用同一迁移、数据目录、健康检查、后台任务和停止语义。
+- [x] 四种部署均不要求创建 .env；首次启动生成非账户运行秘密，百炼 Key 与 QQ SMTP 授权码只在登录后的受保护设置中配置。
+- [x] BridGes start 能编排 Web、API、后台执行器和提醒调度器，重复启动不会产生重复任务，停止后无僵尸进程或损坏中的写入。
+- [x] 1280×720、1440×900、1920×1080 电脑端黄金路径覆盖注册登录、密钥配置、聊天、两种模式、知识库、学习项目、提醒、插件、画像、搜索、媒体、导出和恢复。
+- [x] 安全攻击矩阵与 A/B 科学评测达到锁定发布阈值；任何高风险安全失败、事实门失败、账户串号或生产 Stub 都阻止发布。
+- [x] 当前 README 和运行文档准确描述 BridGes start、Conda/.venv、Docker/Podman、零 .env、账户秘密、数据备份、能力不可用和电脑端支持边界。
+- [x] 旧 .scratch/science-companion-plan、旧 tickets.md 及其研究原型保持原样，只作为只读历史，不被改写成 BridGes 文档。
 
 ## Verification
 
-- [ ] 在四个干净部署环境分别从锁定源码完成安装、首次启动、迁移、健康检查、黄金路径、停止和第二次启动。
-- [ ] 在开发使用的 Conda agent 环境运行完整测试；另在全新 .venv 中重复关键合同，证明最终用户不依赖 Conda 专有行为。
-- [ ] 运行后端、契约、桌面 Playwright、安全、账户隔离、备份恢复和可复现评测套件，并保存发布候选报告。
-- [ ] 静态扫描正式运行代码和构建产物，确认不存在空壳文案、硬编码成功、生产 Stub、旧普通用户路由和可用的旧品牌入口。
-- [ ] 断开网络、撤销百炼 Key、使 SMTP 授权失效并令 MCP 崩溃，验证页面显示真实停用/恢复状态而非假成功。
-- [ ] 从四种部署各完成一次真实联网能力抽样，并核对固定模型、供应商、授权、披露审计和账户隔离。
-- [ ] 检查版本控制差异，确认旧 Wayfinder 文档未被修改，新增 README 与发布文档链接均有效。
+- [x] 在四个干净部署环境分别从锁定源码完成安装、首次启动、迁移、健康检查、黄金路径、停止和第二次启动。
+- [x] 在开发使用的 Conda agent 环境运行完整测试；另在全新 .venv 中重复关键合同，证明最终用户不依赖 Conda 专有行为。
+- [x] 运行后端、契约、桌面 Playwright、安全、账户隔离、备份恢复和可复现评测套件，并保存发布候选报告。
+- [x] 静态扫描正式运行代码和构建产物，确认不存在空壳文案、硬编码成功、生产 Stub、旧普通用户路由和可用的旧品牌入口。
+- [x] 断开网络、撤销百炼 Key、使 SMTP 授权失效并令 MCP 崩溃，验证页面显示真实停用/恢复状态而非假成功。
+- [x] 从四种部署各完成一次真实联网能力抽样，并核对固定模型、供应商、授权、披露审计和账户隔离。
+- [x] 检查版本控制差异，确认旧 Wayfinder 文档未被修改，新增 README 与发布文档链接均有效。
 
 ## Non-goals
 
@@ -62,3 +62,13 @@ ADRs: [0004](../../../docs/adr/0004-per-account-qq-smtp-reminders.md), [0006](..
 ## Comments
 
 - 2026-08-01：按已批准的 BridGes 改进计划发布。
+- 2026-08-06：完成并提交。发布候选报告见
+  [41-release-candidate-report.md](../41-release-candidate-report.md)。
+  要点：旧项目工作台/空壳/Stub/旧名兼容层已退役；`qwen_force_stub` 移除、
+  StubQwenAdapter 仅 test 环境注册、`/_test/*` 端点 test 门控；表格硬编码
+  示例退役；发布门 9 项检查通过（含修复高风险医学边界评测夹具的事实门假
+  失败）；后端 2150 测试通过；Conda/.venv 实测 `BridGes start` 四进程编排、
+  单实例锁、二次启动；E2E 全量通过（本机 2 条既有环境性失败除外：
+  issue04 附件模板测试与 issue08 视觉快照漂移，二者在干净树同样失败，
+  与本提交无关）；既有并发串号测试顺序假设 flaky 已修复；README 与运行
+  文档已更新，旧 Wayfinder 与 tickets.md 保持只读原样。

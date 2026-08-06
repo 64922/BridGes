@@ -377,8 +377,9 @@ class FormulaExtractor(ExtractionPort):
 class TableExtractor(ExtractionPort):
     """Deterministic extractor for table assets.
 
-    Parses CSV content or uses filename hints to produce a TableAsset with schema,
-    units and explicit missing-value handling.
+    Parses CSV content to produce a TableAsset with schema, units and explicit
+    missing-value handling. Issue 41（AC3）：CSV 缺失或解析失败时返回空列表，
+    绝不回退到硬编码示例表伪装解析成功。
     """
 
     tool: str = "bridges.table.deterministic"
@@ -400,17 +401,14 @@ class TableExtractor(ExtractionPort):
         source_asset: SourceAsset,
         content: bytes,
     ) -> list[DerivedAsset]:
-        filename = source_asset.original_filename.lower()
+        if source_asset.media_type != MediaType.TEXT_CSV:
+            return []
         text = self._decode_content(content)
-
-        if source_asset.media_type == MediaType.TEXT_CSV and text:
-            table = self._parse_csv(text)
-        elif "pressure" in filename or "temperature" in filename:
-            table = self._sample_physics_table()
-        elif "experiment" in filename:
-            table = self._sample_experiment_table()
-        else:
-            table = self._sample_physics_table()
+        if not text:
+            return []
+        table = self._parse_csv(text)
+        if table is None:
+            return []
 
         payload = table.model_dump(mode="json")
         return [
@@ -437,11 +435,11 @@ class TableExtractor(ExtractionPort):
         except UnicodeDecodeError:
             return ""
 
-    def _parse_csv(self, text: str) -> TableAsset:
+    def _parse_csv(self, text: str) -> TableAsset | None:
         reader = csv.reader(io.StringIO(text.strip()))
         rows: list[list[str]] = list(reader)
         if not rows:
-            return self._sample_physics_table()
+            return None
 
         header = rows[0]
         data_rows = rows[1:]
@@ -467,65 +465,6 @@ class TableExtractor(ExtractionPort):
             table_schema=TableSchema(columns=columns, header_row_index=0),
             rows=table_rows,
             source_note="从 CSV 解析",
-        )
-
-    def _sample_physics_table(self) -> TableAsset:
-        return TableAsset(
-            table_schema=TableSchema(
-                columns=[
-                    TableColumn(name="Temp (K)", data_type="number", unit="K"),
-                    TableColumn(name="Pressure (Pa)", data_type="number", unit="Pa"),
-                ],
-                header_row_index=0,
-            ),
-            rows=[
-                TableRow(
-                    cells=[
-                        TableCell(value="273.15"),
-                        TableCell(value="101325"),
-                    ],
-                    row_index=0,
-                ),
-                TableRow(
-                    cells=[
-                        TableCell(value="373.15"),
-                        TableCell(value="", is_missing=True),
-                    ],
-                    row_index=1,
-                ),
-            ],
-            source_note="物理实验数据示例",
-        )
-
-    def _sample_experiment_table(self) -> TableAsset:
-        return TableAsset(
-            table_schema=TableSchema(
-                columns=[
-                    TableColumn(name="Sample", data_type="string"),
-                    TableColumn(name="Concentration (mol/L)", data_type="number", unit="mol/L"),
-                    TableColumn(name="Absorbance", data_type="number"),
-                ],
-                header_row_index=0,
-            ),
-            rows=[
-                TableRow(
-                    cells=[
-                        TableCell(value="A"),
-                        TableCell(value="0.1"),
-                        TableCell(value="0.25"),
-                    ],
-                    row_index=0,
-                ),
-                TableRow(
-                    cells=[
-                        TableCell(value="B"),
-                        TableCell(value="0.2"),
-                        TableCell(value="0.48"),
-                    ],
-                    row_index=1,
-                ),
-            ],
-            source_note="化学实验数据示例",
         )
 
 

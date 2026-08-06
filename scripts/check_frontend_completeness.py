@@ -1,11 +1,14 @@
-"""BridGes 正式电脑端路由的静态完整性扫描（Issue 38）。
+"""BridGes 正式电脑端路由的静态完整性扫描（Issue 38，范围由 Issue 41 扩展）。
 
-扫描范围（正式路由；旧工作台与开发模板由 Issue 41 清理，不在范围内）：
+扫描范围（正式路由；开发模板 templates/ 为设计基线验收专用、生产不可达，
+不在范围内）：
 - apps/web/src/app/(public)/           登录 / 注册 / 公共入口
-- apps/web/src/app/(app)/(modules)/    搜索 / 知识库 / 任务 / 插件
-- apps/web/src/app/(app)/chat/         聊天
-- apps/web/src/app/(app)/account/profile|settings|projects/  画像 / 设置 / 学习项目
+- apps/web/src/app/(app)/              账户首页 / 模块 / 聊天 / 账户子路由
 - apps/web/src/components/             共享组件
+
+旧 Science Companion 工作台（projects/[projectId]、components/project、
+ProjectLayout/SidebarNav/InspectorPanel）与空壳页（account/eval）已由
+Issue 41 退役，因此全部纳入扫描。
 
 检查项：
 1. 品牌黑名单：不再向普通用户显示 Science Companion 品牌
@@ -25,18 +28,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 WEB_SRC = ROOT / "apps" / "web" / "src"
 
-# 扫描范围：正式路由目录 + 共享组件（旧工作台 account/page、domain-packs、
-# eval、projects/[projectId] 与 templates 模板不扫描；components 下只扫
-# 正式路由共享组件，旧工作台专用组件（components/project/** 与
-# components/layout/ 的 ProjectLayout/SidebarNav/InspectorPanel）不在范围）
+# 扫描范围：正式路由目录 + 共享组件（templates/ 为开发环境设计基线模板、
+# 生产不可达，不扫描；domain-packs 为领域包专家工作台，专家专用面另行核对）
 SCOPE_DIRS = [
     WEB_SRC / "app" / "(public)",
     WEB_SRC / "app" / "(app)" / "(modules)",
     WEB_SRC / "app" / "(app)" / "chat",
-    # 正式账户子路由（画像 / 设置 / 学习项目）的页面壳与客户端组件
-    WEB_SRC / "app" / "(app)" / "account" / "profile",
-    WEB_SRC / "app" / "(app)" / "account" / "settings",
-    WEB_SRC / "app" / "(app)" / "account" / "projects",
+    WEB_SRC / "app" / "(app)" / "account",
     WEB_SRC / "components" / "account",
     WEB_SRC / "components" / "bridges",
     WEB_SRC / "components" / "design-system",

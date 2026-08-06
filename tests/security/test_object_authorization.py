@@ -262,6 +262,7 @@ def test_concurrent_two_account_operations_do_not_cross_contaminate(
             assert chart.status_code == 201, chart.text
             results.append(
                 {
+                    "tag": tag,
                     "account_id": account_id,
                     "conv_id": conv_id,
                     "object_id": chart.json()["media_object"]["media_object_id"],
@@ -281,7 +282,12 @@ def test_concurrent_two_account_operations_do_not_cross_contaminate(
 
     assert not errors, errors
     assert len(results) == 2
-    first, second = results
+    # 线程完成顺序不确定：按 tag 识别账户，不能依赖 results 列表顺序
+    # （否则 50% 概率把「本方对话」误判为「对方对话」导致假失败）。
+    alpha_result = next(r for r in results if r["tag"] == "alpha")
+    beta_result = next(r for r in results if r["tag"] == "beta")
+    first = alpha_result
+    second = beta_result
     assert first["account_id"] != second["account_id"]
     assert first["conv_id"] != second["conv_id"]
 

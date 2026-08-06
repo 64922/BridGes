@@ -32,13 +32,12 @@ dev = [
 ]
 
 [project.scripts]
-# BridGes 为规范命令入口；science-companion 为迁移期兼容层入口，
-# 与 BridGes 指向同一实现，不维护两套 CLI。兼容层由退出 Issue 删除。
+# Issue 41：旧 science-companion 迁移期兼容入口已随退出 Issue 移除，
+# 规范命令入口仅保留 BridGes。
 BridGes = "bridges.cli.main:app"
-science-companion = "bridges.cli.main:app"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/bridges", "src/science_companion"]
+packages = ["src/bridges"]
 
 [tool.ruff]
 line-length = 100

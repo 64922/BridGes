@@ -1,71 +1,59 @@
-# 任务规划：Issue 40 — 建立可复现 A/B 科学评测
+# 任务规划：Issue 41 — 退役旧实现并通过发布门
 
-状态：已完成并提交（fdeb6a7，2026-08-06）
+状态：进行中（2026-08-06 启动）
 
 ## 交付内容
 
-- `src/bridges/contracts/evaluation_suite.py`：评测套件契约（套件/案例/运行锁/
-  结果/盲评/报告/阈值，约 800 行）
-- `src/bridges/evaluation/` 新增 13 个模块：
-  - suite_registry.py（版本化注册表 + digest 防静默覆盖 + 失效/取代）
-  - suite_data.py（内置 science-baseline@1.0.0：24 案例 × 7 维度，原创数据 +
-    许可证记录 + 数据卡）
-  - sut.py（6 种被测系统：完整/基线/原创开源参考/三消融）
-  - reference_method.py（合法开源参考基线，原创 MIT）
-  - executors.py（评测环境：生产缝装配 + 可编程网关 + 本地资产服务器）
-  - case_executors.py（各维度执行器：chat/humanizer/教学/生涯/多模态）
-  - runner.py（运行锁构建、逐案例隔离执行、双跑对比）
-  - metrics.py（七维度确定性指标 + 自动断言 + 否定感知承诺检测）
-  - judges.py（确定性裁判 + 固定模型裁判适配器）
-  - injection.py（六类注入回归）
-  - blind_review.py（匿名化/随机化/一致性/低一致性复核）
-  - report.py（点估计/CI/Welch 显著性/失败率/逐切片）
-  - gates.py（发布阈值判定，供 Issue 41 接入）
-  - repository.py（SQLite 持久化，append-only）
-- `src/bridges/storage/database.py`：SCHEMA_VERSION 25 → 26（5 张 eval 表）
-- `src/bridges/cli/evaluate.py` + main.py：`BridGes evaluate` 子命令
-  （run/replay/blind-review/report/gates）
-- `tests/evaluation/`：74 条测试（双跑可复现、六类注入检出、许可证审计、
-  匿名盲评、一键重放、报告统计、发布门）
+### A. 前端退役（删除旧 Science Companion 普通用户工作台）
+- 删除 `apps/web/src/app/(app)/projects/[projectId]/` 旧项目工作台（7 页 + layout）
+- 删除 `apps/web/src/app/(app)/account/eval/` 空壳页
+- 删除旧组件：components/project/**（TaskStage/StudyChatEntry/ProjectHeader/WorkbenchNav）、
+  components/layout/ProjectLayout、InspectorPanel、SidebarNav（仅 project mode 使用）
+- 简化 AppShell：移除 project mode 分支与 mode/projectId props
+- account-page：旧「打开项目」链接改指 /account/projects/{id}；「全局科学伙伴」旧术语改
+  「账户首页」；移除「评测与运行中心」空壳入口
+- e2e：删除 t004-projects.spec.ts；t002-shell 移除旧工作台用例；issue14 学习对话用例改新
+  学习项目页；删除 helpers/projects.ts
+- check_frontend_completeness.py 扫描范围扩展（旧工作台/eval 退役后纳入扫描）
 
-## 验收对照（12 AC + 6 Verification 全部完成）
+### B. 后端退役 Stub 与测试端点
+- 移除 `qwen_force_stub` 配置与全部使用点（api/main.py 4 处、config.py），
+  生产配置不再可能注册 StubQwenAdapter
+- `/_test/recovery-token`、`/_test/runs/{id}/advance` 仅 test 环境注册（对齐
+  `/_test/capabilities` 既有模式）
+- media/extraction.py TableExtractor：CSV 解析失败不再回退硬编码示例表，改为真实失败
+- 删除 `src/science_companion/` 兼容层包 + pyproject `science-companion` 入口与 wheel 打包
+  + 对应兼容层测试；更新 infra/manual/README 与 README
+
+### C. 四部署路径验收
+- Conda / .venv：锁定依赖安装 + `BridGes start` 编排 Web/API/worker/scheduler +
+  健康检查 + 停止 + 二次启动无重复任务
+- Docker Compose / Podman：同源构建、迁移、数据目录、健康检查、停止语义
+
+### D. 文档
+- README 与运行/安装/备份/安全/能力矩阵/故障排查文档更新；
+  旧 .scratch/science-companion-plan 与 tickets.md 保持只读原样
+
+### E. 验收
+- 全量 pytest + 桌面 Playwright E2E + 契约 + 安全 + 账户隔离 + 备份恢复 + 评测套件
+- 静态扫描（check_frontend_completeness + 后端 Stub 扫描）零违规
+- 发布门（BridGes evaluate gates）达到锁定阈值
+- /code-review 双轴审查并修复
+- 更新 Issue 41 AC 勾选状态并提交
+
+## 验收对照
 
 | AC | 落点 | 验证 |
 |----|------|------|
-| 1 版本化评测包 | contracts + registry + 运行锁 | test_suite_registry |
-| 2 画像闭环 | 3 案例 + profile 指标 | test_metrics + 全案例通过 |
-| 3 人味评测 | 4 体裁案例 + humanizer 指标 | 体裁规则真实复核通过 |
-| 4 科学评测 | 4 案例 + 高风险切片 | 引用/校准/冲突指标 |
-| 5 教学评测 | 3 案例 + 强制联网 | 教学门真实触发 |
-| 6 生涯评测 | 3 案例 + 边界 | 否定感知承诺检测 |
-| 7 多模态评测 | ASR/TTS/图片/视频/提醒 | 失败注入恢复 |
-| 8 对比+消融 | 6 SUT × 7 任务矩阵 | 完整 vs 基线指标显著差 |
-| 9 盲评 | 匿名化+一致性 | 低一致性复核 |
-| 10 报告 | 统计字段 | Welch 检验测试 |
-| 11 版本化追溯 | 锁 digest + append-only | 双跑锁一致 |
-| V1 双跑 | compare_double_run | 锁/样本/指标全一致 |
-| V2 注入检出 | injection.py | 六类注入全部检出 |
-| V3 许可证 | 许可证记录+审计测试 | 无外部项目文本 |
-| V4 盲评者 | CLI 盲评流程 | 匿名化测试 |
-| V5 失败回溯 | 确定性重放命令 | replay CLI 实测 |
-| V6 发布阈值 | gates.py | 低于阈值阻止发行 |
-
-## 已知限制（如实记录）
-
-- 确定性模式用可编程网关（脚本编码"模型质量随上下文变化"的固定行为）；
-  真实模型运行可替换网关（运行锁记录网关版本）。
-- TTS 可懂度在确定性模式下仅验证管线完整性（数据卡已披露）。
-- tests/integration/test_runtime_smoke.py::test_doctor_smoke 在 Windows
-  GBK 控制台下失败（既有问题，干净树同样失败，与本次改动无关）。
-
-## 里程碑
-
-- [x] 契约 + 套件注册表 + 内置数据
-- [x] 运行器 + SUT 适配器 + 执行器
-- [x] 指标 + 裁判 + 注入
-- [x] 盲评 + 报告 + 阈值
-- [x] 持久化迁移 26 + CLI
-- [x] 评测测试 74 条全过
-- [x] 全量回归（2067+74 通过，1 个既有 Windows 控制台 flaky 除外）
-- [x] /code-review 双轴审查并修复（12 项：死代码/重复/盲评维度/失败率/容差键/稳定性门/报告版本/阈值落库/错误判定/引用校验/完整性门/承诺否定）
-- [x] 提交（fdeb6a7）
+| 1 正式导航只留聊天优先面 | 前端删除 + account-page 改链 | e2e 回归 + 静态扫描 |
+| 2 无旧品牌/占位/死链 | 删除+术语修正 | check_frontend_completeness |
+| 3 生产不注册 Stub | qwen_force_stub 移除 + 表格示例退役 | test_registry + 扫描 |
+| 4 真实探测/不可用合同 | 既有 probes/matrix 保留 | 探测测试 |
+| 5 Conda/.venv | start 编排验证 | 集成测试 + 手动验收 |
+| 6 Docker/Podman | compose 同源 | 集成契约测试 + 手动验收 |
+| 7 零 .env | config 无 .env 读取 | config 契约测试 |
+| 8 start 编排/重复启动/无僵尸 | DataDirectoryLock + 编排 | runtime 集成测试 |
+| 9 三分辨率黄金路径 | E2E 套件 | Playwright |
+| 10 安全矩阵+评测达阈值 | gates.py | evaluate gates + 安全测试 |
+| 11 README 准确 | 文档更新 | 人工核对 |
+| 12 旧 Wayfinder 只读 | git 提交不含旧目录改动 | git diff 检查 |

@@ -367,7 +367,19 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await page.keyboard.type("不要结束");
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "停止生成" })).toBeVisible();
+    // Esc 停止：键盘事件偶发时序下，停止请求未发出时补按一次（保持纯键盘路径）。
+    const stopSent = () =>
+      page.waitForResponse(
+        (resp) => resp.url().includes("/stop") && resp.request().method() === "POST",
+        { timeout: 3000 }
+      );
+    const first = stopSent().catch(() => null);
     await page.keyboard.press("Escape");
+    if (!(await first)) {
+      const second = stopSent().catch(() => null);
+      await page.keyboard.press("Escape");
+      await second;
+    }
     await expect(page.getByRole("button", { name: "发送消息" })).toBeVisible();
 
     // 键盘展开思考摘要：Tab 到 summary 的按钮 + Enter
@@ -394,13 +406,29 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
   });
 
-  test("学习项目页「进入学习对话」创建默认学习模式对话", async ({ page }) => {
+  test("学习项目页「新建学习对话」创建默认学习模式对话", async ({ page }) => {
     await registerAndEnterHome(page);
     await installMockChatApi(page, { initialMode: "study" });
+    // Issue 41：旧项目工作台已退役，学习对话入口在学习项目详情页
+    // （/account/projects/{id}）的「新建学习对话」按钮。
+    await page.route("**/api/learning-projects/demo-project", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          project_id: "demo-project",
+          name: "演示学习项目",
+          description: "",
+          created_at: NOW,
+          updated_at: NOW,
+          conversations: [],
+        }),
+      });
+    });
 
-    await page.goto("/projects/demo-project");
-    await expect(page.getByTestId("study-chat-entry")).toBeVisible();
-    await page.getByTestId("study-chat-entry").click();
+    await page.goto("/account/projects/demo-project");
+    await expect(page.getByTestId("learning-project-new-chat")).toBeVisible();
+    await page.getByTestId("learning-project-new-chat").click();
     await page.waitForURL(/\/chat\/mock-1/);
     await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
   });

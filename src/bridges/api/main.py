@@ -58,7 +58,7 @@ from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
 from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
 from bridges.chat.selections import ChatSelectionsService
-from bridges.config import get_settings
+from bridges.config import Settings, get_settings
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -484,6 +484,22 @@ def _register_builtin_invalidation_resolvers(service: InvalidationService) -> No
     service.register_impact_resolver("index_projection", _index_resolver)
     service.register_impact_resolver("workflow_run", _run_resolver)
     service.register_impact_resolver("vault_capsule", _vault_capsule_resolver)
+
+
+def _has_real_qwen_key(settings: Settings | None) -> bool:
+    """是否配置了非空全局环境百炼密钥（BRIDGES_QWEN_API_KEY，空串视为未配置）。
+
+    说明（预存在架构事实，非本 Issue 引入）：模型适配器由全局环境密钥注册，
+    账户级密钥（登录后受保护设置中配置）驱动能力探测与 Embedding 检索；
+    二者合同在本发布候选报告中如实披露。Issue 41（AC3）：真实适配器注册、
+    模型网关接线都以本判定为准——无真实密钥时能力保持停用，绝不注册
+    Stub 或假成功。
+    """
+    return (
+        settings is not None
+        and settings.qwen_api_key is not None
+        and bool(settings.qwen_api_key.get_secret_value())
+    )
 
 
 def _register_domain_pack_capabilities(capability_registry: CapabilityRegistry) -> None:
@@ -914,11 +930,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     model_gateway = ModelGateway(capability_registry)
 
     settings = app.state.settings
-    if (
-        settings is not None
-        and settings.qwen_api_key is not None
-        and not settings.qwen_force_stub
-    ):
+    if _has_real_qwen_key(settings):
         cassette_store = None
         # Issue 39 AC5：cassette 会把完整请求/响应正文以明文 JSON 落盘，
         # 生产环境强制禁止录制，避免私人对话正文落盘泄露。
@@ -963,17 +975,19 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         wan_adapter = QwenWanAdapter(qwen_client)
         model_gateway.register_adapter("qwen_wan", "1", wan_adapter)
 
-    # Issue 10：生产环境禁止为真实模型 ID 注册 Stub 成功。StubQwenAdapter
-    # 只允许在显式测试开关（qwen_force_stub）下使用，或绑定在内置
-    # deterministic 工具能力上；缺少真实适配器的云端能力保持未注册，
-    # 由网关返回明确的"未绑定适配器"阻塞结果，绝不伪装可用。
-    stub_adapter = StubQwenAdapter()
-    force_stub = settings is not None and settings.qwen_force_stub
-    for capability in capability_registry.list_active():
-        if model_gateway.is_adapter_registered(capability.name, capability.version):
-            continue
-        if force_stub or capability.model_id == "deterministic":
-            model_gateway.register_adapter(capability.name, capability.version, stub_adapter)
+    # Issue 41（AC3）：StubQwenAdapter 只注册在显式 test 环境（本地与 CI
+    # 测试确定性，与 /_test/* 端点同一门控）——development/production
+    # 配置绝不注册任何 Stub：真实模型能力未配置账户密钥时保持未绑定，由
+    # 网关返回明确的"未绑定适配器"阻塞结果；内置 deterministic 工具能力
+    # （领域包校验器）由领域包运行时直接执行。qwen_force_stub 环境开关
+    # 已随 Issue 41 移除，任何环境都无法通过配置项开启生产假成功。
+    if settings is not None and settings.environment.lower() == "test":
+        stub_adapter = StubQwenAdapter()
+        for capability in capability_registry.list_active():
+            if not model_gateway.is_adapter_registered(capability.name, capability.version):
+                model_gateway.register_adapter(
+                    capability.name, capability.version, stub_adapter
+                )
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
 
@@ -1274,7 +1288,10 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
         model_gateway=(
-            model_gateway if settings is not None and not settings.qwen_force_stub else None
+            # Issue 41（AC3）：只有真实环境密钥已配置时才接模型网关——
+            # 无密钥时能力明确停用，媒体/科学提取走确定性提取器，绝不
+            # 用 Stub 适配器产出假模型结果。
+            model_gateway if _has_real_qwen_key(settings) else None
         ),
     )
     invalidation_service.register_impact_resolver(
@@ -1412,7 +1429,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
         model_gateway=(
-            model_gateway if settings is not None and not settings.qwen_force_stub else None
+            # 与 ScienceSourceService 同一合同（Issue 41 AC3）：无真实密钥
+            # 时不接模型网关，提取走确定性提取器。
+            model_gateway if _has_real_qwen_key(settings) else None
         ),
     )
     invalidation_service.register_impact_resolver(
@@ -1432,12 +1451,10 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     # real Qwen TTS and transfer audio to controlled storage.
     app.state.media_generation_service = MediaGenerationService()
     narration_synthesizer = None
-    if (
-        settings is not None
-        and settings.qwen_api_key is not None
-        and not settings.qwen_force_stub
-        and model_gateway.is_adapter_registered("qwen_tts", "1")
-    ):
+    if _has_real_qwen_key(settings):
+        # Issue 41（AC3）：只有真实 TTS 适配器（真实环境密钥）才挂接旁白
+        # 合成，测试环境的 Stub 适配器不驱动合成——无真实密钥时走确定性
+        # 旁白路径。
         narration_synthesizer = QwenTtsNarrationSynthesizer(
             model_gateway=model_gateway,
             audio_storage=InMemoryAudioStorage(),
@@ -1561,21 +1578,24 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         """
         return {"account_id": subject.account_id, "session_id": subject.session_id}
 
-    @app.get("/_test/recovery-token", response_model=dict[str, Any])
-    async def test_recovery_token(qq_email: str) -> dict[str, Any]:
-        """Test-only endpoint to retrieve a recovery token without email delivery.
+    if settings is not None and settings.environment.lower() == "test":
+        # Issue 41（AC3/AC10）：测试专用端点只在 test 环境注册，生产配置不
+        # 暴露任何 `/_test/` 路由（与 /_test/capabilities 同一门控）。
+        @app.get("/_test/recovery-token", response_model=dict[str, Any])
+        async def test_recovery_token(qq_email: str) -> dict[str, Any]:
+            """Test-only endpoint to retrieve a recovery token without email delivery.
 
-        This endpoint is prefixed with `/_test/` and is only safe because the
-        identity service is local. It must not be exposed in production.
-        """
-        from bridges.identity import IdentityError
+            This endpoint is prefixed with `/_test/` and is only safe because the
+            identity service is local. It must not be exposed in production.
+            """
+            from bridges.identity import IdentityError
 
-        service: IdentityService = app.state.identity_service
-        try:
-            token = service.test_create_recovery_token(qq_email)
-        except IdentityError as exc:
-            return {"error": str(exc)}
-        return {"token": token}
+            service: IdentityService = app.state.identity_service
+            try:
+                token = service.test_create_recovery_token(qq_email)
+            except IdentityError as exc:
+                return {"error": str(exc)}
+            return {"token": token}
 
     if settings is not None and settings.environment.lower() == "test":
         # Issue 36 E2E：为当前会话账户标记核心对话能力就绪（假 Key + chat
@@ -1612,19 +1632,20 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             raise RuntimeError("WorkflowService not attached to application state.")
         return service
 
-    @app.post("/_test/runs/{run_id}/advance", response_model=RunProjection)
-    async def test_advance_run(
-        run_id: str,
-        service: Annotated[WorkflowService, Depends(_get_workflow_service)],
-        subject: auth.SubjectDep,
-    ) -> RunProjection:
-        """Test-only endpoint to deterministically advance a run by one node."""
-        try:
-            return service.advance_run(subject.account_id, run_id)
-        except WorkflowError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "workflow_transition_failed", "message": str(exc)},
-            ) from exc
+    if settings is not None and settings.environment.lower() == "test":
+        @app.post("/_test/runs/{run_id}/advance", response_model=RunProjection)
+        async def test_advance_run(
+            run_id: str,
+            service: Annotated[WorkflowService, Depends(_get_workflow_service)],
+            subject: auth.SubjectDep,
+        ) -> RunProjection:
+            """Test-only endpoint to deterministically advance a run by one node."""
+            try:
+                return service.advance_run(subject.account_id, run_id)
+            except WorkflowError as exc:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail={"error": "workflow_transition_failed", "message": str(exc)},
+                ) from exc
 
     return app

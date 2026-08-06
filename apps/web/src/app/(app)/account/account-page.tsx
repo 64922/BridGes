@@ -1,16 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect } from "react";
 
 import { ButtonLink } from "@/components/design-system/ButtonLink";
 import { LoadingStatus } from "@/components/design-system/LoadingStatus";
 import { MainContent } from "@/components/layout/MainContent";
 import { useAuth } from "@/context/AuthContext";
-import { listProjects, type ProjectSummary } from "@/lib/api";
+import { useLearningProjects } from "@/lib/learning-projects";
 
-function ProjectCard({ project }: { project: ProjectSummary }) {
-  const statusText = project.status === "archived" ? "已归档" : "活跃";
+function ProjectCard({ project }: { project: { project_id: string; name: string } }) {
   return (
     <li>
       <article
@@ -26,12 +25,9 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
           <h3 style={{ fontFamily: "var(--font-serif)", fontSize: "var(--text-base)", fontWeight: 600 }}>
             {project.name}
           </h3>
-          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)", marginTop: "var(--space-1)" }}>
-            {statusText} · 版本 {project.ref.version}
-          </p>
         </div>
         <div style={{ marginTop: "auto" }}>
-          <ButtonLink href={`/projects/${project.ref.object_id}`} ariaLabel={`打开项目 ${project.name}`}>
+          <ButtonLink href={`/account/projects/${project.project_id}`} ariaLabel={`打开项目 ${project.name}`}>
             打开项目
           </ButtonLink>
         </div>
@@ -42,45 +38,21 @@ function ProjectCard({ project }: { project: ProjectSummary }) {
 
 /**
  * Account-level main shell (client component).
+ *
+ * Issue 41：前端不再调用旧科学项目空间接口（/api/projects，后端路由仍由
+ * workflows 项目作用域使用），此处展示真实学习项目（/api/learning-projects），
+ * 与全局侧栏同一数据源。
  */
 export default function AccountPageClient() {
   const router = useRouter();
-  const { accountRevision, user, isLoading: isAuthLoading } = useAuth();
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [isProjectsLoading, setIsProjectsLoading] = useState(true);
-  const projectRequestRef = useRef(0);
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { projects, loading: isProjectsLoading } = useLearningProjects();
 
   useEffect(() => {
     if (!isAuthLoading && user === null) {
       router.replace("/login");
     }
   }, [isAuthLoading, user, router]);
-
-  const loadProjects = useCallback(async () => {
-    const requestId = ++projectRequestRef.current;
-    setProjects([]);
-    setIsProjectsLoading(true);
-    try {
-      const data = await listProjects();
-      if (requestId === projectRequestRef.current) {
-        setProjects(data.active ?? []);
-      }
-    } catch {
-      if (requestId === projectRequestRef.current) {
-        setProjects([]);
-      }
-    } finally {
-      if (requestId === projectRequestRef.current) {
-        setIsProjectsLoading(false);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (user) {
-      loadProjects();
-    }
-  }, [accountRevision, user, loadProjects]);
 
   if (isAuthLoading) {
     return (
@@ -98,7 +70,7 @@ export default function AccountPageClient() {
     <MainContent>
       <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}>
         <section className="sc-card">
-          <p className="sc-landmark-label">全局科学伙伴</p>
+          <p className="sc-landmark-label">账户首页</p>
           <h1
             style={{
               fontFamily: "var(--font-serif)",
@@ -142,7 +114,7 @@ export default function AccountPageClient() {
             ) : (
               <>
                 {projects.map((project) => (
-                  <ProjectCard key={project.ref.object_id} project={project} />
+                  <ProjectCard key={project.project_id} project={project} />
                 ))}
                 <li>
                   <article
@@ -179,7 +151,6 @@ export default function AccountPageClient() {
           >
             {[
               { label: "用户画像", href: "/account/profile" },
-              { label: "评测与运行中心", href: "/account/eval" },
               { label: "设置、设备与同步", href: "/account/settings" },
             ].map((item) => (
               <li key={item.href}>

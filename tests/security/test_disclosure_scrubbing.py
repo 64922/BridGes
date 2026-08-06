@@ -141,7 +141,6 @@ def test_production_disables_cassette_recording(tmp_path: Any, monkeypatch: Any)
     monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "sk-fake-prod-key-1234567890abcdefghij")
     monkeypatch.setenv("BRIDGES_QWEN_CASSETTE_DIR", str(tmp_path / "cassettes"))
     monkeypatch.setenv("BRIDGES_QWEN_RECORD_CASSETTES", "true")
-    monkeypatch.setenv("BRIDGES_QWEN_FORCE_STUB", "false")
     get_settings.cache_clear()
     try:
         app = create_app()

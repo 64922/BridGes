@@ -11,9 +11,10 @@ BridGes 支持以下四种生产运行合同骨架：
 
 ## 统一配置 Schema
 
-所有运行方式都通过 `BRIDGES_*` 环境变量读取配置（迁移期同时接受旧前缀
-`SCIENCE_COMPANION_*`，新前缀优先）。**任何载体都不读取、不要求创建
-`.env` 文件**；未配置的项使用下方安全默认值。
+所有运行方式都通过 `BRIDGES_*` 环境变量读取配置。**任何载体都不读取、
+不要求创建 `.env` 文件**；未配置的项使用下方安全默认值。Issue 41 起旧前缀
+`SCIENCE_COMPANION_*`、旧命令入口 `science-companion` 与旧模块名
+`science_companion` 已随退役移除，只认 `BRIDGES_*` 与 `BridGes`。
 
 常用变量：
 
@@ -104,4 +105,7 @@ curl http://127.0.0.1:8000/health/degraded
 - Web、API、后台执行器和提醒调度器在不同载体中均保持独立进程边界；统一
   CLI 只是监管入口，容器路径由 Compose 编排同一组进程。
 - Web 只承诺电脑端使用，不承诺手机、平板或移动浏览器访问。
-- `science-companion` 是迁移期兼容入口，与 `BridGes` 指向同一实现，由退出 Issue 删除。
+- 未配置全局环境密钥 `BRIDGES_QWEN_API_KEY` 时，Qwen 模型调用能力明确
+  停用并显示真实不可用状态（生产配置不注册离线桩或固定样例）；账户级
+  百炼密钥在登录后受保护设置中配置，用于真实能力探测与知识库 Embedding
+  检索。
