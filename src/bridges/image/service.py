@@ -46,10 +46,19 @@ from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.observability.service import ObservabilityService
+from bridges.runtime.queue import (
+    Claim,
+    RetryKind,
+    TaskQueue,
+    TaskRetryError,
+    TaskWorker,
+)
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
 
+#: 图片任务队列名（task_claims 调度表）。
+_IMAGE_QUEUE = "image"
 #: 每账户每轮最多领取的任务数（图片生成昂贵且需逐轮轮询云端）。
 CLAIM_BATCH_SIZE = 1
 #: 云端轮询租约：领取后在该时间内必须完成下一个步骤（提交/轮询），
@@ -126,12 +135,25 @@ class ImageService:
         object_repository: BridgesObjectRepository,
         chat_repository: ConversationRepository | None = None,
         observability_service: ObservabilityService | None = None,
+        task_queue: TaskQueue | None = None,
     ) -> None:
         self._db = database
         self._gateway = gateway
         self._objects = object_repository
         self._repo = chat_repository
         self._observability = observability_service
+        # Issue 43：领取/租约/退避/崩溃恢复由统一任务队列承担；本服务
+        # 只提供「处理这一个任务步骤」的 handler（云端状态回写保留在
+        # 业务表）。
+        self._task_queue = task_queue or TaskQueue(database)
+        self._task_queue.set_lease_seconds(_IMAGE_QUEUE, POLL_LEASE_SECONDS)
+        self._worker = TaskWorker(
+            self._task_queue,
+            _IMAGE_QUEUE,
+            "image-worker",
+            self._handle_image_claim,
+            default_max_attempts=MAX_AUTO_RETRIES,
+        )
 
     # ------------------------------------------------------------------
     # 提交（API 进程；任务与消息投影同一事务落库）
@@ -273,6 +295,11 @@ class ImageService:
                         message_id,
                         account_id,
                     ),
+                )
+                # 领取型任务入队（同一事务）：后台执行器按统一队列契约
+                # 领取处理，无需每轮全表扫描 queued 行。
+                self._task_queue.enqueue(
+                    _IMAGE_QUEUE, f"image:{account_id}:{task_id}"
                 )
         except StorageError:
             raise
@@ -459,6 +486,10 @@ class ImageService:
                         " WHERE message_id = ? AND account_id = ?",
                         (retried.model_dump_json(), now_text, str(row["message_id"]), account_id),
                     )
+                # 手动重试重新入队（同一事务）：重置退避计数，恢复自动领取。
+                self._task_queue.enqueue(
+                    _IMAGE_QUEUE, f"image:{account_id}:{task_id}"
+                )
         except StorageError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -670,90 +701,57 @@ class ImageService:
     # ------------------------------------------------------------------
 
     def process_pending(self) -> str:
-        """执行一轮图片任务处理：逐账户领取 → 提交或轮询 → 收敛终态。"""
-        accounts = [
-            str(row["account_id"])
-            for row in self._db.connection.execute(
-                "SELECT DISTINCT account_id FROM image_tasks"
-                " WHERE status NOT IN ('succeeded', 'cancelled')"
-            ).fetchall()
-        ]
-        processed = 0
-        for account_id in accounts:
-            claimed = self._claim(account_id)
-            for task_id in claimed:
-                try:
-                    if self._process_task(account_id, task_id):
-                        processed += 1
-                except _CancelledRaceError:
-                    # 处理期间被取消：已建对象在回滚路径清理，任务保持取消。
-                    processed += 1
-                except Exception as exc:  # noqa: BLE001 - 单任务失败不阻断循环
-                    self._fail_task(
-                        account_id,
-                        task_id,
-                        "processing_error",
-                        f"任务处理出错：{exc}",
-                        retryable=True,
-                    )
-        if not accounts and not processed:
-            return "worker: 图片任务：无待处理任务。"
-        return f"worker: 图片任务：本轮处理 {processed} 个任务步骤。"
+        """执行一轮图片任务处理：队列领取 → 提交或轮询 → 收敛终态。
 
-    def _claim(self, account_id: str) -> list[str]:
-        """领取一个可处理任务（单机 worker 每轮处理一个任务的一个步骤）。
-
-        领取条件：queued（等待提交）、failed 且未超自动重试上限（自动
-        恢复）、running（云端轮询——每轮续期租约，进度由 poll_count 与
-        MAX_CLOUD_POLLS 限制）。``lease_expires_at`` 只用于呈现层恢复
-        判定（进程中断期间未续期 → 前端显示 recovery），不阻塞领取。
-        取消与成功任务永不领取。
+        Issue 43：领取/租约/退避/崩溃恢复由统一领取型任务队列承担；
+        每任务创建/手动重试时入队，worker 按租约领取并逐件处理一步。
         """
-        now = datetime.now(UTC)
-        now_text = _now()
-        lease_expires = (now + timedelta(seconds=POLL_LEASE_SECONDS)).isoformat(
-            timespec="seconds"
-        )
-        condition = (
-            "status = 'queued'"
-            f" OR (status = 'failed' AND retry_count < {MAX_AUTO_RETRIES})"
-            " OR status = 'running'"
-        )
+        handled, failed = self._worker.drain(max_steps=CLAIM_BATCH_SIZE)
+        if handled == 0 and failed == 0:
+            return "worker: 图片任务：无待处理任务。"
+        return f"worker: 图片任务：本轮处理 {handled} 个任务步骤，失败 {failed} 次。"
+
+    def _handle_image_claim(self, claim: Claim) -> None:
+        """队列 handler：处理一个任务的一个步骤（提交或轮询）。
+
+        轮询续轮（running）不消耗重试预算（count_attempt=False）；
+        failed 按自动重试上限退避重试；succeeded/cancelled 收敛。
+        """
+        _, account_id, task_id = claim.task_key.split(":", 2)
+        row = self._task_row(account_id, task_id)
+        if row is None or str(row["status"]) in ("succeeded", "cancelled"):
+            return  # 已收敛：跳过
+        # 业务行呈现「运行中」（running + 租约）：租约过期时前端呈现
+        # recovery；领取调度本身由队列承担。
+        with self._db.transaction():
+            self._db.scoped(account_id).execute(
+                "UPDATE image_tasks SET status = 'running', claimed_at = ?,"
+                " lease_expires_at = ?, updated_at = ?"
+                " WHERE task_id = ? AND account_id = ? AND status != 'cancelled'",
+                (_now(), self._lease_expires(), _now(), task_id, account_id),
+            )
         try:
-            with self._db.transaction():
-                cursor = self._db.scoped(account_id).execute(
-                    "UPDATE image_tasks SET status = 'running', claimed_at = ?,"
-                    " lease_expires_at = ?,"
-                    # 自动重试预算只在失败任务被重新领取时消耗（轮询轮不
-                    # 消耗）：retry_count 语义是"失败后自动重试次数"。
-                    " retry_count = retry_count + CASE WHEN status = 'failed'"
-                    " THEN 1 ELSE 0 END, updated_at = ?"
-                    " WHERE account_id = ? AND (" + condition + ")"
-                    " AND task_id IN ("
-                    "   SELECT task_id FROM image_tasks"
-                    "   WHERE account_id = ? AND (" + condition + ")"
-                    "   ORDER BY created_at, task_id LIMIT ?"
-                    " )",
-                    (
-                        now_text,
-                        lease_expires,
-                        now_text,
-                        account_id,
-                        account_id,
-                        CLAIM_BATCH_SIZE,
-                    ),
-                )
-                if cursor.rowcount == 0:
-                    return []
-                rows = self._db.scoped(account_id).execute(
-                    "SELECT task_id FROM image_tasks"
-                    " WHERE account_id = ? AND status = 'running' AND claimed_at = ?"
-                    " ORDER BY created_at, task_id",
-                    (account_id, now_text),
-                ).fetchall()
-                return [str(row["task_id"]) for row in rows]
-        except sqlite3.Error:
-            return []
+            self._process_task(account_id, task_id)
+        except _CancelledRaceError:
+            return
+        row = self._task_row(account_id, task_id)
+        status = str(row["status"]) if row is not None else "succeeded"
+        if status in ("succeeded", "cancelled"):
+            return  # 完成/取消：收敛
+        if status == "running":
+            # 提交成功或云端任务进行中：下一轮继续轮询（不消耗预算）。
+            raise TaskRetryError(
+                "云端任务轮询中",
+                retry_kind=RetryKind.FIXED,
+                count_attempt=False,
+            )
+        # failed：每轮立即自动重试至上限（与旧 claim 条件语义一致；
+        # 轮次边界由 drain 的 +1 秒释放控制，不消耗额外退避等待）。
+        raise TaskRetryError(
+            str(row["error_message"]) if row is not None else "任务失败",
+            retry_kind=RetryKind.FIXED,
+            max_attempts=MAX_AUTO_RETRIES,
+        )
 
     def _process_task(self, account_id: str, task_id: str) -> bool:
         row = self._task_row(account_id, task_id)

@@ -8,10 +8,10 @@ from pathlib import Path
 import pytest
 
 from bridges.storage import (
+    SCHEMA_VERSION,
     BridgesDatabase,
     BridgesObjectRepository,
     EncryptedFileObjectStore,
-    SCHEMA_VERSION,
     StorageError,
 )
 
@@ -292,4 +292,65 @@ def test_upgrade_from_older_schema_overwrites_version_row(tmp_path: Path) -> Non
     assert "document_records" in tables
     assert "index_versions" in tables
     assert "document_chunks" in tables
+    database.close()
+
+
+def test_upgrade_backfills_legacy_claimable_rows_into_task_claims(
+    tmp_path: Path,
+) -> None:
+    """Issue 43：升级到 v27+ 时，存量可处理业务行回填进 task_claims。
+
+    迁移前已处于 queued/error(<上限)/failed 的业务行（document_records、
+    account_deletions 等）在旧实现下由每轮全表扫描重试；新实现只处理
+    队列行——升级必须回填，否则存量任务孤儿化永不处理。已耗尽/永久
+    失败的行不回填（等子系统手动重试时重新入队）。
+    """
+    from bridges.storage.database import MIGRATIONS
+
+    path = tmp_path / "bridges.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        connection.execute(
+            "INSERT INTO schema_meta(key, value) VALUES ('version', '26')"
+        )
+        for version in range(1, 27):
+            for statement in MIGRATIONS[version]:
+                connection.execute(statement)
+        # 存量业务行：queued（应回填）、error 已耗尽（不回填）、
+        # 删除 failed（应回填）。
+        connection.execute(
+            "INSERT INTO document_records(document_id, account_id, object_id,"
+            " conversation_id, content_hash, parser_version, status, retry_count,"
+            " claimed_at, lease_expires_at, created_at, updated_at)"
+            " VALUES ('doc-queued', 'acc-1', 'obj-1', NULL, 'hash-1', 'text-v1',"
+            " 'queued', 0, NULL, NULL, '2026-01-01T00:00:00', '2026-01-01T00:00:00')"
+        )
+        connection.execute(
+            "INSERT INTO document_records(document_id, account_id, object_id,"
+            " conversation_id, content_hash, parser_version, status, retry_count,"
+            " claimed_at, lease_expires_at, created_at, updated_at)"
+            " VALUES ('doc-exhausted', 'acc-1', 'obj-2', NULL, 'hash-2', 'text-v1',"
+            " 'error', 3, NULL, NULL, '2026-01-01T00:00:00', '2026-01-01T00:00:00')"
+        )
+        connection.execute(
+            "INSERT INTO account_deletions(deletion_id, account_id, status,"
+            " retry_count, last_error, pending_hashes, started_at)"
+            " VALUES ('del-1', 'acc-2', 'failed', 1, '模拟失败', '[]',"
+            " '2026-01-01T00:00:00')"
+        )
+        connection.commit()
+
+    database = BridgesDatabase(path)
+    assert database.initialize() == SCHEMA_VERSION
+    with sqlite3.connect(path) as connection:
+        rows = connection.execute(
+            "SELECT queue_name, task_key FROM task_claims ORDER BY task_key"
+        ).fetchall()
+    keys = [(str(row[0]), str(row[1])) for row in rows]
+    assert ("ingestion", "ingestion:acc-1:obj-1") in keys
+    assert ("deletion", "deletion:del-1") in keys
+    # 已耗尽的 error 文档不回填（等用户手动重试时重新入队）。
+    assert not any(key == "ingestion:acc-1:obj-2" for _, key in keys)
     database.close()

@@ -12,6 +12,7 @@ by the workflow schema.
 from __future__ import annotations
 
 import contextlib
+import json
 import secrets
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
@@ -43,6 +44,7 @@ from bridges.scope import ScopeEnforcer
 
 if TYPE_CHECKING:
     from bridges.observability.service import ObservabilityService
+    from bridges.storage.database import BridgesDatabase
 
 
 class WorkflowError(Exception):
@@ -101,6 +103,7 @@ class WorkflowService:
         invalidation_service: InvalidationService | None = None,
         profile_service: ProfileService | None = None,
         pack_gate: Callable[[Sequence[str]], None] | None = None,
+        database: BridgesDatabase | None = None,
     ) -> None:
         self._workflows: dict[tuple[str, str], _WorkflowDefinition] = {}
         self._runs: dict[str, _RunRecord] = {}
@@ -110,6 +113,12 @@ class WorkflowService:
         self._invalidation = invalidation_service
         self._profile_service = profile_service
         self._pack_gate = pack_gate
+        self._database = database
+        # Issue 43：运行状态落 SQLite（workflow_runs），崩溃后进程重建
+        # 从磁盘恢复进行中的运行（与 lifecycle/deletion 的持久化恢复
+        # 语义一致）；不传 database 时保持纯内存（测试/无持久化载体）。
+        if database is not None:
+            self._load_runs()
 
     def _subject(self, account_id: str) -> SubjectContext:
         """Build a minimal subject context from an account id for scope checks."""
@@ -222,6 +231,118 @@ class WorkflowService:
     def _assert_transition(self, record: _RunRecord, allowed: set[WorkflowRunStatus]) -> None:
         if record.status not in allowed:
             raise WorkflowError("非法状态转换。")
+
+    def _persist(self, record: _RunRecord) -> None:
+        """把运行状态快照写入 workflow_runs（幂等 upsert）。
+
+        每次状态变更后调用；未配置 database 时为空操作（纯内存模式）。
+        """
+        if self._database is None:
+            return
+
+        def encode(dt: datetime | None) -> str | None:
+            return dt.isoformat(timespec="seconds") if dt is not None else None
+
+        with self._database.transaction():
+            self._database.connection.execute(
+                "INSERT INTO workflow_runs(run_id, account_id, context_json,"
+                " work_order_json, status, artifact_trust_status, nodes_json,"
+                " human_todos_json, model_run_locks_json, current_node_index,"
+                " run_started_at, run_ended_at, cancel_reason, updated_at)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+                " ON CONFLICT(run_id) DO UPDATE SET"
+                " context_json = excluded.context_json,"
+                " work_order_json = excluded.work_order_json,"
+                " status = excluded.status,"
+                " artifact_trust_status = excluded.artifact_trust_status,"
+                " nodes_json = excluded.nodes_json,"
+                " human_todos_json = excluded.human_todos_json,"
+                " model_run_locks_json = excluded.model_run_locks_json,"
+                " current_node_index = excluded.current_node_index,"
+                " run_started_at = excluded.run_started_at,"
+                " run_ended_at = excluded.run_ended_at,"
+                " cancel_reason = excluded.cancel_reason,"
+                " updated_at = excluded.updated_at",
+                (
+                    record.run_id,
+                    record.context.account_id,
+                    record.context.model_dump_json(),
+                    record.work_order.model_dump_json(),
+                    record.status.value,
+                    record.artifact_trust_status.value,
+                    json.dumps(
+                        [node.model_dump(mode="json") for node in record.nodes]
+                    ),
+                    json.dumps(
+                        [todo.model_dump(mode="json") for todo in record.human_todos]
+                    ),
+                    json.dumps(
+                        [lock.model_dump(mode="json") for lock in record.model_run_locks]
+                    ),
+                    record.current_node_index,
+                    encode(record.run_started_at),
+                    encode(record.run_ended_at),
+                    record.cancel_reason,
+                    self._now().isoformat(timespec="seconds"),
+                ),
+            )
+
+    def _load_runs(self) -> None:
+        """从 workflow_runs 恢复全部运行记录（进程重建后的崩溃恢复）。"""
+        assert self._database is not None
+        rows = self._database.connection.execute(
+            "SELECT * FROM workflow_runs"
+        ).fetchall()
+        for row in rows:
+            try:
+                record = _RunRecord(
+                    run_id=str(row["run_id"]),
+                    context=RunContextEnvelope.model_validate_json(
+                        str(row["context_json"])
+                    ),
+                    work_order=WorkOrder.model_validate_json(
+                        str(row["work_order_json"])
+                    ),
+                    status=WorkflowRunStatus(str(row["status"])),
+                    artifact_trust_status=ArtifactTrustStatus(
+                        str(row["artifact_trust_status"])
+                    ),
+                    nodes=[
+                        NodeProgress.model_validate(node)
+                        for node in json.loads(str(row["nodes_json"]))
+                    ],
+                    human_todos=[
+                        HumanTodoItem.model_validate(todo)
+                        for todo in json.loads(str(row["human_todos_json"]))
+                    ],
+                    model_run_locks=[
+                        ModelRunLock.model_validate(lock)
+                        for lock in json.loads(str(row["model_run_locks_json"]))
+                    ],
+                    current_node_index=(
+                        int(row["current_node_index"])
+                        if row["current_node_index"] is not None
+                        else None
+                    ),
+                    run_started_at=(
+                        datetime.fromisoformat(str(row["run_started_at"]))
+                        if row["run_started_at"] is not None
+                        else None
+                    ),
+                    run_ended_at=(
+                        datetime.fromisoformat(str(row["run_ended_at"]))
+                        if row["run_ended_at"] is not None
+                        else None
+                    ),
+                    cancel_reason=(
+                        str(row["cancel_reason"])
+                        if row["cancel_reason"] is not None
+                        else None
+                    ),
+                )
+            except (ValueError, TypeError, KeyError):
+                continue  # 单行损坏跳过，不阻断其余运行恢复
+            self._runs[record.run_id] = record
 
     def _build_projection(self, record: _RunRecord) -> RunProjection:
         publish_eligible = (
@@ -389,6 +510,7 @@ class WorkflowService:
             artifact_trust_status=ArtifactTrustStatus.NOT_CREATED,
         )
         self._runs[run_id] = record
+        self._persist(record)
         self._emit_audit(
             record,
             AuditAction.WORKORDER_SUBMIT,
@@ -467,6 +589,7 @@ class WorkflowService:
             record.artifact_trust_status = ArtifactTrustStatus.QUALIFIED
             record.run_ended_at = now
 
+        self._persist(record)
         projection = self._build_projection(record)
         self._emit_audit(
             record,
@@ -568,6 +691,7 @@ class WorkflowService:
                 current.failure_reason = lock.degradation_reason if lock else "模型调用失败"
                 record.status = WorkflowRunStatus.BLOCKED
                 record.run_ended_at = now
+                self._persist(record)
                 projection = self._build_projection(record)
                 self._maybe_summarize(record, terminal_reason=current.failure_reason)
                 return projection
@@ -580,6 +704,7 @@ class WorkflowService:
             current.output_ref = f"artifact://{record.run_id}/{current.node_id}"
 
         projection = self._advance_to_next(record, now)
+        self._persist(record)
         self._emit_audit(
             record,
             AuditAction.RUN_ADVANCE,
@@ -652,6 +777,7 @@ class WorkflowService:
         self._invalidate_run_slices(
             record, f"run_cancelled:{reason}", SliceStatus.CANCELLED
         )
+        self._persist(record)
         projection = self._build_projection(record)
         self._emit_audit(
             record,
@@ -694,4 +820,6 @@ class WorkflowService:
             AuditResult.SUCCESS,
             details={"todo_id": todo_id, "resolution": resolution},
         )
-        return self._advance_to_next(record, now)
+        projection = self._advance_to_next(record, now)
+        self._persist(record)
+        return projection

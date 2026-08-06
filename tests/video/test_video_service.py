@@ -545,7 +545,10 @@ def test_failed_auto_retry_budget_bounded(tmp_path: Path) -> None:
     h.run_pending()
     row = h.task_row(task.task_id)
     assert row["status"] == "failed"
-    assert int(row["retry_count"]) == 3
+    # Issue 43：自动重试预算由队列 attempt 管理（业务行 retry_count 不再
+    # 反映自动重试次数）；预算耗尽后任务驻留等待手动重试。
+    assert h.service._task_queue.pending_count("video") == 1  # noqa: SLF001
+    assert h.service._task_queue.claim_next("video", "probe") is None  # noqa: SLF001
 
 
 # ---------------------------------------------------------------------------

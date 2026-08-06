@@ -171,27 +171,26 @@ def test_retry_is_idempotent_across_ticks(storage) -> None:
 
 
 def test_interrupted_task_recovered_after_lease_expiry(storage) -> None:
+    """Issue 43：进程中断（租约过期）后按队列契约自动恢复重领。"""
     service, _ = make_ingestion(storage, embedding_available=True)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
     service.enqueue(account_id, object_id, "conversation-1")
 
-    # 模拟中断：直接领取并让租约过期（不完成处理）
-    service._claim(account_id, 5)
+    # 模拟中断：领取后不完成处理，让队列租约过期（崩溃恢复的唯一规则）。
+    claim = service._task_queue.claim_next("ingestion", "test-worker")  # noqa: SLF001
+    assert claim is not None
     stale = datetime.now(UTC) - timedelta(seconds=3600)
     storage["database"].connection.execute(
-        "UPDATE document_records SET lease_expires_at = ? WHERE account_id = ?",
-        (stale.isoformat(timespec="seconds"), account_id),
+        "UPDATE task_claims SET lease_expires_at = ? WHERE claim_id = ?",
+        (stale.isoformat(timespec="seconds"), claim.claim_id),
     )
     storage["database"].connection.commit()
 
-    projection = _ready_projection(service, account_id, object_id)
-    assert projection.status == DocumentIngestionStatus.RECOVERY  # 租约过期呈现恢复中
-
+    # 租约过期：任务可被重领（同任务不重复执行——原任务从未完成）。
     service.process_pending()
     ready = _ready_projection(service, account_id, object_id)
     assert ready.status == DocumentIngestionStatus.READY
-    assert ready.retry_count >= 2  # 两次领取
 
 
 def test_same_content_different_accounts_isolated(storage) -> None:

@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 26
+SCHEMA_VERSION = 28
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1311,6 +1311,113 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX IF NOT EXISTS idx_eval_reviews_lock
             ON eval_blind_reviews(lock_id, created_at)
+        """,
+    ],
+    # Issue 43：统一「领取型任务」契约（runtime/queue.py 深 module）。
+    # task_claims 只做领取与调度（租约/退避/崩溃恢复），子系统业务表
+    # 仍是其自身状态的权威来源，不迁移存量 schema。表为系统级（跨账户
+    # 调度），不含 account_id，不经账户作用域写入。
+    27: [
+        """
+        CREATE TABLE IF NOT EXISTS task_claims (
+            claim_id TEXT PRIMARY KEY,
+            queue_name TEXT NOT NULL,
+            task_key TEXT NOT NULL,
+            worker TEXT,
+            attempt INTEGER NOT NULL DEFAULT 0,
+            claimed_at TEXT,
+            lease_expires_at TEXT,
+            next_retry_at TEXT,
+            payload_json TEXT,
+            result_json TEXT,
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'claimed', 'completed', 'failed')),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (queue_name, task_key)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_task_claims_queue
+            ON task_claims(queue_name, status, created_at)
+        """,
+        # 存量任务回填：升级前处于可处理状态的业务行进入调度表，避免
+        # 迁移后孤儿化（旧实现每轮全表扫描会重试它们，新实现只处理
+        # 队列行）。回填为 queued 立即重领，等价于旧「重启后恢复」语义；
+        # 已耗尽/永久失败（retry_count 达上限、error_code 永久码）不回
+        # 填，等子系统手动重试时重新入队。INSERT OR IGNORE 保证重复
+        # 升级不重复回填。
+        """
+        INSERT OR IGNORE INTO task_claims(claim_id, queue_name, task_key, attempt,
+            status, created_at, updated_at)
+        SELECT 'cl-backfill-ing-' || document_id, 'ingestion',
+               'ingestion:' || account_id || ':' || object_id, 0, 'queued',
+               COALESCE(created_at, '1970-01-01T00:00:00+00:00'),
+               COALESCE(updated_at, created_at, '1970-01-01T00:00:00+00:00')
+        FROM document_records
+        WHERE status IN ('queued', 'parsing', 'processing')
+           OR (status = 'error' AND retry_count < 3)
+        """,
+        """
+        INSERT OR IGNORE INTO task_claims(claim_id, queue_name, task_key, attempt,
+            status, created_at, updated_at)
+        SELECT 'cl-backfill-img-' || task_id, 'image',
+               'image:' || account_id || ':' || task_id, 0, 'queued',
+               COALESCE(created_at, '1970-01-01T00:00:00+00:00'),
+               COALESCE(updated_at, created_at, '1970-01-01T00:00:00+00:00')
+        FROM image_tasks
+        WHERE status IN ('queued', 'running')
+           OR (status = 'failed' AND retry_count < 3)
+        """,
+        """
+        INSERT OR IGNORE INTO task_claims(claim_id, queue_name, task_key, attempt,
+            status, created_at, updated_at)
+        SELECT 'cl-backfill-vid-' || task_id, 'video',
+               'video:' || account_id || ':' || task_id, 0, 'queued',
+               COALESCE(created_at, '1970-01-01T00:00:00+00:00'),
+               COALESCE(updated_at, created_at, '1970-01-01T00:00:00+00:00')
+        FROM video_tasks
+        WHERE status IN ('queued', 'submitting', 'generating', 'cancelling')
+           OR (status = 'failed' AND retry_count < 3
+               AND error_code NOT IN ('empty_result'))
+        """,
+        """
+        INSERT OR IGNORE INTO task_claims(claim_id, queue_name, task_key, attempt,
+            status, created_at, updated_at)
+        SELECT 'cl-backfill-del-' || deletion_id, 'deletion',
+               'deletion:' || deletion_id, 0, 'queued',
+               COALESCE(started_at, '1970-01-01T00:00:00+00:00'),
+               COALESCE(completed_at, started_at, '1970-01-01T00:00:00+00:00')
+        FROM account_deletions
+        WHERE status = 'failed'
+        """,
+    ],
+    # Issue 43：workflows 运行状态持久化——内存 _RunRecord 落 SQLite，
+    # 崩溃后进程重建可从本表恢复运行（与 lifecycle/deletion 的持久化
+    # 恢复语义一致）。run 由 JSON 快照承载（pydantic 序列化），状态
+    # 列冗余主状态便于运维查询。
+    28: [
+        """
+        CREATE TABLE IF NOT EXISTS workflow_runs (
+            run_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            context_json TEXT NOT NULL,
+            work_order_json TEXT NOT NULL,
+            status TEXT NOT NULL,
+            artifact_trust_status TEXT NOT NULL,
+            nodes_json TEXT NOT NULL DEFAULT '[]',
+            human_todos_json TEXT NOT NULL DEFAULT '[]',
+            model_run_locks_json TEXT NOT NULL DEFAULT '[]',
+            current_node_index INTEGER,
+            run_started_at TEXT,
+            run_ended_at TEXT,
+            cancel_reason TEXT,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_workflow_runs_account
+            ON workflow_runs(account_id, updated_at)
         """,
     ],
 }

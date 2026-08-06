@@ -223,3 +223,62 @@ def test_delete_other_account_data_unaffected_by_retry(tmp_path) -> None:
         (harness.acc2,),
     ).fetchone()["count"]
     assert b_summary_before == b_summary_after
+
+
+def test_failed_deletion_is_queued_and_retried_by_worker(tmp_path) -> None:
+    """Issue 43：失败删除经统一领取型任务队列自动重试。
+
+    删除失败 → 状态 failed + 队列入队（同一事务）；后台轮（worker）
+    按租约领取并重试；重试成功后队列行收敛，不残留、不重复执行。
+    """
+    harness = Harness(tmp_path)
+    harness.seed_everything()
+
+    def _failing_cleaner(content_hash: str) -> None:
+        raise StorageError("模拟磁盘写入失败")
+
+    harness.deletion._file_cleaner = _failing_cleaner  # type: ignore[attr-defined]
+    with pytest.raises(DataLifecycleError):
+        harness.deletion.delete_account(harness.acc1)
+    # 失败状态与队列行同一事务落库：立即入队。
+    row = harness.database.connection.execute(
+        "SELECT status FROM task_claims WHERE queue_name = 'deletion'"
+    ).fetchone()
+    assert row is not None and row["status"] == "queued"
+    # 清理器恢复后，worker 一轮重试完成删除。
+    harness.deletion._file_cleaner = None  # type: ignore[attr-defined]
+    summary = harness.deletion.process_pending_retries()
+    assert "处理 1 次" in summary and "失败 0 次" in summary
+    status = harness.deletion.get_status(harness.acc1)
+    assert status is not None
+    assert status.status == AccountDeletionStatus.COMPLETED
+    # 队列行收敛为 completed，下轮不再处理。
+    row = harness.database.connection.execute(
+        "SELECT status FROM task_claims WHERE queue_name = 'deletion'"
+    ).fetchone()
+    assert row is not None and row["status"] == "completed"
+    assert "无待重试" in harness.deletion.process_pending_retries()
+
+
+def test_failed_deletion_retry_is_queued_again(tmp_path) -> None:
+    """重试仍失败时保持可重试（队列继续持有，不宣称成功）。"""
+    harness = Harness(tmp_path)
+    harness.seed_everything()
+
+    def _failing_cleaner(content_hash: str) -> None:
+        raise StorageError("模拟磁盘写入失败")
+
+    harness.deletion._file_cleaner = _failing_cleaner  # type: ignore[attr-defined]
+    with pytest.raises(DataLifecycleError):
+        harness.deletion.delete_account(harness.acc1)
+    summary = harness.deletion.process_pending_retries()
+    assert "处理 1 次" in summary and "失败 1 次" in summary
+    status = harness.deletion.get_status(harness.acc1)
+    assert status is not None
+    assert status.status == AccountDeletionStatus.FAILED
+    assert status.retry_count >= 2
+    # 仍驻留队列（FIXED 0 秒退避），下一轮继续重试。
+    row = harness.database.connection.execute(
+        "SELECT status, next_retry_at FROM task_claims WHERE queue_name = 'deletion'"
+    ).fetchone()
+    assert row is not None and row["status"] == "failed"

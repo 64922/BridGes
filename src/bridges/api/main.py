@@ -1238,13 +1238,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     app.state.domain_pack_lifecycle = domain_pack_lifecycle
 
-    # T006/T009: attach the in-memory workflow service and register workflows.
+    # T006/T009: attach the workflow service and register workflows。
+    # Issue 43：运行状态落 SQLite（workflow_runs），进程重建后从磁盘
+    # 恢复进行中的运行；未配置数据库时保持纯内存。
     workflow_service = WorkflowService(
         scope_enforcer=app.state.scope_enforcer,
         model_gateway=model_gateway,
         observability_service=app.state.observability_service,
         invalidation_service=invalidation_service,
         profile_service=app.state.profile_service,
+        database=bridges_database,
     )
     _register_builtin_workflows(workflow_service)
     app.state.workflow_service = workflow_service

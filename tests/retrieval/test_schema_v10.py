@@ -51,6 +51,33 @@ def _build_v9_database(path: Path) -> None:
             " created_at TEXT NOT NULL,"
             " updated_at TEXT NOT NULL)"
         )
+        # v7 迁移建立的摄取记录表：真实 v9 库必然存在（Issue 43 迁移 27
+        # 的存量回填 SELECT 引用它），骨架须复刻以免升级路径缺表。
+        connection.execute(
+            "CREATE TABLE document_records ("
+            " document_id TEXT PRIMARY KEY,"
+            " account_id TEXT NOT NULL,"
+            " object_id TEXT NOT NULL,"
+            " conversation_id TEXT NOT NULL,"
+            " content_hash TEXT NOT NULL,"
+            " parser_version TEXT NOT NULL,"
+            " status TEXT NOT NULL DEFAULT 'queued'"
+            "   CHECK (status IN ('queued', 'parsing', 'processing',"
+            "   'ready', 'empty', 'error')),"
+            " failure_stage TEXT,"
+            " failure_reason TEXT,"
+            " retry_count INTEGER NOT NULL DEFAULT 0,"
+            " title TEXT,"
+            " page_count INTEGER NOT NULL DEFAULT 0,"
+            " section_count INTEGER NOT NULL DEFAULT 0,"
+            " chunk_count INTEGER NOT NULL DEFAULT 0,"
+            " vector_enabled INTEGER NOT NULL DEFAULT 0,"
+            " vector_indexed INTEGER NOT NULL DEFAULT 0,"
+            " claimed_at TEXT,"
+            " lease_expires_at TEXT,"
+            " created_at TEXT NOT NULL,"
+            " updated_at TEXT NOT NULL)"
+        )
         connection.execute(
             "INSERT INTO conversations"
             " (conversation_id, account_id, title, mode, created_at, updated_at)"

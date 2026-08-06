@@ -66,6 +66,7 @@ from bridges.reminder.rules import (
     validate_timezone,
 )
 from bridges.reminder.smtp import QqMailGateway, SmtpError
+from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage import BridgesDatabase
 
 #: 授权码格式：QQ 邮箱授权码为 16 位字母数字（容忍 10-32 位）。
@@ -74,6 +75,8 @@ _AUTH_CODE_RE = re.compile(r"^[A-Za-z0-9]{10,32}$")
 #: 发送尝试上限与退避秒数（首次失败后 30s、60s 递增，封顶 300s）。
 MAX_SEND_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = 30
+#: 退避上限（秒）：与队列 EXPONENTIAL 公式的 cap 对齐。
+_RETRY_CAP_SECONDS = 300
 
 #: 到期判定的宽松阈值：调度器轮询粒度（60s）内的正常延迟不算补发，
 #: 只有超过该阈值的到期才进入 24 小时补发/错过语义。
@@ -1316,13 +1319,18 @@ class ReminderService:
             )
             self._pause_missing_credential(account_id, reminder_id, message)
             return
-        # 临时/其他失败：有限退避重试
+        # 临时/其他失败：有限退避重试（退避公式单一实现于
+        # runtime.queue，Issue 43 统一契约；提醒的补发窗口、重复任务
+        # 最近一次补发、窗口外记错过等业务语义保留在本域）。
         retry_count = int(row["retry_count"]) + 1
         exhausted = retry_count >= self._max_send_attempts
         next_retry_at: datetime | None = None
         if not exhausted:
-            backoff = min(
-                _RETRY_BACKOFF_SECONDS * 2 ** (retry_count - 1), 300
+            backoff = TaskQueue.compute_backoff(
+                RetryKind.EXPONENTIAL,
+                retry_count,
+                base_seconds=_RETRY_BACKOFF_SECONDS,
+                cap_seconds=_RETRY_CAP_SECONDS,
             )
             next_retry_at = now + timedelta(seconds=backoff)
         self._record_delivery(

@@ -83,11 +83,10 @@ def test_worker_tick_recovers_after_restart(tmp_path: Path) -> None:
     first = BackgroundExecutor(settings)
     first._ensure_ingestion()  # type: ignore[attr-defined]
     first._ingestion.enqueue(account_id, object_id, "conversation-1")  # type: ignore[attr-defined]
-    first._ingestion._claim(account_id, 5)  # type: ignore[attr-defined]
-    row = database.connection.execute(
-        "SELECT status FROM document_records WHERE object_id = ?", (object_id,)
-    ).fetchone()
-    assert row is not None and str(row["status"]) == "parsing"
+    claim = first._ingestion._task_queue.claim_next(  # type: ignore[attr-defined]
+        "ingestion", "test-worker"
+    )
+    assert claim is not None
     first._database.close()  # type: ignore[attr-defined]
 
     # 第二次执行器（重启）：租约仍在有效期内 → 不重复领取；过租约后恢复
@@ -95,9 +94,9 @@ def test_worker_tick_recovers_after_restart(tmp_path: Path) -> None:
     summary = second.run_tick()
     assert "处理 0 份文档" in summary  # 租约未过期，幂等不重复领取
     database.connection.execute(
-        "UPDATE document_records SET lease_expires_at = '2020-01-01T00:00:00+00:00'"
-        " WHERE object_id = ?",
-        (object_id,),
+        "UPDATE task_claims SET lease_expires_at = '2020-01-01T00:00:00+00:00'"
+        " WHERE claim_id = ?",
+        (claim.claim_id,),
     )
     database.connection.commit()
     summary = second.run_tick()

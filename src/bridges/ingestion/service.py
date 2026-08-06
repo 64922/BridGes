@@ -38,9 +38,20 @@ from bridges.ingestion.parsers import (
     ParseError,
     parse_document,
 )
+from bridges.runtime.queue import (
+    Claim,
+    RetryKind,
+    TaskPermanentError,
+    TaskQueue,
+    TaskRetryError,
+    TaskWorker,
+)
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
+
+#: 摄取任务队列名（task_claims 调度表）。
+_INGESTION_QUEUE = "ingestion"
 
 #: 每账户每轮最多领取的文档数（防止单轮阻塞过久）。
 CLAIM_BATCH_SIZE = 5
@@ -151,12 +162,24 @@ class IngestionService:
         probe_service: CapabilityProbeService | None = None,
         embedding: EmbeddingPort | None = None,
         index: VersionedIndex | None = None,
+        task_queue: TaskQueue | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
         self._probes = probe_service
         self._embedding = embedding
         self._index = index
+        # Issue 43：领取/租约/退避/崩溃恢复由统一任务队列承担；本服务
+        # 只提供「处理这一份文档」的 handler。
+        self._task_queue = task_queue or TaskQueue(database)
+        self._task_queue.set_lease_seconds(_INGESTION_QUEUE, LEASE_SECONDS)
+        self._worker = TaskWorker(
+            self._task_queue,
+            _INGESTION_QUEUE,
+            "ingestion-worker",
+            self._handle_ingestion_claim,
+            default_max_attempts=MAX_AUTO_RETRIES,
+        )
 
     # ------------------------------------------------------------------
     # API 进程：入队 / 重试 / 投影
@@ -212,6 +235,11 @@ class IngestionService:
                         now,
                     ),
                 )
+                # 领取型任务入队（同一事务）：后台执行器按统一队列契约
+                # 领取处理，无需每轮全表扫描 queued 行。
+                self._task_queue.enqueue(
+                    _INGESTION_QUEUE, f"ingestion:{account_id}:{object_id}"
+                )
         except sqlite3.Error as exc:
             raise IngestionError(
                 "ingestion_save_failed", "摄取记录保存失败，请稍后重试。", 503
@@ -228,6 +256,10 @@ class IngestionService:
                 " claimed_at = NULL, lease_expires_at = NULL, updated_at = ?"
                 " WHERE account_id = ? AND object_id = ? AND status = 'error'",
                 (_now(), account_id, object_id),
+            )
+            # 手动重试重新入队（同一事务）：重置退避计数，恢复自动领取。
+            self._task_queue.enqueue(
+                _INGESTION_QUEUE, f"ingestion:{account_id}:{object_id}"
             )
         return self.projection(account_id, object_id)
 
@@ -377,6 +409,11 @@ class IngestionService:
                 " rebuild_requested = 1, updated_at = ?"
                 " WHERE account_id = ? AND document_id = ?",
                 (_now(), account_id, document_id),
+            )
+            # 重建重新入队（同一事务）：此前完成的队列行需复活为 queued，
+            # 由后台执行器重新处理（队列行已完成时不会自动重领）。
+            self._task_queue.enqueue(
+                _INGESTION_QUEUE, f"ingestion:{account_id}:{object_id}"
             )
 
     def delete_material(self, account_id: str, object_id: str) -> None:
@@ -597,16 +634,23 @@ class IngestionService:
     # ------------------------------------------------------------------
 
     def process_pending(self) -> str:
-        """执行一轮后台摄取：清理孤立记录 → 逐账户领取处理 → 索引维护。"""
+        """执行一轮后台摄取：清理孤立记录 → 队列领取处理 → 索引维护。
+
+        Issue 43：领取/租约/退避/崩溃恢复由统一领取型任务队列承担；
+        每文档创建/重试时入队，worker 按租约领取并逐件处理。
+        """
         if self._index is None or self._embedding is None:
             return "worker: 摄取处理未启用（缺少索引或向量化组件）。"
         purged = self._purge_orphaned()
+        handled, _failed = self._worker.drain(max_steps=CLAIM_BATCH_SIZE)
+        # 索引维护与用户请求的重建不依赖文档领取状态（只依赖文档是否
+        # 已完成），在本轮任务收敛后逐账户执行。
         accounts = self._accounts_with_records()
-        processed = 0
         for account_id in accounts:
-            processed += self._process_account(account_id)
+            self._apply_rebuild_requests(account_id)
+            self._maintain_account_index(account_id)
         return (
-            f"worker: 摄取完成：本轮处理 {processed} 份文档，"
+            f"worker: 摄取完成：本轮处理 {handled} 份文档，"
             f"清理 {purged} 条孤立摄取记录。"
         )
 
@@ -616,15 +660,61 @@ class IngestionService:
         ).fetchall()
         return [str(row["account_id"]) for row in rows]
 
-    def _process_account(self, account_id: str) -> int:
-        claimed = self._claim(account_id, CLAIM_BATCH_SIZE)
-        processed = 0
-        for document_id in claimed:
-            if self._process_document(account_id, document_id):
-                processed += 1
-        self._apply_rebuild_requests(account_id)
-        self._maintain_account_index(account_id)
-        return processed
+    def _handle_ingestion_claim(self, claim: Claim) -> None:
+        """队列 handler：处理一份文档（只管干这一件活儿）。
+
+        记录已清理或已收敛（ready/empty，如手动重试已成功）时跳过；
+        失败按业务行状态区分永久失败（损坏/凭据缺失，_fail 已把
+        retry_count 顶到上限）与可重试失败。
+        """
+        _, account_id, object_id = claim.task_key.split(":", 2)
+        row = self._database.connection.execute(
+            "SELECT document_id, status FROM document_records"
+            " WHERE account_id = ? AND object_id = ?",
+            (account_id, object_id),
+        ).fetchone()
+        if row is None:
+            return  # 记录已清理（purge/删除）：跳过
+        if str(row["status"]) in ("ready", "empty"):
+            return  # 已收敛：跳过
+        document_id = str(row["document_id"])
+        # 业务行呈现「处理中」（parsing + 租约）：租约过期时前端呈现
+        # recovery（上次处理中断，后台恢复中）；领取调度本身由队列承担。
+        now = datetime.now(UTC)
+        now_text = _now()
+        with self._database.transaction():
+            self._database.connection.execute(
+                "UPDATE document_records SET status = 'parsing', claimed_at = ?,"
+                " lease_expires_at = ?, updated_at = ?"
+                " WHERE document_id = ? AND account_id = ?",
+                (
+                    now_text,
+                    (now + timedelta(seconds=LEASE_SECONDS)).isoformat(
+                        timespec="seconds"
+                    ),
+                    now_text,
+                    document_id,
+                    account_id,
+                ),
+            )
+        self._process_document(account_id, document_id)
+        row = self._database.connection.execute(
+            "SELECT status, failure_reason, retry_count FROM document_records"
+            " WHERE account_id = ? AND document_id = ?",
+            (account_id, document_id),
+        ).fetchone()
+        if row is None or str(row["status"]) in ("ready", "empty"):
+            return  # 成功收敛
+        reason = str(row["failure_reason"]) or "处理失败"
+        # 永久失败：_fail(permanent=True) 把 retry_count 顶到自动重试
+        # 上限，不消耗队列重试预算（等用户手动 mark_retry）。
+        if int(row["retry_count"]) >= MAX_AUTO_RETRIES:
+            raise TaskPermanentError(reason)
+        raise TaskRetryError(
+            reason,
+            retry_kind=RetryKind.EXPONENTIAL,
+            max_attempts=MAX_AUTO_RETRIES,
+        )
 
     def _apply_rebuild_requests(self, account_id: str) -> None:
         """执行用户显式请求的版本化重建（Issue 18）：全量重建产生新版本。
@@ -651,57 +741,6 @@ class IngestionService:
                 " WHERE account_id = ? AND rebuild_requested = 1 AND status != 'queued'",
                 (_now(), account_id),
             )
-
-    def _claim(self, account_id: str, limit: int) -> list[str]:
-        """按租约领取可处理文档（幂等：已被领取且租约未过期的不再领取）。
-
-        领取条件同时用于外层 UPDATE 与内层排序子查询：最旧的 limit 份
-        不可领取（已就绪/租约未过期/超出自动重试上限）时不会饿死后续
-        文档；error 且超过自动重试上限的文档只等用户手动重试。
-        """
-        now = datetime.now(UTC)
-        lease_expires = now + timedelta(seconds=LEASE_SECONDS)
-        now_text = now.isoformat(timespec="seconds")
-        condition = (
-            "status = 'queued'"
-            f" OR (status = 'error' AND retry_count < {MAX_AUTO_RETRIES})"
-            " OR (status IN ('parsing', 'processing')"
-            "     AND lease_expires_at IS NOT NULL AND lease_expires_at < ?)"
-        )
-        try:
-            with self._database.transaction():
-                cursor = self._database.connection.execute(
-                    "UPDATE document_records SET status = 'parsing', claimed_at = ?,"
-                    " lease_expires_at = ?, retry_count = retry_count + 1,"
-                    " updated_at = ?"
-                    " WHERE account_id = ? AND (" + condition + ")"
-                    " AND document_id IN ("
-                    "   SELECT document_id FROM document_records"
-                    "   WHERE account_id = ? AND (" + condition + ")"
-                    "   ORDER BY created_at, document_id LIMIT ?"
-                    " )",
-                    (
-                        now_text,
-                        lease_expires.isoformat(timespec="seconds"),
-                        now_text,
-                        account_id,
-                        now_text,
-                        account_id,
-                        now_text,
-                        limit,
-                    ),
-                )
-                if cursor.rowcount == 0:
-                    return []
-                rows = self._database.connection.execute(
-                    "SELECT document_id FROM document_records"
-                    " WHERE account_id = ? AND status = 'parsing' AND claimed_at = ?"
-                    " ORDER BY created_at, document_id",
-                    (account_id, now_text),
-                ).fetchall()
-                return [str(row["document_id"]) for row in rows]
-        except sqlite3.Error:
-            return []
 
     def _process_document(self, account_id: str, document_id: str) -> bool:
         """处理一份文档：读对象 → 解析（缓存复用）→ 分块 → 向量化 → 索引。"""

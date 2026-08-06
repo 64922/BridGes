@@ -18,6 +18,10 @@ from __future__ import annotations
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from bridges.lifecycle.deletion import DeletionService
 
 from bridges.ai import (
     CapabilityRegistry,
@@ -44,7 +48,6 @@ from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
-from bridges.lifecycle.deletion import DeletionService
 from bridges.observability.service import ObservabilityService
 from bridges.persistence import (
     PersistenceError,
@@ -320,6 +323,10 @@ class BackgroundExecutor:
         """
         if self._deletion is not None or self._idle_reason is not None:
             return self._deletion
+        # 函数内延迟导入：DeletionService 反向依赖 runtime.queue（Issue
+        # 43），顶层导入会在 runtime 包初始化期间形成循环。
+        from bridges.lifecycle.deletion import DeletionService
+
         repository = self._ensure_repository()
         if repository is None:
             return None

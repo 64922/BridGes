@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import secrets
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -35,12 +36,22 @@ from bridges.credentials.store import CredentialStorePort
 from bridges.identity.service import IdentityService
 from bridges.lifecycle.catalog import delete_account_rows
 from bridges.observability.service import ObservabilityService
+from bridges.runtime.queue import (
+    Claim,
+    RetryKind,
+    TaskQueue,
+    TaskRetryError,
+    TaskWorker,
+)
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
 
 #: deleting 状态超过该时长视为进程中断（崩溃/断电），可安全重试。
 _STALE_DELETION_TTL = timedelta(minutes=10)
+
+#: 失败删除重试的队列名（task_claims 调度表）。
+_DELETION_QUEUE = "deletion"
 
 ObjectFileCleaner = Callable[[str], None]
 
@@ -66,6 +77,7 @@ class DeletionService:
         observability_service: ObservabilityService,
         key_credential_service: KeyCredentialService | None = None,
         object_file_cleaner: ObjectFileCleaner | None = None,
+        task_queue: TaskQueue | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
@@ -75,6 +87,21 @@ class DeletionService:
         self._observability = observability_service
         self._key_credentials = key_credential_service
         self._file_cleaner = object_file_cleaner
+        # 失败重试走统一领取型任务契约（Issue 43）：租约/退避/崩溃恢复
+        # 由 TaskQueue 承担，本服务只提供「重试这一件删除」的 handler。
+        # 默认不设重试预算（default_max_attempts=0）：失败删除在业务表
+        # 状态机内保持 failed 可重试，直到成功或用户干预。
+        self._task_queue = task_queue or TaskQueue(database)
+        self._task_queue.set_lease_seconds(
+            _DELETION_QUEUE, _STALE_DELETION_TTL.total_seconds()
+        )
+        self._worker = TaskWorker(
+            self._task_queue,
+            _DELETION_QUEUE,
+            "deletion-worker",
+            self._handle_deletion_claim,
+            default_max_attempts=0,
+        )
 
     # ------------------------------------------------------------------
     # 查询
@@ -191,23 +218,39 @@ class DeletionService:
         return self._run_cleanup_phase(deletion_id, account_id, pending_hashes)
 
     def process_pending_retries(self) -> str:
-        """重试全部失败状态的删除（后台执行器轮），返回中文摘要。"""
-        rows = self._database.connection.execute(
-            "SELECT deletion_id FROM account_deletions"
-            " WHERE status = ? ORDER BY started_at",
-            (AccountDeletionStatus.FAILED.value,),
-        ).fetchall()
-        summary: list[str] = []
-        for row in rows:
-            try:
-                projection = self.retry_deletion(str(row["deletion_id"]))
-                summary.append(
-                    f"账户删除重试 {projection.account_id}:"
-                    f"{projection.status.value}"
-                )
-            except DataLifecycleError as exc:
-                summary.append(f"账户删除重试失败：{exc.message}")
-        return "worker: " + ("；".join(summary) if summary else "无待重试的账户删除。")
+        """重试全部失败状态的删除（后台执行器轮），返回中文摘要。
+
+        Issue 43：原自建「每轮扫描 failed 行」循环已由统一领取型任务
+        队列接管——失败删除在 ``_mark_failed`` 时入队，worker 按租约
+        领取并逐件重试（崩溃后租约过期自动重领，恢复语义与队列一致）。
+        """
+        handled, failed = self._worker.drain()
+        if handled == 0:
+            return "worker: 无待重试的账户删除。"
+        return (
+            f"worker: 账户删除重试：处理 {handled} 次，"
+            f"失败 {failed} 次。"
+        )
+
+    def _handle_deletion_claim(self, claim: Claim) -> None:
+        """队列 handler：重试一次失败的删除（只管干这一件活儿）。
+
+        业务行已收敛（手动重试成功等）时返回 None 跳过——队列行残留
+        在完成时被 worker 清理，不会重复执行。
+        """
+        deletion_id = claim.task_key.split(":", 1)[1]
+        row = self._database.connection.execute(
+            "SELECT status FROM account_deletions WHERE deletion_id = ?",
+            (deletion_id,),
+        ).fetchone()
+        if row is None or str(row["status"]) == AccountDeletionStatus.COMPLETED.value:
+            return
+        try:
+            self.retry_deletion(deletion_id)
+        except DataLifecycleError as exc:
+            # 删除失败可重试（含 409 进行中：下轮再试），直到成功或
+            # 用户干预；错误语义与文案由业务层保持。
+            raise TaskRetryError(exc.message, retry_kind=RetryKind.FIXED) from exc
 
     # ------------------------------------------------------------------
     # 内部
@@ -300,7 +343,12 @@ class DeletionService:
                     " WHERE deletion_id = ?",
                     (AccountDeletionStatus.FAILED.value, error, _now(), deletion_id),
                 )
-        except StorageError:
+                # 失败删除入队（幂等重置，同一事务）：后台执行器按统一
+                # 队列契约自动重试，无需每轮全表扫描 failed 行。
+                self._task_queue.enqueue(
+                    _DELETION_QUEUE, f"deletion:{deletion_id}"
+                )
+        except (StorageError, sqlite3.Error):
             pass  # 状态行写入失败不覆盖原始错误语义
         self._observability.log_audit(
             actor_account_id=account_id,

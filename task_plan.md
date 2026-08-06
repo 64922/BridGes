@@ -1,58 +1,35 @@
-# 任务规划：Issue 41 — 退役旧实现并通过发布门
+# 任务规划：架构加深修复（architecture deepening）
 
-状态：已完成并提交（3e2789e，2026-08-06）
+状态：候选 1 已完成；候选 2–8 已拆分为独立 issue（含详细解决方案），
+按用户指示暂停实现，逐个实施前先评审对应 issue。
 
-## 交付内容
+来源：`/improve-codebase-architecture` 评审报告（8 候选 + 4 小摩擦），按报告 Top 推荐顺序。
 
-### A. 前端退役
-- 删除旧项目工作台 `(app)/projects/[projectId]/`（7 页 + layout）、`account/eval` 空壳、
-  components/project/**、ProjectLayout/InspectorPanel/SidebarNav；AppShell 仅保留
-  account mode；account 首页改拉真实学习项目、移除「全局科学伙伴」旧术语与
-  「评测与运行中心」空壳入口；清理前端旧 /api/projects 客户端函数
-- e2e：删除 t004-projects；t002/issue14 改新路径；issue09 慢响应 mock 迁移到
-  /api/learning-projects；check_frontend_completeness 扫描范围扩展
-- /templates 设计基线模板保留（开发专用、生产 middleware 不可达、issue04 E2E 锁定）
+## 候选清单
 
-### B. 后端退役
-- 移除 qwen_force_stub 配置与 StubQwenAdapter 生产注册（仅 environment==test 门控，
-  与 /_test/* 同一模式）；/_test/recovery-token、/_test/runs/{id}/advance test 门控；
-  媒体表格硬编码示例退役；删除 src/science_companion 兼容层 + pyproject 旧入口 +
-  对应测试；doctor 提示改真实停用语义
-- 修复：空密钥误注册真实适配器（_has_real_qwen_key）、Stub 驱动媒体提取/旁白合成
-  （无真实密钥时接确定性路径）
+1. **加深聊天回合管线** ✅ 已完成（2026-08-06）
+   - 新模块 `chat/turn.py`：`TurnOrchestrator`（单一 stream_turn 接口、模式路由内部
+     seam、`_run_retrieval` 检索单点、`assemble_payload` 组装单点、thinking 类型化为
+     `ChatThinkingSummary`）；`ChatService` 瘦身 4188 → ~1390 行并委托
+   - 验收：146 chat 测试 + 全量 2148 pytest 通过、ruff 干净、公开导入面不变
+   - 详见 `.scratch/bridges-improvement/issues/42-architecture-deepening.md`
 
-### C. 发布门
-- 修复 science-medical-boundary 评测夹具（答案与断言标记不一致）→ 9 项阈值检查全过、
-  blockers 为空；评测 74 测试通过；发布候选报告
-  `.scratch/bridges-improvement/41-release-candidate-report.md`
-
-### D. 部署验收
-- Conda 实测 BridGes start 生产 profile：迁移 26 → 四进程 → health ready → 单实例锁
-  拒绝重复启动 → 强杀后锁自动释放二次启动成功、无孤儿；全新 .venv 安装 + doctor/
-  migrate 关键合同通过；Docker/Podman 由契约测试覆盖（本机无二进制，如实记录）
-
-### E. 文档
-- README（零 .env、能力停用、账户秘密、备份恢复、发布门、品牌迁移完成）、
-  infra/manual；旧 Wayfinder 与 tickets.md 保持只读原样
-
-## 测试与验收
-
-- 后端全量 pytest 2148 passed / 6 skipped / 0 failed
-- E2E 两次全量 271 passed，4 例为本机既有环境问题（issue04 附件模板、issue08 视觉
-  快照漂移，干净树同失败）与负载型 flaky（issue35/issue38，单跑通过）；本提交改动
-  spec 4 轮全过
-- 静态扫描：前端完整性通过；后端无 Stub/force_stub/旧包名/离线桩实际残留
-- /code-review 双轴审查并修复 7 项（issue09 mock 悬空、FORCE_STUB 残留、test_registry
-  环境混用、注释/README 措辞、gates 表述、t002 标题、account-page 注释）
-- 已知边界（预存在，如实披露）：模型适配器由全局 BRIDGES_QWEN_API_KEY 注册，账户级
-  密钥驱动探测与 Embedding；README 与 doctor 已如实表述
+2. **统一领取型任务契约** → Issue 43（解决方案已写，待实施）
+3. **对象授权收拢** → Issue 44（解决方案已写，待实施）
+4. **服务不再直读不属于自己的表** → Issue 45（解决方案已写，待实施）
+5. **前端数据获取 module** → Issue 46（解决方案已写，待实施）
+6. **单一流事件 adapter** → Issue 47（解决方案已写，待实施）
+7. **密钥环 seam** → Issue 48（解决方案已写，待实施）
+8. **跨缝展示知识收拢 + 小摩擦** → Issue 49（解决方案已写，待实施）
 
 ## 里程碑
 
-- [x] 前端旧面删除 + e2e 迁移
-- [x] 后端 Stub/测试端点/兼容层退役
-- [x] 发布门通过（含评测夹具修复）
-- [x] 四部署验收 + 文档更新
-- [x] 全量测试 + 静态扫描
-- [x] /code-review 双轴审查并修复
-- [x] Issue 41 AC 全部勾选 + 提交（3e2789e）
+- [x] 候选 1 完成：tests/chat 全绿 + 全量回归通过 + ruff 干净
+- [x] 候选 2 完成（Issue 43，实施中）
+- [ ] 候选 3 完成（Issue 44）
+- [ ] 候选 4 完成（Issue 45）
+- [ ] 候选 5 完成（Issue 46）
+- [ ] 候选 6 完成（Issue 47）
+- [ ] 候选 7 完成（Issue 48）
+- [ ] 候选 8 + 小摩擦完成（Issue 49）
+- [ ] 提交 + 验收证据汇总
