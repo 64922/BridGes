@@ -154,6 +154,23 @@ def migrate() -> None:
     _run_database_migration(settings)
 
 
+def _ensure_standalone_assets(web_dir: Path) -> None:
+    """把 Web 构建产物的静态资源同步进 standalone 目录（与 Dockerfile 同款语义）。
+
+    Next.js standalone 输出不含 ``.next/static`` 与 ``public``，而 standalone
+    服务器只服务自身目录内的文件；缺失时所有 CSS/JS/品牌资源返回 404，页面
+    退化为无样式裸 HTML（apps/web/Dockerfile 已通过 COPY 补齐，本地 CLI
+    此前遗漏）。幂等合并拷贝，重复启动安全；构建产物变化后旧分块自然淘汰
+    （不再被页面引用）。
+    """
+    standalone = web_dir / ".next" / "standalone"
+    for relative in (".next/static", "public"):
+        source = web_dir / relative
+        if not source.exists():
+            continue
+        shutil.copytree(source, standalone / relative, dirs_exist_ok=True)
+
+
 @app.command()
 def api(
     host: Annotated[str | None, typer.Option("--host", help="Bind host")] = None,
@@ -207,6 +224,7 @@ def web(
     # SIGTERM）时先转发给 node 再等待其退出，避免遗留孤儿 web 服务器继续
     # 占用端口。注意 Windows 上 os.execv 只是“新建进程后退出自身”，会让
     # 监管者误判 Web 进程已退出，因此这里使用显式的子进程包装。
+    _ensure_standalone_assets(web_dir)
     node_proc = subprocess.Popen([node, str(standalone)], cwd=web_dir)
 
     def _stop_node(signum: int, frame: FrameType | None) -> None:
@@ -369,6 +387,7 @@ def _spawn_services(settings: Settings, profile: str) -> dict[str, subprocess.Po
         # web 服务器（与容器路径直接运行 node 的语义一致）。
         standalone = web_dir / ".next" / "standalone" / "server.js"
         node = shutil.which("node") or "node"
+        _ensure_standalone_assets(web_dir)
         web_proc = subprocess.Popen(
             [node, str(standalone)],
             cwd=web_dir,

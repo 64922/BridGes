@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import os
+import re
 import signal
 import socket
 import subprocess
@@ -15,6 +16,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -252,6 +254,35 @@ def test_cli_start_help_mentions_all_services() -> None:
     assert "reminder scheduler" in result.stdout
 
 
+def test_ensure_standalone_assets_copies_static_and_public(tmp_path: Path) -> None:
+    """standalone 产物缺失的静态资源在启动前补齐（与 Dockerfile 同款语义）。
+
+    回归保护：next build 的 standalone 输出不含 ``.next/static`` 与
+    ``public``，若启动前不补齐，生产 Web 对所有 CSS/JS/品牌资源返回 404，
+    页面退化为无样式裸 HTML。重复调用幂等。
+    """
+    from bridges.cli.main import _ensure_standalone_assets
+
+    web_dir = tmp_path / "web"
+    (web_dir / ".next" / "static" / "css").mkdir(parents=True)
+    (web_dir / ".next" / "static" / "css" / "app.css").write_text(
+        "body{}", encoding="utf-8"
+    )
+    (web_dir / "public" / "brand").mkdir(parents=True)
+    (web_dir / "public" / "brand" / "logo.svg").write_text("<svg/>", encoding="utf-8")
+
+    _ensure_standalone_assets(web_dir)
+    _ensure_standalone_assets(web_dir)  # 幂等：重复启动不报错
+
+    standalone = web_dir / ".next" / "standalone"
+    assert (
+        standalone / ".next" / "static" / "css" / "app.css"
+    ).read_text(encoding="utf-8") == "body{}"
+    assert (
+        standalone / "public" / "brand" / "logo.svg"
+    ).read_text(encoding="utf-8") == "<svg/>"
+
+
 @NEEDS_WEB_BUILD
 def test_startup_reports_chinese_error_when_port_is_occupied(tmp_path: Path) -> None:
     """关键服务启动失败时整体非零退出并显示可操作中文错误（AC6）。"""
@@ -302,6 +333,26 @@ def test_startup_full_journey_start_health_duplicate_reject_stop_restart() -> No
             assert "API 就绪检查" in "\n".join(lines)
             assert (tmp / "bridges.db").exists(), "start 必须执行数据库迁移"
             assert (tmp / ".bridges.lock").exists(), "start 必须获取单实例锁"
+
+            # 生产 Web 必须真正提供构建产物的静态资源（CSS 以 text/css
+            # 返回而非 404 裸 HTML），否则页面退化为无样式裸 HTML。
+            web_port = env["BRIDGES_WEB_PORT"]
+            html = (
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{web_port}/", timeout=10
+                )
+                .read()
+                .decode("utf-8", errors="replace")
+            )
+            css_match = re.search(r'href="(/_next/static/css/[^"]+\.css)"', html)
+            assert css_match, "首页 HTML 必须引用构建后的样式表"
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{web_port}{css_match.group(1)}", timeout=10
+            ) as css:
+                assert css.status == 200
+                assert "text/css" in css.headers.get("content-type", ""), (
+                    "样式表必须以 text/css 提供，而不是 404 裸 HTML"
+                )
 
             second_output = tmp / "second_start.txt"
             with second_output.open("w", encoding="utf-8") as out:
