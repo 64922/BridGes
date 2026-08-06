@@ -37,7 +37,11 @@
       object_status/object_metas、RetrievalRepository 补检索域读方法），
       docs/table-owners.md 表属主清单 + 遗留直连声明，
       全量 2190 pytest 通过、ruff 干净（改动文件）
-- [ ] 候选 5 完成（Issue 46）
+- [x] 候选 5 完成（Issue 46）：前端数据获取深 module（data.ts + ApiClient
+      seam + vitest 首套单测 19 条 + 两张任务卡轮询迁移 + 6 个高频组件迁移），
+      双轴审查修复：首帧 loading 竞态（isFetching 初始 true）、轮询首载失败
+      置错（不再无限转圈）、reload 可等待（变更后先等数据再继续）；e2e 全量
+      269+2 通过、build/lint/tsc 干净（issue04/08 基线既有失败已 A/B 验证）
 - [ ] 候选 6 完成（Issue 47）
 - [ ] 候选 7 完成（Issue 48）
 - [ ] 候选 8 + 小摩擦完成（Issue 49）
