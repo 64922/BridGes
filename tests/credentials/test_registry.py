@@ -86,7 +86,7 @@ def test_fixed_matrix_model_ids_are_pinned_in_registry(monkeypatch) -> None:
     assert tts.model_id == "qwen3-tts-flash-2025-11-27"
     assert not tts.fallback_policy.fallback_capability_name
     asr = registry.get("qwen_asr_short", "1")
-    assert asr.model_id == "qwen3-asr-flash-2025-09-08"
+    assert asr.model_id == "qwen3-asr-flash"
 
     # 备用模型能力已从注册表移除。
     from bridges.ai.capability_registry import CapabilityRegistryError

@@ -79,7 +79,7 @@ EVAL_QQ_EMAIL = "10000000@qq.com"
 MODEL_BY_CAPABILITY: dict[str, str] = {
     "qwen_text_chat": "qwen3.7-plus-2026-05-26",
     "qwen_structured_output": "qwen3.7-plus-2026-05-26",
-    "qwen_asr_short": "qwen3-asr-flash-2025-09-08",
+    "qwen_asr_short": "qwen3-asr-flash",
     "qwen_tts": "qwen3-tts-flash-2025-11-27",
     "qwen_image": "qwen-image-2.0-pro-2026-06-22",
     "qwen_wan": "wan2.7-t2v-2026-06-12",
@@ -495,7 +495,7 @@ class EvalEnvironment:
         for record in (
             _chat_capability(),
             _structured_capability(),
-            _capability("qwen_asr_short", "qwen3-asr-flash-2025-09-08"),
+            _capability("qwen_asr_short", "qwen3-asr-flash"),
             _capability("qwen_tts", "qwen3-tts-flash-2025-11-27"),
             _capability("qwen_image", "qwen-image-2.0-pro-2026-06-22"),
             _capability("qwen_wan", "wan2.7-t2v-2026-06-12"),

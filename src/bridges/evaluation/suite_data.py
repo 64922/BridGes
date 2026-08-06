@@ -1585,7 +1585,7 @@ PINS: list[ModelSkillPin] = [
     ModelSkillPin(
         capability_name="qwen_asr_short",
         capability_version="1",
-        model_id="qwen3-asr-flash-2025-09-08",
+        model_id="qwen3-asr-flash",
         prompt_version="1",
     ),
     ModelSkillPin(

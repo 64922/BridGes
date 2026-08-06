@@ -228,29 +228,39 @@ class RealCapabilityProbeRunner(ProbeRunnerPort):
     def _probe_image(
         binding: CapabilityBinding, client: QwenApiClient
     ) -> ProbeOutcome:
+        # 同步多模态生成（与适配器同构）：成功响应为
+        # output.choices[0].message.content 列表中的 {"image": url} 项。
         body: dict[str, Any] = {
             "model": binding.model_id,
-            "input": {"prompt": _IMAGE_PROBE_PROMPT},
+            "input": {
+                "messages": [
+                    {"role": "user", "content": [{"text": _IMAGE_PROBE_PROMPT}]}
+                ]
+            },
             "parameters": {
                 "size": str(binding.parameters.get("size", "1024*1024")),
                 "n": int(binding.parameters.get("n", 1)),
             },
         }
         response = client.dashscope_native(
-            "/api/v1/services/aigc/text2image/image-synthesis", body
+            "/api/v1/services/aigc/multimodal-generation/generation",
+            body,
+            timeout=180.0,
         )
         output = response.get("output")
         if not isinstance(output, dict):
             raise ProbeError("图片生成接口返回格式异常。", code="invalid_response")
-        task_id = output.get("task_id")
-        results = output.get("results")
-        has_url = (
-            isinstance(results, list)
-            and bool(results)
-            and isinstance(results[0], dict)
-            and isinstance(results[0].get("url"), str)
+        choices = output.get("choices")
+        content = (
+            choices[0].get("message", {}).get("content")
+            if isinstance(choices, list) and choices
+            else None
         )
-        if not task_id and not has_url:
+        has_image = isinstance(content, list) and any(
+            isinstance(item, dict) and isinstance(item.get("image"), str)
+            for item in content
+        )
+        if not has_image:
             raise ProbeError("图片生成任务未被接受。", code="task_rejected")
         return ProbeOutcome(success=True, message="图片生成与编辑探测成功。")
 
@@ -263,8 +273,12 @@ class RealCapabilityProbeRunner(ProbeRunnerPort):
             "input": {"prompt": _VIDEO_PROBE_PROMPT},
             "parameters": {"size": str(binding.parameters.get("size", "1280*720"))},
         }
+        # 视频合成是异步优先服务：必须带 X-DashScope-Async: enable 头，
+        # 否则 403 AccessDenied（与适配器同构）。
         response = client.dashscope_native(
-            "/api/v1/services/aigc/video-generation/video-synthesis", body
+            "/api/v1/services/aigc/video-generation/video-synthesis",
+            body,
+            async_call=True,
         )
         output = response.get("output")
         if not isinstance(output, dict) or not output.get("task_id"):

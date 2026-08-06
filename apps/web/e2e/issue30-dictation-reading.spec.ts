@@ -138,7 +138,7 @@ async function mockKeySettings(
         capabilities: [
           capability("chat", "核心对话", "qwen3.7-plus-2026-05-26", options.chat ?? "available"),
           capability("embedding", "知识库向量化", "text-embedding-v4", "available"),
-          capability("asr", "语音转写", "qwen3-asr-flash-2025-09-08", options.asr ?? "available"),
+          capability("asr", "语音转写", "qwen3-asr-flash", options.asr ?? "available"),
           capability("tts", "语音朗读", "qwen3-tts-flash-2025-11-27", options.tts ?? "available"),
           capability("image", "图片生成与编辑", "qwen-image-2.0-pro-2026-06-22", "available"),
           capability("video", "视频生成", "wan2.7-t2v-2026-06-12", "available"),
@@ -272,7 +272,7 @@ test("纯键盘完成一次听写：录音→停止→转写回填→编辑→�
       body: JSON.stringify({
         status: "success",
         transcript: "你好，请记录这句话。",
-        model_id: "qwen3-asr-flash-2025-09-08",
+        model_id: "qwen3-asr-flash",
         duration_ms: 420,
         error_code: null,
         error_message: null,
@@ -376,7 +376,7 @@ test("空音频与超限音频错误态与恢复", async ({ page }) => {
       body: JSON.stringify({
         status: "failed",
         transcript: "",
-        model_id: "qwen3-asr-flash-2025-09-08",
+        model_id: "qwen3-asr-flash",
         duration_ms: 10,
         error_code: "empty_transcript",
         error_message: "转写没有返回文本，请重试或重新录制。",
@@ -402,7 +402,7 @@ test("空音频与超限音频错误态与恢复", async ({ page }) => {
         body: JSON.stringify({
           status: "success",
           transcript: "重试成功。",
-          model_id: "qwen3-asr-flash-2025-09-08",
+          model_id: "qwen3-asr-flash",
           duration_ms: 10,
           error_code: null,
           error_message: null,
@@ -432,7 +432,7 @@ test("听写网络中断失败后可重试", async ({ page }) => {
       body: JSON.stringify({
         status: "success",
         transcript: "网络恢复后的转写。",
-        model_id: "qwen3-asr-flash-2025-09-08",
+        model_id: "qwen3-asr-flash",
         duration_ms: 10,
         error_code: null,
         error_message: null,

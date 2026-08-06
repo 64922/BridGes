@@ -302,7 +302,7 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3-asr-flash-2025-09-08",
+            model_id="qwen3-asr-flash",
             input_schema_version="audio-upload-v1",
             output_schema_version="transcript-v1",
             status=CapabilityStatus.VERIFIED,

@@ -1,10 +1,12 @@
 """Real Qwen ASR adapter for T060.
 
 The adapter translates logical ``qwen_asr_short`` and ``qwen_asr_long``
-capability invocations into Qwen OpenAI-compatible Chat Completions requests
-carrying base64-encoded audio. It enforces the documented input limits for each
-capability and returns a normalized transcript output that the media extraction
-layer turns into timed ``DerivedAsset`` payloads.
+capability invocations into DashScope native synchronous
+``multimodal-generation`` requests carrying inline base64 audio
+（``input.messages`` + ``audio`` 内容项，百炼官方示例格式；OpenAI 兼容
+端点的 ``audio_url`` 内容类型不被该模型接受，实测返回 400）。它按能力
+强制文档化输入上限，并返回归一化的转写文本供媒体提取层生成带时间的
+``DerivedAsset`` 载荷。
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from bridges.ai.adapters import (
     AdapterResult,
     CapabilityAdapter,
 )
-from bridges.ai.qwen_client import QwenApiClient, choice_text, first_choice
+from bridges.ai.qwen_client import QwenApiClient
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
 
@@ -110,32 +112,68 @@ class QwenAsrAdapter(CapabilityAdapter):
             or "Transcribe the audio accurately. Preserve the original language."
         )
 
+        # DashScope 原生同步格式：system 消息承载识别上下文（官方示例），
+        # user 消息携带内联音频。同步服务不接受 X-DashScope-Async 头。
         messages: list[dict[str, Any]] = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "audio_url", "audio_url": {"url": data_url}},
-                    {"type": "text", "text": prompt},
-                ],
-            }
+            {"role": "system", "content": [{"text": prompt}]},
+            {"role": "user", "content": [{"audio": data_url}]},
         ]
 
         request_body: dict[str, Any] = {
             "model": capability.model_id,
-            "messages": messages,
-            "temperature": payload.get("temperature", 0.0),
-            "max_tokens": payload.get("max_tokens", 4096),
+            "input": {"messages": messages},
+            "parameters": {
+                "temperature": payload.get("temperature", 0.0),
+                "max_tokens": payload.get("max_tokens", 4096),
+            },
         }
 
-        response_body = self._client.chat_completions(request_body)
-        content = choice_text(first_choice(response_body))
+        response_body = self._client.dashscope_native(
+            "/api/v1/services/aigc/multimodal-generation/generation",
+            request_body,
+        )
+        transcript = self._extract_transcript(response_body)
         return AdapterResult(
-            actual_model_id=response_body.get("model") or capability.model_id,
+            actual_model_id=capability.model_id,
             output={
-                "transcript": content,
+                "transcript": transcript,
                 "language": payload.get("language"),
             },
             usage=response_body.get("usage"),
+        )
+
+    @staticmethod
+    def _extract_transcript(response_body: dict[str, Any]) -> str:
+        """从同步多模态响应提取转写文本。
+
+        响应结构为 ``output.choices[0].message.content`` 文本项列表
+        （每项 ``{"text": "..."}``，静音输入时为空列表）。
+        """
+        output = response_body.get("output")
+        if not isinstance(output, dict):
+            raise AdapterError(
+                code="invalid_response",
+                message="ASR 接口返回格式异常。",
+                retryable=False,
+            )
+        choices = output.get("choices")
+        if not (isinstance(choices, list) and choices):
+            raise AdapterError(
+                code="invalid_response",
+                message="ASR 接口返回格式异常。",
+                retryable=False,
+            )
+        content = choices[0].get("message", {}).get("content")
+        if not isinstance(content, list):
+            raise AdapterError(
+                code="invalid_response",
+                message="ASR 接口返回格式异常。",
+                retryable=False,
+            )
+        return "".join(
+            str(item["text"])
+            for item in content
+            if isinstance(item, dict) and isinstance(item.get("text"), str)
         )
 
     def _enforce_limits(

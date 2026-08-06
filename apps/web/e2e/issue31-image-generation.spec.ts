@@ -95,7 +95,7 @@ async function mockKeySettings(page: Page, imageStatus = "available"): Promise<v
         capabilities: [
           capability("chat", "核心对话", "qwen3.7-plus-2026-05-26", "available"),
           capability("embedding", "知识库向量化", "text-embedding-v4", "available"),
-          capability("asr", "语音转写", "qwen3-asr-flash-2025-09-08", "available"),
+          capability("asr", "语音转写", "qwen3-asr-flash", "available"),
           capability("tts", "语音朗读", "qwen3-tts-flash-2025-11-27", "available"),
           capability("image", "图片生成与编辑", "qwen-image-2.0-pro-2026-06-22", imageStatus),
           capability("video", "视频生成", "wan2.7-t2v-2026-06-12", "available"),

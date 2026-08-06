@@ -215,8 +215,15 @@ class _FakeClient:
         self.calls.append(("tts", body))
         return self._respond("tts")
 
-    def dashscope_native(self, path: str, body: dict[str, Any]) -> dict[str, Any]:
-        self.calls.append((path, body))
+    def dashscope_native(
+        self,
+        path: str,
+        body: dict[str, Any],
+        *,
+        async_call: bool = False,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append((path, body, async_call, timeout))
         return self._respond(path)
 
     def _respond(self, key: str) -> dict[str, Any]:
@@ -247,7 +254,18 @@ def _tts_response() -> dict[str, Any]:
 
 
 def _image_task_response() -> dict[str, Any]:
-    return {"output": {"task_id": "task-image-1", "task_status": "PENDING"}}
+    return {
+        "output": {
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": [{"image": "http://img.local/x.png"}],
+                    }
+                }
+            ]
+        }
+    }
 
 
 def _video_task_response() -> dict[str, Any]:
@@ -278,14 +296,32 @@ def test_real_runner_embedding_probe_checks_dimension() -> None:
 
 
 def test_real_runner_asr_probe_sends_wav() -> None:
-    client = _FakeClient({"chat": _chat_response()})
+    client = _FakeClient(
+        {
+            "/api/v1/services/aigc/multimodal-generation/generation": {
+                "output": {
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": [{"text": "测试"}],
+                            }
+                        }
+                    ]
+                }
+            }
+        }
+    )
     outcome = RealCapabilityProbeRunner().probe(get_binding("asr"), client)  # type: ignore[arg-type]
     assert outcome.success
-    body = client.calls[0][1]
+    path, body, _async, _timeout = client.calls[0]
+    assert path.endswith("multimodal-generation/generation")
     assert body["model"] == ASR_MODEL_ID
-    content = body["messages"][0]["content"]
-    audio_part = next(part for part in content if part.get("type") == "audio_url")
-    assert audio_part["audio_url"]["url"].startswith("data:audio/wav;base64,")
+    messages = body["input"]["messages"]
+    assert messages[0]["role"] == "system"
+    audio_part = messages[1]["content"][0]
+    assert list(audio_part.keys()) == ["audio"]
+    assert audio_part["audio"].startswith("data:audio/wav;base64,")
 
 
 def test_real_runner_tts_probe_requires_audio_url() -> None:
@@ -302,20 +338,27 @@ def test_real_runner_tts_probe_requires_audio_url() -> None:
 def test_real_runner_image_probe_accepts_task() -> None:
     client = _FakeClient(
         {
-            "/api/v1/services/aigc/text2image/image-synthesis": _image_task_response()
+            "/api/v1/services/aigc/multimodal-generation/generation": _image_task_response()
         }
     )
     outcome = RealCapabilityProbeRunner().probe(get_binding("image"), client)  # type: ignore[arg-type]
     assert outcome.success
-    path, body = client.calls[0]
-    assert path.endswith("text2image/image-synthesis")
+    path, body, async_call, timeout = client.calls[0]
+    assert path.endswith("multimodal-generation/generation")
+    assert async_call is False
+    assert timeout == 180.0
     assert body["model"] == IMAGE_MODEL_ID
-    assert "桥" in body["input"]["prompt"]
+    content = body["input"]["messages"][0]["content"]
+    assert any("桥" in str(item.get("text", "")) for item in content)
 
     rejected = _FakeClient(
         {
-            "/api/v1/services/aigc/text2image/image-synthesis": {
-                "output": {"task_status": "FAILED"}
+            "/api/v1/services/aigc/multimodal-generation/generation": {
+                "output": {
+                    "choices": [
+                        {"message": {"role": "assistant", "content": [{"text": "拒绝"}]}}
+                    ]
+                }
             }
         }
     )
@@ -330,8 +373,9 @@ def test_real_runner_video_probe_accepts_task() -> None:
     )
     outcome = RealCapabilityProbeRunner().probe(get_binding("video"), client)  # type: ignore[arg-type]
     assert outcome.success
-    path, body = client.calls[0]
+    path, body, async_call, _timeout = client.calls[0]
     assert path.endswith("video-generation/video-synthesis")
+    assert async_call is True  # 异步优先服务必须带 X-DashScope-Async 头
     assert body["model"] == VIDEO_MODEL_ID
     assert "河" in body["input"]["prompt"]
 

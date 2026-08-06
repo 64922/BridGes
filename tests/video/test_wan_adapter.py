@@ -38,8 +38,10 @@ class _FakeClient:
         self.task_calls: list[str] = []
         self.cancel_calls: list[str] = []
 
-    def dashscope_native(self, path: str, body: dict) -> dict:
-        self.native_calls.append((path, body))
+    def dashscope_native(
+        self, path: str, body: dict, *, async_call: bool = False, timeout: float | None = None
+    ) -> dict:
+        self.native_calls.append((path, body, async_call))
         return self._native_body
 
     def dashscope_task_get(self, task_id: str) -> dict:
@@ -74,8 +76,9 @@ def test_submit_returns_cloud_task_id_with_fixed_model_and_size() -> None:
     result = adapter.call(_capability(), _run_context(), {"prompt": "一条静谧的河"})
     assert result.output == {"cloud_task_id": "cloud-1"}
     assert result.actual_model_id == VIDEO_MODEL
-    path, body = client.native_calls[0]
+    path, body, async_call = client.native_calls[0]
     assert path == "/api/v1/services/aigc/video-generation/video-synthesis"
+    assert async_call is True  # 异步优先服务必须带 X-DashScope-Async 头
     assert body["model"] == VIDEO_MODEL
     assert body["input"]["prompt"] == "一条静谧的河"
     assert body["parameters"]["size"] == DEFAULT_VIDEO_SIZE

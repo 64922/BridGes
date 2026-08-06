@@ -1,0 +1,54 @@
+{
+  "request": {
+    "model": "qwen3-asr-flash",
+    "input": {
+      "messages": [
+        {
+          "role": "system",
+          "content": [
+            {
+              "text": "Transcribe the audio accurately. Preserve the original language."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "audio": "data:audio/mpeg;base64,SUQz"
+            }
+          ]
+        }
+      ]
+    },
+    "parameters": {
+      "temperature": 0.0,
+      "max_tokens": 4096
+    }
+  },
+  "response": {
+    "output": {
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "text": "欢迎收听科学讲座。"
+              }
+            ]
+          },
+          "finish_reason": "stop"
+        }
+      ]
+    },
+    "usage": {
+      "audio_tokens": 25,
+      "input_tokens": 25,
+      "output_tokens": 4,
+      "seconds": 1,
+      "total_tokens": 29
+    }
+  }
+}

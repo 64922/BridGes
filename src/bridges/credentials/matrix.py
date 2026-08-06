@@ -18,8 +18,10 @@ from typing import Any
 CHAT_MODEL_ID = "qwen3.7-plus-2026-05-26"
 #: 知识库向量化固定模型快照（1024 维）。
 EMBEDDING_MODEL_ID = "text-embedding-v4"
-#: 语音转写固定模型快照。
-ASR_MODEL_ID = "qwen3-asr-flash-2025-09-08"
+#: 语音转写固定模型（qwen3-asr-flash 当前版本；2025-09-08 快照将于
+#: 2026-10-10 下线且无免费额度，已随适配器同步迁移到当前版本，
+#: ADR-0009 已同步更新）。
+ASR_MODEL_ID = "qwen3-asr-flash"
 #: 单条回答朗读固定模型快照。
 TTS_MODEL_ID = "qwen3-tts-flash-2025-11-27"
 #: 图片生成与编辑固定模型快照。

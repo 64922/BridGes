@@ -1,16 +1,17 @@
 """真实 Qwen 图片生成与编辑适配器（Issue 31）。
 
-DashScope 图片合成是原生异步任务：提交（POST
-``/api/v1/services/aigc/text2image/image-synthesis``）返回 ``task_id``，
-后台执行器每轮用 GET ``/api/v1/tasks/{task_id}`` 单次轮询，终态成功后
-下载临时结果 URL 的字节交给调用方转存账户对象库。适配器按 payload 的
-``kind`` 分三种模式，全部经 ModelGateway 进入不可变运行锁：
+qwen-image-2.0-pro 走 DashScope **同步多模态生成**（POST
+``/api/v1/services/aigc/multimodal-generation/generation``，
+``input.messages`` 结构）：异步的 text2image 服务路径对该模型返回 400
+（url error），multimodal-generation 异步模式又被 403 拒绝——同步调用
+直接返回结果图片 URL，由调用方下载字节转存账户对象库。适配器按 payload
+的 ``kind`` 分四种模式，全部经 ModelGateway 进入不可变运行锁：
 
 - ``submit``：生成（prompt）或编辑（prompt + base_image data URL）→
-  返回 ``cloud_task_id``（或同步结果 URL）；
-- ``poll``：单次查询云端任务状态 → RUNNING / SUCCEEDED(带结果 URL) /
-  FAILED(带原因)；
-- ``fetch``：下载临时结果 URL 字节。
+  返回同步结果 URL（云端生成耗时可达数十秒，超时独立放宽）；
+- ``poll``：单次查询云端任务状态（保留：历史异步任务兼容）；
+- ``fetch``：下载临时结果 URL 字节；
+- ``cancel``：尽力取消云端任务（本地取消是权威）。
 
 编辑图片字节在调用方（图片服务）从账户对象库读出后以 data URL 形式
 随请求体直传——请求只携带编辑所需图片与提示，不发送完整项目目录、
@@ -36,6 +37,9 @@ from bridges.contracts.workflows import RunContextEnvelope
 
 #: 固定生成尺寸（与能力矩阵探测参数一致，用户不可选）。
 DEFAULT_IMAGE_SIZE = "1024*1024"
+
+#: 同步生成请求超时：云端生成单张图片可达数十秒，远超默认 60 秒。
+_SYNC_GENERATION_TIMEOUT_SECONDS = 180.0
 
 #: 结果下载超时（供应商临时 URL 可能较大）。
 _RESULT_DOWNLOAD_TIMEOUT_SECONDS = 120.0
@@ -127,61 +131,48 @@ class QwenImageAdapter(CapabilityAdapter):
                 retryable=False,
             )
 
+        # 同步多模态生成（官方格式）：生成时内容为纯文本提示；编辑时
+        # 来源图片 data URL 与提示词同消息传入。异步 text2image 服务
+        # 路径对 qwen-image-2.0-pro 返回 400 url error，不可用。
+        content: list[dict[str, Any]] = [{"text": prompt}]
+        if base_image:
+            # 编辑：来源图片字节以 data URL 形式随请求体直传（最小授权
+            # 上下文，不落供应商侧持久对象），供应商按图片内容约束在
+            # 原图上执行指令。
+            content.insert(0, {"image": base_image})
+
         body: dict[str, Any] = {
             "model": capability.model_id,
-            "input": {"prompt": prompt},
+            "input": {
+                "messages": [{"role": "user", "content": content}],
+            },
             "parameters": {
                 "size": str(payload.get("size") or DEFAULT_IMAGE_SIZE),
                 "n": int(payload.get("n") or 1),
             },
         }
-        if base_image:
-            # 编辑：来源图片字节以 data URL 形式随请求体直传（最小授权
-            # 上下文，不落供应商侧持久对象），供应商按 base_image 约束
-            # 在原图上执行指令。
-            body["input"]["base_image"] = base_image
 
         response_body = self._client.dashscope_native(
-            "/api/v1/services/aigc/text2image/image-synthesis", body
+            "/api/v1/services/aigc/multimodal-generation/generation",
+            body,
+            timeout=_SYNC_GENERATION_TIMEOUT_SECONDS,
         )
-        output = response_body.get("output")
-        if not isinstance(output, dict):
+        result_url = self._extract_sync_result_url(response_body)
+        if not result_url:
             raise AdapterError(
-                code="invalid_response",
-                message="图片生成接口返回格式异常。",
-                retryable=False,
+                code="task_rejected",
+                message="图片生成任务未被接受，请稍后重试。",
+                retryable=True,
             )
-        task_id = output.get("task_id")
-        results = output.get("results")
-        if isinstance(task_id, str) and task_id:
-            return AdapterResult(
-                actual_model_id=capability.model_id,
-                output={"cloud_task_id": task_id},
-                usage=response_body.get("usage") if isinstance(
-                    response_body.get("usage"), dict
-                ) else None,
-            )
-        # 供应商也可能同步返回结果 URL（同探测语义）。
-        if (
-            isinstance(results, list)
-            and results
-            and isinstance(results[0], dict)
-            and isinstance(results[0].get("url"), str)
-        ):
-            return AdapterResult(
-                actual_model_id=capability.model_id,
-                output={
-                    "cloud_task_id": "",
-                    "result_url": results[0]["url"],
-                },
-                usage=response_body.get("usage") if isinstance(
-                    response_body.get("usage"), dict
-                ) else None,
-            )
-        raise AdapterError(
-            code="task_rejected",
-            message="图片生成任务未被接受，请稍后重试。",
-            retryable=True,
+        return AdapterResult(
+            actual_model_id=capability.model_id,
+            output={
+                "cloud_task_id": "",
+                "result_url": result_url,
+            },
+            usage=response_body.get("usage") if isinstance(
+                response_body.get("usage"), dict
+            ) else None,
         )
 
     # ------------------------------------------------------------------
@@ -301,6 +292,30 @@ class QwenImageAdapter(CapabilityAdapter):
             and isinstance(results[0].get("url"), str)
         ):
             return str(results[0]["url"])
+        return None
+
+    @staticmethod
+    def _extract_sync_result_url(response_body: dict[str, Any]) -> str | None:
+        """从同步多模态响应提取结果图片 URL。
+
+        同步生成的响应为 ``output.choices[0].message.content`` 列表，
+        其中承载 ``{"image": "<临时 URL>"}`` 项；编辑场景同构。
+        """
+        output = response_body.get("output")
+        if not isinstance(output, dict):
+            return None
+        choices = output.get("choices")
+        if not (isinstance(choices, list) and choices):
+            return None
+        content = choices[0].get("message", {}).get("content")
+        if not isinstance(content, list):
+            return None
+        for item in content:
+            if not isinstance(item, dict):
+                continue
+            url = item.get("image")
+            if isinstance(url, str) and url:
+                return url
         return None
 
     @staticmethod

@@ -149,7 +149,7 @@ def test_dictation_probing_and_unavailable_gates(client: TestClient, sqlite_app:
     account = _register(client)
     conversation_id = _create_conversation(client)
     _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash-2025-09-08", ProbeStatus.PROBING
+        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.PROBING
     )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",
@@ -161,7 +161,7 @@ def test_dictation_probing_and_unavailable_gates(client: TestClient, sqlite_app:
     assert "语音转写" in response.json()["detail"]["message"]
 
     _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash-2025-09-08", ProbeStatus.UNAVAILABLE
+        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.UNAVAILABLE
     )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",
@@ -178,7 +178,7 @@ def test_read_aloud_requires_tts_capability(client: TestClient, sqlite_app: Any)
     conversation_id = _create_conversation(client)
     # 只配置 asr 可用、tts 未探测 → 朗读入口被独立门控拒绝（asr 可用不影响 tts）。
     _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash-2025-09-08", ProbeStatus.AVAILABLE
+        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.AVAILABLE
     )
     response = client.post(f"/chat/conversations/{conversation_id}/messages/m-none/read-aloud")
     assert response.status_code == 409
@@ -192,7 +192,7 @@ def test_dictation_rejects_unsupported_mime_and_empty_audio(
     account = _register(client)
     conversation_id = _create_conversation(client)
     _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash-2025-09-08", ProbeStatus.AVAILABLE
+        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.AVAILABLE
     )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",
@@ -218,7 +218,7 @@ def test_dictation_gate_passes_and_reports_deterministic_failure(
     account = _register(client)
     conversation_id = _create_conversation(client)
     _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash-2025-09-08", ProbeStatus.AVAILABLE
+        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.AVAILABLE
     )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",

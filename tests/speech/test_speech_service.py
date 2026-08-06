@@ -33,7 +33,7 @@ from bridges.storage.database import BridgesDatabase
 from bridges.storage.object_store import EncryptedFileObjectStore
 from bridges.storage.repository import BridgesObjectRepository
 
-ASR_MODEL = "qwen3-asr-flash-2025-09-08"
+ASR_MODEL = "qwen3-asr-flash"
 TTS_MODEL = "qwen3-tts-flash-2025-11-27"
 _AUDIO_URL = "http://tts.local/audio.wav"
 _WAV_BYTES = b"\x52\x49\x46\x46" + b"\x00" * 40

@@ -72,18 +72,24 @@ def _success_response(
     return httpx.Response(
         200,
         json={
-            "id": "chatcmpl-test",
-            "object": "chat.completion",
-            "created": 1234567890,
-            "model": model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {"role": "assistant", "content": transcript},
-                    "finish_reason": "stop",
-                }
-            ],
-            "usage": {"prompt_tokens": 100, "completion_tokens": 10, "total_tokens": 110},
+            "output": {
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"text": transcript}],
+                        },
+                        "finish_reason": "stop",
+                    }
+                ]
+            },
+            "usage": {
+                "audio_tokens": 100,
+                "input_tokens": 100,
+                "output_tokens": 10,
+                "total_tokens": 110,
+            },
         },
     )
 
@@ -134,13 +140,15 @@ def test_short_asr_request_shape_and_lock() -> None:
 
     body = captured["body"]
     assert body["model"] == "qwen3-asr-flash"
-    assert body["temperature"] == 0.0
-    assert body["max_tokens"] == 4096
-    message = body["messages"][0]
-    assert message["role"] == "user"
-    audio_part = message["content"][0]
-    assert audio_part["type"] == "audio_url"
-    assert audio_part["audio_url"]["url"].startswith("data:audio/mpeg;base64,")
+    assert body["parameters"]["temperature"] == 0.0
+    assert body["parameters"]["max_tokens"] == 4096
+    messages = body["input"]["messages"]
+    assert messages[0]["role"] == "system"
+    assert messages[0]["content"] == [{"text": "Transcribe the audio accurately. Preserve the original language."}]
+    assert messages[1]["role"] == "user"
+    audio_part = messages[1]["content"][0]
+    assert list(audio_part.keys()) == ["audio"]
+    assert audio_part["audio"].startswith("data:audio/mpeg;base64,")
 
 
 def test_long_asr_routes_to_filetrans_model() -> None:

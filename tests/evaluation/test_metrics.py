@@ -346,7 +346,7 @@ def test_multimodal_asr_and_model_contract() -> None:
     case = _case("mm-asr")
     outputs = {
         "transcript": "光合作用是植物将光能转化为化学能的过程。",
-        "model_id": "qwen3-asr-flash-2025-09-08",
+        "model_id": "qwen3-asr-flash",
         "asset_available": True,
     }
     metrics = multimodal_metrics(case, outputs)

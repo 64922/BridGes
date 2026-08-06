@@ -216,18 +216,35 @@ class QwenApiClient:
         return self._post_openai("/embeddings", request_body, "Qwen")
 
     def dashscope_native(
-        self, path: str, request_body: dict[str, Any]
+        self,
+        path: str,
+        request_body: dict[str, Any],
+        *,
+        async_call: bool = False,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
         """POST to a DashScope-native service endpoint and return the body.
 
-        Used by the fixed image and video generation capability probes
-        (ADR-0009). DashScope native service endpoints use the public domain
-        regardless of region (unlike the OpenAI-compatible endpoint, which
-        varies by region/workspace), so the base URL is not region-derived.
+        Used by the fixed image, video and ASR capability adapters (ADR-0009).
+        DashScope native service endpoints use the public domain regardless of
+        region (unlike the OpenAI-compatible endpoint, which varies by
+        region/workspace), so the base URL is not region-derived.
+
+        ``async_call`` 为 True 时附加 ``X-DashScope-Async: enable`` 请求头：
+        视频合成等异步优先服务缺该头会被 403 AccessDenied 拒绝（"does not
+        support synchronous calls"，实测）；图片/语音走同步服务，保持 False。
+        ``timeout`` 覆盖默认请求超时（同步图片生成耗时可超过默认 60 秒）。
         Raises AdapterError subclasses for gateway classification.
         """
         url = f"https://dashscope.aliyuncs.com{path}"
-        return self._post_dashscope(url, request_body, "Qwen DashScope", "native_error")
+        return self._post_dashscope(
+            url,
+            request_body,
+            "Qwen DashScope",
+            "native_error",
+            async_call=async_call,
+            timeout=timeout,
+        )
 
     def dashscope_task_get(self, task_id: str) -> dict[str, Any]:
         """GET a DashScope native asynchronous task status (Issue 31).
@@ -247,11 +264,12 @@ class QwenApiClient:
         The image service calls this when the user cancels a task; local
         cancellation is authoritative, so failures here are suppressed by the
         caller and never block the user-visible cancel result.
+
+        官方取消端点为 POST /api/v1/tasks/{task_id}/cancel；旧实现的
+        PUT ?action=cancel 会被服务端以 405 拒绝（实测）。
         """
-        url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}?action=cancel"
-        return self._put_dashscope(
-            url, {"task_id": task_id, "action": "cancel"}, "Qwen DashScope"
-        )
+        url = f"https://dashscope.aliyuncs.com/api/v1/tasks/{task_id}/cancel"
+        return self._post_dashscope(url, {}, "Qwen DashScope", "native_error")
 
     def _get_dashscope(
         self,
@@ -281,69 +299,6 @@ class QwenApiClient:
 
         try:
             response = self._client.get(url, headers=headers)
-        except httpx.TimeoutException as exc:
-            raise TransientError(f"{noun} request timeout: {exc}") from exc
-        except httpx.ConnectError as exc:
-            raise RegionError(f"{noun} endpoint unreachable: {exc}") from exc
-        except httpx.NetworkError as exc:
-            raise TransientError(f"{noun} network error: {exc}") from exc
-        except httpx.HTTPError as exc:
-            raise TransientError(f"{noun} HTTP error: {exc}") from exc
-
-        if response.status_code == 429:
-            raise RateLimitError(f"{noun} rate limit (429).")
-        if response.status_code in (401, 403):
-            raise AuthError(f"{noun} authentication/authorization failed.")
-        if response.status_code >= 500:
-            raise TransientError(f"{noun} server error ({response.status_code}).")
-        if response.status_code >= 400:
-            raise AdapterError(
-                code=f"client_error_{response.status_code}",
-                message=f"{noun} client error ({response.status_code}).",
-                retryable=False,
-            )
-
-        try:
-            response_body = response.json()
-        except Exception as exc:
-            raise TransientError(f"{noun} returned invalid JSON: {exc}") from exc
-
-        if not isinstance(response_body, dict):
-            raise TransientError(f"{noun} returned a non-object JSON response.")
-
-        if self._record_mode and self._cassette_store is not None:
-            self._cassette_store.save(cassette_key, response_body)
-
-        return response_body
-
-    def _put_dashscope(
-        self,
-        url: str,
-        cassette_key: dict[str, Any],
-        noun: str,
-    ) -> dict[str, Any]:
-        """PUT to a DashScope-native endpoint with cassette and error taxonomy."""
-        if self._cassette_store is not None and not self._record_mode:
-            recorded = self._cassette_store.load(cassette_key)
-            if recorded is not None:
-                return recorded
-            if self._api_key is None:
-                raise AdapterError(
-                    code="cassette_missing",
-                    message="No cassette for this request and no API key configured.",
-                    retryable=False,
-                )
-        if self._record_mode and self._cassette_store is not None:
-            recorded = self._cassette_store.load(cassette_key)
-            if recorded is not None:
-                return recorded
-
-        headers: dict[str, str] = {}
-        if self._api_key is not None:
-            headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
-
-        try:
-            response = self._client.put(url, headers=headers)
         except httpx.TimeoutException as exc:
             raise TransientError(f"{noun} request timeout: {exc}") from exc
         except httpx.ConnectError as exc:
@@ -461,8 +416,15 @@ class QwenApiClient:
         request_body: dict[str, Any],
         noun: str,
         error_code_prefix: str,
+        *,
+        async_call: bool = False,
+        timeout: float | None = None,
     ) -> dict[str, Any]:
-        """POST to a DashScope-native endpoint with cassette and error taxonomy."""
+        """POST to a DashScope-native endpoint with cassette and error taxonomy.
+
+        ``async_call`` 为 True 时附加 ``X-DashScope-Async: enable`` 请求头
+        （异步优先服务必需）；``timeout`` 覆盖客户端默认超时。
+        """
         if self._cassette_store is not None and not self._record_mode:
             recorded = self._cassette_store.load(request_body)
             if recorded is not None:
@@ -482,9 +444,13 @@ class QwenApiClient:
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self._api_key is not None:
             headers["Authorization"] = f"Bearer {self._api_key.get_secret_value()}"
+        if async_call:
+            headers["X-DashScope-Async"] = "enable"
 
         try:
-            response = self._client.post(url, json=request_body, headers=headers)
+            response = self._client.post(
+                url, json=request_body, headers=headers, timeout=timeout
+            )
         except httpx.TimeoutException as exc:
             raise TransientError(f"{noun} request timeout: {exc}") from exc
         except httpx.ConnectError as exc:

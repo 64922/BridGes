@@ -130,8 +130,13 @@ class QwenWanAdapter(CapabilityAdapter):
                 "size": str(payload.get("size") or DEFAULT_VIDEO_SIZE),
             },
         }
+        # 视频合成是异步优先服务：必须带 X-DashScope-Async: enable 头，
+        # 否则服务端以 403 AccessDenied（does not support synchronous
+        # calls）拒绝同步调用。
         response_body = self._client.dashscope_native(
-            "/api/v1/services/aigc/video-generation/video-synthesis", body
+            "/api/v1/services/aigc/video-generation/video-synthesis",
+            body,
+            async_call=True,
         )
         output = response_body.get("output")
         if not isinstance(output, dict):

@@ -30,17 +30,35 @@ class _FakeClient:
         task_body: dict[str, Any] | None = None,
         cancel_body: dict[str, Any] | None = None,
     ) -> None:
-        self._native_body = native_body or {"output": {"task_id": "cloud-1"}}
+        self._native_body = native_body or {
+            "output": {
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": [{"image": "http://img.local/result.png"}],
+                        }
+                    }
+                ]
+            }
+        }
         self._task_body = task_body or {
             "output": {"task_id": "cloud-1", "status": "SUCCEEDED"}
         }
         self._cancel_body = cancel_body or {"output": {"task_id": "cloud-1"}}
-        self.native_calls: list[tuple[str, dict[str, Any]]] = []
+        self.native_calls: list[tuple[str, dict[str, Any], bool, float | None]] = []
         self.task_calls: list[str] = []
         self.cancel_calls: list[str] = []
 
-    def dashscope_native(self, path: str, request_body: dict[str, Any]) -> dict[str, Any]:
-        self.native_calls.append((path, request_body))
+    def dashscope_native(
+        self,
+        path: str,
+        request_body: dict[str, Any],
+        *,
+        async_call: bool = False,
+        timeout: float | None = None,
+    ) -> dict[str, Any]:
+        self.native_calls.append((path, request_body, async_call, timeout))
         return self._native_body
 
     def dashscope_task_get(self, task_id: str) -> dict[str, Any]:
@@ -78,20 +96,25 @@ def _run_context() -> RunContextEnvelope:
     )
 
 
-def test_submit_generation_returns_cloud_task_id() -> None:
+def test_submit_generation_returns_sync_result_url() -> None:
     client = _FakeClient()
     adapter = QwenImageAdapter(client)
     result = adapter.call(
         _capability(), _run_context(), {"kind": "submit", "prompt": "一座桥的素描"}
     )
     assert result.actual_model_id == IMAGE_MODEL
-    assert result.output["cloud_task_id"] == "cloud-1"
-    path, body = client.native_calls[0]
-    assert path == "/api/v1/services/aigc/text2image/image-synthesis"
+    assert result.output["cloud_task_id"] == ""
+    assert result.output["result_url"] == "http://img.local/result.png"
+    path, body, async_call, timeout = client.native_calls[0]
+    assert path == "/api/v1/services/aigc/multimodal-generation/generation"
+    assert async_call is False  # 同步服务不带 async 头
+    assert timeout == 180.0  # 同步生成独立放宽超时
     assert body["model"] == IMAGE_MODEL
-    assert body["input"]["prompt"] == "一座桥的素描"
+    message = body["input"]["messages"][0]
+    assert message["role"] == "user"
+    assert message["content"] == [{"text": "一座桥的素描"}]
     assert body["parameters"]["size"] == "1024*1024"
-    assert "base_image" not in body["input"]
+    assert body["parameters"]["n"] == 1
 
 
 def test_submit_edit_embeds_source_as_data_url() -> None:
@@ -107,9 +130,10 @@ def test_submit_edit_embeds_source_as_data_url() -> None:
             "base_image": data_url,
         },
     )
-    assert result.output["cloud_task_id"] == "cloud-1"
-    body = client.native_calls[0][1]
-    assert body["input"]["base_image"] == data_url
+    assert result.output["result_url"] == "http://img.local/result.png"
+    content = client.native_calls[0][1]["input"]["messages"][0]["content"]
+    assert content[0]["image"] == data_url
+    assert content[1]["text"] == "把背景改为夜空"
     assert data_url.startswith("data:image/png;base64,")
 
 
@@ -122,15 +146,17 @@ def test_submit_missing_prompt_rejected() -> None:
     assert client.native_calls == []
 
 
-def test_submit_sync_result_url_fallback() -> None:
+def test_submit_rejects_response_without_image() -> None:
     client = _FakeClient(
-        native_body={"output": {"results": [{"url": "http://img.local/x.png"}]}}
+        native_body={"output": {"choices": [{"message": {"role": "assistant", "content": [{"text": "拒绝"}]}}]}}
     )
     adapter = QwenImageAdapter(client)
-    result = adapter.call(
-        _capability(), _run_context(), {"kind": "submit", "prompt": "一座桥的素描"}
-    )
-    assert result.output["result_url"] == "http://img.local/x.png"
+    with pytest.raises(AdapterError) as exc:
+        adapter.call(
+            _capability(), _run_context(), {"kind": "submit", "prompt": "一座桥的素描"}
+        )
+    assert exc.value.code == "task_rejected"
+    assert exc.value.retryable is True
 
 
 def test_poll_maps_cloud_statuses() -> None:
