@@ -144,3 +144,131 @@ class RetrievalRepository:
             (account_id, citation_id),
         ).fetchone()
         return cast(sqlite3.Row | None, row)
+
+    # ------------------------------------------------------------------
+    # 检索域读面（Issue 45 收编：索引/文档/对象的只读查询收进属主仓库）
+    # ------------------------------------------------------------------
+
+    def active_version(self, account_id: str) -> sqlite3.Row | None:
+        """返回当前账户已激活的索引版本行；无激活版本返回 None。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT v.version_id, v.status FROM index_active a"
+            " JOIN index_versions v ON v.version_id = a.version_id"
+            " WHERE a.account_id = ? AND v.status = 'active'",
+            (account_id,),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def ready_document_ids(
+        self,
+        account_id: str,
+        *,
+        source: str,
+        object_ids: list[str] | None = None,
+        project_id: str | None = None,
+    ) -> list[str]:
+        """返回某层已就绪且对象仍活跃的文档标识（只查当前账户资源）。
+
+        ``document_records`` 属检索/摄取域；``objects``（storage 域）仅
+        在 JOIN 中作活跃性过滤，不触及其写路径。
+        """
+        sql = (
+            "SELECT r.document_id FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.source = ? AND r.status = 'ready'"
+            " AND o.account_id = ? AND o.status = 'active'"
+        )
+        params: list[object] = [account_id, source, account_id]
+        if object_ids is not None:
+            placeholders = ",".join("?" for _ in object_ids)
+            sql += f" AND r.object_id IN ({placeholders})"
+            params.extend(object_ids)
+        if project_id is not None:
+            sql += " AND r.project_id = ?"
+            params.append(project_id)
+        rows = self._database.scoped(account_id).execute(sql, params).fetchall()
+        return [str(row["document_id"]) for row in rows]
+
+    def has_stale_documents(
+        self,
+        account_id: str,
+        *,
+        source: str,
+        object_ids: list[str] | None = None,
+        project_id: str | None = None,
+    ) -> bool:
+        """返回已就绪但等待索引重建的文档状态，供教学证据门闭锁。"""
+        sql = (
+            "SELECT 1 FROM document_records r"
+            " JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.source = ? AND r.status = 'ready'"
+            " AND r.rebuild_requested = 1 AND o.account_id = ? AND o.status = 'active'"
+        )
+        params: list[object] = [account_id, source, account_id]
+        if object_ids is not None:
+            placeholders = ",".join("?" for _ in object_ids)
+            sql += f" AND r.object_id IN ({placeholders})"
+            params.extend(object_ids)
+        if project_id is not None:
+            sql += " AND r.project_id = ?"
+            params.append(project_id)
+        return (
+            self._database.scoped(account_id).execute(sql + " LIMIT 1", params).fetchone()
+            is not None
+        )
+
+    def vector_rows(
+        self,
+        account_id: str,
+        version_id: str,
+        document_ids: list[str],
+    ) -> list[dict[str, object]]:
+        """返回指定版本与文档集合的向量分块行（关键词/向量融合候选）。"""
+        placeholders = ",".join("?" for _ in document_ids)
+        rows = self._database.scoped(account_id).execute(
+            "SELECT c.chunk_id, c.document_id, c.content, c.section_title,"
+            " c.page_number, r.object_id, r.content_hash,"
+            " c.content_hash AS chunk_content_hash, v.vector_json"
+            " FROM index_vectors v"
+            " JOIN document_chunks c ON c.chunk_id = v.chunk_id"
+            " JOIN document_records r ON r.document_id = c.document_id"
+            " WHERE v.version_id = ? AND r.account_id = ? AND r.status = 'ready'"
+            f" AND r.document_id IN ({placeholders})",
+            (version_id, account_id) + tuple(document_ids),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def round_user_message_id(
+        self, account_id: str, round_id: str
+    ) -> str | None:
+        """返回检索轮次绑定的用户消息标识（附件层授权校验用）。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT user_message_id FROM retrieval_rounds"
+            " WHERE account_id = ? AND round_id = ?",
+            (account_id, round_id),
+        ).fetchone()
+        if row is None or row["user_message_id"] is None:
+            return None
+        return str(row["user_message_id"])
+
+    def document_record_exists(
+        self,
+        account_id: str,
+        object_id: str,
+        *,
+        source: str,
+        project_id: str | None = None,
+    ) -> bool:
+        """文档记录是否存在（引用打开时的授权校验；跨账户返回 False）。"""
+        sql = (
+            "SELECT 1 FROM document_records WHERE account_id = ?"
+            " AND object_id = ? AND source = ?"
+        )
+        params: list[object] = [account_id, object_id, source]
+        if project_id is not None:
+            sql += " AND project_id = ?"
+            params.append(project_id)
+        row = self._database.scoped(account_id).execute(
+            sql + " LIMIT 1", params
+        ).fetchone()
+        return row is not None

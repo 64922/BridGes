@@ -86,6 +86,7 @@ def make_retrieval_env(storage: dict[str, Any]) -> dict[str, Any]:
         database=database,
         embedding=embedding,
         probe_service=probe_service,
+        object_repository=repository,
     )
     return {
         **storage,

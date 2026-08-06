@@ -527,6 +527,7 @@ class EvalEnvironment:
             database=self.database,
             embedding=self.embedding,
             probe_service=self.probe_service,
+            object_repository=self.object_repository,
         )
         self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
         self.learning = LearningService(repository=InMemoryLearningRepository())

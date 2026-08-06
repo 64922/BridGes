@@ -56,7 +56,12 @@ from bridges.api.speech import router as speech_router
 from bridges.api.video import router as video_router
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
-from bridges.chat import ChatAttachmentService, ChatService, ConversationRepository
+from bridges.chat import (
+    AttachmentRepository,
+    ChatAttachmentService,
+    ChatService,
+    ConversationRepository,
+)
 from bridges.chat.selections import ChatSelectionsService
 from bridges.config import Settings, get_settings
 from bridges.contracts.ai import (
@@ -1004,8 +1009,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         app.state.skill_registry = skill_registry
         object_repository = getattr(app.state, "object_repository", None)
         if object_repository is not None:
+            # Issue 45：附件服务经 chat 域仓库访问数据库（chat_attachments
+            # / chat_attachment_cancellations 属主 AttachmentRepository，
+            # conversations 属主 ConversationRepository，objects 属主
+            # BridgesObjectRepository）。
             app.state.chat_attachment_service = ChatAttachmentService(
-                bridges_database, object_repository
+                bridges_database,
+                object_repository,
+                attachment_repository=AttachmentRepository(bridges_database),
+                conversation_repository=ConversationRepository(bridges_database),
             )
             # Issue 17: 文档摄取服务（API 进程只做入队/重试/投影，处理在后台
             # 执行器进程）。探测快照复用同一 StateStore，读取不产生写竞争。
@@ -1052,6 +1064,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     ),
                 ),
                 probe_service=CapabilityProbeService(state_store=state_store),
+                # Issue 45：跨域读取经属主仓库构造注入（conversations/
+                # chat_attachments 属 chat 域、objects 属 storage 域），
+                # 检索服务不再直读非己表。
+                conversation_repository=ConversationRepository(bridges_database),
+                attachment_repository=AttachmentRepository(bridges_database),
+                object_repository=object_repository,
             )
             # Issue 31: 图片生成与编辑（固定 qwen-image-2.0-pro-2026-06-22）。
             # API 进程只做提交/查询/取消/重试与资产管理；云端轮询在后台

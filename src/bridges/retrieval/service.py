@@ -14,8 +14,10 @@ import json
 import secrets
 import sqlite3
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any
 
+from bridges.chat.attachments_repository import AttachmentRepository
+from bridges.chat.repository import ConversationRepository
 from bridges.contracts.retrieval import (
     CitationAccessStatus,
     CitationDetailProjection,
@@ -43,6 +45,7 @@ from bridges.retrieval.search import (
     search_vectors,
 )
 from bridges.storage.database import BridgesDatabase
+from bridges.storage.repository import BridgesObjectRepository
 
 #: 引用片段的最大长度（展示数据生成时固化，不漂移）。
 SNIPPET_MAX_LEN = 240
@@ -83,11 +86,22 @@ class LayeredRetrievalService:
         embedding: EmbeddingPort | None = None,
         probe_service: CapabilityProbeService | None = None,
         repository: RetrievalRepository | None = None,
+        conversation_repository: ConversationRepository | None = None,
+        attachment_repository: AttachmentRepository | None = None,
+        object_repository: BridgesObjectRepository | None = None,
     ) -> None:
         self._database = database
         self._embedding = embedding
         self._probes = probe_service
         self._repository = repository or RetrievalRepository(database)
+        # Issue 45：跨域读取经属主仓库注入——conversations（chat 域）、
+        # chat_attachments（chat 域）可缺省构造；objects 属主仓库需要
+        # 对象库，必须由调用方注入。
+        self._conversations = conversation_repository or ConversationRepository(database)
+        self._attachments = attachment_repository or AttachmentRepository(database)
+        if object_repository is None:
+            raise TypeError("object_repository 必须注入（objects 属主仓库，需对象库）。")
+        self._objects = object_repository
 
     # ------------------------------------------------------------------
     # 每轮检索编排
@@ -109,19 +123,14 @@ class LayeredRetrievalService:
         无材料/被关闭），前端不渲染检索卡；其余情况总是返回结构化轮次
         投影，绝不把无命中伪装成成功。
         """
-        scoped = self._database.scoped(account_id)
-        conversation = scoped.execute(
-            "SELECT project_id FROM conversations"
-            " WHERE account_id = ? AND conversation_id = ?",
-            (account_id, conversation_id),
-        ).fetchone()
+        # conversations 属 chat 域：经属主 ConversationRepository 读取
+        # 归属项目，对话不存在时本轮无作用域可检索。
+        conversation = self._conversations.get_conversation(
+            account_id, conversation_id
+        )
         if conversation is None:
             return None
-        project_id = (
-            str(conversation["project_id"])
-            if conversation["project_id"] is not None
-            else None
-        )
+        project_id = conversation.project_id
         attachment_ids = self._attachment_ids(
             account_id, conversation_id, user_message_id
         )
@@ -314,12 +323,9 @@ class LayeredRetrievalService:
         """本轮明确附加的文件（绑定到所属用户消息，本轮授权）。"""
         if user_message_id is None:
             return []
-        rows = self._database.scoped(account_id).execute(
-            "SELECT object_id FROM chat_attachments"
-            " WHERE account_id = ? AND conversation_id = ? AND message_id = ?",
-            (account_id, conversation_id, user_message_id),
-        ).fetchall()
-        return [str(row["object_id"]) for row in rows]
+        return self._attachments.object_ids_for_message(
+            account_id, conversation_id, user_message_id
+        )
 
     def _resolve_layers(
         self,
@@ -425,22 +431,12 @@ class LayeredRetrievalService:
         project_id: str | None = None,
     ) -> list[str]:
         """返回某层已就绪且对象仍活跃的文档标识（只查当前账户资源）。"""
-        sql = (
-            "SELECT r.document_id FROM document_records r"
-            " JOIN objects o ON o.object_id = r.object_id"
-            " WHERE r.account_id = ? AND r.source = ? AND r.status = 'ready'"
-            " AND o.account_id = ? AND o.status = 'active'"
+        return self._repository.ready_document_ids(
+            account_id,
+            source=source,
+            object_ids=object_ids,
+            project_id=project_id,
         )
-        params: list[object] = [account_id, source, account_id]
-        if object_ids is not None:
-            placeholders = ",".join("?" for _ in object_ids)
-            sql += f" AND r.object_id IN ({placeholders})"
-            params.extend(object_ids)
-        if project_id is not None:
-            sql += " AND r.project_id = ?"
-            params.append(project_id)
-        rows = self._database.scoped(account_id).execute(sql, params).fetchall()
-        return [str(row["document_id"]) for row in rows]
 
     def _has_stale_documents(
         self,
@@ -451,34 +447,15 @@ class LayeredRetrievalService:
         project_id: str | None = None,
     ) -> bool:
         """返回已就绪但等待索引重建的文档状态，供教学证据门闭锁。"""
-
-        sql = (
-            "SELECT 1 FROM document_records r"
-            " JOIN objects o ON o.object_id = r.object_id"
-            " WHERE r.account_id = ? AND r.source = ? AND r.status = 'ready'"
-            " AND r.rebuild_requested = 1 AND o.account_id = ? AND o.status = 'active'"
-        )
-        params: list[object] = [account_id, source, account_id]
-        if object_ids is not None:
-            placeholders = ",".join("?" for _ in object_ids)
-            sql += f" AND r.object_id IN ({placeholders})"
-            params.extend(object_ids)
-        if project_id is not None:
-            sql += " AND r.project_id = ?"
-            params.append(project_id)
-        return (
-            self._database.scoped(account_id).execute(sql + " LIMIT 1", params).fetchone()
-            is not None
+        return self._repository.has_stale_documents(
+            account_id,
+            source=source,
+            object_ids=object_ids,
+            project_id=project_id,
         )
 
     def _active_version(self, account_id: str) -> sqlite3.Row | None:
-        row = self._database.scoped(account_id).execute(
-            "SELECT v.version_id, v.status FROM index_active a"
-            " JOIN index_versions v ON v.version_id = a.version_id"
-            " WHERE a.account_id = ? AND v.status = 'active'",
-            (account_id,),
-        ).fetchone()
-        return cast(sqlite3.Row | None, row)
+        return self._repository.active_version(account_id)
 
     def _vector_rows(
         self,
@@ -486,19 +463,7 @@ class LayeredRetrievalService:
         version_id: str,
         document_ids: list[str],
     ) -> list[dict[str, Any]]:
-        placeholders = ",".join("?" for _ in document_ids)
-        rows = self._database.scoped(account_id).execute(
-            "SELECT c.chunk_id, c.document_id, c.content, c.section_title,"
-            " c.page_number, r.object_id, r.content_hash,"
-            " c.content_hash AS chunk_content_hash, v.vector_json"
-            " FROM index_vectors v"
-            " JOIN document_chunks c ON c.chunk_id = v.chunk_id"
-            " JOIN document_records r ON r.document_id = c.document_id"
-            " WHERE v.version_id = ? AND r.account_id = ? AND r.status = 'ready'"
-            f" AND r.document_id IN ({placeholders})",
-            (version_id, account_id) + tuple(document_ids),
-        ).fetchall()
-        return [dict(row) for row in rows]
+        return self._repository.vector_rows(account_id, version_id, document_ids)
 
     def _embedding_availability(self, account_id: str) -> tuple[bool, str | None, bool]:
         if self._probes is None:
@@ -578,22 +543,7 @@ class LayeredRetrievalService:
         self, account_id: str, object_ids: list[str]
     ) -> dict[str, tuple[str, str]]:
         """一次查询取回多个对象的 (文件名, 媒体类型)（引用写入预取）。"""
-        if not object_ids:
-            return {}
-        placeholders = ",".join("?" for _ in object_ids)
-        rows = self._database.scoped(account_id).execute(
-            "SELECT object_id, original_filename, media_type FROM objects"
-            " WHERE account_id = ?"
-            f" AND object_id IN ({placeholders})",
-            (account_id, *object_ids),
-        ).fetchall()
-        return {
-            str(row["object_id"]): (
-                str(row["original_filename"]),
-                str(row["media_type"]),
-            )
-            for row in rows
-        }
+        return self._objects.object_metas(account_id, object_ids)
 
     def _layer_results(
         self,
@@ -680,47 +630,28 @@ class LayeredRetrievalService:
         （附件解绑、项目删除/文件移除、材料删除）→ ``permission_changed``。
         """
         object_id = str(row["object_id"])
-        object_row = self._database.scoped(account_id).execute(
-            "SELECT status FROM objects WHERE account_id = ? AND object_id = ?",
-            (account_id, object_id),
-        ).fetchone()
-        if object_row is None or str(object_row["status"]) != "active":
+        # objects 属 storage 域：经属主仓库读取状态，跨账户/不存在返回 None。
+        if self._objects.object_status(account_id, object_id) != "active":
             return (
                 CitationAccessStatus.DELETED,
                 "原文已删除，无法打开。",
                 None,
             )
         layer = RetrievalSourceLayer(str(row["source_layer"]))
-        scoped = self._database.scoped(account_id)
         if layer == RetrievalSourceLayer.ATTACHMENT:
             # 附件绑定的是所属用户消息（引用本身是助手消息）：经轮次记录
             # 取回本轮用户消息再校验绑定，杜绝"消息 ID 错位"导致的误判。
-            round_row = scoped.execute(
-                "SELECT user_message_id FROM retrieval_rounds"
-                " WHERE account_id = ? AND round_id = ?",
-                (account_id, str(row["round_id"])),
-            ).fetchone()
-            user_message_id = (
-                str(round_row["user_message_id"])
-                if round_row is not None and round_row["user_message_id"] is not None
-                else None
+            user_message_id = self._repository.round_user_message_id(
+                account_id, str(row["round_id"])
             )
             bound = (
-                scoped.execute(
-                    "SELECT 1 FROM chat_attachments WHERE account_id = ?"
-                    " AND object_id = ? AND conversation_id = ? AND message_id = ?"
-                    " LIMIT 1",
-                    (
-                        account_id,
-                        object_id,
-                        conversation_id,
-                        user_message_id,
-                    ),
-                ).fetchone()
+                self._attachments.bound_exists(
+                    account_id, object_id, conversation_id, user_message_id
+                )
                 if user_message_id is not None
-                else None
+                else False
             )
-            if bound is None:
+            if not bound:
                 return (
                     CitationAccessStatus.PERMISSION_CHANGED,
                     "附件已从消息中移除或授权已变化，无法打开原文。",
@@ -732,23 +663,21 @@ class LayeredRetrievalService:
                 f"/chat/conversations/{conversation_id}/attachments/{object_id}/download",
             )
         if layer == RetrievalSourceLayer.PROJECT:
-            conversation = scoped.execute(
-                "SELECT project_id FROM conversations WHERE account_id = ?"
-                " AND conversation_id = ?",
-                (account_id, conversation_id),
-            ).fetchone()
+            conversation = self._conversations.get_conversation(
+                account_id, conversation_id
+            )
             project_id = (
-                str(conversation["project_id"])
-                if conversation is not None and conversation["project_id"] is not None
+                conversation.project_id
+                if conversation is not None and conversation.project_id is not None
                 else None
             )
             in_project = (
-                scoped.execute(
-                    "SELECT 1 FROM document_records WHERE account_id = ?"
-                    " AND object_id = ? AND source = 'project_file' AND project_id = ?"
-                    " LIMIT 1",
-                    (account_id, object_id, project_id),
-                ).fetchone()
+                self._repository.document_record_exists(
+                    account_id,
+                    object_id,
+                    source="project_file",
+                    project_id=project_id,
+                )
                 if project_id is not None
                 else None
             )
@@ -763,12 +692,9 @@ class LayeredRetrievalService:
                 "原文可访问。",
                 f"/learning-projects/{project_id}/files/{object_id}/download",
             )
-        material = scoped.execute(
-            "SELECT 1 FROM document_records WHERE account_id = ?"
-            " AND object_id = ? AND source = 'knowledge_base' LIMIT 1",
-            (account_id, object_id),
-        ).fetchone()
-        if material is None:
+        if not self._repository.document_record_exists(
+            account_id, object_id, source="knowledge_base"
+        ):
             return (
                 CitationAccessStatus.PERMISSION_CHANGED,
                 "知识库材料已删除或授权已变化，无法打开原文。",

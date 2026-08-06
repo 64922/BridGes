@@ -228,6 +228,66 @@ class BridgesObjectRepository:
         ).fetchall()
         return [self._row_to_object(row) for row in rows]
 
+    def mark_pending_cleanup(
+        self,
+        account_id: str,
+        object_id: str,
+        *,
+        require_active: bool = True,
+        updated_at: str | None = None,
+    ) -> None:
+        """把对象标记为待清理（供 chat 域删除绑定后经属主仓库标记）。
+
+        与 ``delete_object`` 的区别：不做存在性授权检查、不触发物理清理，
+        静默幂等——绑定行已删除的调用方自己驱动 ``run_pending_cleanups``。
+        ``require_active`` 为 False 时不再限定 ``status='active'``（会话级
+        批量清理路径，允许重复标记）。
+        """
+        condition = " AND status = 'active'" if require_active else ""
+        self._database.scoped(account_id).execute(
+            "UPDATE objects SET status = ?, updated_at = ?"
+            f" WHERE object_id = ? AND account_id = ?{condition}",
+            (
+                OBJECT_STATUS_PENDING_CLEANUP,
+                updated_at or _now(),
+                object_id,
+                account_id,
+            ),
+        )
+
+    # ------------------------------------------------------------------
+    # 跨域只读投影（供 chat / retrieval 等非属主模块经接口读取）
+    # ------------------------------------------------------------------
+
+    def object_status(self, account_id: str, object_id: str) -> str | None:
+        """返回对象状态；跨账户或不存在返回 None（不泄漏存在性）。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT status FROM objects WHERE account_id = ? AND object_id = ?",
+            (account_id, object_id),
+        ).fetchone()
+        return str(row["status"]) if row is not None else None
+
+    def object_metas(
+        self, account_id: str, object_ids: list[str]
+    ) -> dict[str, tuple[str, str]]:
+        """一次查询取回多个对象的 (原始文件名, 媒体类型)；跨账户对象被排除。"""
+        if not object_ids:
+            return {}
+        placeholders = ",".join("?" for _ in object_ids)
+        rows = self._database.scoped(account_id).execute(
+            "SELECT object_id, original_filename, media_type FROM objects"
+            " WHERE account_id = ?"
+            f" AND object_id IN ({placeholders})",
+            (account_id, *object_ids),
+        ).fetchall()
+        return {
+            str(row["object_id"]): (
+                str(row["original_filename"]),
+                str(row["media_type"]),
+            )
+            for row in rows
+        }
+
     def run_pending_cleanups(self) -> int:
         """重试全部待清理对象，返回本次成功清理数。
 
