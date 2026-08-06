@@ -25,7 +25,8 @@
 ## 里程碑
 
 - [x] 候选 1 完成：tests/chat 全绿 + 全量回归通过 + ruff 干净
-- [x] 候选 2 完成（Issue 43，实施中）
+- [x] 候选 2 完成（Issue 43）：runtime/queue.py 深模块 + 5 子系统迁移 +
+      workflows 持久化 + 存量回填，全量 2180 pytest 通过、ruff 干净
 - [ ] 候选 3 完成（Issue 44）
 - [ ] 候选 4 完成（Issue 45）
 - [ ] 候选 5 完成（Issue 46）
