@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 InstitutionMembershipProvider = Callable[[str, str], "InstitutionRole | None"]
 ProjectTenantProvider = Callable[[str], str | None]
+SharedProjectMembershipProvider = Callable[[str, str], bool]
 
 
 class ScopeEnforcer:
@@ -45,22 +46,53 @@ class ScopeEnforcer:
         deployment_cell: str = "local",
         institution_membership_provider: InstitutionMembershipProvider | None = None,
         project_tenant_provider: ProjectTenantProvider | None = None,
+        shared_project_membership_provider: SharedProjectMembershipProvider | None = None,
     ) -> None:
         self._deployment_cell = deployment_cell
         self._institution_membership_provider = institution_membership_provider
         self._project_tenant_provider = project_tenant_provider
+        self._shared_project_membership_provider = shared_project_membership_provider
 
     def set_institution_providers(
         self,
         *,
         institution_membership_provider: InstitutionMembershipProvider | None = None,
         project_tenant_provider: ProjectTenantProvider | None = None,
+        shared_project_membership_provider: SharedProjectMembershipProvider | None = None,
     ) -> None:
-        """Bind institution providers after construction to break dependency cycles."""
+        """Bind institution and membership providers after construction.
+
+        This breaks dependency cycles: providers are bound once their owning
+        services exist.
+        """
         if institution_membership_provider is not None:
             self._institution_membership_provider = institution_membership_provider
         if project_tenant_provider is not None:
             self._project_tenant_provider = project_tenant_provider
+        if shared_project_membership_provider is not None:
+            self._shared_project_membership_provider = shared_project_membership_provider
+
+    def set_shared_project_membership_provider(
+        self, provider: SharedProjectMembershipProvider | None
+    ) -> None:
+        """Bind the shared-project membership provider owned by the sharing service."""
+        if provider is not None:
+            self._shared_project_membership_provider = provider
+
+    @staticmethod
+    def service_subject(account_id: str, service_name: str) -> SubjectContext:
+        """Build the privileged service-internal subject context for a domain service.
+
+        Every service asks the enforcer the same access question with the same
+        subject shape, so session identifiers cannot drift between services.
+        The semantics of an internal privileged context are unchanged from the
+        per-service copies this factory replaces.
+        """
+        return SubjectContext(
+            account_id=account_id,
+            session_id=f"service:{service_name}",
+            auth_method=AuthMethod.SERVICE,
+        )
 
     def compile_scope(
         self,
@@ -122,10 +154,8 @@ class ScopeEnforcer:
                 raise ScopeIsolationError("对象不存在或没有访问权限。")
 
         elif object_ref.domain == ObjectDomain.SHARED_PROJECT:
-            # Shared-project access is checked by project membership and object
-            # grants in the sharing service; the scope enforcer only validates
-            # the domain and compiles the scope envelope here.
-            pass
+            if not self._is_shared_project_member(subject.account_id, object_ref.owner_id):
+                raise ScopeIsolationError("对象不存在或没有访问权限。")
 
         if rls_context is not None:
             if rls_context.subject.account_id != subject.account_id:
@@ -149,6 +179,23 @@ class ScopeEnforcer:
             purpose=action.value,
             requested_object_refs=[object_ref],
         )
+
+    def authorize_membership(self, account_id: str, project_id: str) -> None:
+        """Authorize an account as a member of a shared project.
+
+        The membership decision is delegated to the provider bound by the
+        sharing service so the "who may access this project" question has a
+        single interpreter. Raises ScopeIsolationError when the account is not
+        a member or no provider is bound (fail closed).
+        """
+        if not self._is_shared_project_member(account_id, project_id):
+            raise ScopeIsolationError("项目不存在或没有访问权限。")
+
+    def _is_shared_project_member(self, account_id: str, project_id: str) -> bool:
+        """Check whether account_id is a member of the shared project."""
+        if self._shared_project_membership_provider is None:
+            return False
+        return self._shared_project_membership_provider(project_id, account_id)
 
     def _is_institution_member(
         self, account_id: str, owner_id: str

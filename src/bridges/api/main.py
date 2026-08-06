@@ -773,10 +773,13 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     # T037: bind institution providers into the scope enforcer now that both the
     # institution service and sharing service exist. This breaks the construction
-    # cycle without changing the enforcer's public interface.
+    # cycle without changing the enforcer's public interface. Issue 44: shared
+    # project membership is also bound here so every service asks the enforcer
+    # the same "who may access this project" question.
     app.state.scope_enforcer.set_institution_providers(
         institution_membership_provider=app.state.institution_service.get_membership,
         project_tenant_provider=app.state.sharing_service.get_project_institution_id,
+        shared_project_membership_provider=app.state.sharing_service.is_member,
     )
 
     # T010: attach the observability service early so downstream services can
@@ -1090,6 +1093,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 object_repository=object_repository,
                 observability_service=app.state.observability_service,
                 runtime=McpRuntime(pid_dir=mcp_pid_dir),
+                scope_enforcer=app.state.scope_enforcer,
             )
             # 应用启动：回收上次异常退出遗留的孤儿 MCP 进程（pid 文件兜底）。
             mcp_service.reap_orphans()
@@ -1315,6 +1319,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         search_service=app.state.science_search_service,
         invalidation_service=invalidation_service,
         model_gateway=model_gateway,
+        scope_enforcer=app.state.scope_enforcer,
     )
     app.state.claim_evidence_service = claim_evidence_service
 

@@ -60,6 +60,7 @@ from bridges.contracts.science import (
     SourceStatus,
     ValidationReport,
 )
+from bridges.contracts.scope import ScopeAction, ScopeIsolationError
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.invalidation import InvalidationService
 from bridges.science.fact_lock import (
@@ -69,6 +70,7 @@ from bridges.science.fact_lock import (
 )
 from bridges.science.search import ScienceSearchService
 from bridges.science.service import ScienceError, ScienceSourceService, SearchableChunk
+from bridges.scope import ScopeEnforcer
 
 
 def _now() -> datetime:
@@ -166,22 +168,18 @@ class ClaimEvidenceService:
         invalidation_service: InvalidationService | None = None,
         model_gateway: ModelGateway | None = None,
         claim_generator: ClaimGeneratorPort | None = None,
+        scope_enforcer: ScopeEnforcer | None = None,
     ) -> None:
         self._source_service = source_service
         self._search_service = search_service
         self._invalidation = invalidation_service
         self._model_gateway = model_gateway
         self._claim_generator = claim_generator or _DeterministicClaimGenerator()
+        self._scope_enforcer = scope_enforcer or ScopeEnforcer()
         self._graphs: dict[str, _StoredGraph] = {}
 
     def _subject(self, account_id: str) -> SubjectContext:
-        from bridges.contracts.identity import AuthMethod
-
-        return SubjectContext(
-            account_id=account_id,
-            session_id="claim-service",
-            auth_method=AuthMethod.PASSWORD,
-        )
+        return ScopeEnforcer.service_subject(account_id, "claims")
 
     def _require_active_source(self, source_id: str, account_id: str) -> None:
         """Fail closed if the source is revoked or tombstoned."""
@@ -189,13 +187,12 @@ class ClaimEvidenceService:
             return
         projection = self._source_service.get_source(account_id, source_id)
         source = projection.source
-        domain = (
-            ObjectDomain.SHARED_PROJECT
-            if source.project_id
-            else ObjectDomain.PERSONAL_VAULT
+        ref = ObjectRef(
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=source.account_id,
+            object_id=source_id,
+            version=1,
         )
-        owner_id = source.project_id if source.project_id else account_id
-        ref = ObjectRef(domain=domain, owner_id=owner_id, object_id=source_id, version=1)
         from bridges.invalidation import InvalidationError
 
         try:
@@ -204,10 +201,21 @@ class ClaimEvidenceService:
             raise ScienceError(str(exc)) from exc
 
     def _authorize_graph(self, account_id: str, graph_id: str) -> ClaimGraph:
-        """Return a graph only if it belongs to the account."""
+        """Return a graph only if the account is authorized for it."""
         stored = self._graphs.get(graph_id)
-        if stored is None or stored.account_id != account_id:
+        if stored is None:
             raise ScienceError("Claim 图不存在或没有访问权限。")
+        subject = self._subject(account_id)
+        ref = ObjectRef(
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=stored.account_id,
+            object_id=graph_id,
+            version=1,
+        )
+        try:
+            self._scope_enforcer.authorize(subject, ScopeAction.READ, ref)
+        except ScopeIsolationError as exc:
+            raise ScienceError(str(exc)) from exc
         return stored.graph
 
     def _build_locator(self, candidate: RetrievalCandidate) -> CitationLocator:
@@ -506,9 +514,11 @@ class ClaimEvidenceService:
         """List claim graphs visible to the account, optionally filtered by project."""
         result: list[ClaimGraph] = []
         for stored in self._graphs.values():
-            if stored.account_id != account_id:
-                continue
             if project_id is not None and stored.graph.project_id != project_id:
+                continue
+            try:
+                self._authorize_graph(account_id, stored.graph.graph_id)
+            except ScienceError:
                 continue
             result.append(stored.graph)
         result.sort(key=lambda g: g.created_at, reverse=True)

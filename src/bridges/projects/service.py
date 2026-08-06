@@ -85,14 +85,8 @@ class ProjectService:
         return datetime.now(UTC)
 
     def _subject(self, account_id: str) -> SubjectContext:
-        """Build a minimal subject context from an account id for scope checks."""
-        from bridges.contracts.identity import AuthMethod
-
-        return SubjectContext(
-            account_id=account_id,
-            session_id="service-session",
-            auth_method=AuthMethod.PASSWORD,
-        )
+        """Build the privileged service-internal subject context for scope checks."""
+        return ScopeEnforcer.service_subject(account_id, "projects")
 
     def _object_ref(self, project: Project) -> ObjectRef:
         return ObjectRef(
@@ -130,17 +124,14 @@ class ProjectService:
 
         for stored in self._projects.values():
             project = stored.project
-            if project.account_id != account_id:
-                continue
             # Explicit scope authorization on each project; this mirrors RLS.
+            # Cross-account projects are skipped (never enumerated).
             try:
                 self._scope_enforcer.authorize(
                     subject, ScopeAction.READ, self._object_ref(project)
                 )
-            except ScopeIsolationError as exc:
-                # Should not happen given the account filter, but the contract
-                # requires failing closed if scope and owner disagree.
-                raise ProjectError(str(exc)) from exc
+            except ScopeIsolationError:
+                continue
             summary = ProjectSummary(
                 ref=self._object_ref(project),
                 name=project.name,
@@ -159,15 +150,15 @@ class ProjectService:
     def get_project(self, account_id: str, project_id: str) -> Project:
         """Return a single project projection if owned by the account."""
         stored = self._projects.get(project_id)
-        if stored is None or stored.project.account_id != account_id:
+        if stored is None:
             raise ProjectError("项目不存在或没有访问权限。")
         subject = self._subject(account_id)
         try:
             self._scope_enforcer.authorize(
                 subject, ScopeAction.READ, self._object_ref(stored.project)
             )
-        except ScopeIsolationError as exc:
-            raise ProjectError(str(exc)) from exc
+        except ScopeIsolationError:
+            raise ProjectError("项目不存在或没有访问权限。") from None
         return stored.project
 
     def update_project(
@@ -175,7 +166,7 @@ class ProjectService:
     ) -> Project:
         """Rename or update a project description."""
         stored = self._projects.get(project_id)
-        if stored is None or stored.project.account_id != account_id:
+        if stored is None:
             raise ProjectError("项目不存在或没有访问权限。")
         subject = self._subject(account_id)
         try:
@@ -198,7 +189,7 @@ class ProjectService:
     def archive_project(self, account_id: str, project_id: str) -> Project:
         """Archive a project."""
         stored = self._projects.get(project_id)
-        if stored is None or stored.project.account_id != account_id:
+        if stored is None:
             raise ProjectError("项目不存在或没有访问权限。")
         subject = self._subject(account_id)
         try:

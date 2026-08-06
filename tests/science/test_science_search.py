@@ -185,14 +185,11 @@ class TestHybridRetrieval:
             source_service, alice.account_id, "Deleted content about supernovae."
         )
         source = source_service._sources[source_id].source
-        domain = (
-            ObjectDomain.SHARED_PROJECT
-            if source.project_id
-            else ObjectDomain.PERSONAL_VAULT
-        )
-        owner_id = source.project_id if source.project_id else source.account_id
         source_ref = ObjectRef(
-            domain=domain, owner_id=owner_id, object_id=source_id, version=1
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=source.account_id,
+            object_id=source_id,
+            version=1,
         )
         invalidation_service.record_tombstone(alice, source_ref, "删除")
         state = invalidation_service.check_state(source_ref)

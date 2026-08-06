@@ -352,6 +352,9 @@ class TestInvalidationIntegration:
 def _object_ref_for_source(service: ScienceSourceService, source_id: str) -> ObjectRef:
     stored = service._sources[source_id]
     source = stored.source
-    domain = ObjectDomain.SHARED_PROJECT if source.project_id else ObjectDomain.PERSONAL_VAULT
-    owner_id = source.project_id if source.project_id else source.account_id
-    return ObjectRef(domain=domain, owner_id=owner_id, object_id=source_id, version=1)
+    return ObjectRef(
+        domain=ObjectDomain.PERSONAL_VAULT,
+        owner_id=source.account_id,
+        object_id=source_id,
+        version=1,
+    )

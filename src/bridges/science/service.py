@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from bridges.ai import ModelGateway
-from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.identity import SubjectContext
 from bridges.contracts.invalidation import (
     AffectedDownstream,
     ImpactResolver,
@@ -70,10 +70,18 @@ def _sha256(data: bytes) -> str:
 
 
 def _source_ref(source: Source) -> ObjectRef:
-    """Build an ObjectRef for a source entry."""
-    domain = ObjectDomain.SHARED_PROJECT if source.project_id else ObjectDomain.PERSONAL_VAULT
-    owner_id = source.project_id if source.project_id else source.account_id
-    return ObjectRef(domain=domain, owner_id=owner_id, object_id=source.source_id, version=1)
+    """Build an ObjectRef for a source entry.
+
+    Sources are owned by the uploading account regardless of the project tag:
+    a project tag scopes the source inside the account's own scientific project
+    space (PERSONAL_VAULT), it is not a shared-project membership.
+    """
+    return ObjectRef(
+        domain=ObjectDomain.PERSONAL_VAULT,
+        owner_id=source.account_id,
+        object_id=source.source_id,
+        version=1,
+    )
 
 
 class ScienceError(Exception):
@@ -122,11 +130,7 @@ class ScienceSourceService:
         self._model_gateway = model_gateway
 
     def _subject(self, account_id: str) -> SubjectContext:
-        return SubjectContext(
-            account_id=account_id,
-            session_id="service-session",
-            auth_method=AuthMethod.PASSWORD,
-        )
+        return ScopeEnforcer.service_subject(account_id, "science")
 
     def _require_active(self, source_ref: ObjectRef) -> None:
         """Fail closed if the source is revoked or tombstoned."""
@@ -160,8 +164,6 @@ class ScienceSourceService:
         cross-account access until explicit project membership and object grants
         are implemented.
         """
-        if account_id != source.account_id:
-            raise ScienceError("来源不存在或没有访问权限。")
         subject = self._subject(account_id)
         source_ref = _source_ref(source)
         try:
@@ -411,8 +413,6 @@ class ScienceSourceService:
         summaries: list[SourceSummary] = []
         for stored in self._sources.values():
             source = stored.source
-            if source.account_id != account_id:
-                continue
             if project_id is not None and source.project_id != project_id:
                 continue
             try:

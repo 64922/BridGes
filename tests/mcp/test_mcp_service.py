@@ -36,8 +36,10 @@ from bridges.contracts.mcp import (
     McpStatus,
 )
 from bridges.contracts.observability import AuditAction
+from bridges.contracts.scope import ScopeIsolationError
 from bridges.mcp.runtime import McpRuntime
 from bridges.mcp.service import McpService
+from bridges.scope import ScopeEnforcer
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.object_store import EncryptedFileObjectStore
 from bridges.storage.repository import BridgesObjectRepository
@@ -660,3 +662,51 @@ def test_account_isolation_for_all_operations(tmp_path) -> None:
         assert "未找到" in str(exc_info.value)
     # A 的调用记录不受影响。
     assert harness.service.get_calls(harness.acc1, "bridges-echo")
+
+
+def test_cross_account_rejected_by_scope_enforcer(tmp_path) -> None:
+    """接入 scope enforcer 后，跨账户读取 MCP 对象被授权拒绝（而非仅空结果）。
+
+    Issue 44：MCP 的对象访问与 vault/media/workflows 回答同一问题；
+    异常链根因必须是 ScopeIsolationError（enforcer 判定），而不是 SQL
+    scoped() 的空结果。
+    """
+    harness = _Harness(tmp_path)
+    harness.service = McpService(
+        database=harness.database,
+        object_repository=harness.objects,
+        observability_service=harness.observability,  # type: ignore[arg-type]
+        runtime=harness.runtime,
+        scope_enforcer=ScopeEnforcer(),
+    )
+    harness.service.install(harness.acc1, "echo.yaml", echo_yaml().encode("utf-8"))
+    harness.echo_call()
+    # acc2 跨账户读 acc1 的 MCP 对象 → 授权拒绝（404），而非空结果。
+    with pytest.raises(McpError) as exc_info:
+        harness.service.get_calls(harness.acc2, "bridges-echo")
+    assert exc_info.value.status_code == 404
+    assert "未找到" in str(exc_info.value)
+    assert isinstance(exc_info.value.__cause__, ScopeIsolationError)
+    # acc1 本人读取不受影响（授权通过）。
+    assert harness.service.get_calls(harness.acc1, "bridges-echo")
+
+
+def test_same_mcp_id_across_accounts_both_authorized(tmp_path) -> None:
+    """多账户各自安装同名 mcp_id 时，授权判定不误伤合法所有者。
+
+    表仅 UNIQUE(account_id, mcp_id)，probe 必须对全部真实所有者判定，
+    不能只取第一行（否则合法所有者会被误判为跨账户）。
+    """
+    harness = _Harness(tmp_path)
+    harness.service = McpService(
+        database=harness.database,
+        object_repository=harness.objects,
+        observability_service=harness.observability,  # type: ignore[arg-type]
+        runtime=harness.runtime,
+        scope_enforcer=ScopeEnforcer(),
+    )
+    harness.service.install(harness.acc1, "echo.yaml", echo_yaml().encode("utf-8"))
+    harness.service.install(harness.acc2, "echo.yaml", echo_yaml().encode("utf-8"))
+    # 两账户都是各自行的合法所有者，读取（经 enforcer 授权）均通过。
+    assert harness.service.get_calls(harness.acc1, "bridges-echo") == []
+    assert harness.service.get_calls(harness.acc2, "bridges-echo") == []

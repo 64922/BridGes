@@ -295,7 +295,8 @@ class TestSourceInvalidation:
     def test_revoked_source_blocks_new_reads_and_propagates(
         self, client: TestClient
     ) -> None:
-        _register(client, "revoke-source", "200011@qq.com", "correct-horse-12")
+        registered = _register(client, "revoke-source", "200011@qq.com", "correct-horse-12")
+        account_id = registered["account"]["id"]
         project_id = _create_project(client, "Revoke Source Project")
         run = _upload_text(client, project_id, "To be revoked")
         source_id = run["source_id"]
@@ -308,8 +309,8 @@ class TestSourceInvalidation:
         app_state: Any = client.app.state
         invalidation_service = app_state.invalidation_service
         object_ref = ObjectRef(
-            domain=ObjectDomain.SHARED_PROJECT,
-            owner_id=project_id,
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=account_id,
             object_id=source_id,
             version=1,
         )

@@ -42,6 +42,8 @@ from bridges.contracts.mcp import (
     McpStatus,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
+from bridges.contracts.projects import ObjectDomain, ObjectRef
+from bridges.contracts.scope import ScopeAction, ScopeIsolationError
 from bridges.mcp.checker import McpDescriptorChecker, require_checker_error
 from bridges.mcp.manifest import validate_permissions
 from bridges.mcp.process import (
@@ -50,6 +52,7 @@ from bridges.mcp.process import (
     describe_sensitive_operation,
 )
 from bridges.mcp.runtime import McpRuntime
+from bridges.scope import ScopeEnforcer
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.repository import BridgesObjectRepository
 
@@ -156,6 +159,7 @@ class McpService:
         runtime: McpRuntime | None = None,
         checker: McpDescriptorChecker | None = None,
         clock: Any = None,
+        scope_enforcer: ScopeEnforcer | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
@@ -163,6 +167,7 @@ class McpService:
         self._runtime = runtime or McpRuntime()
         self._checker = checker or McpDescriptorChecker()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._scope_enforcer = scope_enforcer
         self._confirmations: dict[str, _ConfirmationEntry] = {}
         self._confirmations_lock = threading.Lock()
         # Issue 39 AC8：外部命令的受限工作目录——每次服务实例独立随机目录，
@@ -939,6 +944,40 @@ class McpService:
     # ------------------------------------------------------------------
 
     def _require_server(self, account_id: str, mcp_id: str) -> tuple[Any, ...]:
+        # Issue 44：MCP 对象读取与 vault/media/workflows 回答同一问题——先取
+        # 对象真实所有者交给 scope enforcer 判定，再以账户作用域查询取行
+        # （scoped 仍是纵深防御）。跨账户/不存在统一 404，不泄漏存在性。
+        if self._scope_enforcer is not None:
+            # 同一 mcp_id 可被多账户各自安装（表仅 UNIQUE(account_id, mcp_id)），
+            # 必须对全部真实所有者逐一判定，避免把合法所有者误判为跨账户。
+            owners = self._database.connection.execute(
+                "SELECT account_id FROM mcp_servers WHERE mcp_id = ?",
+                (mcp_id,),
+            ).fetchall()
+            if owners:
+                subject = ScopeEnforcer.service_subject(account_id, "mcp")
+                authorized = False
+                last_error: ScopeIsolationError | None = None
+                for (owner,) in owners:
+                    ref = ObjectRef(
+                        domain=ObjectDomain.PERSONAL_VAULT,
+                        owner_id=str(owner),
+                        object_id=mcp_id,
+                        version=1,
+                    )
+                    try:
+                        self._scope_enforcer.authorize(subject, ScopeAction.READ, ref)
+                    except ScopeIsolationError as exc:
+                        last_error = exc
+                        continue
+                    authorized = True
+                    break
+                if not authorized:
+                    raise McpError(
+                        "mcp_not_found",
+                        "未找到该 MCP，可能已卸载或不属于当前账户。",
+                        status_code=404,
+                    ) from last_error
         scoped = self._database.scoped(account_id)
         row = scoped.execute(
             f"SELECT {_MCP_SELECT} FROM mcp_servers WHERE account_id = ? AND mcp_id = ?",

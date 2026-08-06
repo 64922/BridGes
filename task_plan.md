@@ -14,8 +14,8 @@
    - 验收：146 chat 测试 + 全量 2148 pytest 通过、ruff 干净、公开导入面不变
    - 详见 `.scratch/bridges-improvement/issues/42-architecture-deepening.md`
 
-2. **统一领取型任务契约** → Issue 43（解决方案已写，待实施）
-3. **对象授权收拢** → Issue 44（解决方案已写，待实施）
+2. **统一领取型任务契约** → Issue 43（已完成）
+3. **对象授权收拢** → Issue 44（已完成）
 4. **服务不再直读不属于自己的表** → Issue 45（解决方案已写，待实施）
 5. **前端数据获取 module** → Issue 46（解决方案已写，待实施）
 6. **单一流事件 adapter** → Issue 47（解决方案已写，待实施）
@@ -27,7 +27,10 @@
 - [x] 候选 1 完成：tests/chat 全绿 + 全量回归通过 + ruff 干净
 - [x] 候选 2 完成（Issue 43）：runtime/queue.py 深模块 + 5 子系统迁移 +
       workflows 持久化 + 存量回填，全量 2180 pytest 通过、ruff 干净
-- [ ] 候选 3 完成（Issue 44）
+- [x] 候选 3 完成（Issue 44）：scope 收拢共享项目成员判定 + service_subject 工厂 +
+      projects/media/workflows 预过滤删除 + sharing/_require_member 走 enforcer +
+      MCP 接入 enforcer + media/science 项目源域编码修正（PERSONAL_VAULT），
+      全量 2190 pytest 通过、ruff 干净（双轴审查修复 4 处后提交）
 - [ ] 候选 4 完成（Issue 45）
 - [ ] 候选 5 完成（Issue 46）
 - [ ] 候选 6 完成（Issue 47）

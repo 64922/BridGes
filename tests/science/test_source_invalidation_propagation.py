@@ -117,9 +117,12 @@ def bob() -> SubjectContext:
 
 
 def _source_ref(source: Source) -> ObjectRef:
-    domain = ObjectDomain.SHARED_PROJECT if source.project_id else ObjectDomain.PERSONAL_VAULT
-    owner_id = source.project_id if source.project_id else source.account_id
-    return ObjectRef(domain=domain, owner_id=owner_id, object_id=source.source_id, version=1)
+    return ObjectRef(
+        domain=ObjectDomain.PERSONAL_VAULT,
+        owner_id=source.account_id,
+        object_id=source.source_id,
+        version=1,
+    )
 
 
 def _upload_text(

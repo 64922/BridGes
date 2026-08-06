@@ -665,19 +665,11 @@ class MediaPublishService:
                     return False
                 from bridges.contracts.projects import ObjectDomain, ObjectRef
 
-                domain = (
-                    ObjectDomain.SHARED_PROJECT
-                    if projection.source_asset.project_id
-                    else ObjectDomain.PERSONAL_VAULT
-                )
-                owner_id = (
-                    projection.source_asset.project_id
-                    if projection.source_asset.project_id
-                    else account_id
-                )
+                # 与 media/service.py 的 _object_ref_for_asset 编码一致：
+                # 资产归属上传账户（个人项目空间），失效键按同域查询。
                 obj_ref = ObjectRef(
-                    domain=domain,
-                    owner_id=owner_id,
+                    domain=ObjectDomain.PERSONAL_VAULT,
+                    owner_id=projection.source_asset.account_id,
                     object_id=asset_id,
                     version=1,
                 )

@@ -121,14 +121,8 @@ class WorkflowService:
             self._load_runs()
 
     def _subject(self, account_id: str) -> SubjectContext:
-        """Build a minimal subject context from an account id for scope checks."""
-        from bridges.contracts.identity import AuthMethod
-
-        return SubjectContext(
-            account_id=account_id,
-            session_id="service-session",
-            auth_method=AuthMethod.PASSWORD,
-        )
+        """Build the privileged service-internal subject context for scope checks."""
+        return ScopeEnforcer.service_subject(account_id, "workflows")
 
     def _now(self) -> datetime:
         return datetime.now(UTC)
@@ -207,12 +201,18 @@ class WorkflowService:
 
     def _require_record(self, account_id: str, run_id: str) -> _RunRecord:
         record = self._runs.get(run_id)
-        if record is None or record.context.account_id != account_id:
+        if record is None:
             raise WorkflowError("运行不存在或没有访问权限。")
         subject = self._subject(account_id)
+        # 判定对象用运行真正所属账户/项目，避免以调用者身份构造恒真判定。
+        owner_id = (
+            record.context.project_id
+            if record.context.object_domain == ObjectDomain.SHARED_PROJECT
+            else record.context.account_id
+        )
         project_ref = ObjectRef(
             domain=record.context.object_domain,
-            owner_id=account_id,
+            owner_id=owner_id,
             object_id=record.context.project_id,
             version=1,
         )

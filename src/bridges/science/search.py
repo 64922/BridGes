@@ -262,14 +262,11 @@ class ScienceSearchService:
                 return False
             if source.current_version_id != chunk.document_id:
                 return False
-            domain = (
-                ObjectDomain.SHARED_PROJECT
-                if source.project_id
-                else ObjectDomain.PERSONAL_VAULT
-            )
-            owner_id = source.project_id if source.project_id else source.account_id
             source_ref = ObjectRef(
-                domain=domain, owner_id=owner_id, object_id=source.source_id, version=1
+                domain=ObjectDomain.PERSONAL_VAULT,
+                owner_id=source.account_id,
+                object_id=source.source_id,
+                version=1,
             )
             try:
                 self._source_service._authorize_source(account_id, source, ScopeAction.READ)

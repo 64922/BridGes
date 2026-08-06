@@ -17,6 +17,7 @@ from bridges.contracts.projects import (
     ProjectRole,
     ProjectStatus,
 )
+from bridges.contracts.scope import ScopeIsolationError
 from bridges.contracts.sharing import (
     GrantPermission,
     InviteAcceptRequest,
@@ -100,6 +101,9 @@ class SharingService:
     ) -> None:
         self._vault = vault_service
         self._enforcer = scope_enforcer or ScopeEnforcer()
+        # Issue 44：成员判定的判据只存在于 scope enforcer；这里把成员数据
+        # 查询绑定为判定 provider（数据仍属 sharing，判定唯一）。
+        self._enforcer.set_shared_project_membership_provider(self.is_member)
         self._identity = identity_service
         self._projects: dict[str, _SharedProject] = {}
         self._members: dict[tuple[str, str], SharedProjectMember] = {}
@@ -111,19 +115,28 @@ class SharingService:
         return datetime.now(UTC)
 
     def _subject(self, account_id: str) -> SubjectContext:
-        from bridges.contracts.identity import AuthMethod
+        return ScopeEnforcer.service_subject(account_id, "sharing")
 
-        return SubjectContext(
-            account_id=account_id,
-            session_id="sharing-service",
-            auth_method=AuthMethod.PASSWORD,
-        )
+    def is_member(self, project_id: str, account_id: str) -> bool:
+        """Return whether the account is a member of the shared project.
+
+        This is the membership data query bound into the scope enforcer as the
+        shared-project membership provider; the decision itself lives in scope.
+        """
+        return self._members.get((project_id, account_id)) is not None
 
     def _require_member(
         self, project_id: str, account_id: str
     ) -> SharedProjectMember:
+        # 成员判定经 scope enforcer（与 vault/media/workflows 同一问题）；
+        # 判定与数据同源，通过后成员记录必然存在。
+        try:
+            self._enforcer.authorize_membership(account_id, project_id)
+        except ScopeIsolationError as exc:
+            raise SharingServiceError(str(exc)) from exc
         member = self._members.get((project_id, account_id))
         if member is None:
+            # 判定与数据同源，正常不可达；失败闭锁避免 -O 下 assert 消失。
             raise SharingServiceError("项目不存在或没有访问权限。")
         return member
 

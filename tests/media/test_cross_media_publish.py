@@ -10,9 +10,11 @@
 from __future__ import annotations
 
 import base64
+from datetime import UTC, datetime
 
 import pytest
 
+from bridges.contracts.identity import AuthMethod, SubjectContext
 from bridges.contracts.invalidation import (
     InvalidationEvent,
     InvalidationEventType,
@@ -26,10 +28,9 @@ from bridges.contracts.media import (
     CrossMediaClaimEntry,
     MediaPublishRequest,
     MediaStoryboard,
-    MultimodalGateResult,
+    MediaUploadRequest,
     MultimodalPublishGate,
     StoryboardGenerationRequest,
-    StoryboardScene,
     StoryboardStatus,
 )
 from bridges.contracts.projects import ObjectDomain, ObjectRef
@@ -41,7 +42,6 @@ from bridges.contracts.science import (
     MediaType,
     WordingStrength,
 )
-from bridges.contracts.identity import AuthMethod, SubjectContext
 from bridges.contracts.scope import ScopeAction, ScopeEnvelope
 from bridges.invalidation import InvalidationService
 from bridges.media import (
@@ -53,10 +53,6 @@ from bridges.media import (
     StoryboardService,
     build_media_publish_impact_resolver,
 )
-from bridges.contracts.media import MediaUploadRequest
-
-from datetime import UTC, datetime
-
 
 ACCOUNT = "user-t035"
 PROJECT = "project-t035"
@@ -85,8 +81,8 @@ def _invalidation_event(
         event_id=event_id,
         event_type=InvalidationEventType.SOURCE_RETRACTED,
         object_ref=ObjectRef(
-            domain=ObjectDomain.SHARED_PROJECT,
-            owner_id=PROJECT,
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id=ACCOUNT,
             object_id=object_id,
             version=1,
         ),

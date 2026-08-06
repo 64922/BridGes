@@ -99,6 +99,90 @@ class TestObjectAuthorization:
         with pytest.raises(ScopeIsolationError):
             enforcer.authorize(bob, ScopeAction.READ, ref)
 
+    def test_shared_project_without_membership_provider_is_rejected(
+        self, enforcer: ScopeEnforcer, alice: SubjectContext
+    ) -> None:
+        """未绑定成员 provider 时共享项目对象一律拒绝（fail closed）。"""
+        ref = ObjectRef(
+            domain=ObjectDomain.SHARED_PROJECT,
+            owner_id="project-1",
+            object_id="obj-3",
+            version=1,
+        )
+        with pytest.raises(ScopeIsolationError):
+            enforcer.authorize(alice, ScopeAction.READ, ref)
+
+    def test_shared_project_member_can_read_object(
+        self, alice: SubjectContext
+    ) -> None:
+        enforcer = ScopeEnforcer()
+        enforcer.set_shared_project_membership_provider(
+            lambda project_id, account_id: (project_id, account_id)
+            == ("project-1", alice.account_id)
+        )
+        ref = ObjectRef(
+            domain=ObjectDomain.SHARED_PROJECT,
+            owner_id="project-1",
+            object_id="obj-3",
+            version=1,
+        )
+        scope = enforcer.authorize(alice, ScopeAction.READ, ref)
+        assert scope.project_id == "project-1"
+        assert scope.object_domain == ObjectDomain.SHARED_PROJECT
+
+    def test_shared_project_non_member_is_rejected(
+        self, alice: SubjectContext, bob: SubjectContext
+    ) -> None:
+        enforcer = ScopeEnforcer()
+        enforcer.set_shared_project_membership_provider(
+            lambda project_id, account_id: account_id == alice.account_id
+        )
+        ref = ObjectRef(
+            domain=ObjectDomain.SHARED_PROJECT,
+            owner_id="project-1",
+            object_id="obj-3",
+            version=1,
+        )
+        with pytest.raises(ScopeIsolationError):
+            enforcer.authorize(bob, ScopeAction.READ, ref)
+
+
+class TestMembershipAuthorization:
+    def test_member_authorized(self, alice: SubjectContext) -> None:
+        enforcer = ScopeEnforcer()
+        enforcer.set_shared_project_membership_provider(
+            lambda project_id, account_id: (project_id, account_id)
+            == ("project-1", alice.account_id)
+        )
+        enforcer.authorize_membership(alice.account_id, "project-1")
+
+    def test_non_member_rejected(self, alice: SubjectContext, bob: SubjectContext) -> None:
+        enforcer = ScopeEnforcer()
+        enforcer.set_shared_project_membership_provider(
+            lambda project_id, account_id: account_id == alice.account_id
+        )
+        with pytest.raises(ScopeIsolationError):
+            enforcer.authorize_membership(bob.account_id, "project-1")
+
+    def test_without_provider_rejected(
+        self, enforcer: ScopeEnforcer, alice: SubjectContext
+    ) -> None:
+        with pytest.raises(ScopeIsolationError):
+            enforcer.authorize_membership(alice.account_id, "project-1")
+
+
+class TestServiceSubjectFactory:
+    def test_service_subject_shape(self) -> None:
+        subject = ScopeEnforcer.service_subject("account-1", "vault")
+        assert subject.account_id == "account-1"
+        assert subject.session_id == "service:vault"
+        assert subject.auth_method == AuthMethod.SERVICE
+
+    def test_service_subject_names_do_not_collide(self) -> None:
+        vault = ScopeEnforcer.service_subject("account-1", "vault")
+        media = ScopeEnforcer.service_subject("account-1", "media")
+        assert vault.session_id != media.session_id
+
 
 class TestVaultAuthorization:
     def test_owner_can_read_vault_object(

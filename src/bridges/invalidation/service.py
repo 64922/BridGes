@@ -18,7 +18,7 @@ import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.identity import SubjectContext
 from bridges.contracts.invalidation import (
     AffectedDownstream,
     ImpactResolver,
@@ -439,11 +439,7 @@ class InvalidationService:
         by idempotency_key.
         """
         scope = scope_envelope or self._compile_scope(
-            SubjectContext(
-                account_id=object_ref.owner_id,
-                session_id="invalidation-service",
-                auth_method=AuthMethod.SERVICE,
-            ),
+            ScopeEnforcer.service_subject(object_ref.owner_id, "invalidation"),
             object_ref,
         )
         schedule_id = secrets.token_urlsafe(16)

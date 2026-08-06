@@ -1285,8 +1285,6 @@ class ExpressionService:
         set, citations and evidence-derived wording strength ceiling.
         """
         original = self.get_draft(subject.account_id, draft_id)
-        if original.account_id != subject.account_id:
-            raise ExpressionServiceError("草稿不存在或没有访问权限。")
 
         brief = original.brief.model_copy(update={"genre": request.target_genre})
         draft_request = ExpressionDraftRequest(
@@ -1694,14 +1692,11 @@ class ExpressionService:
         )
 
     def _graph_object_ref(self, draft: ExpressionDraft, graph: ClaimGraph) -> ObjectRef:
-        """Build the ObjectRef for the draft's claim graph."""
-        if graph.project_id:
-            return ObjectRef(
-                domain=ObjectDomain.SHARED_PROJECT,
-                owner_id=graph.project_id,
-                object_id=graph.graph_id,
-                version=1,
-            )
+        """Build the ObjectRef for the draft's claim graph.
+
+        Graphs are owned by the account regardless of the project tag (a project
+        tag scopes the graph inside the account's own scientific project space).
+        """
         return ObjectRef(
             domain=ObjectDomain.PERSONAL_VAULT,
             owner_id=draft.account_id,
@@ -1728,24 +1723,14 @@ class ExpressionService:
 
         refs: list[ObjectRef] = []
         for source_id in sorted(source_ids):
-            if draft.project_id:
-                refs.append(
-                    ObjectRef(
-                        domain=ObjectDomain.SHARED_PROJECT,
-                        owner_id=draft.project_id,
-                        object_id=source_id,
-                        version=1,
-                    )
+            refs.append(
+                ObjectRef(
+                    domain=ObjectDomain.PERSONAL_VAULT,
+                    owner_id=draft.account_id,
+                    object_id=source_id,
+                    version=1,
                 )
-            else:
-                refs.append(
-                    ObjectRef(
-                        domain=ObjectDomain.PERSONAL_VAULT,
-                        owner_id=draft.account_id,
-                        object_id=source_id,
-                        version=1,
-                    )
-                )
+            )
         return refs
 
     def _check_upstream_objects(

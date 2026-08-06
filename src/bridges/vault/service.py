@@ -85,14 +85,8 @@ class VaultService:
             self._device_pairing_service = None
 
     def _subject(self, account_id: str) -> SubjectContext:
-        """Build a minimal subject context from an account id for scope checks."""
-        from bridges.contracts.identity import AuthMethod
-
-        return SubjectContext(
-            account_id=account_id,
-            session_id="service-session",
-            auth_method=AuthMethod.PASSWORD,
-        )
+        """Build the privileged service-internal subject context for scope checks."""
+        return ScopeEnforcer.service_subject(account_id, "vault")
 
     def _require_active(self, vault_ref: VaultObjectRef) -> None:
         """Fail closed if the vault object is revoked or tombstoned.

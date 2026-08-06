@@ -322,13 +322,9 @@ async def search_project_sources(
     request: SearchRequest,
 ) -> SearchResult:
     """Search scientific sources within a project using scoped hybrid retrieval."""
-    from bridges.contracts.projects import ObjectDomain
-
+    # 项目是账户自己的科学项目空间（PERSONAL_VAULT 域，与源对象编码一致），
+    # 只注入项目标识，不改写对象域。
     scoped_request = request.model_copy(update={"project_id": project_id})
-    if scoped_request.object_domain == ObjectDomain.PERSONAL_VAULT:
-        scoped_request = scoped_request.model_copy(
-            update={"object_domain": ObjectDomain.SHARED_PROJECT}
-        )
     return service.search(subject, scoped_request)
 
 
@@ -367,13 +363,9 @@ async def generate_project_claim_graph(
     request: ClaimRequest,
 ) -> ClaimGraphResult:
     """Generate a locatable claim--evidence--citation graph for a project question."""
-    from bridges.contracts.projects import ObjectDomain
-
+    # 项目是账户自己的科学项目空间（PERSONAL_VAULT 域，与源对象编码一致），
+    # 只注入项目标识，不改写对象域。
     scoped_request = request.model_copy(update={"project_id": project_id})
-    if scoped_request.object_domain == ObjectDomain.PERSONAL_VAULT:
-        scoped_request = scoped_request.model_copy(
-            update={"object_domain": ObjectDomain.SHARED_PROJECT}
-        )
     try:
         return service.generate_claim_graph(subject, scoped_request)
     except ScienceError as exc:

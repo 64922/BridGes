@@ -53,7 +53,6 @@ from bridges.science import (
     ScienceSearchService,
     ScienceSourceService,
 )
-from bridges.contracts.expression import StyleDiagnosticSeverity
 from bridges.science.fact_lock import apply_honest_degradation, compile_fact_locks
 from bridges.scope import ScopeEnforcer
 from bridges.workflows import WorkflowService
@@ -602,10 +601,10 @@ class TestReleaseGate:
             subject, draft.draft_id, ApproveArtifactRequest(reason="内容准确。")
         )
 
-        # Revoke the upstream source.
+        # Revoke the upstream source (owned by the account, tagged with a project).
         source_ref = ObjectRef(
-            domain=ObjectDomain.SHARED_PROJECT,
-            owner_id="project-1",
+            domain=ObjectDomain.PERSONAL_VAULT,
+            owner_id="account-alice",
             object_id="source-1",
             version=1,
         )

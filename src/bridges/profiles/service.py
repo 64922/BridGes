@@ -6,7 +6,7 @@ import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 
-from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.identity import SubjectContext
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
     AUTO_WRITABLE_DIMENSIONS,
@@ -176,11 +176,7 @@ class ProfileService:
         self._extractor = extractor or MemoryIntentExtractor()
 
     def _subject(self, account_id: str) -> SubjectContext:
-        return SubjectContext(
-            account_id=account_id,
-            session_id="service-session",
-            auth_method=AuthMethod.PASSWORD,
-        )
+        return ScopeEnforcer.service_subject(account_id, "profiles")
 
     def record_observation(
         self, request: ProfileObservationCreateRequest

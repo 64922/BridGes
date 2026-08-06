@@ -18,7 +18,7 @@ from typing import Any
 
 from bridges.ai import ModelGateway
 from bridges.chat.attachments import validate_filename
-from bridges.contracts.identity import AuthMethod, SubjectContext
+from bridges.contracts.identity import SubjectContext
 from bridges.contracts.invalidation import (
     AffectedDownstream,
     ImpactResolver,
@@ -75,9 +75,18 @@ def _sha256(data: bytes) -> str:
 
 
 def _object_ref_for_asset(asset: SourceAsset) -> ObjectRef:
-    domain = ObjectDomain.SHARED_PROJECT if asset.project_id else ObjectDomain.PERSONAL_VAULT
-    owner_id = asset.project_id if asset.project_id else asset.account_id
-    return ObjectRef(domain=domain, owner_id=owner_id, object_id=asset.asset_id, version=1)
+    """Build an ObjectRef for a source asset.
+
+    Assets are owned by the uploading account regardless of the project tag:
+    a project tag scopes the asset inside the account's own scientific project
+    space (PERSONAL_VAULT), it is not a shared-project membership.
+    """
+    return ObjectRef(
+        domain=ObjectDomain.PERSONAL_VAULT,
+        owner_id=asset.account_id,
+        object_id=asset.asset_id,
+        version=1,
+    )
 
 
 class MediaError(Exception):
@@ -108,18 +117,12 @@ class MediaIngestionService:
         self._model_gateway = model_gateway
 
     def _subject(self, account_id: str) -> SubjectContext:
-        return SubjectContext(
-            account_id=account_id,
-            session_id="media-service",
-            auth_method=AuthMethod.SERVICE,
-        )
+        return ScopeEnforcer.service_subject(account_id, "media")
 
     def _authorize_asset(
         self, account_id: str, asset: SourceAsset, action: ScopeAction
     ) -> ScopeEnvelope:
         """Authorize an action against a source asset."""
-        if account_id != asset.account_id:
-            raise MediaError("媒体资产不存在或没有访问权限。")
         subject = self._subject(account_id)
         asset_ref = _object_ref_for_asset(asset)
         try:
@@ -414,8 +417,6 @@ class MediaIngestionService:
         results: list[SourceAsset] = []
         for stored in self._assets.values():
             asset = stored.source_asset
-            if asset.account_id != account_id:
-                continue
             if project_id is not None and asset.project_id != project_id:
                 continue
             if project_id is None and asset.project_id is not None:
@@ -689,15 +690,10 @@ class MediaIngestionService:
         candidates so that the claim-evidence service can produce locatable claims.
         """
         projection = self.get_asset(account_id, asset_id)
-        object_domain = (
-            ObjectDomain.SHARED_PROJECT
-            if projection.source_asset.project_id
-            else ObjectDomain.PERSONAL_VAULT
-        )
         return ClaimRequest(
             query=query,
             project_id=project_id or projection.source_asset.project_id,
-            object_domain=object_domain,
+            object_domain=ObjectDomain.PERSONAL_VAULT,
             top_k=5,
             include_refutations=True,
         )
