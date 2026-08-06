@@ -27809,6 +27809,665 @@
         }
       }
     },
+    "/data/export-preview": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Export Preview",
+        "description": "返回当前账户导出范围与预计大小（确认前可见，不含数据正文）。",
+        "operationId": "get_export_preview_data_export_preview_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportPreviewProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/export": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Export Account Data",
+        "description": "生成当前账户导出 JSON 并以下载附件返回（敏感操作，需再认证）。",
+        "operationId": "export_account_data_data_export_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/account/delete": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Delete Account",
+        "description": "删除当前账户：先停止流式生成，再执行删除编排（事务+文件清理）。\n\n成功后该账户全部会话已随身份记录移除，本响应同时清除浏览器会话与\n设备 Cookie；任何部分失败都不会宣称成功，返回可重试的中文错误。",
+        "operationId": "delete_account_data_account_delete_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteAccountRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/account/delete-status": {
+      "get": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Get Deletion Status",
+        "description": "返回当前账户删除状态（失败时含可重试信息）。",
+        "operationId": "get_deletion_status_data_account_delete_status_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/account/delete/retry": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Retry Deletion",
+        "description": "重试当前账户失败的删除清理（敏感操作，需再认证）。",
+        "operationId": "retry_deletion_data_account_delete_retry_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountDeletionProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/backups": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Create Backup",
+        "description": "创建本地加密备份并以下载附件返回（敏感操作，需再认证）。",
+        "operationId": "create_backup_data_backups_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_create_backup_data_backups_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/data/restore": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "Restore Backup",
+        "description": "预检并恢复备份；失败（损坏/篡改/口令/空间/版本）不破坏现有数据。\n\n成功后身份账户数据已被替换（全部会话失效）：响应同步清除浏览器\n会话与设备 Cookie（与账户删除一致），前端引导用户以备份账户重新\n登录；外部凭据已清除，需重新配置。",
+        "operationId": "restore_backup_data_restore_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_restore_backup_data_restore_post"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RestorePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/health/live": {
       "get": {
         "summary": "Health Live",
@@ -28433,6 +29092,80 @@
         ],
         "title": "Account",
         "description": "Public account projection."
+      },
+      "AccountDeletionProjection": {
+        "properties": {
+          "deletion_id": {
+            "type": "string",
+            "title": "Deletion Id",
+            "description": "删除状态记录标识。"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id",
+            "description": "目标账户不可变内部 ID。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/AccountDeletionStatus",
+            "description": "当前状态。"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "description": "已重试次数。",
+            "default": 0
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error",
+            "description": "最近一次失败的中文原因（无秘密）。"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "删除开始时间。"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "删除完成或最后一次失败的时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "deletion_id",
+          "account_id",
+          "status",
+          "started_at"
+        ],
+        "title": "AccountDeletionProjection",
+        "description": "账户删除状态投影：部分失败时可观察、可重试，绝不冒充成功。"
+      },
+      "AccountDeletionStatus": {
+        "type": "string",
+        "enum": [
+          "deleting",
+          "completed",
+          "failed"
+        ],
+        "title": "AccountDeletionStatus",
+        "description": "账户删除状态机：进行中/完成/失败可重试。"
       },
       "AccountProfileUpdate": {
         "properties": {
@@ -29359,6 +30092,49 @@
         ],
         "title": "BackgroundTaskEnvelope",
         "description": "Required context for every background task.\n\nA background task must carry a subject, object domain, project, authorization\nversion and key epoch. Missing any of these causes deterministic failure\nclosure rather than running with ambient or guessed context."
+      },
+      "Body_create_backup_data_backups_post": {
+        "properties": {
+          "passphrase": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Passphrase"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passphrase"
+        ],
+        "title": "Body_create_backup_data_backups_post"
+      },
+      "Body_restore_backup_data_restore_post": {
+        "properties": {
+          "passphrase": {
+            "type": "string",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Passphrase"
+          },
+          "confirmation": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Confirmation"
+          },
+          "file": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "File"
+          }
+        },
+        "type": "object",
+        "required": [
+          "passphrase",
+          "confirmation",
+          "file"
+        ],
+        "title": "Body_restore_backup_data_restore_post"
       },
       "BoundingBox": {
         "properties": {
@@ -34577,6 +35353,21 @@
         "title": "DecisionType",
         "description": "Human decision on a candidate profile."
       },
+      "DeleteAccountRequest": {
+        "properties": {
+          "confirmation": {
+            "type": "string",
+            "title": "Confirmation",
+            "description": "必须为「删除」的确认文本。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "confirmation"
+        ],
+        "title": "DeleteAccountRequest",
+        "description": "账户删除请求：强确认文本 + 最近认证（API 层敏感门）。"
+      },
       "DependencyHealth": {
         "properties": {
           "name": {
@@ -37285,6 +38076,74 @@
         ],
         "title": "ExerciseAttemptRequest",
         "description": "Request to submit an exercise attempt."
+      },
+      "ExportCategoryProjection": {
+        "properties": {
+          "category": {
+            "type": "string",
+            "title": "Category",
+            "description": "数据类别标识（英文小写）。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "数据类别显示名（中文）。"
+          },
+          "item_count": {
+            "type": "integer",
+            "title": "Item Count",
+            "description": "该类别的记录条数。"
+          },
+          "estimated_bytes": {
+            "type": "integer",
+            "title": "Estimated Bytes",
+            "description": "该类别的预计导出字节数。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "category",
+          "label",
+          "item_count",
+          "estimated_bytes"
+        ],
+        "title": "ExportCategoryProjection",
+        "description": "导出预览中的一类数据：类别名、条数与预计大小。"
+      },
+      "ExportPreviewProjection": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/ExportCategoryProjection"
+            },
+            "type": "array",
+            "title": "Categories",
+            "description": "逐类别范围清单。"
+          },
+          "total_items": {
+            "type": "integer",
+            "title": "Total Items",
+            "description": "全部类别记录总数。"
+          },
+          "total_estimated_bytes": {
+            "type": "integer",
+            "title": "Total Estimated Bytes",
+            "description": "预计导出总字节数。"
+          },
+          "secrets_omitted": {
+            "type": "boolean",
+            "title": "Secrets Omitted",
+            "description": "导出不包含百炼 Key、SMTP 授权码、会话令牌或运行密钥。",
+            "default": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "total_items",
+          "total_estimated_bytes"
+        ],
+        "title": "ExportPreviewProjection",
+        "description": "导出范围与预计大小预览（确认前可见，不含任何数据正文）。"
       },
       "ExpressionBrief": {
         "properties": {
@@ -48981,6 +49840,80 @@
         ],
         "title": "ResearchReportElement",
         "description": "A structural element required by the research-report genre contract (T027).\n\nResearch reports must keep observation, analysis, interpretation, limitation\nand next-step distinct so peers can judge the boundary between data and\ninference."
+      },
+      "RestorePreview": {
+        "properties": {
+          "ok": {
+            "type": "boolean",
+            "title": "Ok",
+            "description": "预检是否全部通过。"
+          },
+          "format_version": {
+            "type": "integer",
+            "title": "Format Version",
+            "description": "备份格式版本。"
+          },
+          "schema_version": {
+            "type": "integer",
+            "title": "Schema Version",
+            "description": "备份时的数据库模式版本。"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At",
+            "description": "备份创建时间。"
+          },
+          "account_count": {
+            "type": "integer",
+            "title": "Account Count",
+            "description": "备份包含的账户数。",
+            "default": 0
+          },
+          "stats": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Stats",
+            "description": "数据统计。"
+          },
+          "payload_size": {
+            "type": "integer",
+            "title": "Payload Size",
+            "description": "解压后数据字节数。",
+            "default": 0
+          },
+          "requires_space": {
+            "type": "integer",
+            "title": "Requires Space",
+            "description": "恢复所需的最小可用空间（含回滚余量）。",
+            "default": 0
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Reasons",
+            "description": "未通过原因（具体中文，逐条可操作）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "ok",
+          "format_version",
+          "schema_version"
+        ],
+        "title": "RestorePreview",
+        "description": "恢复预检结果：备份内容摘要与目标状态检查（供确认与失败原因）。"
       },
       "RetrievalCandidate": {
         "properties": {

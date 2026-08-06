@@ -70,6 +70,21 @@ export default function SettingsPage() {
               </ButtonLink>
             </div>
           </section>
+
+          <section className="sc-card" aria-labelledby="data-privacy-settings-title">
+            <Icon name="download" size={28} aria-hidden />
+            <h2 id="data-privacy-settings-title" className="sc-section-title" style={{ marginTop: "var(--space-4)" }}>
+              数据与隐私
+            </h2>
+            <p style={{ color: "var(--color-text-secondary)", minHeight: "3rem" }}>
+              导出账户数据、创建加密备份与恢复，或删除当前账户及其全部本地数据。
+            </p>
+            <div style={{ marginTop: "var(--space-5)" }}>
+              <ButtonLink href="/account/settings/data" ariaLabel="打开数据与隐私设置">
+                打开数据与隐私
+              </ButtonLink>
+            </div>
+          </section>
         </div>
       </div>
     </MainContent>

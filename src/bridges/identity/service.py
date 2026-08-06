@@ -18,7 +18,7 @@ import secrets
 import zlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
-from typing import Protocol
+from typing import Any, Protocol
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
@@ -1161,6 +1161,107 @@ class IdentityService:
     def get_session(self, session_id: str) -> Session | None:
         stored = self._sessions.get(session_id)
         return stored.session if stored else None
+
+    # ------------------------------------------------------------------
+    # Issue 37: 数据生命周期（账户删除与备份恢复的账户数据面）
+    # ------------------------------------------------------------------
+
+    def delete_account(self, account_id: str) -> None:
+        """从身份存储移除账户及其索引、头像、恢复状态与设备绑定。
+
+        会话由调用方（删除编排）先行全部撤销；删除后该用户名与邮箱可
+        重新注册，任何旧会话令牌与恢复令牌都无法再解析到账户。
+        """
+        self._accounts.pop(account_id, None)
+        self._username_to_account = {
+            username: candidate
+            for username, candidate in self._username_to_account.items()
+            if candidate != account_id
+        }
+        self._qq_email_to_account = {
+            qq_email: candidate
+            for qq_email, candidate in self._qq_email_to_account.items()
+            if candidate != account_id
+        }
+        self._avatars.pop(account_id, None)
+        self._memory_avatar_content.pop(account_id, None)
+        self._recovery_states.pop(account_id, None)
+        self._devices = {
+            device_id: device
+            for device_id, device in self._devices.items()
+            if account_id not in device.session_ids
+        }
+        self._sessions = {
+            session_id: stored
+            for session_id, stored in self._sessions.items()
+            if stored.session.account_id != account_id
+        }
+        self._persist()
+
+    def export_accounts_for_backup(self) -> dict[str, Any]:
+        """返回备份用账户数据：账户、密码哈希、索引与头像引用。
+
+        刻意**不**包含会话、恢复令牌、设备绑定与安全审计——这些含会话
+        令牌与恢复令牌哈希的敏感状态绝不进入备份包；恢复后用户重新登录
+        建立全新会话。头像引用对象库 ID，对象字节随对象目录一并备份。
+        """
+        return {
+            "accounts": {
+                account_id: {
+                    "account": stored.account.model_dump(mode="json"),
+                    "password_hash": stored.password_hash,
+                }
+                for account_id, stored in self._accounts.items()
+            },
+            "username_to_account": self._username_to_account,
+            "qq_email_to_account": self._qq_email_to_account,
+            "avatars": {
+                account_id: {
+                    "object_id": avatar.object_id,
+                    "media_type": avatar.media_type,
+                }
+                for account_id, avatar in self._avatars.items()
+            },
+        }
+
+    def replace_accounts_from_backup(self, accounts_data: dict[str, Any]) -> None:
+        """用备份中的账户数据整体替换身份存储（恢复流程调用）。
+
+        载入后没有任何会话、恢复令牌或设备绑定——全部既有会话立即失效，
+        用户必须以备份账户的密码重新登录；头像引用指向备份恢复的对象库
+        对象。
+        """
+        self._accounts = {
+            account_id: _StoredAccount(
+                account=Account.model_validate(value["account"]),
+                password_hash=str(value["password_hash"]),
+            )
+            for account_id, value in accounts_data.get("accounts", {}).items()
+        }
+        self._username_to_account = {
+            str(username): str(account_id)
+            for username, account_id in accounts_data.get(
+                "username_to_account", {}
+            ).items()
+        }
+        self._qq_email_to_account = {
+            str(qq_email): str(account_id)
+            for qq_email, account_id in accounts_data.get(
+                "qq_email_to_account", {}
+            ).items()
+        }
+        self._avatars = {
+            account_id: _StoredAvatar(
+                object_id=str(value["object_id"]),
+                media_type=str(value["media_type"]),
+            )
+            for account_id, value in accounts_data.get("avatars", {}).items()
+        }
+        self._sessions = {}
+        self._recovery_states = {}
+        self._devices = {}
+        self._memory_avatar_content = {}
+        self._persist()
 
     # ------------------------------------------------------------------
     # Test helpers (not part of the public API contract)

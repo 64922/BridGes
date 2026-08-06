@@ -45,6 +45,7 @@ from bridges.api import (
     vault,
     workflows,
 )
+from bridges.api.data import router as data_router
 from bridges.api.image import router as image_router
 from bridges.api.mcp import router as mcp_router
 from bridges.api.media import router as media_router
@@ -116,6 +117,9 @@ from bridges.learning import (
 )
 from bridges.learning.api import router as learning_router
 from bridges.learning_projects import LearningProjectService
+from bridges.lifecycle.backup import BackupService
+from bridges.lifecycle.deletion import DeletionService
+from bridges.lifecycle.exports import ExportService
 from bridges.mcp.runtime import McpRuntime
 from bridges.mcp.service import McpService
 from bridges.media import (
@@ -603,12 +607,14 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 try:
                     database = BridgesDatabase(Path(state_store.path))
                     app.state.bridges_database = database
+                    object_store = EncryptedFileObjectStore(
+                        Path(state_store.path).parent / "objects",
+                        encryption_key=settings.secret_key,
+                    )
+                    app.state.object_store = object_store
                     app.state.object_repository = BridgesObjectRepository(
                         database,
-                        EncryptedFileObjectStore(
-                            Path(state_store.path).parent / "objects",
-                            encryption_key=settings.secret_key,
-                        ),
+                        object_store,
                     )
                 except StorageError as exc:
                     app.state.persistence_error = str(exc)
@@ -1136,6 +1142,47 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             ),
         )
 
+    # Issue 37: 数据生命周期（导出/删除/备份/恢复）。导出只读业务表（不读
+    # 凭据/会话）；删除与恢复会清除账户级外部凭据（百炼 Key/SMTP 授权码，
+    # 恢复后需重新配置）；备份在受控一致性点打包数据库快照、对象与身份
+    # 账户数据，绝不包含凭据、会话令牌或运行密钥。全部敏感端点经
+    # RecentAuthRequired 敏感门；未配置数据库（内存模式）时服务为 None，
+    # 路由统一 503（与既有持久化服务一致）。
+    bridges_database_for_lifecycle = getattr(app.state, "bridges_database", None)
+    object_repository_for_lifecycle = getattr(app.state, "object_repository", None)
+    object_store_for_lifecycle = getattr(app.state, "object_store", None)
+    if (
+        bridges_database_for_lifecycle is not None
+        and object_repository_for_lifecycle is not None
+        and object_store_for_lifecycle is not None
+    ):
+        app.state.export_service = ExportService(
+            database=bridges_database_for_lifecycle,
+            identity_service=app.state.identity_service,
+            observability_service=app.state.observability_service,
+        )
+        app.state.deletion_service = DeletionService(
+            database=bridges_database_for_lifecycle,
+            object_repository=object_repository_for_lifecycle,
+            identity_service=app.state.identity_service,
+            credential_store=app.state.credential_store,
+            smtp_credential_store=app.state.smtp_credential_store,
+            observability_service=app.state.observability_service,
+            key_credential_service=app.state.credential_service,
+        )
+        app.state.backup_service = BackupService(
+            database=bridges_database_for_lifecycle,
+            object_repository=object_repository_for_lifecycle,
+            object_store=object_store_for_lifecycle,
+            identity_service=app.state.identity_service,
+            credential_store=app.state.credential_store,
+            smtp_credential_store=app.state.smtp_credential_store,
+            observability_service=app.state.observability_service,
+            # 挂载条件保证 state_store 是 SqliteStateStore（bridges.db 与
+            # 状态存储共用同一文件，恢复需重开其连接）。
+            state_store=cast(SqliteStateStore, state_store),
+        )
+
     # T040/T046: register the built-in domain packs as candidates and attach the
     # expert workbench. The workbench owns three-signature release, semantic
     # diffs and gray-release candidates; it never activates a pack implicitly.
@@ -1460,6 +1507,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(reminder_router)
     app.include_router(plugins_router)
     app.include_router(mcp_router)
+    app.include_router(data_router)
 
     @app.get("/health/live", response_model=HealthProjection)
     async def health_live() -> HealthProjection:

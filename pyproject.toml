@@ -9,6 +9,7 @@ description = "BridGes —— 长期科学学习与表达伙伴"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.111",
+    "python-multipart>=0.0.9",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.8",
     "pydantic-settings>=2.3",

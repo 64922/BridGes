@@ -1838,6 +1838,25 @@ class ChatService:
             )
         return self._project_message(finalized)
 
+    def stop_account_generations(self, account_id: str) -> int:
+        """停止该账户全部进行中的生成（账户删除编排调用）。
+
+        遍历账户下 streaming 状态消息并逐个发停止信号；生成线程在下次
+        收敛点按既有终止语义收尾（状态写入仍走账户作用域行），已终态或
+        跨进程遗留消息由 ``_finalize_message`` 幂等收敛。返回停止数量。
+        """
+        stopped = 0
+        for conversation in self._repo.list_conversations(account_id):
+            for message in self._repo.list_messages(account_id, conversation.conversation_id):
+                if message.status != ChatMessageStatus.STREAMING:
+                    continue
+                entry = self._lifecycle.signal_and_started(message.message_id)
+                if entry is not None:
+                    entry[0].set()
+                    self._lifecycle.unregister(message.message_id)
+                stopped += 1
+        return stopped
+
     def retry_generation(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:

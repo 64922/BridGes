@@ -5866,6 +5866,153 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/data/export-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Export Preview
+         * @description 返回当前账户导出范围与预计大小（确认前可见，不含数据正文）。
+         */
+        get: operations["get_export_preview_data_export_preview_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Export Account Data
+         * @description 生成当前账户导出 JSON 并以下载附件返回（敏感操作，需再认证）。
+         */
+        post: operations["export_account_data_data_export_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/account/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete Account
+         * @description 删除当前账户：先停止流式生成，再执行删除编排（事务+文件清理）。
+         *
+         *     成功后该账户全部会话已随身份记录移除，本响应同时清除浏览器会话与
+         *     设备 Cookie；任何部分失败都不会宣称成功，返回可重试的中文错误。
+         */
+        post: operations["delete_account_data_account_delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/account/delete-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Deletion Status
+         * @description 返回当前账户删除状态（失败时含可重试信息）。
+         */
+        get: operations["get_deletion_status_data_account_delete_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/account/delete/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retry Deletion
+         * @description 重试当前账户失败的删除清理（敏感操作，需再认证）。
+         */
+        post: operations["retry_deletion_data_account_delete_retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/backups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Backup
+         * @description 创建本地加密备份并以下载附件返回（敏感操作，需再认证）。
+         */
+        post: operations["create_backup_data_backups_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/data/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore Backup
+         * @description 预检并恢复备份；失败（损坏/篡改/口令/空间/版本）不破坏现有数据。
+         *
+         *     成功后身份账户数据已被替换（全部会话失效）：响应同步清除浏览器
+         *     会话与设备 Cookie（与账户删除一致），前端引导用户以备份账户重新
+         *     登录；外部凭据已清除，需重新配置。
+         */
+        post: operations["restore_backup_data_restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health/live": {
         parameters: {
             query?: never;
@@ -6251,6 +6398,52 @@ export interface components {
              */
             updated_at: string;
         };
+        /**
+         * AccountDeletionProjection
+         * @description 账户删除状态投影：部分失败时可观察、可重试，绝不冒充成功。
+         */
+        AccountDeletionProjection: {
+            /**
+             * Deletion Id
+             * @description 删除状态记录标识。
+             */
+            deletion_id: string;
+            /**
+             * Account Id
+             * @description 目标账户不可变内部 ID。
+             */
+            account_id: string;
+            /** @description 当前状态。 */
+            status: components["schemas"]["AccountDeletionStatus"];
+            /**
+             * Retry Count
+             * @description 已重试次数。
+             * @default 0
+             */
+            retry_count: number;
+            /**
+             * Last Error
+             * @description 最近一次失败的中文原因（无秘密）。
+             */
+            last_error?: string | null;
+            /**
+             * Started At
+             * Format: date-time
+             * @description 删除开始时间。
+             */
+            started_at: string;
+            /**
+             * Completed At
+             * @description 删除完成或最后一次失败的时间。
+             */
+            completed_at?: string | null;
+        };
+        /**
+         * AccountDeletionStatus
+         * @description 账户删除状态机：进行中/完成/失败可重试。
+         * @enum {string}
+         */
+        AccountDeletionStatus: "deleting" | "completed" | "failed";
         /**
          * AccountProfileUpdate
          * @description Owner-scoped mutable profile fields.
@@ -6856,6 +7049,20 @@ export interface components {
              * @description Memory slice identifiers compiled for the task.
              */
             memory_slice_refs?: string[];
+        };
+        /** Body_create_backup_data_backups_post */
+        Body_create_backup_data_backups_post: {
+            /** Passphrase */
+            passphrase: string;
+        };
+        /** Body_restore_backup_data_restore_post */
+        Body_restore_backup_data_restore_post: {
+            /** Passphrase */
+            passphrase: string;
+            /** Confirmation */
+            confirmation: string;
+            /** File */
+            file: string;
         };
         /**
          * BoundingBox
@@ -9919,6 +10126,17 @@ export interface components {
          */
         DecisionType: "accept" | "reject" | "modify";
         /**
+         * DeleteAccountRequest
+         * @description 账户删除请求：强确认文本 + 最近认证（API 层敏感门）。
+         */
+        DeleteAccountRequest: {
+            /**
+             * Confirmation
+             * @description 必须为「删除」的确认文本。
+             */
+            confirmation: string;
+        };
+        /**
          * DependencyHealth
          * @description Health of one external dependency.
          */
@@ -11705,6 +11923,59 @@ export interface components {
              * @description User's response.
              */
             response_text: string;
+        };
+        /**
+         * ExportCategoryProjection
+         * @description 导出预览中的一类数据：类别名、条数与预计大小。
+         */
+        ExportCategoryProjection: {
+            /**
+             * Category
+             * @description 数据类别标识（英文小写）。
+             */
+            category: string;
+            /**
+             * Label
+             * @description 数据类别显示名（中文）。
+             */
+            label: string;
+            /**
+             * Item Count
+             * @description 该类别的记录条数。
+             */
+            item_count: number;
+            /**
+             * Estimated Bytes
+             * @description 该类别的预计导出字节数。
+             */
+            estimated_bytes: number;
+        };
+        /**
+         * ExportPreviewProjection
+         * @description 导出范围与预计大小预览（确认前可见，不含任何数据正文）。
+         */
+        ExportPreviewProjection: {
+            /**
+             * Categories
+             * @description 逐类别范围清单。
+             */
+            categories?: components["schemas"]["ExportCategoryProjection"][];
+            /**
+             * Total Items
+             * @description 全部类别记录总数。
+             */
+            total_items: number;
+            /**
+             * Total Estimated Bytes
+             * @description 预计导出总字节数。
+             */
+            total_estimated_bytes: number;
+            /**
+             * Secrets Omitted
+             * @description 导出不包含百炼 Key、SMTP 授权码、会话令牌或运行密钥。
+             * @default true
+             */
+            secrets_omitted: boolean;
         };
         /**
          * ExpressionBrief
@@ -19051,6 +19322,62 @@ export interface components {
              * @description For next steps: concrete follow-up study or verification.
              */
             next_step_action?: string | null;
+        };
+        /**
+         * RestorePreview
+         * @description 恢复预检结果：备份内容摘要与目标状态检查（供确认与失败原因）。
+         */
+        RestorePreview: {
+            /**
+             * Ok
+             * @description 预检是否全部通过。
+             */
+            ok: boolean;
+            /**
+             * Format Version
+             * @description 备份格式版本。
+             */
+            format_version: number;
+            /**
+             * Schema Version
+             * @description 备份时的数据库模式版本。
+             */
+            schema_version: number;
+            /**
+             * Created At
+             * @description 备份创建时间。
+             */
+            created_at?: string | null;
+            /**
+             * Account Count
+             * @description 备份包含的账户数。
+             * @default 0
+             */
+            account_count: number;
+            /**
+             * Stats
+             * @description 数据统计。
+             */
+            stats?: {
+                [key: string]: number;
+            };
+            /**
+             * Payload Size
+             * @description 解压后数据字节数。
+             * @default 0
+             */
+            payload_size: number;
+            /**
+             * Requires Space
+             * @description 恢复所需的最小可用空间（含回滚余量）。
+             * @default 0
+             */
+            requires_space: number;
+            /**
+             * Reasons
+             * @description 未通过原因（具体中文，逐条可操作）。
+             */
+            reasons?: string[];
         };
         /**
          * RetrievalCandidate
@@ -42180,6 +42507,494 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    get_export_preview_data_export_preview_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExportPreviewProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    export_account_data_data_export_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    delete_account_data_account_delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeleteAccountRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    get_deletion_status_data_account_delete_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    retry_deletion_data_account_delete_retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountDeletionProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    create_backup_data_backups_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/x-www-form-urlencoded": components["schemas"]["Body_create_backup_data_backups_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+        };
+    };
+    restore_backup_data_restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_restore_backup_data_restore_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestorePreview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
+                };
+            };
+            /** @description Bad Gateway */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuthError"];
                 };
             };
             /** @description Service Unavailable */

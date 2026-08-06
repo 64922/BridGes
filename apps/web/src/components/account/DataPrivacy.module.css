@@ -1,0 +1,252 @@
+/* 数据与隐私页（Issue 37）：导出/删除/备份/恢复四分区。
+   遵循 BridGes 暖纸面设计令牌；危险区用错误色语义（冗余编码：图标+文字）。 */
+
+.page {
+  min-height: calc(100vh - var(--topbar-height));
+  padding: clamp(var(--space-6), 4vw, var(--space-12));
+  background:
+    radial-gradient(circle at 92% 8%, var(--color-accent-primary-soft), transparent 18rem),
+    var(--color-bg-primary);
+}
+
+.inner {
+  width: min(100%, 58rem);
+  margin: 0 auto;
+}
+
+.eyebrow {
+  color: var(--color-accent-primary);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.title {
+  margin-top: var(--space-2);
+  font-family: var(--font-serif);
+  font-size: clamp(var(--text-2xl), 3vw, var(--text-3xl));
+  line-height: var(--line-height-tight);
+}
+
+.lead {
+  max-width: 62ch;
+  margin-top: var(--space-3);
+  color: var(--color-text-secondary);
+  line-height: var(--line-height-relaxed);
+}
+
+.stack {
+  display: grid;
+  gap: var(--space-6);
+  margin-top: var(--space-8);
+}
+
+.card {
+  padding: clamp(var(--space-5), 3vw, var(--space-8));
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  background: var(--color-surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+}
+
+.cardTitle {
+  font-family: var(--font-serif);
+  font-size: var(--text-xl);
+  line-height: var(--line-height-tight);
+}
+
+.cardDescription {
+  max-width: 58ch;
+  margin-top: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+/* 导出范围表格：数字列等宽字体右对齐，总计行粗体。 */
+.rangeTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-sm);
+}
+
+.rangeCaption {
+  margin-bottom: var(--space-3);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  text-align: left;
+}
+
+.rangeTable th,
+.rangeTable td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+}
+
+.rangeTable thead th {
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.rangeTable tbody th {
+  font-weight: 500;
+}
+
+.rangeTable tfoot th,
+.rangeTable tfoot td {
+  border-bottom: 0;
+  border-top: 2px solid var(--color-border-strong);
+  font-weight: 700;
+}
+
+.numCell {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.secretsNote {
+  margin-top: var(--space-3);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-xs);
+  line-height: var(--line-height-relaxed);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
+}
+
+/* 备份/恢复双栏 */
+.splitRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-5);
+  margin-top: var(--space-2);
+}
+
+.splitCell {
+  padding: var(--space-4);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-bg-primary);
+}
+
+.subTitle {
+  font-weight: 700;
+}
+
+.subDescription {
+  margin-top: var(--space-2);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+/* 危险区：错误色边框 + 语义图标（颜色只作冗余编码） */
+.dangerCard {
+  border-color: var(--color-status-error);
+  background: var(--color-status-error-bg);
+}
+
+.dangerCard .cardTitle {
+  color: var(--color-status-error);
+}
+
+.dangerCard .cardDescription {
+  color: var(--color-text-secondary);
+}
+
+.dangerList {
+  margin: 0;
+  padding-left: var(--space-5);
+  color: var(--color-text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--line-height-relaxed);
+}
+
+.dangerList li {
+  margin-top: var(--space-1);
+}
+
+/* 删除失败提示（可重试） */
+.deletionNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-status-wait);
+  border-radius: var(--radius-md);
+  background: var(--color-status-wait-bg);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+/* 对话框表单 */
+.dialogForm {
+  display: grid;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+
+.dialogActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.fileRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.fileInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.confirmField {
+  display: grid;
+  gap: var(--space-2);
+  color: var(--color-text-primary);
+  font-size: var(--text-sm);
+}
+
+.textInput {
+  min-height: var(--target-size);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono);
+}
+
+.textInput:focus-visible {
+  outline: 0.1875rem solid var(--color-focus-ring);
+  outline-offset: 0.125rem;
+}

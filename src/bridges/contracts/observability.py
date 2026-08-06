@@ -98,6 +98,14 @@ class AuditAction(str, Enum):
     MCP_SENSITIVE_DENY = "mcp_sensitive_deny"
     MCP_START_FAILED = "mcp_start_failed"
     MCP_PERMISSIONS_REVOKE = "mcp_permissions_revoke"
+    # Issue 37: 数据生命周期——导出/删除/备份/恢复。details 白名单只含
+    # 类别计数、版本与统计，绝不包含数据正文、凭据或会话令牌。
+    EXPORT_CREATE = "export_create"
+    ACCOUNT_DELETE = "account_delete"
+    ACCOUNT_DELETE_FAILED = "account_delete_failed"
+    BACKUP_CREATE = "backup_create"
+    RESTORE_COMPLETE = "restore_complete"
+    RESTORE_FAILED = "restore_failed"
 
 
 class AuditResult(str, Enum):

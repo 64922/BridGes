@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 24
+SCHEMA_VERSION = 25
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1224,6 +1224,28 @@ MIGRATIONS: dict[int, list[str]] = {
         ALTER TABLE messages ADD COLUMN mcp_call TEXT
         """,
     ],
+    # Issue 37: 账户删除状态机——部分失败时保留可观察、可重试的清理状态
+    # 与最小非敏感审计。不设指向 accounts 的外键：删除事务会先行移除
+    # accounts 行，状态记录必须独立存活到清理完成；pending_hashes 保存
+    # 事务删除前收集的对象内容哈希清单，供文件系统清理失败后重试。
+    25: [
+        """
+        CREATE TABLE IF NOT EXISTS account_deletions (
+            deletion_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'deleting',
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            pending_hashes TEXT,
+            started_at TEXT NOT NULL,
+            completed_at TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_account_deletions_status
+            ON account_deletions(status, started_at)
+        """,
+    ],
 }
 
 
@@ -1349,6 +1371,59 @@ class BridgesDatabase:
                 self._connection.execute("ROLLBACK")
                 raise
             self._connection.execute("COMMIT")
+
+    @contextmanager
+    def snapshot_lock(self) -> Iterator[None]:
+        """受控一致性点：持有数据库锁供快照与对象文件复制使用。
+
+        SQLite 在线备份 API 不能运行在任何事务内，因此这里只持有 RLock
+        串行化全部连接操作（含事务），不打开事务本身；调用方在锁内完成
+        :meth:`snapshot_to` 与对象文件复制，即可获得数据库、对象与索引
+        之间的一致快照点（Issue 37 备份合同）。
+        """
+        with self._lock:
+            yield
+
+    def snapshot_to(self, target: str | Path) -> None:
+        """把当前数据库的一致性快照写入 ``target``（含全部表与索引）。
+
+        在锁内（调用方持有 :meth:`snapshot_lock`）用 SQLite 在线备份 API
+        复制：WAL 模式下读取一致性视图，FTS 与向量索引随库一并复制；
+        ``target`` 为全新文件路径，绝不改写源数据库。
+        """
+        try:
+            target_connection = sqlite3.connect(str(target))
+            try:
+                self._connection.backup(target_connection)
+            finally:
+                target_connection.close()
+        except sqlite3.Error as exc:
+            raise StorageError(
+                "数据库快照创建失败，请检查目标路径与磁盘空间。"
+            ) from exc
+
+    def reopen(self) -> None:
+        """关闭并重开底层连接（恢复流程替换文件后重建连接）。
+
+        恢复用原子替换把快照移入正式路径，既有连接句柄仍指向已改名的
+        旧文件；重开后连接指向新文件并重新应用运行期 PRAGMA，外部调用方
+        持有的 ``scoped``/``connection`` 引用在下次使用时访问新文件。
+        """
+        with self._lock:
+            self._connection.close()
+            try:
+                self._connection = sqlite3.connect(
+                    self.path,
+                    timeout=10.0,
+                    check_same_thread=False,
+                    isolation_level=None,
+                )
+            except sqlite3.Error as exc:
+                raise StorageError(
+                    "恢复后无法重新打开数据库文件，请检查数据目录权限。"
+                ) from exc
+            self._connection.row_factory = sqlite3.Row
+            self._configure()
 
     def health_check(self) -> bool:
         """返回数据库是否可查询。"""

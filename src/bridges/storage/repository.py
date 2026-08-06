@@ -212,6 +212,14 @@ class BridgesObjectRepository:
     # 清理：可观察、可重试
     # ------------------------------------------------------------------
 
+    def remove_file(self, content_hash: str) -> None:
+        """删除一个内容哈希对应的物理文件（内部运维视角，非账户用户 API）。
+
+        调用方（账户删除编排）必须确认没有其他记录引用该哈希后才可调用；
+        不存在时静默成功。
+        """
+        self._object_store.remove(content_hash)
+
     def list_pending_cleanups(self) -> list[StoredObject]:
         """返回全部待清理记录（内部运维视角，非账户用户 API）。"""
         rows = self._database.connection.execute(

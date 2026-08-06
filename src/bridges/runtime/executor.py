@@ -39,10 +39,12 @@ from bridges.contracts.ai import (
 from bridges.credentials.matrix import IMAGE_MODEL_ID, VIDEO_MODEL_ID
 from bridges.credentials.probes import CapabilityProbeService
 from bridges.credentials.store import EncryptedVolumeCredentialStore, OsCredentialStore
+from bridges.identity.service import IdentityService
 from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
+from bridges.lifecycle.deletion import DeletionService
 from bridges.observability.service import ObservabilityService
 from bridges.persistence import (
     PersistenceError,
@@ -72,6 +74,7 @@ class BackgroundExecutor:
         self._ingestion: IngestionService | None = None
         self._image: ImageService | None = None
         self._video: VideoService | None = None
+        self._deletion: DeletionService | None = None
         self._idle_reason: str | None = None
 
     def _ensure_repository(self) -> BridgesObjectRepository | None:
@@ -307,6 +310,52 @@ class BackgroundExecutor:
             return None
         return self._video
 
+    def _ensure_deletion_service(self) -> DeletionService | None:
+        """惰性建立账户删除重试服务（Issue 37）。
+
+        与 API 进程共享同一数据目录与身份状态（StateStore）：重试失败
+        状态的账户删除清理（对象物理文件、账户凭据与身份记录）。身份
+        清理经 StateStore 持久化，API 进程运行期内存状态在重启后一致；
+        API 进程的删除重试端点同样可经前端触发完整清理。
+        """
+        if self._deletion is not None or self._idle_reason is not None:
+            return self._deletion
+        repository = self._ensure_repository()
+        if repository is None:
+            return None
+        settings = self._settings
+        try:
+            data_dir = Path(resolve_database_path(settings.database_url or "")).parent
+            credential_store = (
+                EncryptedVolumeCredentialStore(data_dir)
+                if settings.credential_backend == "encrypted-volume"
+                else OsCredentialStore(data_dir=data_dir)
+            )
+            smtp_credential_store = (
+                EncryptedVolumeCredentialStore(data_dir, namespace="smtp")
+                if settings.credential_backend == "encrypted-volume"
+                else OsCredentialStore(data_dir=data_dir, namespace="smtp")
+            )
+            state_store = build_state_store(
+                settings.database_url, encryption_key=settings.secret_key
+            )
+            identity_service = IdentityService(
+                state_store=state_store, object_repository=repository
+            )
+            assert self._database is not None
+            self._deletion = DeletionService(
+                database=self._database,
+                object_repository=repository,
+                identity_service=identity_service,
+                credential_store=credential_store,
+                smtp_credential_store=smtp_credential_store,
+                observability_service=ObservabilityService(),
+            )
+        except (StorageError, PersistenceError, ValueError) as exc:
+            self._idle_reason = f"error: {exc}"
+            return None
+        return self._deletion
+
     def run_tick(self) -> str:
         """执行一轮后台任务并返回中文摘要；可重试错误只记录不退出。"""
         repository = self._ensure_repository()
@@ -316,6 +365,7 @@ class BackgroundExecutor:
         ingestion = self._ensure_ingestion()
         image = self._ensure_image_service()
         video = self._ensure_video_service()
+        deletion = self._ensure_deletion_service()
         summaries: list[str] = []
         if ingestion is not None:
             try:
@@ -332,6 +382,11 @@ class BackgroundExecutor:
                 summaries.append(video.process_pending())
             except Exception as exc:  # noqa: BLE001 - 视频任务失败记录但不退出循环
                 summaries.append(f"worker: 视频任务处理出错：{exc}")
+        if deletion is not None:
+            try:
+                summaries.append(deletion.process_pending_retries())
+            except Exception as exc:  # noqa: BLE001 - 删除重试失败记录但不退出循环
+                summaries.append(f"worker: 账户删除重试出错：{exc}")
         try:
             cleaned = repository.run_pending_cleanups()
             orphans = repository.cleanup_orphans()

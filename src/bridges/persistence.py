@@ -41,26 +41,8 @@ class SqliteStateStore:
         self._fernet = self._build_fernet(encryption_key)
         if self.path != ":memory:":
             Path(self.path).parent.mkdir(parents=True, exist_ok=True)
-        self._connection = sqlite3.connect(
-            self.path,
-            timeout=10.0,
-            check_same_thread=False,
-        )
-        self._connection.row_factory = sqlite3.Row
         self._lock = threading.RLock()
-        with self._lock:
-            self._connection.execute("PRAGMA journal_mode=WAL")
-            self._connection.execute("PRAGMA synchronous=FULL")
-            self._connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS application_state (
-                    namespace TEXT PRIMARY KEY,
-                    payload TEXT NOT NULL,
-                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
-                )
-                """
-            )
-            self._connection.commit()
+        self._connect()
 
     def load(self, namespace: str) -> dict[str, Any] | None:
         with self._lock:
@@ -108,6 +90,39 @@ class SqliteStateStore:
     def close(self) -> None:
         with self._lock:
             self._connection.close()
+
+    def _connect(self) -> None:
+        """打开连接并应用运行期 PRAGMA 与状态表结构（构造与重开共用）。"""
+        with self._lock:
+            self._connection = sqlite3.connect(
+                self.path,
+                timeout=10.0,
+                check_same_thread=False,
+            )
+            self._connection.row_factory = sqlite3.Row
+            self._connection.execute("PRAGMA journal_mode=WAL")
+            self._connection.execute("PRAGMA synchronous=FULL")
+            self._connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS application_state (
+                    namespace TEXT PRIMARY KEY,
+                    payload TEXT NOT NULL,
+                    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            self._connection.commit()
+
+    def reopen(self) -> None:
+        """关闭后重开连接（恢复流程原子替换文件后重建连接）。
+
+        与 :meth:`close` 配套：恢复把数据库文件改名移入时，既有连接句柄
+        仍指向已改名的旧文件，必须重建；重建后重新应用运行期 PRAGMA 与
+        状态表结构。
+        """
+        with self._lock:
+            self._connection.close()
+            self._connect()  # RLock 可重入，整段保持互斥
 
     @staticmethod
     def _build_fernet(encryption_key: SecretStr | str | None) -> Fernet | None:

@@ -1,6 +1,197 @@
 # Task Plan — 架构审查候选逐项修复（M01–M05 审查后深化）
 
-状态：进行中（2026-08-06，Issue 36 已完成待提交）
+状态：进行中（2026-08-06，Issue 37 已完成待提交）
+
+## Issue 37 实施计划（交付导出、删除、备份与恢复）
+
+状态：已完成（2026-08-06）。全量验证：2036 pytest（+55 新增：lifecycle
+52 + schema v25 3，另补审查修复测试 3）、issue37 E2E 6 条全过、全量 E2E
+238 通过（2 条失败均为既有基线：issue04/08 环境 flake、issue17/35 flaky
+重试通过，与 Issue 36 记录一致）、mypy 248 文件 0 错误、改动区域 ruff
+干净、npm typecheck/build 通过、openapi 同步通过（新增 python-multipart
+依赖进 pyproject）。双轴 code-review 修复：恢复原子性不完整（_finish_restore
+失败回滚文件+身份、_rollback_replace moved_db 守卫防误删旧文件 + 回滚前
+关闭连接修 Windows 文件占用）、executor 补刀遗留身份记录（构造真实
+IdentityService 清理）、前端重试删除缺 reauth、空间预检按解包后大小 +
+目标状态可写预检、索引重建 Verification 4 证据空转修复、备份期间并发写入
+一致性测试、替换中途失败原子回滚测试、Standards 清理（契约枚举/catalog
+单一事实源/依赖工厂/downloadBlob/_connect/死代码）。已知边界：恢复为
+全局操作，恢复成功后建议重启 BridGes 服务使后台进程连接重载。Issue 37
+验收状态已更新为 ready-for-human（AC 与 Verification 全部勾选附证据）。
+
+### 目标
+CASCADE 除 learning_projects）、索引全在 bridges.db 内（fts_chunks +
+index_vectors + index_versions + index_active）、对象库
+objects/<hash2>/<hash> Fernet 加密（secret_key 派生）、身份/密码 hash/
+会话在 application_state.db StateStore "identity" 命名空间（一个 JSON：
+accounts+sessions+avatars+devices+recovery_states）、凭据在 keyring/
+DPAPI/加密卷（"account" 与 "smtp" 命名空间）、审计 ObservabilityService
+纯内存、learning 域纯内存无表、executor/scheduler 全账户轮询无按账户
+停止机制、BridgesDatabase 无快照/重开接口、RecentAuthRequired 敏感门
+（5 分钟 TTL）、GenerationLifecycle 按消息停止流式。设计决策详见下。
+
+### 目标
+交付两个清晰区分的数据生命周期：当前账户的数据导出与账户删除（强确认+
+重新认证，撤销会话、停止流式与后台任务、一致清理 SQLite 记录/对象/索引/
+缓存/待执行提醒，部分失败可重试不宣称成功），以及整套本地 BridGes 数据
+的加密一致备份与恢复（受控一致性点打包数据库逻辑数据/账户隔离对象/索引
+重建信息；恢复前预检格式版本/完整性/可用空间/目标状态，失败原子回滚；
+百炼 Key、SMTP 授权码、会话令牌、运行密钥及等价秘密绝不进入导出与可移植
+备份，恢复后外部凭据标记待重新配置）。
+
+### 设计决策
+1. 模块组织：新建 `lifecycle/` 包（共享「账户数据目录」逻辑）：
+   catalog.py（表目录：导出统计/删除序/摘要提取）、exports.py（ExportService）、
+   deletion.py（DeletionService）、backup.py（BackupService 含创建与恢复）
+2. 导出 = 单个 JSON 文件（可阅读+机器处理）：manifest（format_version/
+   exported_at/生成器/账户稳定 ID）按数据类别分节（conversations/messages
+   含全部 JSON 列/mode_events/model_run_locks/chat_attachments/
+   answer_feedback/画像七表/learning_projects/reminders 三表/skill_packages
+   +account_skill_states/mcp_servers+mcp_calls/document_records+document_
+   chunks 文本/objects 资产清单/retrieval_rounds+message_citations 引用关系）；
+   每行保留原始列（稳定标识/时间/来源/关系）；对象只出元数据清单不出字节；
+   绝不读 StateStore（身份/会话）、凭据存储与审计；预览端点统计各类别条数+
+   按行数×代表性列长估算预计大小（确认前可见）
+3. 删除 = 三步：① account_deletions 状态行（schema v25 新表：
+   deletion_id/account_id/status: deleting|completed|failed/retry_count/
+   last_error/started_at/completed_at，无 FK 防账户先删）；② 单事务按
+   依赖序删全部账户表行（子表→父表，含 fts_chunks DELETE 与索引四表、
+   document_parse_cache 缓存、待执行提醒行——worker/scheduler 全账户轮询
+   自然不再领取，image/video 迟到结果被既有条件 UPDATE 隔离），最后删
+   accounts 行——事务失败整体回滚零副作用；③ 事务成功后文件系统清理：
+   对象物理文件（引用计数=0 才 remove）、凭据（account+smtp 命名空间
+   delete+KeyCredentialService 元数据+CapabilityProbeService.reset）、
+   identity 账户记录（新方法 delete_account）——失败记录 failed+原因，
+   可重试（retry 端点 + executor 重试轮）；全部会话撤销（revoke_all_
+   sessions，API 层清 cookie）、流式停止（ChatService 新方法
+   stop_account_generations：查 streaming 消息逐个 signal）
+4. 备份 = 自定义加密容器（魔数 BRIDGESBACKUP1 + 明文 manifest JSON 行 +
+   Fernet 加密 zip 字节）：payload zip = VACUUM INTO 的 bridges.db 一致
+   快照（含 FTS/向量表→索引随库一致）+ objects/ 全部加密文件 + identity
+   账户数据（accounts 含 password_hash/username_to_account/qq_email_to_
+   account/avatars——恢复后可登录；**不含** sessions/recovery_states/
+   devices/审计——会话令牌与恢复令牌不备份）；受控一致性点 =
+   BridgesDatabase 新 snapshot_lock（复用 RLock）内 VACUUM INTO + 复制对象
+   文件；口令（必填）→ PBKDF2-HMAC-SHA256(200k, 随机盐) → Fernet；
+   manifest 含 format_version/created_at/kdf 参数/盐/payload_sha256/
+   内部文件清单（name+sha256+size）/数据统计（账户数/对话数/对象数）；
+   完整性与篡改由 payload_sha256 + 逐文件 sha256 双校验
+5. 恢复 = 预检（魔数+format_version 兼容（> 当前程序版本拒绝）→
+   payload_sha256 校验 → 口令解密（失败=口令错误或损坏）→ zip 解包 staging
+   （路径穿越防护）→ 逐文件 sha256 校验 → 空间预检（目标剩余 ≥ 解包×1.2
+   +保留旧数据余量）→ 目标状态确认（API 层 confirmation 字段）→ 原子
+   替换：database.close() → rename 旧 bridges.db/objects 到 .pre-restore
+   → 移入新文件 → database.reopen()（新方法，重新连接+initialize）→
+   失败回滚 rename；成功后清理 .pre-restore 并删除恢复后账户集合的全部
+   凭据（外部凭据待重新配置）；identity 用新方法 replace_accounts（清空
+   载入备份账户数据，会话全失效→自动登出）；索引一致性：恢复后校验
+   index_active 计数 vs document_chunks/index_vectors，不一致标记
+   document_records.rebuild_requested（executor 重建，「由恢复流程完成」）
+6. 删除/备份/恢复/导出执行全部 RecentAuthRequired（ADR-0018 敏感门）；
+   导出预览不过门（仅统计）；删除请求带 confirmation="删除"；恢复请求带
+   confirmation="恢复"
+7. 审计新动作 EXPORT_CREATE/ACCOUNT_DELETE/ACCOUNT_DELETE_FAILED/
+   BACKUP_CREATE/RESTORE_COMPLETE/RESTORE_FAILED，details 白名单只含
+   类别计数/版本/统计/原因，不含数据正文与秘密
+8. 前端：/account/settings 新增「数据与隐私」卡片 → 新路由
+   /account/settings/data 四分区（导出：范围+预计大小表格→reauth→下载；
+   删除：危险区分步确认（reauth 密码→键入「删除」）→跳登录；备份：口令
+   两次输入→reauth→下载 .bridgesbackup；恢复：选文件+口令+确认→预检执行
+   →成功提示跳登录），全部复用既有 Dialog 焦点陷阱/StateBlock/ErrorSummary/
+   KeySettings reauth 模式；先调 ui-ux-pro-max
+
+### 新增模块
+1. `contracts/lifecycle.py` — ExportCategoryProjection（category/中文名/
+   item_count/estimated_bytes）、ExportPreviewProjection（categories/
+   total_items/total_bytes/不含秘密声明）、DeleteAccountRequest
+   （confirmation）、AccountDeletionProjection（deletion_id/account_id/
+   status/retry_count/last_error/started_at/completed_at）、
+   BackupCreateRequest（passphrase）、RestoreRequest（passphrase/
+   confirmation）、BackupManifest、BackupRestorePreview（版本/账户数/
+   统计/解密后空间需求）、DataLifecycleError
+2. `lifecycle/catalog.py` — 账户数据目录（表清单含导出类别名/删除序/
+   完整性摘要提取函数），供导出统计、删除、备份统计与恢复摘要共用
+3. `lifecycle/exports.py` — ExportService：preview（SQL 聚合条数+估算
+   字节）、export_data（逐表 SELECT → JSON 分节 → 序列化 bytes+
+   审计 EXPORT_CREATE 不含正文）
+4. `lifecycle/deletion.py` — DeletionService：delete_account（状态行→
+   事务删表→文件/凭据/身份清理→会话撤销与流式停止由 API 层编排）、
+   retry_deletion、process_pending_retries（executor 轮）
+5. `lifecycle/backup.py` — BackupService：create_backup（快照锁内
+   VACUUM INTO+复制对象+identity 账户数据→zip→Fernet 加密→容器文件+
+   审计）、restore_backup（预检序列→staging→原子替换→回滚→凭据清除→
+   identity 替换→索引一致性调度+审计）
+6. `storage/database.py` — SCHEMA_VERSION 25：account_deletions 表；
+   新增 snapshot_lock()（RLock 上下文，VACUUM INTO 需无事务连接）、
+   snapshot_to(path)、reopen()
+
+### 修改
+7. `identity/service.py` — 新增 delete_account（清 accounts/索引/avatars
+   +persist）、export_accounts_for_backup（只含账户数据不含会话）、
+   replace_accounts_from_backup（清空载入备份账户数据+persist，会话失效）
+8. `chat/service.py` — 新增 stop_account_generations（查该账户 streaming
+   消息逐个 lifecycle.signal）
+9. `contracts/observability.py` — AuditAction 新增 EXPORT_CREATE/
+   ACCOUNT_DELETE/ACCOUNT_DELETE_FAILED/BACKUP_CREATE/RESTORE_COMPLETE/
+   RESTORE_FAILED（details 白名单同既有模式）
+10. `api/data.py`（新路由 prefix /data）— GET export-preview、POST
+    export（reauth→JSON 附件流）、POST account/delete（reauth+confirmation
+    →清 cookie 204）、GET account/delete-status、POST account/delete/retry、
+    POST backups（reauth+multipart passphrase→下载 .bridgesbackup）、
+    POST restore（reauth+multipart file/passphrase/confirmation→预检执行
+    →204/422 中文原因）；错误码 data_export_unavailable(503)/
+    backup_invalid_format(400)/backup_version_incompatible(422)/
+    backup_integrity_failed(422)/backup_decryption_failed(422)/
+    insufficient_space(422)/confirmation_required(422)/
+    deletion_in_progress(409)/deletion_not_found(404)
+11. `api/main.py` — ExportService/DeletionService/BackupService 挂载
+    （database/identity/credential_store×2/chat_service/object_repository/
+    observability）；data_router 注册；恢复后需重启 worker/scheduler 的
+    说明写入恢复成功响应
+12. `runtime/executor.py` — run_tick 增加账户删除重试轮（惰性构造
+    DeletionService.process_pending_retries）
+13. openapi.json + generated.ts 再生成
+
+### 前端（先调 ui-ux-pro-max：数据与隐私页四分区）
+14. api.ts — getExportPreview/exportData（blob 下载）/deleteAccount/
+    getDeletionStatus/retryDeletion/createBackup（blob）/restoreBackup +
+    类型导出
+15. `components/account/DataPrivacy.tsx` + DataPrivacy.module.css —
+    /account/settings/data 页面四分区（导出范围表格+预计大小、删除危险区、
+    备份创建、恢复），五态 + reauth 对话框 + 确认文本输入 + 键盘可达 +
+    accountRevision 清态
+16. `app/(app)/account/settings/page.tsx` — 新增「数据与隐私」卡片入口；
+    新路由 `app/(app)/account/settings/data/page.tsx`
+
+### 测试
+17. `tests/lifecycle/fixtures.py` — 多账户夹具构建器（对话/消息/画像/
+    项目/提醒/插件/MCP/对象资产）与秘密金丝雀注入（全部凭据类别）
+18. `tests/lifecycle/test_exports.py` — 预览统计与估算、导出内容完整
+    （逐类行数）、稳定标识/时间/关系/来源、金丝雀不出现、跨账户隔离、
+    对象只出清单
+19. `tests/lifecycle/test_deletion.py` — 全流程（表全删/对象文件删/
+    凭据删/会话撤销/流式停止）、部分失败不宣称成功（模拟文件删除失败→
+    failed+原因→重试成功）、两账户隔离（另一账户与系统备份不受影响）、
+    删除后直接对象与缓存访问全部失败、审计最小化不含秘密
+20. `tests/lifecycle/test_backup.py` — 创建（加密/manifest/金丝雀不出现）、
+    损坏包/摘要不符/口令错误/版本不兼容/空间不足（mock disk_usage）拒绝
+    且不破坏现有数据、恢复一致性（SQLite/对象/索引摘要比对）、失败回滚
+    （恢复中途失败→原状态保留）、凭据待重新配置（恢复后凭据被清）、
+    索引重建调度
+21. `tests/lifecycle/test_restore_consistency.py` — 多账户夹具导出→恢复
+    后逻辑摘要比对；后台索引/提醒任务运行时创建备份→一致性点与恢复结果
+22. `tests/lifecycle/test_lifecycle_api.py` — 路由契约（预览/导出/删除/
+    状态/重试/备份/恢复、reauth 门、错误码、跨账户 404、登录必需）
+23. `tests/storage/test_schema_v25.py` — v24→v25 迁移（旧数据保留+新表
+    存在）、重启不重复迁移
+24. E2E issue37 — 设置中心入口；导出（预览范围表→reauth→下载断言）；
+    删除（reauth+确认→删除后登录失败）；备份创建下载；恢复（上传备份+
+    口令→恢复→重新登录→数据回滚验收）；两账户隔离；纯键盘路径
+
+### 收尾
+25. 全量 pytest / ruff / mypy / npm typecheck+build / E2E；code-review
+    双轴审查并修复；更新 Issue 37 验收状态（ready-for-human + AC 与
+    Verification 勾选附证据）；提交（工作内容+bug 修复两部分提交信息）
 
 ## Issue 36 实施计划（集成聊天工具、学习项目与插件选择）
 
