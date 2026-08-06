@@ -976,10 +976,16 @@ class MediaGenerationService:
         self._media_objects[media_object_id] = media_object
         return GenerationResult(media_object=media_object)
 
-    def get_media_object(self, media_object_id: str) -> ScientificMediaObject:
-        """Retrieve a generated media object by ID."""
+    def get_media_object(
+        self, media_object_id: str, *, account_id: str
+    ) -> ScientificMediaObject:
+        """Retrieve a generated media object by ID (owner-scoped, Issue 39 AC9).
+
+        直接对象标识不能作为授权依据：跨账户猜测标识一律按不存在处理，
+        不泄漏对象是否存在或属于哪个账户。
+        """
         obj = self._media_objects.get(media_object_id)
-        if obj is None:
+        if obj is None or obj.account_id != account_id:
             raise MediaGenerationError(f"媒体对象 {media_object_id} 不存在。")
         return obj
 
@@ -988,6 +994,7 @@ class MediaGenerationService:
         media_object_id: str,
         spec_json: str,
         *,
+        account_id: str,
         fact_locks: list[FactLock] | None = None,
     ) -> ScientificMediaObject:
         """Update the editable source of a chart and re-validate.
@@ -995,7 +1002,7 @@ class MediaGenerationService:
         Users can modify the spec JSON directly and submit it for re-validation.
         The service re-renders the SVG and re-checks consistency.
         """
-        obj = self.get_media_object(media_object_id)
+        obj = self.get_media_object(media_object_id, account_id=account_id)
         if obj.media_type != MediaObjectType.CHART:
             raise MediaGenerationError(f"媒体对象不是图表类型。")
 
@@ -1036,10 +1043,11 @@ class MediaGenerationService:
         media_object_id: str,
         figure_json: str,
         *,
+        account_id: str,
         fact_locks: list[FactLock] | None = None,
     ) -> ScientificMediaObject:
         """Update the editable source of a figure and re-validate."""
-        obj = self.get_media_object(media_object_id)
+        obj = self.get_media_object(media_object_id, account_id=account_id)
         if obj.media_type != MediaObjectType.SCIENTIFIC_FIGURE:
             raise MediaGenerationError(f"媒体对象不是图形类型。")
 

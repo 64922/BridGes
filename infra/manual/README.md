@@ -25,6 +25,7 @@ BridGes 支持以下四种生产运行合同骨架：
 | `BRIDGES_WEB_PORT` | Web 端口 | `3000` |
 | `BRIDGES_WEB_DEV` | Web 是否使用 Next.js dev | `true` |
 | `BRIDGES_SESSION_COOKIE_SECURE` | Cookie 是否强制 secure | `false` |
+| `BRIDGES_ALLOWED_ORIGINS` | CSRF 来源校验允许来源（逗号分隔，如 `http://localhost:3000`） | 自动推导（Host/环回） |
 
 密钥类变量（如 `BRIDGES_SECRET_KEY`、`BRIDGES_DATABASE_URL`、
 `BRIDGES_QWEN_API_KEY`）既可以直接设置，也推荐通过文件引用：

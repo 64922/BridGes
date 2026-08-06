@@ -223,10 +223,10 @@ class MediaPublishService:
         if self._generation is not None:
             for obj_id in request.media_object_ids:
                 try:
-                    obj = self._generation.get_media_object(obj_id)
+                    obj = self._generation.get_media_object(
+                        obj_id, account_id=account_id
+                    )
                 except MediaGenerationError:
-                    continue
-                if obj.account_id != account_id:
                     continue
                 for binding in obj.claim_bindings:
                     if binding.claim_id:
@@ -242,10 +242,10 @@ class MediaPublishService:
         if self._storyboard is not None:
             for sb_id in request.storyboard_ids:
                 try:
-                    sb = self._storyboard.get_storyboard(sb_id)
+                    sb = self._storyboard.get_storyboard(
+                        sb_id, account_id=account_id
+                    )
                 except StoryboardError:
-                    continue
-                if sb.account_id != account_id:
                     continue
                 for scene in sb.scenes:
                     if scene.narration:
@@ -433,10 +433,10 @@ class MediaPublishService:
         if self._generation is not None:
             for obj_id in request.media_object_ids:
                 try:
-                    obj = self._generation.get_media_object(obj_id)
+                    obj = self._generation.get_media_object(
+                        obj_id, account_id=account_id
+                    )
                 except MediaGenerationError:
-                    continue
-                if obj.account_id != account_id:
                     continue
                 editable_source_ids.append(obj.editable_source.source_id)
                 if obj.svg_content:
@@ -448,10 +448,10 @@ class MediaPublishService:
         if self._storyboard is not None:
             for sb_id in request.storyboard_ids:
                 try:
-                    sb = self._storyboard.get_storyboard(sb_id)
+                    sb = self._storyboard.get_storyboard(
+                        sb_id, account_id=account_id
+                    )
                 except StoryboardError:
-                    continue
-                if sb.account_id != account_id:
                     continue
                 # 收集分镜的可编辑源引用。
                 for scene in sb.scenes:
@@ -590,10 +590,10 @@ class MediaPublishService:
             return True
         for sb_id in request.storyboard_ids:
             try:
-                sb = self._storyboard.get_storyboard(sb_id)
+                sb = self._storyboard.get_storyboard(
+                    sb_id, account_id=account_id
+                )
             except StoryboardError:
-                continue
-            if sb.account_id != account_id:
                 continue
             if require_media_type is not None and sb.media_type != require_media_type:
                 continue

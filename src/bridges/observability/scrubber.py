@@ -40,6 +40,21 @@ _FORBIDDEN_KEYS = frozenset(
         "session_token",
         "refresh_token",
         "access_token",
+        # Issue 39 AC5：调用方可能以常见键名携带正文/输入，全部纳入禁止键
+        "user_message",
+        "assistant_message",
+        "content",
+        "body",
+        "raw_body",
+        "input",
+        "output",
+        "transcript",
+        "text",
+        "query",
+        "smtp_code",
+        "authorization_code",
+        "auth_code",
+        "canary",
     }
 )
 
@@ -55,6 +70,8 @@ _SENSITIVE_SUBSTRINGS = [
     "BEGIN RSA PRIVATE KEY",
     "sk-",
     "AKIA",
+    # Issue 39 AC5：百炼/阿里云 AccessKey 与 QQ SMTP 授权码（金丝雀类别）
+    "LTAI",
 ]
 
 
@@ -127,7 +144,20 @@ def scrub_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], PrivacyManif
                         manifest.includes_full_prompt = True
                     if key in {"secret", "api_key", "token", "credential", "private_key"}:
                         manifest.includes_secret = True
-                    if key in {"message_text", "memory_slice_content"}:
+                    if key in {
+                        "message_text",
+                        "memory_slice_content",
+                        "user_message",
+                        "assistant_message",
+                        "content",
+                        "body",
+                        "raw_body",
+                        "input",
+                        "output",
+                        "transcript",
+                        "text",
+                        "query",
+                    }:
                         manifest.includes_private_body = True
                 _inspect(val, current_path)
         elif isinstance(value, list):

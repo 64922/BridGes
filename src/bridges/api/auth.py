@@ -77,8 +77,12 @@ def _set_session_cookie(
     )
 
 
-def _clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+def _clear_session_cookie(response: Response, *, secure: bool = False) -> None:
+    # 删除 Cookie 时保持与设置一致的属性（HttpOnly/Secure/路径），保证
+    # 无论当初在 HTTP 还是 HTTPS 下签发都能被浏览器按同一键清除。
+    response.delete_cookie(
+        key=SESSION_COOKIE_NAME, path="/", httponly=True, secure=secure, samesite="lax"
+    )
 
 
 def _set_device_cookie(response: Response, token: str, *, secure: bool) -> None:
@@ -93,8 +97,10 @@ def _set_device_cookie(response: Response, token: str, *, secure: bool) -> None:
     )
 
 
-def _clear_device_cookie(response: Response) -> None:
-    response.delete_cookie(key=DEVICE_COOKIE_NAME, path="/")
+def _clear_device_cookie(response: Response, *, secure: bool = False) -> None:
+    response.delete_cookie(
+        key=DEVICE_COOKIE_NAME, path="/", httponly=True, secure=secure, samesite="lax"
+    )
 
 
 def _clear_site_data(response: Response) -> None:
@@ -339,7 +345,7 @@ async def logout(
 ) -> None:
     """Revoke any resolvable session and always clear the browser cookie."""
     _revoke_existing_session_if_present(service, request)
-    _clear_session_cookie(response)
+    _clear_session_cookie(response, secure=_cookie_secure(request))
     _clear_account_site_data(response)
 
 
@@ -842,7 +848,7 @@ async def logout_device_account(
         else None
     )
     if fallback is None:
-        _clear_session_cookie(response)
+        _clear_session_cookie(response, secure=_cookie_secure(request))
         _clear_account_site_data(response)
         return DeviceLogoutResponse()
     _set_session_cookie(response, fallback.session_token, secure=_cookie_secure(request))
@@ -875,6 +881,6 @@ async def logout_all_device_accounts(
     # The device cookie is an opaque client-held locator. Revoke the current
     # authenticated session even if it is stale, forged, or missing.
     service.revoke_session(subject.session_id)
-    _clear_session_cookie(response)
-    _clear_device_cookie(response)
+    _clear_session_cookie(response, secure=_cookie_secure(request))
+    _clear_device_cookie(response, secure=_cookie_secure(request))
     _clear_device_site_data(response)

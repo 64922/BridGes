@@ -1732,3 +1732,48 @@ npm --prefix apps/web run typecheck
 npm --prefix apps/web run build
 npm --prefix apps/web run test:e2e -- --project=chromium
 ```
+
+---
+
+# Issue 39 实施计划（加固安全、隐私与账户隔离）
+
+状态：进行中（2026-08-06）。已完成攻击矩阵盘点（3 个 Explore 代理并行
+扫描路径安全/日志脱敏/后台绑定与对象授权）与逐 AC 加固。
+
+## 实施进展（2026-08-06）
+
+1. **AC2 CSRF**（新增 `src/bridges/api/csrf.py` + `BRIDGES_ALLOWED_ORIGINS`
+   配置 + compose/manual 文档 + 11 条 pytest）：改变状态请求校验
+   Origin/Referer；允许来源 = 显式清单 → X-Forwarded → Host → 环回兜底。
+2. **AC1 Cookie**（auth.py/data.py 清除属性一致 + 8 条 pytest + 2 条 E2E）：
+   HttpOnly/SameSite/路径/生命周期/Secure 随传输环境；登出/撤销/过期/
+   无效 Cookie 清除且无重定向循环。
+3. **AC9 对象授权**（media/storyboard/sandbox 按账户隔离 + 7 条 pytest）：
+   媒体对象/分镜/场景规格/沙箱运行/验证报告跨账户统一 404。
+4. **AC8 SKILL/MCP**（mcp/service.py + process.py + runtime.py + 6 条
+   pytest）：符号链接 realpath 闭锁、重定向拒绝跟随、cwd 受限目录。
+5. **AC4 路径**：media 上传复用 validate_filename。
+6. **AC5 秘密**：scrubber 新禁止键 + LTAI 扫描模式 + credentials 稳定
+   错误 + 生产禁 cassette 录制（5 条 pytest）。
+7. **AC6 云披露**：搜索手机号/身份证脱敏 + 授权快照（4 条 pytest）。
+8. **AC3 前端切换隔离**：clearAccountLocalState + 朗读 dispose + 聊天
+   卸载收敛/中断（4 条 E2E）。
+9. **AC7 后台绑定**：3 条 pytest（调度器/执行器/查询三向，删除后无产出）。
+10. 安全报告 `docs/security/issue39-security-report.md`。
+
+### 双轴 code-review 修复（2026-08-06 晚）
+
+- Spec 阻断项：`_path_allowed` 符号链接逃逸防护改为只比较真实路径
+  （词法/真实交叉乘积会放过链接逃逸），新增全平台 mock realpath 回归；
+- 外部命令工作目录改每实例 mkdtemp（固定路径防符号链接预置）；
+- Standards：`_origin_of` 默认端口剥离死条件修复、导入归位、删除无用
+  工厂、`update_storyboard` 收紧必填 account_id、ruff 全清；
+- 并发测试补交叉读取断言；Composer 卸载清理复核确认既有实现。
+
+## 待办
+
+- [x] 全量 pytest 通过（2074 passed，含安全回归 50+）
+- [x] 双轴 code-review（Standards + Spec 并行子代理，缺陷已修复）
+- [x] 更新 Issue 39 AC 勾选（全部完成）
+- [x] E2E：issue39 4 条 + issue09/issue37/issue11 既有 19 条全通过
+- [ ] 提交 Git（工作总结 + Bug 汇总两部分提交信息）

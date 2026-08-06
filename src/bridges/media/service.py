@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bridges.ai import ModelGateway
+from bridges.chat.attachments import validate_filename
 from bridges.contracts.identity import AuthMethod, SubjectContext
 from bridges.contracts.invalidation import (
     AffectedDownstream,
@@ -235,6 +236,17 @@ class MediaIngestionService:
         )
         self._ingestion_runs[run_id] = run_ref
 
+        # Issue 39 AC4：文件名与对话附件/知识库共用同一套路径安全校验
+        # （拒绝穿越、控制字符与保留名），即使当前存储为内存也提前闭锁。
+        try:
+            safe_filename = validate_filename(request.filename)
+        except Exception as exc:
+            run_ref.status = MediaIngestionStatus.FAILED
+            run_ref.error = f"文件名不合法：{exc}"
+            run_ref.gate_results[MediaQualityGate.SCOPE] = MediaGateResult.FAIL
+            run_ref.updated_at = _now()
+            return run_ref
+
         try:
             content = base64.b64decode(request.content)
         except Exception as exc:
@@ -253,7 +265,7 @@ class MediaIngestionService:
             project_id=project_id,
             media_type=request.media_type,
             detected_format=request.media_type.value,
-            original_filename=request.filename,
+            original_filename=safe_filename,
             byte_size=len(content),
             content_hash=_sha256(content),
             created_at=now,

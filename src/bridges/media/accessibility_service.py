@@ -498,11 +498,11 @@ class AccessibilityService:
         if self._storyboard_service is None:
             raise AccessibilityError("未配置分镜服务，无法处理分镜目标。")
         try:
-            storyboard = self._storyboard_service.get_storyboard(request.target_id)
+            storyboard = self._storyboard_service.get_storyboard(
+                request.target_id, account_id=account_id
+            )
         except StoryboardError as exc:
             raise AccessibilityError(str(exc)) from exc
-        if storyboard.account_id != account_id:
-            raise AccessibilityError(f"分镜 {request.target_id} 不存在或无权访问。")
 
         source_version = _sha256(storyboard.model_dump_json())[:12]
         claim_ids = self._storyboard_claim_ids(storyboard)
@@ -608,11 +608,11 @@ class AccessibilityService:
         if self._generation_service is None:
             raise AccessibilityError("未配置媒体生成服务，无法处理媒体对象目标。")
         try:
-            obj = self._generation_service.get_media_object(request.target_id)
+            obj = self._generation_service.get_media_object(
+                request.target_id, account_id=account_id
+            )
         except MediaGenerationError as exc:
             raise AccessibilityError(str(exc)) from exc
-        if obj.account_id != account_id:
-            raise AccessibilityError(f"媒体对象 {request.target_id} 不存在或无权访问。")
 
         source_version = str(obj.editable_source.version)
         claim_ids = sorted(

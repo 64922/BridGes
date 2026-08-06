@@ -45,6 +45,7 @@ from bridges.api import (
     vault,
     workflows,
 )
+from bridges.api.csrf import CsrfOriginMiddleware
 from bridges.api.data import router as data_router
 from bridges.api.image import router as image_router
 from bridges.api.mcp import router as mcp_router
@@ -619,6 +620,14 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 except StorageError as exc:
                     app.state.persistence_error = str(exc)
 
+    # Issue 39 AC2：CSRF 来源校验（在所有业务路由之前、持久化拒绝之后执行）。
+    # 只校验改变状态的请求；未显式配置允许来源时按 X-Forwarded-* / Host /
+    # 环回规则推导（见 api/csrf.py），本地开发无需配置即可工作。
+    allowed_origins: list[str] = []
+    if app.state.settings is not None:
+        allowed_origins = list(app.state.settings.allowed_origins)
+    app.add_middleware(CsrfOriginMiddleware, allowed_origins=allowed_origins)
+
     @app.middleware("http")
     async def reject_unpersisted_requests(request: Request, call_next: Any) -> Any:
         """持久化不可用时只保留健康检查，阻止私人数据进入内存。"""
@@ -911,6 +920,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         and not settings.qwen_force_stub
     ):
         cassette_store = None
+        # Issue 39 AC5：cassette 会把完整请求/响应正文以明文 JSON 落盘，
+        # 生产环境强制禁止录制，避免私人对话正文落盘泄露。
+        cassette_record_mode = (
+            settings.qwen_record_cassettes
+            and settings.environment.lower() != "production"
+        )
         if settings.qwen_cassette_dir is not None:
             cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
         qwen_client = QwenApiClient(
@@ -918,7 +933,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             workspace_id=settings.qwen_workspace_id,
             region=settings.qwen_region,
             cassette_store=cassette_store,
-            record_mode=settings.qwen_record_cassettes,
+            record_mode=cassette_record_mode,
         )
         model_gateway.register_adapter(
             "qwen_text_chat", "1", QwenTextChatAdapter(qwen_client)
@@ -1011,8 +1026,12 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     cassette_dir=(
                         settings.qwen_cassette_dir if settings is not None else None
                     ),
+                    # Issue 39 AC5：生产环境强制禁止录制（与 QwenApiClient 一致）
                     record_mode=(
-                        settings.qwen_record_cassettes if settings is not None else False
+                        settings.qwen_record_cassettes
+                        and settings.environment.lower() != "production"
+                        if settings is not None
+                        else False
                     ),
                 ),
                 probe_service=CapabilityProbeService(state_store=state_store),

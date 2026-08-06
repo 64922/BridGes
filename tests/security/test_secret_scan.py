@@ -60,6 +60,8 @@ TEXT_SUFFIXES = {
 _SECRET_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("api_key", re.compile(r"\bsk-[A-Za-z0-9]{32,}\b")),
     ("aws_key", re.compile(r"\bAKIA[0-9A-Z]{16}\b")),
+    # Issue 39 AC5：百炼/阿里云 AccessKey（LTAI 前缀 + 20 位字母数字）
+    ("aliyun_key", re.compile(r"\bLTAI[0-9A-Za-z]{20}\b")),
     ("private_key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
     (
         "credential",

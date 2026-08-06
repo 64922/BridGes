@@ -87,11 +87,15 @@ class McpProcessClient:
         python_executable: str | None = None,
         startup_timeout: float = STARTUP_TIMEOUT_SECONDS,
         tool_timeout: float = TOOL_TIMEOUT_SECONDS,
+        cwd: str | None = None,
     ) -> None:
         self._command = list(command)
         self._python_executable = python_executable or sys.executable
         self._startup_timeout = startup_timeout
         self._tool_timeout = tool_timeout
+        #: 受限工作目录（Issue 39 AC8）：不继承父进程工作目录，
+        #: 防止 MCP 进程在宿主工作区读写任意文件。
+        self._cwd = cwd
         self._process: subprocess.Popen[str] | None = None
         self._write_lock = threading.Lock()
         #: 同进程调用串行锁：协议是单请求流，宿主侧用该锁串行并发调用。
@@ -127,6 +131,7 @@ class McpProcessClient:
                 text=True,
                 encoding="utf-8",
                 env=clean_env,
+                cwd=self._cwd,
             )
         except (OSError, ValueError) as exc:
             self._process = None

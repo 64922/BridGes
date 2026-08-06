@@ -257,7 +257,7 @@ class TestStoryboardEditAndValidate:
         storyboard_id = result.storyboard.storyboard_id
 
         updated = storyboard_service.update_storyboard(
-            storyboard_id, title="修改后标题"
+            storyboard_id, title="修改后标题", account_id="test-account"
         )
         assert updated.title == "修改后标题"
         assert updated.updated_at is not None
@@ -274,7 +274,9 @@ class TestStoryboardEditAndValidate:
 
         new_objectives = ["新教学目标"]
         updated = storyboard_service.update_storyboard(
-            storyboard_id, teaching_objectives=new_objectives
+            storyboard_id,
+            teaching_objectives=new_objectives,
+            account_id="test-account",
         )
         assert updated.teaching_objectives == ["新教学目标"]
 
@@ -288,7 +290,7 @@ class TestStoryboardEditAndValidate:
         )
         storyboard_id = result.storyboard.storyboard_id
 
-        report = storyboard_service.validate_storyboard(storyboard_id)
+        report = storyboard_service.validate_storyboard(storyboard_id, account_id="test-account")
         assert report.science_valid is True
         assert len(report.errors) == 0
 
@@ -303,8 +305,10 @@ class TestStoryboardEditAndValidate:
         storyboard_id = result.storyboard.storyboard_id
 
         # Remove all scenes.
-        storyboard_service.update_storyboard(storyboard_id, scenes=[])
-        report = storyboard_service.validate_storyboard(storyboard_id)
+        storyboard_service.update_storyboard(
+            storyboard_id, scenes=[], account_id="test-account"
+        )
+        report = storyboard_service.validate_storyboard(storyboard_id, account_id="test-account")
         assert report.science_valid is False
         assert any("没有定义任何镜头" in e for e in report.errors)
 
@@ -313,7 +317,7 @@ class TestStoryboardEditAndValidate:
         storyboard_service: StoryboardService,
     ) -> None:
         with pytest.raises(StoryboardError, match="不存在"):
-            storyboard_service.get_storyboard("nonexistent-id")
+            storyboard_service.get_storyboard("nonexistent-id", account_id="test-account")
 
     def test_update_storyboard_wrong_account_raises_error(
         self,
@@ -325,7 +329,8 @@ class TestStoryboardEditAndValidate:
         )
         storyboard_id = result.storyboard.storyboard_id
 
-        with pytest.raises(StoryboardError, match="不属于当前账户"):
+        # Issue 39 AC9：跨账户访问统一按「不存在」处理，不泄漏对象归属
+        with pytest.raises(StoryboardError, match="不存在"):
             storyboard_service.update_storyboard(
                 storyboard_id,
                 title="被篡改的标题",
@@ -347,7 +352,9 @@ class TestCodeGeneration:
         storyboard_id = result.storyboard.storyboard_id
 
         source = storyboard_service.generate_source_code(
-            storyboard_id, code_language="html"
+            storyboard_id,
+            code_language="html",
+            account_id="test-account",
         )
         assert source.source_type == "sandbox_code"
         assert source.format == "text/plain"
@@ -366,7 +373,9 @@ class TestCodeGeneration:
         storyboard_id = result.storyboard.storyboard_id
 
         source = storyboard_service.generate_source_code(
-            storyboard_id, code_language="python"
+            storyboard_id,
+            code_language="python",
+            account_id="test-account",
         )
         assert "SceneRenderer" in source.content
         assert "太阳系行星公转" in source.content
@@ -381,8 +390,12 @@ class TestCodeGeneration:
         )
         storyboard_id = result.storyboard.storyboard_id
 
-        storyboard_service.generate_source_code(storyboard_id, "html")
-        storyboard = storyboard_service.get_storyboard(storyboard_id)
+        storyboard_service.generate_source_code(
+            storyboard_id,
+            "html",
+            account_id="test-account",
+        )
+        storyboard = storyboard_service.get_storyboard(storyboard_id, account_id="test-account")
         assert storyboard.status == StoryboardStatus.SOURCE_GENERATED
 
     def test_python_code_runs_in_sandbox_and_produces_string_output(
@@ -398,7 +411,9 @@ class TestCodeGeneration:
         storyboard_id = result.storyboard.storyboard_id
 
         source = storyboard_service.generate_source_code(
-            storyboard_id, code_language="python"
+            storyboard_id,
+            code_language="python",
+            account_id="test-account",
         )
         sandbox_request = SandboxRunRequest(
             storyboard_id=storyboard_id,
@@ -425,7 +440,11 @@ class TestCodeGeneration:
         storyboard_id = result.storyboard.storyboard_id
 
         with pytest.raises(StoryboardError, match="不支持"):
-            storyboard_service.generate_source_code(storyboard_id, "ruby")
+            storyboard_service.generate_source_code(
+                storyboard_id,
+                "ruby",
+                account_id="test-account",
+            )
 
 
 class TestStaticCheck:
@@ -641,7 +660,7 @@ class TestSandboxRun:
         )
         result = sandbox_service.run(request, account_id="test-account")
 
-        retrieved = sandbox_service.get_run(result.run_id)
+        retrieved = sandbox_service.get_run(result.run_id, account_id="test-account")
         assert retrieved.run_id == result.run_id
         assert retrieved.status == result.status
 
@@ -650,7 +669,7 @@ class TestSandboxRun:
         sandbox_service: SandboxService,
     ) -> None:
         with pytest.raises(SandboxError, match="不存在"):
-            sandbox_service.get_run("nonexistent-run-id")
+            sandbox_service.get_run("nonexistent-run-id", account_id="test-account")
 
 
 class TestSandboxRepair:
@@ -676,6 +695,7 @@ class TestSandboxRepair:
         repaired = sandbox_service.repair(
             result.run_id,
             good_code,
+            account_id="test-account",
             fact_locks=None,
         )
         assert repaired.status == SandboxRunStatus.COMPLETED
@@ -695,7 +715,7 @@ class TestSandboxRepair:
         assert result.status == SandboxRunStatus.COMPLETED
 
         with pytest.raises(SandboxError, match="无法修复"):
-            sandbox_service.repair(result.run_id, code, fact_locks=None)
+            sandbox_service.repair(result.run_id, code, account_id="test-account", fact_locks=None)
 
     def test_repair_budget_exhaustion(
         self,
@@ -715,13 +735,17 @@ class TestSandboxRepair:
         # Attempt repairs with still-broken code until budget exhausted.
         still_bad = "import math\n\nraise ValueError('still broken')\n"
         for attempt in range(3):
-            result = sandbox_service.repair(result.run_id, still_bad, fact_locks=None)
+            result = sandbox_service.repair(result.run_id, still_bad, account_id="test-account", fact_locks=None)
             if result.repair_attempts >= 3:
                 break
 
         # Next repair should fail with budget exhausted.
         with pytest.raises(SandboxError, match="预算已耗尽"):
-            sandbox_service.repair(result.run_id, "import math\nprint('x')\n")
+            sandbox_service.repair(
+                result.run_id,
+                "import math\nprint('x')\n",
+                account_id="test-account",
+            )
 
     def test_repair_tracks_attempts(
         self,
@@ -736,7 +760,7 @@ class TestSandboxRepair:
         result = sandbox_service.run(request, account_id="test-account")
 
         good_code = "import math\nprint('fixed')\n"
-        repaired = sandbox_service.repair(result.run_id, good_code)
+        repaired = sandbox_service.repair(result.run_id, good_code, account_id="test-account")
         assert repaired.repair_attempts == 1
 
 
@@ -767,6 +791,7 @@ class TestFactLockInvariants:
         repaired = sandbox_service.repair(
             result.run_id,
             patch_with_violation,
+            account_id="test-account",
             fact_locks=sample_locks,
         )
 
@@ -792,6 +817,7 @@ class TestFactLockInvariants:
         repaired = sandbox_service.repair(
             result.run_id,
             good_code,
+            account_id="test-account",
             fact_locks=None,
         )
         assert len(repaired.fact_lock_violations) == 0
@@ -817,6 +843,7 @@ class TestFactLockInvariants:
         repaired = sandbox_service.repair(
             result.run_id,
             patch_no_value,
+            account_id="test-account",
             fact_locks=sample_locks,
         )
         assert len(repaired.fact_lock_violations) >= 1
@@ -890,12 +917,14 @@ class TestFullCycle:
         assert result.storyboard.title == "太阳系行星公转"
 
         # 2. Validate storyboard.
-        report = storyboard_service.validate_storyboard(storyboard_id)
+        report = storyboard_service.validate_storyboard(storyboard_id, account_id="test-account")
         assert report.science_valid is True
 
         # 3. Generate source code.
         source = storyboard_service.generate_source_code(
-            storyboard_id, code_language="python"
+            storyboard_id,
+            code_language="python",
+            account_id="test-account",
         )
         assert source.source_type == "sandbox_code"
 
@@ -921,6 +950,7 @@ class TestFullCycle:
             sandbox_service,
             storyboard_id,
             run_result.run_id,
+            account_id="test-account",
         )
         assert v_report.storyboard_id == storyboard_id
         assert v_report.run_id == run_result.run_id
@@ -945,16 +975,21 @@ class TestFullCycle:
             storyboard_id,
             title="编辑后标题",
             teaching_objectives=["新教学目标"],
+            account_id="test-account",
         )
         assert updated.title == "编辑后标题"
         assert updated.teaching_objectives == ["新教学目标"]
 
         # 3. Re-validate.
-        report = storyboard_service.validate_storyboard(storyboard_id)
+        report = storyboard_service.validate_storyboard(storyboard_id, account_id="test-account")
         assert report.science_valid is True
 
         # 4. Regenerate code.
-        source = storyboard_service.generate_source_code(storyboard_id, "html")
+        source = storyboard_service.generate_source_code(
+            storyboard_id,
+            "html",
+            account_id="test-account",
+        )
         assert "编辑后标题" in source.content
 
         # 5. Re-run in sandbox.
@@ -971,7 +1006,7 @@ class TestFullCycle:
         # 6. Verify consistency.
         assert run_result.storyboard_id == storyboard_id
         assert run_result.content_hash == sandbox_service.get_run(
-            run_result.run_id
+            run_result.run_id, account_id="test-account"
         ).content_hash
 
     def test_sandbox_failure_with_validation_report(
@@ -1005,6 +1040,7 @@ class TestFullCycle:
             sandbox_service,
             storyboard_id,
             run_result.run_id,
+            account_id="test-account",
         )
         assert v_report.science_valid is False
         assert v_report.fact_locks_preserved is False

@@ -18763,7 +18763,7 @@
           "media"
         ],
         "summary": "Get Media Object",
-        "description": "Get a generated media object by ID.",
+        "description": "Get a generated media object by ID (owner-scoped, Issue 39 AC9).",
         "operationId": "get_media_object_media_objects__object_id__get",
         "parameters": [
           {
@@ -19069,7 +19069,7 @@
           "media"
         ],
         "summary": "Get Storyboard",
-        "description": "Get a storyboard by ID.",
+        "description": "Get a storyboard by ID (owner-scoped, Issue 39 AC9).",
         "operationId": "get_storyboard_media_storyboards__storyboard_id__get",
         "parameters": [
           {
@@ -19431,7 +19431,7 @@
           "media"
         ],
         "summary": "Get Sandbox Run",
-        "description": "Get a sandbox run result by ID.",
+        "description": "Get a sandbox run result by ID (owner-scoped, Issue 39 AC9).",
         "operationId": "get_sandbox_run_media_sandbox_runs__run_id__get",
         "parameters": [
           {

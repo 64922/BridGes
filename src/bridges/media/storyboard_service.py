@@ -301,6 +301,8 @@ class StoryboardService:
         self._generator = generator or DeterministicStoryboardGenerator()
         self._storyboards: dict[str, MediaStoryboard] = {}
         self._scene_specs: dict[str, SceneSpec] = {}
+        #: 场景规格 -> 拥有账户（Issue 39 AC9：规格标识同样按账户隔离）。
+        self._spec_accounts: dict[str, str] = {}
 
     def generate_storyboard(
         self,
@@ -319,20 +321,24 @@ class StoryboardService:
         self._storyboards[storyboard.storyboard_id] = storyboard
         for spec_id, spec in result.scene_specs.items():
             self._scene_specs[spec_id] = spec
+            self._spec_accounts[spec_id] = account_id
 
         return result
 
-    def get_storyboard(self, storyboard_id: str) -> MediaStoryboard:
-        """Retrieve a storyboard by ID."""
+    def get_storyboard(self, storyboard_id: str, *, account_id: str) -> MediaStoryboard:
+        """Retrieve a storyboard by ID (owner-scoped, Issue 39 AC9).
+
+        直接对象标识不能作为授权依据：跨账户猜测标识一律按不存在处理。
+        """
         storyboard = self._storyboards.get(storyboard_id)
-        if storyboard is None:
+        if storyboard is None or storyboard.account_id != account_id:
             raise StoryboardError(f"分镜 {storyboard_id} 不存在。")
         return storyboard
 
-    def get_scene_spec(self, scene_spec_id: str) -> SceneSpec:
-        """Retrieve a scene spec by ID."""
+    def get_scene_spec(self, scene_spec_id: str, *, account_id: str) -> SceneSpec:
+        """Retrieve a scene spec by ID (owner-scoped, Issue 39 AC9)."""
         spec = self._scene_specs.get(scene_spec_id)
-        if spec is None:
+        if spec is None or self._spec_accounts.get(scene_spec_id) != account_id:
             raise StoryboardError(f"场景规格 {scene_spec_id} 不存在。")
         return spec
 
@@ -340,24 +346,20 @@ class StoryboardService:
         self,
         storyboard_id: str,
         *,
+        account_id: str,
         title: str | None = None,
         teaching_objectives: list[str] | None = None,
         scenes: list[StoryboardScene] | None = None,
         scene_specs: dict[str, SceneSpec] | None = None,
         fact_locks: list[FactLock] | None = None,
-        account_id: str | None = None,
     ) -> MediaStoryboard:
         """Update a storyboard's fields and re-validate.
 
         Users can modify scenes, objectives, or scene specs and then
         re-validate the storyboard without regenerating from scratch.
-        Updates are scoped to the owning account when account_id is provided.
+        Updates are always scoped to the owning account（Issue 39 AC9）.
         """
-        storyboard = self.get_storyboard(storyboard_id)
-        if account_id and storyboard.account_id != account_id:
-            raise StoryboardError(
-                f"分镜 {storyboard_id} 不属于当前账户，无法修改。"
-            )
+        storyboard = self.get_storyboard(storyboard_id, account_id=account_id)
         now = _now()
 
         updates: dict[str, object] = {"updated_at": now}
@@ -375,11 +377,12 @@ class StoryboardService:
         if scene_specs:
             for spec_id, spec in scene_specs.items():
                 self._scene_specs[spec_id] = spec
+                self._spec_accounts[spec_id] = storyboard.account_id
 
         return updated
 
     def validate_storyboard(
-        self, storyboard_id: str
+        self, storyboard_id: str, *, account_id: str
     ) -> ValidationReport:
         """Validate a storyboard for completeness and internal consistency.
 
@@ -390,7 +393,7 @@ class StoryboardService:
         - Scenes have valid timing (positive duration)
         - Scene numbering is sequential
         """
-        storyboard = self.get_storyboard(storyboard_id)
+        storyboard = self.get_storyboard(storyboard_id, account_id=account_id)
         errors: list[str] = []
         warnings: list[str] = []
 
@@ -434,13 +437,15 @@ class StoryboardService:
         self,
         storyboard_id: str,
         code_language: str = "html",
+        *,
+        account_id: str,
     ) -> EditableSource:
         """Generate executable source code from a storyboard.
 
         For deterministic operation, generates a minimal HTML/JS scaffold
         that describes the scenes from the storyboard.
         """
-        storyboard = self.get_storyboard(storyboard_id)
+        storyboard = self.get_storyboard(storyboard_id, account_id=account_id)
         now = _now()
 
         if code_language == "html":
@@ -725,6 +730,8 @@ class SandboxService:
         self._runs: dict[str, SandboxRunResult] = {}
         # Store original source codes for fact-lock invariant checks.
         self._run_sources: dict[str, str] = {}
+        #: 运行 -> 拥有账户（Issue 39 AC9：运行标识同样按账户隔离）。
+        self._run_accounts: dict[str, str] = {}
 
     def run(
         self,
@@ -750,12 +757,13 @@ class SandboxService:
         # Store the original source for fact-lock invariant checks.
         self._run_sources[result.run_id] = request.source_code
         self._runs[result.run_id] = result
+        self._run_accounts[result.run_id] = account_id
         return result
 
-    def get_run(self, run_id: str) -> SandboxRunResult:
-        """Retrieve a sandbox run result by ID."""
+    def get_run(self, run_id: str, *, account_id: str) -> SandboxRunResult:
+        """Retrieve a sandbox run result by ID (owner-scoped, Issue 39 AC9)."""
         run = self._runs.get(run_id)
-        if run is None:
+        if run is None or self._run_accounts.get(run_id) != account_id:
             raise SandboxError(f"沙箱运行 {run_id} 不存在。")
         return run
 
@@ -764,6 +772,7 @@ class SandboxService:
         run_id: str,
         patch: str,
         *,
+        account_id: str,
         fact_locks: list[FactLock] | None = None,
         fact_lock_ids: list[str] | None = None,
         code_language: str | None = None,
@@ -777,7 +786,7 @@ class SandboxService:
         - Re-runs the sandbox with patched code
         - After budget exhaustion, marks as QUARANTINED via storyboard status
         """
-        run = self.get_run(run_id)
+        run = self.get_run(run_id, account_id=account_id)
         if run.status != SandboxRunStatus.FAILED:
             raise SandboxError(
                 f"沙箱运行 {run_id} 状态为 {run.status.value}，无法修复。"
@@ -854,6 +863,7 @@ class SandboxService:
 
         self._run_sources[new_result.run_id] = patch
         self._runs[new_result.run_id] = new_result
+        self._run_accounts[new_result.run_id] = account_id
         return new_result
 
 
@@ -865,10 +875,12 @@ def build_validation_report(
     sandbox_service: SandboxService,
     storyboard_id: str,
     run_id: str,
+    *,
+    account_id: str,
 ) -> ValidationReport:
     """Build a comprehensive validation report for a storyboard sandbox run."""
-    storyboard = storyboard_service.get_storyboard(storyboard_id)
-    run = sandbox_service.get_run(run_id)
+    storyboard = storyboard_service.get_storyboard(storyboard_id, account_id=account_id)
+    run = sandbox_service.get_run(run_id, account_id=account_id)
 
     errors: list[str] = list(run.error_log)
     warnings: list[str] = []

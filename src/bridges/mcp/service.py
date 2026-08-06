@@ -16,6 +16,7 @@ import os
 import shlex
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import urllib.error
@@ -164,6 +165,9 @@ class McpService:
         self._clock = clock or (lambda: datetime.now(UTC))
         self._confirmations: dict[str, _ConfirmationEntry] = {}
         self._confirmations_lock = threading.Lock()
+        # Issue 39 AC8：外部命令的受限工作目录——每次服务实例独立随机目录，
+        # 固定路径不可被本地进程预置符号链接（目录本身也可能被伪装）。
+        self._command_workdir = tempfile.mkdtemp(prefix="bridges-mcp-cmd-")
 
     # ------------------------------------------------------------------
     # 安装检查与安装
@@ -771,7 +775,9 @@ class McpService:
             if not force:
                 return ToolCallOutcome(False, sensitive=confirmation)
             try:
-                with urllib.request.urlopen(url, timeout=_HTTP_TIMEOUT_SECONDS) as response:
+                # 禁止重定向跟随（Issue 39 AC8）：允许域名内的 URL 可被
+                # 302 重定向到未授权域名或内网地址，重定向即视为拒绝。
+                with _no_redirect_opener().open(url, timeout=_HTTP_TIMEOUT_SECONDS) as response:
                     raw = response.read(_MAX_HTTP_BYTES + 1)
                 if len(raw) > _MAX_HTTP_BYTES:
                     return ToolCallOutcome(
@@ -780,6 +786,19 @@ class McpService:
                         error_message=f"响应超过 {_MAX_HTTP_BYTES // 1024} KB 上限。",
                     )
                 return ToolCallOutcome(True, result={"url": url, "content": _decode_text(raw)})
+            except urllib.error.HTTPError as exc:
+                if exc.code in (301, 302, 303, 307, 308):
+                    self._denied_audit(
+                        account_id, mcp_id, version, tool, "重定向目标未授权"
+                    )
+                    return ToolCallOutcome(
+                        False,
+                        error_code="permission_denied",
+                        error_message="目标地址发生重定向，已拒绝跟随（重定向目标不在允许清单内）。",
+                    )
+                return ToolCallOutcome(
+                    False, error_code="tool_error", error_message=f"请求失败（HTTP {exc.code}）。"
+                )
             except (urllib.error.URLError, OSError, ValueError) as exc:
                 return ToolCallOutcome(
                     False, error_code="tool_error", error_message=f"请求失败：{exc}"
@@ -816,6 +835,7 @@ class McpService:
                     timeout=_COMMAND_TIMEOUT_SECONDS,
                     shell=False,
                     env=clean_env,
+                    cwd=self._command_workdir,
                 )
             except (OSError, ValueError) as exc:
                 return ToolCallOutcome(
@@ -1096,7 +1116,11 @@ def _decode_text(raw: bytes) -> str:
 
 
 def _path_allowed(path: str, directories: list[str]) -> bool:
-    """路径必须在声明目录之内（规范化前缀匹配，跨盘符安全）。"""
+    """路径必须在声明目录之内（规范化前缀匹配，跨盘符安全）。
+
+    Issue 39 AC8：先解析符号链接再匹配，防止允许目录内放置指向外部的
+    链接逃逸读取/写入；解析失败（不存在/无权限）一律拒绝。
+    """
     if not directories or not path:
         return False
     try:
@@ -1105,14 +1129,37 @@ def _path_allowed(path: str, directories: list[str]) -> bool:
         return False
     if not os.path.isabs(norm):
         return False
+    # 符号链接逃逸防护（Issue 39 AC8）：只比较真实路径。
+    # 词法路径在允许目录内不代表安全——允许目录内的链接可指向外部；
+    # 必须验证「解析符号链接后的真实目标」落在「允许目录的真实路径」内，
+    # 否则链接逃逸（read/write 越界）会被错误放行。
+    try:
+        real = os.path.normcase(os.path.realpath(path))
+    except (TypeError, ValueError, OSError):
+        return False
+    if not real:
+        return False
     for directory in directories:
         try:
-            norm_dir = os.path.normcase(os.path.normpath(directory))
-        except (TypeError, ValueError):
+            real_dir = os.path.normcase(os.path.realpath(directory))
+        except (TypeError, ValueError, OSError):
             continue
-        if norm == norm_dir or norm.startswith(norm_dir.rstrip(os.sep) + os.sep):
+        if not real_dir:
+            continue
+        if real == real_dir or real.startswith(real_dir.rstrip(os.sep) + os.sep):
             return True
     return False
+
+
+def _no_redirect_opener() -> Any:
+    """构造不跟随重定向的 urlopen opener（Issue 39 AC8 重定向闭锁）。"""
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+            raise urllib.error.HTTPError(
+                args[0], 302, "重定向已禁止", None, None
+            )
+
+    return urllib.request.build_opener(_NoRedirect)
 
 
 def _url_allowed(url: str, domains: list[str]) -> bool:

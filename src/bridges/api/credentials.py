@@ -109,7 +109,9 @@ async def get_key_settings(
         return service.get_projection(subject.account_id)
     except CredentialStoreError as exc:
         raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "credential_store_unavailable", str(exc)
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "credential_store_unavailable",
+            "凭据存储暂不可用，请稍后重试。",
         ) from exc
 
 
@@ -135,7 +137,9 @@ async def save_key_settings(
         )
     except CredentialStoreError as exc:
         raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "credential_store_unavailable", str(exc)
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "credential_store_unavailable",
+            "凭据存储暂不可用，请稍后重试。",
         ) from exc
 
 
@@ -158,7 +162,9 @@ async def delete_key_settings(
         return service.delete(subject.account_id, session_id=subject.session_id)
     except CredentialStoreError as exc:
         raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "credential_store_unavailable", str(exc)
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "credential_store_unavailable",
+            "凭据存储暂不可用，请稍后重试。",
         ) from exc
 
 
@@ -182,7 +188,9 @@ async def probe_all_capabilities(
         return service.get_projection(subject.account_id)
     except CredentialStoreError as exc:
         raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "credential_store_unavailable", str(exc)
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "credential_store_unavailable",
+            "凭据存储暂不可用，请稍后重试。",
         ) from exc
 
 
@@ -209,8 +217,14 @@ async def retry_capability_probe(
         )
         return service.get_projection(subject.account_id)
     except KeyCredentialError as exc:
-        raise _error(status.HTTP_400_BAD_REQUEST, "key_not_configured", str(exc)) from exc
+        raise _error(
+            status.HTTP_400_BAD_REQUEST,
+            "key_not_configured",
+            "尚未配置当前账户的百炼密钥。",
+        ) from exc
     except CredentialStoreError as exc:
         raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE, "credential_store_unavailable", str(exc)
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "credential_store_unavailable",
+            "凭据存储暂不可用，请稍后重试。",
         ) from exc

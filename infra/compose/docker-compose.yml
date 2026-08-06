@@ -11,6 +11,10 @@ services:
       - BRIDGES_API_PORT=8000
       - BRIDGES_WEB_DEV=false
       - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+      # Issue 39 AC2：CSRF 来源校验允许来源 = 浏览器访问的 Web 来源
+      # （容器内 API 的 Host 为 api:8000，浏览器来源是宿主机映射端口，
+      # 必须显式配置；其他访问方式请按实际来源调整）。
+      - BRIDGES_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
       # Issue 10：容器使用自动生成主密钥保护的加密凭据卷（bridges-data 卷）。
       - BRIDGES_CREDENTIAL_BACKEND=encrypted-volume
     volumes:

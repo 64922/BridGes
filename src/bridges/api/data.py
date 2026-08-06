@@ -23,7 +23,12 @@ from fastapi import (
     status,
 )
 
-from bridges.api.auth import SubjectDep, _clear_device_cookie, _clear_session_cookie
+from bridges.api.auth import (
+    SubjectDep,
+    _clear_device_cookie,
+    _clear_session_cookie,
+    _cookie_secure,
+)
 from bridges.api.credentials import RecentAuthRequired
 from bridges.chat.service import ChatService
 from bridges.contracts.identity import AuthError
@@ -179,8 +184,8 @@ async def delete_account(
         service.delete_account(subject.account_id)
     except DataLifecycleError as exc:
         raise _from_error(exc) from exc
-    _clear_session_cookie(response)
-    _clear_device_cookie(response)
+    _clear_session_cookie(response, secure=_cookie_secure(request))
+    _clear_device_cookie(response, secure=_cookie_secure(request))
     response.headers["Clear-Site-Data"] = '"cache", "storage"'
     response.status_code = status.HTTP_204_NO_CONTENT
     return response
@@ -292,6 +297,7 @@ async def restore_backup(
     passphrase: Annotated[str, Form(min_length=1, max_length=256)],
     confirmation: Annotated[str, Form(min_length=1, max_length=64)],
     file: Annotated[UploadFileFile, File()],
+    request: Request,
     response: Response,
     service: BackupServiceDep,
 ) -> RestorePreview:
@@ -311,7 +317,7 @@ async def restore_backup(
     except DataLifecycleError as exc:
         raise _from_error(exc) from exc
     if preview.ok:
-        _clear_session_cookie(response)
-        _clear_device_cookie(response)
+        _clear_session_cookie(response, secure=_cookie_secure(request))
+        _clear_device_cookie(response, secure=_cookie_secure(request))
         response.headers["Clear-Site-Data"] = '"cache", "storage"'
     return preview

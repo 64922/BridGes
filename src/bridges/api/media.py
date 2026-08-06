@@ -370,9 +370,9 @@ async def get_media_object(
     subject: SubjectDep,
     object_id: str,
 ) -> ScientificMediaObject:
-    """Get a generated media object by ID."""
+    """Get a generated media object by ID (owner-scoped, Issue 39 AC9)."""
     try:
-        return service.get_media_object(object_id)
+        return service.get_media_object(object_id, account_id=subject.account_id)
     except MediaGenerationError as exc:
         raise _media_error(
             status.HTTP_404_NOT_FOUND, "media_object_not_found", str(exc)
@@ -396,10 +396,20 @@ async def update_media_object_spec(
 ) -> ScientificMediaObject:
     """Update the editable source of a chart or figure and re-validate."""
     try:
-        obj = service.get_media_object(object_id)
+        obj = service.get_media_object(object_id, account_id=subject.account_id)
+    except MediaGenerationError as exc:
+        # 对象不存在或跨账户：统一 404，不进入规格校验路径（Issue 39 AC9）。
+        raise _media_error(
+            status.HTTP_404_NOT_FOUND, "media_object_not_found", str(exc)
+        ) from exc
+    try:
         if obj.media_type.value == "chart":
-            return service.update_chart_spec(object_id, spec_json)
-        return service.update_figure_spec(object_id, spec_json)
+            return service.update_chart_spec(
+                object_id, spec_json, account_id=subject.account_id
+            )
+        return service.update_figure_spec(
+            object_id, spec_json, account_id=subject.account_id
+        )
     except MediaGenerationError as exc:
         raise _media_error(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "spec_update_failed", str(exc)
@@ -493,9 +503,9 @@ async def get_storyboard(
     subject: SubjectDep,
     storyboard_id: str,
 ) -> MediaStoryboard:
-    """Get a storyboard by ID."""
+    """Get a storyboard by ID (owner-scoped, Issue 39 AC9)."""
     try:
-        return service.get_storyboard(storyboard_id)
+        return service.get_storyboard(storyboard_id, account_id=subject.account_id)
     except StoryboardError as exc:
         raise _media_error(
             status.HTTP_404_NOT_FOUND, "storyboard_not_found", str(exc)
@@ -548,7 +558,9 @@ async def generate_storyboard_code(
 ) -> dict[str, object]:
     """Generate executable source code from a storyboard."""
     try:
-        source = service.generate_source_code(storyboard_id, code_language)
+        source = service.generate_source_code(
+            storyboard_id, code_language, account_id=subject.account_id
+        )
         return {"editable_source": source.model_dump()}
     except StoryboardError as exc:
         raise _media_error(
@@ -574,8 +586,8 @@ async def run_storyboard_sandbox(
 ) -> SandboxRunResult:
     """Run generated code in the isolated sandbox."""
     try:
-        # Ensure the storyboard exists.
-        storyboard_service.get_storyboard(storyboard_id)
+        # Ensure the storyboard exists and belongs to the current account.
+        storyboard_service.get_storyboard(storyboard_id, account_id=subject.account_id)
         return sandbox_service.run(
             request,
             account_id=subject.account_id,
@@ -601,9 +613,9 @@ async def get_sandbox_run(
     subject: SubjectDep,
     run_id: str,
 ) -> SandboxRunResult:
-    """Get a sandbox run result by ID."""
+    """Get a sandbox run result by ID (owner-scoped, Issue 39 AC9)."""
     try:
-        return sandbox_service.get_run(run_id)
+        return sandbox_service.get_run(run_id, account_id=subject.account_id)
     except SandboxError as exc:
         raise _media_error(
             status.HTTP_404_NOT_FOUND, "sandbox_run_not_found", str(exc)
@@ -632,6 +644,7 @@ async def repair_sandbox_run(
         return sandbox_service.repair(
             run_id,
             patch,
+            account_id=subject.account_id,
             fact_locks=None,
             fact_lock_ids=fact_lock_ids or [],
         )
@@ -665,6 +678,7 @@ async def validate_storyboard(
             sandbox_service,
             storyboard_id,
             run_id,
+            account_id=subject.account_id,
         )
     except (StoryboardError, SandboxError) as exc:
         raise _media_error(

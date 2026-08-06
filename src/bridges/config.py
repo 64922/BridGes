@@ -13,10 +13,10 @@ from __future__ import annotations
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import AliasChoices, Field, SecretStr
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import AliasChoices, Field, SecretStr, field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 ENV_PREFIX = "BRIDGES_"
 LEGACY_ENV_PREFIX = "SCIENCE_COMPANION_"
@@ -57,6 +57,15 @@ class Settings(BaseSettings):
     # Security
     session_cookie_secure: bool = Field(
         default=False, validation_alias=_env_aliases("SESSION_COOKIE_SECURE")
+    )
+    # Issue 39 AC2：CSRF 来源校验的显式允许来源（逗号分隔，如
+    # "http://localhost:3000,http://127.0.0.1:3000"）。容器/反向代理部署
+    # 时浏览器来源与 API Host 不同，必须显式配置；未配置时中间件按
+    # X-Forwarded-* / Host / 环回规则推导（见 api/csrf.py）。
+    # NoDecode：禁用 pydantic-settings 对复杂类型的 JSON 解码，
+    # 由下方 field_validator 按逗号分隔解析。
+    allowed_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=list, validation_alias=_env_aliases("ALLOWED_ORIGINS")
     )
 
     # Secrets: direct env var or *_FILE file reference.
@@ -124,6 +133,14 @@ class Settings(BaseSettings):
     _SECRET_FIELDS: frozenset[str] = frozenset(
         {"secret_key", "database_url", "redis_url", "object_storage_url", "qwen_api_key"}
     )
+
+    @field_validator("allowed_origins", mode="before")
+    @classmethod
+    def _parse_allowed_origins(cls, value: Any) -> Any:
+        """按逗号分隔解析 BRIDGES_ALLOWED_ORIGINS（列表项去除空白）。"""
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        return value
 
     def model_post_init(self, __context: Any) -> None:
         """Resolve any ``<FIELD>_FILE`` secret references after initial parsing."""

@@ -244,6 +244,23 @@ export default function ChatConversationPage() {
 
   useEffect(() => () => readAloudSession.stop(), [conversationId]);
 
+  // Issue 39 AC3：组件卸载（切换账户导致 AppShell 重挂载/离开页面）时
+  // 先收敛服务端生成状态（同「停止」按钮语义），再中断流式请求，防止
+  // 旧账户的 SSE 流在后台继续消费并把事件写入已卸载的页面。
+  useEffect(
+    () => () => {
+      const run = activeRunRef.current;
+      if (run) {
+        void stopChatMessage(conversationId, run.messageId).catch(() => {
+          // 停止失败不阻塞卸载；服务端以断流收敛为失败/停止终态
+        });
+      }
+      abortRef.current?.abort();
+      activeRunRef.current = null;
+    },
+    [conversationId]
+  );
+
   // Issue 24：统一搜索跳转的消息锚点。?message=<id> 时等消息渲染完成后
   // 滚动到对应消息并短暂高亮（data-anchor-highlight，2s 后自动消退；
   // 高亮过渡走 --motion-* 令牌，prefers-reduced-motion 下趋近即时）。

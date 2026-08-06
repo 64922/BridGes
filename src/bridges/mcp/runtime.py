@@ -59,7 +59,17 @@ class McpRuntime:
             client = self._processes.get(key)
             if client is not None and client.is_alive():
                 return client
-            client = McpProcessClient(command=command, startup_timeout=startup_timeout)
+            if self._pid_dir is not None:
+                # Issue 39 AC8：先确保受限工作目录存在（进程 cwd 专用目录）
+                with suppress(OSError):
+                    self._pid_dir.mkdir(parents=True, exist_ok=True)
+            client = McpProcessClient(
+                command=command,
+                startup_timeout=startup_timeout,
+                # Issue 39 AC8：进程工作目录固定到 MCP 专用目录（数据目录下），
+                # 不继承宿主任意工作区。
+                cwd=str(self._pid_dir) if self._pid_dir is not None else None,
+            )
             client.start()
             self._processes[key] = client
         self._write_pid_file(account_id, mcp_id, client)

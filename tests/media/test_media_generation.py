@@ -315,7 +315,7 @@ class TestChartEditableSource:
 
         # Edit the title in the spec.
         spec_data["title"] = "修改后标题"
-        updated = service.update_chart_spec(obj_id, json.dumps(spec_data))
+        updated = service.update_chart_spec(obj_id, json.dumps(spec_data), account_id="test-account")
         assert updated.status == GenerationStatus.COMPLETED
         updated_spec = json.loads(updated.editable_source.content)
         assert updated_spec["title"] == "修改后标题"
@@ -338,7 +338,7 @@ class TestChartEditableSource:
         spec_data = json.loads(result.media_object.editable_source.content)
         spec_data["data"]["rows"] = []
 
-        updated = service.update_chart_spec(obj_id, json.dumps(spec_data))
+        updated = service.update_chart_spec(obj_id, json.dumps(spec_data), account_id="test-account")
         # The update should still succeed but show validation errors.
         assert len(updated.validation_errors) > 0
         assert updated.status == GenerationStatus.VALIDATION_FAILED
@@ -357,13 +357,13 @@ class TestChartEditableSource:
         obj_id = result.media_object.media_object_id
 
         with pytest.raises(MediaGenerationError, match="无效"):
-            service.update_chart_spec(obj_id, "{not valid json")
+            service.update_chart_spec(obj_id, "{not valid json", account_id="test-account")
 
     def test_get_nonexistent_object_raises_error(
         self, service: MediaGenerationService
     ) -> None:
         with pytest.raises(MediaGenerationError, match="不存在"):
-            service.get_media_object("nonexistent-id")
+            service.get_media_object("nonexistent-id", account_id="test-account")
 
 
 # ── Chart claim binding tests ─────────────────────────────────────────
@@ -652,7 +652,7 @@ class TestFigureClaimBinding:
             "label": "新标注",
         })
 
-        updated = service.update_figure_spec(obj_id, json.dumps(spec_data))
+        updated = service.update_figure_spec(obj_id, json.dumps(spec_data), account_id="test-account")
         assert updated.editable_source.version == 2
         updated_spec = json.loads(updated.editable_source.content)
         assert updated_spec["title"] == "修改后图形"

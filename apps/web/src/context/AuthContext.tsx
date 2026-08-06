@@ -106,6 +106,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSessionError(null);
   }, []);
 
+  /**
+   * Issue 39 AC3：清空账户作用域的本地临时数据（bridges: 前缀的
+   * sessionStorage 键：待发送消息、附件、图片/视频载荷、插件意图桥等），
+   * 防止上一账户暂存内容被下一账户或登录页消费。
+   */
+  const clearAccountLocalState = useCallback(() => {
+    if (typeof window === "undefined") return;
+    const keysToRemove: string[] = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key && key.startsWith("bridges:")) keysToRemove.push(key);
+    }
+    keysToRemove.forEach((key) => window.sessionStorage.removeItem(key));
+  }, []);
+
   const logout = useCallback(async () => {
     const requestId = ++authRequestRef.current;
     await apiLogout();
@@ -113,14 +128,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAuthState("unauthenticated");
     setSessionError(null);
-  }, []);
+    clearAccountLocalState();
+  }, [clearAccountLocalState]);
 
-  const applyDeviceAccount = useCallback((account: User | null) => {
-    setAccountRevision((revision) => revision + 1);
-    setUser(account);
-    setAuthState(account ? "authenticated" : "unauthenticated");
-    setSessionError(null);
-  }, []);
+  const applyDeviceAccount = useCallback(
+    (account: User | null) => {
+      setAccountRevision((revision) => revision + 1);
+      setUser(account);
+      setAuthState(account ? "authenticated" : "unauthenticated");
+      setSessionError(null);
+      // Issue 39 AC3：切换/登出账户时清空账户作用域的本地临时数据
+      clearAccountLocalState();
+    },
+    [clearAccountLocalState]
+  );
 
   const addAccount = useCallback(
     async (identifier: string, password: string) => {

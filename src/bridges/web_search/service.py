@@ -65,6 +65,11 @@ class LocalQueryPlanner:
     )
     _EMAIL = re.compile(r"\b[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}\b")
     _URL = re.compile(r"https?://\S+", re.IGNORECASE)
+    # Issue 39 AC6：结构化 PII（手机号/身份证号）同样去掉身份；
+    # QQ 号交由 _PERSONAL_SENTENCE / _EMAIL（QQ 邮箱）覆盖，避免
+    # 误伤合法数字查询（统计数字、年份等）。
+    _PHONE = re.compile(r"(?<!\d)1[3-9]\d{9}(?!\d)")
+    _ID_CARD = re.compile(r"(?<!\d)\d{17}[\dXx](?!\d)")
     _CODE = re.compile(r"```.*?```", re.DOTALL)
     _TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{1,}|[\u4e00-\u9fff]{2,8}")
     _STOPWORDS = frozenset(
@@ -108,6 +113,8 @@ class LocalQueryPlanner:
         cleaned = self._PERSONAL_SENTENCE.sub(" ", cleaned)
         cleaned = self._EMAIL.sub(" ", cleaned)
         cleaned = self._URL.sub(" ", cleaned)
+        cleaned = self._PHONE.sub(" ", cleaned)
+        cleaned = self._ID_CARD.sub(" ", cleaned)
         tokens = [
             token for token in self._TOKEN.findall(cleaned)
             if token.lower() not in self._STOPWORDS
@@ -226,6 +233,9 @@ class WebSearchService:
             reason=plan.reason,
             details={
                 "data_categories": ["public_query_terms"],
+                # Issue 39 AC6：与画像切片审计一致的授权快照版本，
+                # 保证每次云披露都可审计类别与授权来源。
+                "authorization_snapshot": "authz-1.0",
                 "query_length": len(plan.query),
                 "result_count": len(result.results),
                 "status": result.status.value,
