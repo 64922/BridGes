@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 25
+SCHEMA_VERSION = 26
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1244,6 +1244,73 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX IF NOT EXISTS idx_account_deletions_status
             ON account_deletions(status, started_at)
+        """,
+    ],
+    # Issue 40：可复现 A/B 科学评测资产。评测套件、运行锁、案例结果、
+    # 报告与盲评集是评测域资产而非用户数据：不进入账户作用域表（账户
+    # 删除不影响评测记录），但随整库备份恢复。结果与报告 append-only：
+    # 同一运行锁的重放产生新行，旧行永不覆盖或删除。
+    26: [
+        """
+        CREATE TABLE IF NOT EXISTS eval_suites (
+            suite_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            digest TEXT NOT NULL,
+            definition_json TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'active',
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (suite_id, version)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS eval_run_locks (
+            lock_id TEXT PRIMARY KEY,
+            suite_id TEXT NOT NULL,
+            suite_version TEXT NOT NULL,
+            suite_digest TEXT NOT NULL,
+            lock_json TEXT NOT NULL,
+            lock_digest TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS eval_case_results (
+            case_result_id TEXT PRIMARY KEY,
+            lock_id TEXT NOT NULL,
+            sut_id TEXT NOT NULL,
+            task_id TEXT NOT NULL,
+            case_id TEXT NOT NULL,
+            seed INTEGER NOT NULL,
+            execution_index INTEGER NOT NULL,
+            result_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_eval_results_lock
+            ON eval_case_results(lock_id, sut_id, created_at)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS eval_reports (
+            report_id TEXT NOT NULL,
+            report_version TEXT NOT NULL,
+            lock_id TEXT NOT NULL,
+            report_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (report_id, report_version)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS eval_blind_reviews (
+            review_set_id TEXT PRIMARY KEY,
+            lock_id TEXT NOT NULL,
+            set_json TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_eval_reviews_lock
+            ON eval_blind_reviews(lock_id, created_at)
         """,
     ],
 }

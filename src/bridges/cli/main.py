@@ -588,5 +588,11 @@ def scheduler(
     typer.echo("scheduler: 已平滑停止。")
 
 
+# Issue 40：注册 ``BridGes evaluate`` 子命令（可复现 A/B 科学评测）。
+from bridges.cli.evaluate import evaluate_app  # noqa: E402
+
+app.add_typer(evaluate_app)
+
+
 if __name__ == "__main__":
     app()
