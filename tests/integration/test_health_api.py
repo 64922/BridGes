@@ -86,6 +86,52 @@ def test_health_ready_reports_configuration_failure(tmp_path: Path) -> None:
         get_settings.cache_clear()
 
 
+def test_health_ready_fails_without_global_key_in_development() -> None:
+    """development 环境缺少全局百炼凭据：就绪检查 FAIL（GQ-01 纵深防御）。
+
+    即使绕过 ``BridGes start`` 直接启动 API，也不会出现
+    "ready=pass、模型不可用" 的半启动实例；消息不含任何 Key 正文。
+    """
+    env_key = "BRIDGES_ENVIRONMENT"
+    previous = os.environ.get(env_key)
+    os.environ[env_key] = "development"
+    # 显式清空全局凭据（不依赖 conftest 覆盖），保证测试自含：任何环境
+    # 下缺失 Key 的状态都成立。
+    qwen_key_env = "BRIDGES_QWEN_API_KEY"
+    qwen_key_file_env = "BRIDGES_QWEN_API_KEY_FILE"
+    previous_key = os.environ.get(qwen_key_env)
+    previous_key_file = os.environ.get(qwen_key_file_env)
+    os.environ.pop(qwen_key_env, None)
+    os.environ.pop(qwen_key_file_env, None)
+    get_settings.cache_clear()
+    try:
+        response = TestClient(create_app()).get("/health/ready")
+        assert response.status_code == 200
+        body = response.json()
+        assert body["ready"] == "fail"
+        qwen_dep = [
+            d for d in body["dependencies"] if d["name"] == "qwen_global_key"
+        ]
+        assert len(qwen_dep) == 1
+        assert qwen_dep[0]["status"] == "fail"
+        assert qwen_dep[0]["required"] is True
+        assert "BRIDGES_QWEN_API_KEY" in qwen_dep[0]["message"]
+    finally:
+        if previous is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = previous
+        if previous_key is None:
+            os.environ.pop(qwen_key_env, None)
+        else:
+            os.environ[qwen_key_env] = previous_key
+        if previous_key_file is None:
+            os.environ.pop(qwen_key_file_env, None)
+        else:
+            os.environ[qwen_key_file_env] = previous_key_file
+        get_settings.cache_clear()
+
+
 def test_health_ready_reports_missing_production_persistence() -> None:
     env_key = "BRIDGES_ENVIRONMENT"
     database_key = "BRIDGES_DATABASE_URL"

@@ -74,6 +74,9 @@ def _clean_env(tmp: Path | None = None) -> dict[str, str]:
         merged.update(
             {
                 "BRIDGES_ENVIRONMENT": "production",
+                # GQ-01 启动硬门：production 环境必须配置全局百炼运行凭据；
+                # 占位值只用于放行启动流程，子进程不发起任何真实网络请求。
+                "BRIDGES_QWEN_API_KEY": "placeholder-global-key-not-real",
                 "BRIDGES_DATABASE_URL": f"sqlite:///{tmp}/bridges.db",
                 "BRIDGES_SECRET_KEY": "test-secret-0000000000000000",
                 "BRIDGES_API_HOST": "127.0.0.1",

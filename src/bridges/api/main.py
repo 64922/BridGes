@@ -78,6 +78,10 @@ from bridges.contracts.domain import (
 from bridges.contracts.health import DependencyHealth, HealthProjection, HealthStatus
 from bridges.contracts.projects import ObjectRef
 from bridges.contracts.workflows import RunProjection, WorkflowRunStatus
+from bridges.credentials.global_credential import (
+    GLOBAL_QWEN_KEY_GUIDANCE,
+    is_global_qwen_key_configured,
+)
 from bridges.credentials.probes import CapabilityProbeService
 from bridges.credentials.service import KeyCredentialService
 from bridges.credentials.store import (
@@ -492,19 +496,14 @@ def _register_builtin_invalidation_resolvers(service: InvalidationService) -> No
 
 
 def _has_real_qwen_key(settings: Settings | None) -> bool:
-    """是否配置了非空全局环境百炼密钥（BRIDGES_QWEN_API_KEY，空串视为未配置）。
+    """是否配置了非空全局百炼运行凭据（BRIDGES_QWEN_API_KEY/_FILE）。
 
-    说明（预存在架构事实，非本 Issue 引入）：模型适配器由全局环境密钥注册，
-    账户级密钥（登录后受保护设置中配置）驱动能力探测与 Embedding 检索；
-    二者合同在本发布候选报告中如实披露。Issue 41（AC3）：真实适配器注册、
-    模型网关接线都以本判定为准——无真实密钥时能力保持停用，绝不注册
-    Stub 或假成功。
+    GQ-01：全局凭据是正式运行唯一的 Qwen 认证来源，真实适配器注册与模型
+    网关接线都以本判定为准——无真实凭据时能力保持未绑定，绝不注册 Stub
+    或假成功；启动硬门（CLI 与健康检查）保证正式运行不会缺 Key 半启动。
+    账户级密钥在迁移期仍驱动能力探测与 Embedding（GQ-02～GQ-05 逐步迁移）。
     """
-    return (
-        settings is not None
-        and settings.qwen_api_key is not None
-        and bool(settings.qwen_api_key.get_secret_value())
-    )
+    return settings is not None and is_global_qwen_key_configured(settings)
 
 
 def _register_domain_pack_capabilities(capability_registry: CapabilityRegistry) -> None:
@@ -611,6 +610,19 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         else "memory"
     )
 
+    # GQ-01：全局百炼运行凭据是正式运行的必需配置。development/production
+    # 缺少 Key 时设置不含秘密的错误标记，就绪检查报告 FAIL——即使绕过
+    # ``BridGes start`` 直接启动 API，也不会出现 "ready=pass、模型不可用"
+    # 的半启动实例。test 环境由确定性适配器驱动，豁免此门。
+    app.state.qwen_key_error = None
+    settings_for_qwen_gate = app.state.settings
+    if (
+        settings_for_qwen_gate is not None
+        and settings_for_qwen_gate.environment.lower() != "test"
+        and not is_global_qwen_key_configured(settings_for_qwen_gate)
+    ):
+        app.state.qwen_key_error = GLOBAL_QWEN_KEY_GUIDANCE
+
     # Issue 05: 配置数据库时以同一数据目录初始化版本化 bridges.db 与账户隔离
     # 加密对象库（对象目录为数据库同目录下的 objects/）。首次启动事务化创建
     # 带版本记录的 bridges.db；失败与持久化错误同样进入 503 拒绝路径，绝不
@@ -670,6 +682,20 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     status=HealthStatus.FAIL,
                     required=True,
                     message=persistence_error,
+                )
+            )
+            projection.ready = HealthStatus.FAIL
+        # GQ-01：正式环境缺少全局百炼凭据时就绪检查必须 FAIL（纵深防御，
+        # 正常路径由 CLI 启动硬门在进程启动前拦截；此处兜底直接 uvicorn
+        # 启动的实例，避免 "ready=pass、模型不可用"）。
+        qwen_key_error = getattr(app.state, "qwen_key_error", None)
+        if qwen_key_error:
+            projection.dependencies.append(
+                DependencyHealth(
+                    name="qwen_global_key",
+                    status=HealthStatus.FAIL,
+                    required=True,
+                    message=qwen_key_error,
                 )
             )
             projection.ready = HealthStatus.FAIL

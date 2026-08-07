@@ -142,3 +142,54 @@ def test_missing_secret_file_raises_clear_error(tmp_path: Path) -> None:
             os.environ.pop(env_key, None)
         else:
             os.environ[env_key] = old
+
+
+# ---------------------------------------------------------------------------
+# GQ-01：全局百炼运行凭据（BRIDGES_QWEN_API_KEY 与 *_FILE 引用同一 Secret）
+# ---------------------------------------------------------------------------
+
+
+def test_qwen_api_key_file_reference_resolves_to_same_secret(tmp_path: Path) -> None:
+    """BRIDGES_QWEN_API_KEY_FILE 与直接环境变量解析到同一 Secret 配置。"""
+    value = "global-qwen-key-from-file"
+    secret_file = tmp_path / "qwen.key"
+    secret_file.write_text(value, encoding="utf-8")
+
+    env_key = f"{ENV_PREFIX}QWEN_API_KEY_FILE"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = str(secret_file)
+    try:
+        settings = Settings()
+        assert settings.qwen_api_key is not None
+        assert settings.qwen_api_key.get_secret_value() == value
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old
+
+
+def test_qwen_api_key_absent_when_neither_env_nor_file_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """未配置 BRIDGES_QWEN_API_KEY 与 _FILE 时全局凭据为 None。"""
+    monkeypatch.delenv(f"{ENV_PREFIX}QWEN_API_KEY", raising=False)
+    monkeypatch.delenv(f"{ENV_PREFIX}QWEN_API_KEY_FILE", raising=False)
+    settings = Settings()
+    assert settings.qwen_api_key is None
+
+
+def test_settings_repr_does_not_expose_qwen_api_key() -> None:
+    """Settings repr 不暴露全局 Qwen Key 正文（GQ-01 AC1）。"""
+    env_key = f"{ENV_PREFIX}QWEN_API_KEY"
+    old = os.environ.get(env_key)
+    os.environ[env_key] = "repr-leak-check-qwen"
+    try:
+        settings = Settings()
+        representation = repr(settings)
+        assert "repr-leak-check-qwen" not in representation
+    finally:
+        if old is None:
+            os.environ.pop(env_key, None)
+        else:
+            os.environ[env_key] = old

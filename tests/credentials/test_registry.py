@@ -11,6 +11,17 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from bridges.ai import (
+    QwenAsrAdapter,
+    QwenImageAdapter,
+    QwenOcrAdapter,
+    QwenStructuredOutputAdapter,
+    QwenTextChatAdapter,
+    QwenTtsAdapter,
+    QwenVisionAdapter,
+    QwenWanAdapter,
+    StubQwenAdapter,
+)
 from bridges.api.main import create_app
 from bridges.config import get_settings
 
@@ -71,6 +82,40 @@ def test_test_environment_binds_stub_for_determinism(monkeypatch) -> None:
     assert real_model_capabilities
     for capability in real_model_capabilities:
         assert gateway.is_adapter_registered(capability.name, capability.version)
+
+
+def test_test_environment_with_global_key_registers_all_fixed_adapters(
+    monkeypatch,
+) -> None:
+    """test 环境注入非秘密占位全局 Key 时，全部固定适配器完成真实注册。
+
+    GQ-01：占位值只用于验证接线——QwenApiClient 构造不发起真实网络请求；
+    已注册的真实适配器不被 Stub 覆盖，未绑定的剩余能力由确定性 Stub 补齐。
+    """
+    # 注意：不复用 _app（它会删除 QWEN_API_KEY）；占位 Key 必须保留以
+    # 走真实适配器注册分支。
+    monkeypatch.setenv("BRIDGES_ENVIRONMENT", "test")
+    monkeypatch.setenv("BRIDGES_QWEN_API_KEY", "placeholder-global-key-not-real")
+    monkeypatch.delenv("BRIDGES_QWEN_API_KEY_FILE", raising=False)
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    gateway = client.app.state.model_gateway  # type: ignore[attr-defined]
+
+    expected_real = {
+        "qwen_text_chat": QwenTextChatAdapter,
+        "qwen_structured_output": QwenStructuredOutputAdapter,
+        "qwen_ocr": QwenOcrAdapter,
+        "qwen_vision": QwenVisionAdapter,
+        "qwen_asr_short": QwenAsrAdapter,
+        "qwen_asr_long": QwenAsrAdapter,
+        "qwen_tts": QwenTtsAdapter,
+        "qwen_image": QwenImageAdapter,
+        "qwen_wan": QwenWanAdapter,
+    }
+    for name, adapter_type in expected_real.items():
+        adapter = gateway._adapters[(name, "1")]
+        assert isinstance(adapter, adapter_type), name
+        assert not isinstance(adapter, StubQwenAdapter), name
 
 
 def test_fixed_matrix_model_ids_are_pinned_in_registry(monkeypatch) -> None:

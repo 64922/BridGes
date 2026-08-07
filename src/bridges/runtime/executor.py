@@ -40,6 +40,7 @@ from bridges.contracts.ai import (
     CapabilityStatus,
     RetryPolicy,
 )
+from bridges.credentials.global_credential import is_global_qwen_key_configured
 from bridges.credentials.matrix import IMAGE_MODEL_ID, VIDEO_MODEL_ID
 from bridges.credentials.probes import CapabilityProbeService
 from bridges.credentials.store import EncryptedVolumeCredentialStore, OsCredentialStore
@@ -173,10 +174,10 @@ class BackgroundExecutor:
         """惰性建立图片任务处理服务（Issue 31）。
 
         与 API 进程共享同一数据目录：图片任务按租约领取、提交/轮询
-        DashScope 云端任务、完成转存账户对象库并更新消息投影。缺少
-        Qwen API Key 时待机（无凭据不假成功，任务保持排队等待用户
-        处理）；API 进程与 worker 共享同一运行载体配置，正常情况下
-        两者一致。
+        DashScope 云端任务、完成转存账户对象库并更新消息投影。GQ-01
+        启动硬门保证规范运行下 API 与 worker 使用同一全局百炼凭据；
+        库级兜底在缺少凭据时待机（无凭据不假成功，任务保持排队等待
+        用户处理）。
         """
         if self._image is not None or self._idle_reason is not None:
             return self._image
@@ -184,9 +185,9 @@ class BackgroundExecutor:
         if repository is None:
             return None
         settings = self._settings
-        if settings.qwen_api_key is None or not settings.qwen_api_key.get_secret_value():
+        if not is_global_qwen_key_configured(settings):
             self._idle_reason = (
-                "worker: 未配置 Qwen API Key，图片任务处理待机。"
+                "worker: 未配置全局百炼运行凭据，图片任务处理待机。"
             )
             return None
         try:
@@ -253,10 +254,10 @@ class BackgroundExecutor:
         """惰性建立视频任务处理服务（Issue 32，ADR-0007 Wan 例外）。
 
         与 API 进程共享同一数据目录：视频任务按租约领取、提交/轮询
-        DashScope 云端任务、完成转存账户对象库并更新消息投影。缺少
-        Qwen API Key 时待机（无凭据不假成功，任务保持排队等待用户
-        处理）；API 进程与 worker 共享同一运行载体配置，正常情况下
-        两者一致。
+        DashScope 云端任务、完成转存账户对象库并更新消息投影。GQ-01
+        启动硬门保证规范运行下 API 与 worker 使用同一全局百炼凭据；
+        库级兜底在缺少凭据时待机（无凭据不假成功，任务保持排队等待
+        用户处理）。
         """
         if self._video is not None or self._idle_reason is not None:
             return self._video
@@ -264,9 +265,9 @@ class BackgroundExecutor:
         if repository is None:
             return None
         settings = self._settings
-        if settings.qwen_api_key is None or not settings.qwen_api_key.get_secret_value():
+        if not is_global_qwen_key_configured(settings):
             self._idle_reason = (
-                "worker: 未配置 Qwen API Key，视频任务处理待机。"
+                "worker: 未配置全局百炼运行凭据，视频任务处理待机。"
             )
             return None
         try:

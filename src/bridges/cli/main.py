@@ -37,6 +37,12 @@ from pydantic import ValidationError
 
 from bridges import __version__
 from bridges.config import Settings, get_settings
+from bridges.credentials.global_credential import (
+    GLOBAL_QWEN_KEY_GUIDANCE,
+    GlobalQwenCredentialError,
+    is_global_qwen_key_configured,
+    require_global_qwen_key,
+)
 from bridges.runtime import (
     DEFAULT_EXECUTOR_INTERVAL_SECONDS,
     DEFAULT_SCHEDULER_INTERVAL_SECONDS,
@@ -74,6 +80,26 @@ def _load_settings_or_exit() -> None:
         get_settings()
     except (ValidationError, ValueError) as exc:
         typer.echo(f"error: configuration load failed: {exc}", err=True)
+        # GQ-01 AC2：全局百炼凭据文件不可读时，在配置错误后追加中文配置
+        # 指引（错误正文只含文件路径，不含任何 Key 内容）。
+        if "qwen_api_key" in str(exc) and "BRIDGES_QWEN_API_KEY_FILE" in str(exc):
+            typer.echo(f"error: {GLOBAL_QWEN_KEY_GUIDANCE}", err=True)
+        raise typer.Exit(1) from exc
+
+
+def _require_global_qwen_key(settings: Settings) -> None:
+    """正式环境（development/production）的启动硬门：必须配置全局百炼凭据。
+
+    只校验必需值可读取（环境变量或 ``*_FILE`` 文件引用），不发起任何可能
+    计费的探测；test 环境由确定性适配器驱动，不要求全局 Key。缺失时打印
+    不含秘密正文的中文指引并非零退出，调用方不得把错误吞掉后继续启动。
+    """
+    if settings.environment.lower() == "test":
+        return
+    try:
+        require_global_qwen_key(settings)
+    except GlobalQwenCredentialError as exc:
+        typer.echo(f"error: {exc}", err=True)
         raise typer.Exit(1) from exc
 
 
@@ -94,17 +120,20 @@ def doctor() -> None:
     typer.echo(f"environment: {settings.environment}")
     typer.echo("ok: config schema loaded")
 
-    # 外部能力未配置时给出中文可操作提示：不导入失败，也不假成功。
-    # Issue 41（AC3）：未配置密钥时能力明确停用（无离线桩），页面显示真实
-    # 错误，配置后经真实能力探测才可用。
-    qwen_key = settings.qwen_api_key
-    if qwen_key is None or not qwen_key.get_secret_value():
-        typer.echo("提示：未配置 BRIDGES_QWEN_API_KEY，Qwen 文本/语音/图像等"
-                   "能力保持停用，并显示真实不可用状态。")
-        typer.echo("  配置方式：设置环境变量 BRIDGES_QWEN_API_KEY，或登录后"
-                   "在账户设置中配置百炼密钥并通过能力探测。")
+    # GQ-01：全局百炼运行凭据是正式运行的必需配置。development/production
+    # 缺失时报告失败并非零退出；test 环境由确定性适配器驱动，缺失只提示。
+    # 任何输出都不回显 Key 尾号或正文，也不发起可能计费的探测。
+    if settings.environment.lower() == "test":
+        if not is_global_qwen_key_configured(settings):
+            typer.echo("notice: test 环境使用确定性适配器，不要求配置"
+                       " BRIDGES_QWEN_API_KEY。")
+        else:
+            typer.echo("ok: 全局百炼运行凭据已配置")
+    elif not is_global_qwen_key_configured(settings):
+        typer.echo(f"FAIL: {GLOBAL_QWEN_KEY_GUIDANCE}", err=True)
+        raise typer.Exit(1)
     else:
-        typer.echo("ok: Qwen API key 已配置")
+        typer.echo("ok: 全局百炼运行凭据已配置")
 
     # Production runtime contract must not depend on Conda.
     conda_prefix = os.environ.get("CONDA_PREFIX")
@@ -178,7 +207,11 @@ def api(
     reload: Annotated[bool, typer.Option("--reload", help="Enable auto-reload")] = False,
 ) -> None:
     """Run the API process."""
+    _load_settings_or_exit()
     settings = get_settings()
+    # GQ-01 硬门：独立启动 API 也必须在缺少全局百炼凭据时失败关闭，避免
+    # 绕过 ``BridGes start`` 得到 "ready=pass、模型不可用" 的实例。
+    _require_global_qwen_key(settings)
     uvicorn.run(
         "bridges.api.main:create_app",
         host=host or settings.api_host,
@@ -427,7 +460,12 @@ def _serve(profile: str) -> None:
     settings = get_settings()
     typer.echo(f"start profile={profile}")
 
-    # 1) 依赖与构建产物校验（可操作中文错误，非零退出）
+    # 1) GQ-01 启动硬门：正式环境必须在获取数据目录锁、迁移和拉起任何
+    #    子进程之前验证全局百炼运行凭据可读取；缺失时直接失败关闭，
+    #    不启动"只能登录、不能使用核心能力"的降级实例。
+    _require_global_qwen_key(settings)
+
+    # 2) 依赖与构建产物校验（可操作中文错误，非零退出）
     web_dir = _repo_root() / "apps" / "web"
     if not web_dir.exists():
         typer.echo(f"error: Web 应用目录不存在：{web_dir}", err=True)
@@ -455,7 +493,7 @@ def _serve(profile: str) -> None:
         )
         raise typer.Exit(1)
 
-    # 2) 数据目录校验
+    # 3) 数据目录校验
     data_dir = _resolve_data_dir(settings)
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -477,7 +515,7 @@ def _serve(profile: str) -> None:
         with contextlib.suppress(ValueError, OSError, AttributeError):
             signal.signal(sig, _graceful_stop)
 
-    # 3) 单实例锁 → 迁移 → 启动四个服务 → 健康检查 → 监督运行。锁获取后的
+    # 4) 单实例锁 → 迁移 → 启动四个服务 → 健康检查 → 监督运行。锁获取后的
     #    一切失败路径（迁移失败、启动失败、Ctrl+C）都收敛到 finally：按序
     #    停止已启动的子进程并显式释放锁；锁本身在进程退出时由 OS 兜底释放。
     exit_code = 0
@@ -588,7 +626,11 @@ def worker(
 ) -> None:
     """Run the background executor (cleanup of pending objects and orphans)."""
     _load_settings_or_exit()
-    BackgroundExecutor(get_settings()).run_loop(
+    settings = get_settings()
+    # GQ-01 硬门：后台执行器与 API 共用同一全局凭据，单独启动时同样在
+    # 缺少 Key 时失败，保证规范 ``BridGes start`` 不会出现分裂状态。
+    _require_global_qwen_key(settings)
+    BackgroundExecutor(settings).run_loop(
         interval=float(interval), stop=_stop_event(), emit=typer.echo
     )
     typer.echo("worker: 已平滑停止。")
