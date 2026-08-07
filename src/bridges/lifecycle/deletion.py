@@ -8,9 +8,9 @@
 2. 数据库删除：单事务按依赖顺序删除该账户全部数据行（含 accounts）；
    事务失败整体回滚、零副作用；
 3. 文件系统清理：对象物理文件（引用计数为零才删，跨账户共享内容保留）、
-   账户级凭据（百炼 Key 与 SMTP 授权码、密钥元数据与探针状态）、身份
-   账户记录。任一步失败记录 failed + 中文原因并可重试（重试端点与后台
-   执行器轮），绝不冒充成功。
+   账户级凭据（GQ-07 后仅剩 QQ SMTP 授权码；账户 Qwen Key 已由启动清退
+   整体退役，不再参与）、身份账户记录。任一步失败记录 failed + 中文原因
+   并可重试（重试端点与后台执行器轮），绝不冒充成功。
 
 会话撤销与流式停止由 API 层在服务调用后编排（需要响应上下文）；SQL
 行删除完成后「已撤权数据不可继续被聊天、搜索或插件读取」立即成立。
@@ -31,7 +31,6 @@ from bridges.contracts.lifecycle import (
     DataLifecycleError,
 )
 from bridges.contracts.observability import AuditAction, AuditResult
-from bridges.credentials.service import KeyCredentialService
 from bridges.credentials.store import CredentialStorePort
 from bridges.identity.service import IdentityService
 from bridges.lifecycle.catalog import delete_account_rows
@@ -72,20 +71,16 @@ class DeletionService:
         database: BridgesDatabase,
         object_repository: BridgesObjectRepository,
         identity_service: IdentityService | None,
-        credential_store: CredentialStorePort,
         smtp_credential_store: CredentialStorePort,
         observability_service: ObservabilityService,
-        key_credential_service: KeyCredentialService | None = None,
         object_file_cleaner: ObjectFileCleaner | None = None,
         task_queue: TaskQueue | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
         self._identity = identity_service
-        self._credentials = credential_store
         self._smtp_credentials = smtp_credential_store
         self._observability = observability_service
-        self._key_credentials = key_credential_service
         self._file_cleaner = object_file_cleaner
         # 失败重试走统一领取型任务契约（Issue 43）：租约/退避/崩溃恢复
         # 由 TaskQueue 承担，本服务只提供「重试这一件删除」的 handler。
@@ -320,11 +315,10 @@ class DeletionService:
             cleaner(content_hash)
 
     def _cleanup_credentials(self, account_id: str) -> None:
-        """清除账户全部外部凭据：百炼 Key、SMTP 授权码、密钥元数据与探针。"""
-        if self._key_credentials is not None:
-            self._key_credentials.delete(account_id)
-        else:
-            self._credentials.delete(account_id)
+        """清除账户外部凭据：QQ SMTP 授权码（GQ-07 后唯一账户级凭据）。
+
+        账户 Qwen Key 已由启动清退整体退役，删除流程不再持有或处理它。
+        """
         self._smtp_credentials.delete(account_id)
 
     def _mark_failed(

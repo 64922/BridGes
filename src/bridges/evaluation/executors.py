@@ -28,6 +28,13 @@ from pydantic import SecretStr
 
 from bridges.ai.adapters import AdapterResult
 from bridges.ai.capability_registry import CapabilityRegistry
+from bridges.ai.fixed_models import (
+    ASR_MODEL_ID,
+    CHAT_MODEL_ID,
+    IMAGE_MODEL_ID,
+    TTS_MODEL_ID,
+    VIDEO_MODEL_ID,
+)
 from bridges.ai.model_gateway import ModelGateway
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.service import CareerPlannerService
@@ -73,14 +80,14 @@ from bridges.web_search.service import WebSearchService
 #: 合成评测账户的 QQ 邮箱（纯数字 @qq.com，与产品账户格式一致）。
 EVAL_QQ_EMAIL = "10000000@qq.com"
 
-#: 固定模型矩阵（与 credentials/matrix.py 同源：能力名 -> 固定模型快照）。
+#: 固定模型矩阵（与 ai/fixed_models.py 同源：能力名 -> 固定模型快照）。
 MODEL_BY_CAPABILITY: dict[str, str] = {
-    "qwen_text_chat": "qwen3.7-plus-2026-05-26",
-    "qwen_structured_output": "qwen3.7-plus-2026-05-26",
-    "qwen_asr_short": "qwen3-asr-flash",
-    "qwen_tts": "qwen3-tts-flash-2025-11-27",
-    "qwen_image": "qwen-image-2.0-pro-2026-06-22",
-    "qwen_wan": "wan2.7-t2v-2026-06-12",
+    "qwen_text_chat": CHAT_MODEL_ID,
+    "qwen_structured_output": CHAT_MODEL_ID,
+    "qwen_asr_short": ASR_MODEL_ID,
+    "qwen_tts": TTS_MODEL_ID,
+    "qwen_image": IMAGE_MODEL_ID,
+    "qwen_wan": VIDEO_MODEL_ID,
 }
 #: 本地资产服务器端口基址（TTS/图片/视频下载）。
 _EVAL_ASSET_PORT = 18763
@@ -418,7 +425,7 @@ def _chat_capability() -> CapabilityRecord:
         kind=CapabilityKind.MODEL,
         vendor="qwen",
         region="cn-beijing",
-        model_id="qwen3.7-plus-2026-05-26",
+        model_id=CHAT_MODEL_ID,
         input_schema_version="chat-messages-v1",
         output_schema_version="chat-completion-v1",
         prompt_version="1",
@@ -432,7 +439,7 @@ def _structured_capability() -> CapabilityRecord:
         kind=CapabilityKind.MODEL,
         vendor="qwen",
         region="cn-beijing",
-        model_id="qwen3.7-plus-2026-05-26",
+        model_id=CHAT_MODEL_ID,
         input_schema_version="structured-v1",
         output_schema_version="structured-v1",
         prompt_version="1",
@@ -493,10 +500,10 @@ class EvalEnvironment:
         for record in (
             _chat_capability(),
             _structured_capability(),
-            _capability("qwen_asr_short", "qwen3-asr-flash"),
-            _capability("qwen_tts", "qwen3-tts-flash-2025-11-27"),
-            _capability("qwen_image", "qwen-image-2.0-pro-2026-06-22"),
-            _capability("qwen_wan", "wan2.7-t2v-2026-06-12"),
+            _capability("qwen_asr_short", ASR_MODEL_ID),
+            _capability("qwen_tts", TTS_MODEL_ID),
+            _capability("qwen_image", IMAGE_MODEL_ID),
+            _capability("qwen_wan", VIDEO_MODEL_ID),
         ):
             self.registry.register(record)
         self.scripted = ScriptedAdapter(self._script_for_case)

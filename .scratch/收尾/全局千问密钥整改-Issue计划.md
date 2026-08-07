@@ -297,7 +297,7 @@ python -m pytest tests/integration/test_auth_api.py tests/contracts/test_openapi
 
 ## GQ-07 — 安全清退历史账户百炼秘密、探测状态与旧实现
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交）  
 User stories: US-04
 
 ### What to build

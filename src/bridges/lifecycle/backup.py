@@ -109,7 +109,6 @@ class BackupService:
         object_repository: BridgesObjectRepository,
         object_store: EncryptedFileObjectStore,
         identity_service: IdentityService,
-        credential_store: CredentialStorePort,
         smtp_credential_store: CredentialStorePort,
         observability_service: ObservabilityService,
         state_store: SqliteStateStore | None = None,
@@ -118,7 +117,6 @@ class BackupService:
         self._objects = object_repository
         self._object_store = object_store
         self._identity = identity_service
-        self._credentials = credential_store
         self._smtp_credentials = smtp_credential_store
         self._observability = observability_service
         # 状态存储与 bridges.db 共用同一 SQLite 文件（多连接）：恢复的原子
@@ -543,11 +541,14 @@ class BackupService:
                 self._state_store.reopen()
 
     def _finish_restore(self, identity_data: dict[str, Any]) -> None:
-        """恢复后的能力复位：身份账户数据替换 + 外部凭据全部待重新配置。"""
+        """恢复后的能力复位：身份账户数据替换 + SMTP 凭据待重新配置。
+
+        GQ-07 后账户 Qwen Key 已由启动清退整体退役，恢复不再处理它；
+        SMTP 授权码不属于备份内容，恢复后必须重新配置。
+        """
         self._identity.replace_accounts_from_backup(identity_data)
         for account_id in identity_data.get("accounts", {}):
             try:
-                self._credentials.delete(account_id)
                 self._smtp_credentials.delete(account_id)
             except Exception:  # noqa: BLE001 - 凭据清理失败不阻断恢复
                 continue

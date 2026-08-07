@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 import pytest
-from harness import QWEN_CANARY, SMTP_CANARY, Harness
+from harness import SMTP_CANARY, Harness
 
 from bridges.contracts.lifecycle import AccountDeletionStatus, DataLifecycleError
 from bridges.storage.errors import StorageError
@@ -56,10 +56,9 @@ def test_delete_removes_object_files_and_credentials(tmp_path) -> None:
     for content_hash in hashes:
         path = harness.object_store.objects_dir / content_hash[:2] / content_hash
         assert not path.exists(), content_hash
-    # 凭据已删除（金丝雀不再可读）。
-    assert harness.credentials.get(harness.acc1) is None
+    # 账户级凭据（SMTP 授权码）已删除（金丝雀不再可读）；B 账户保留。
     assert harness.smtp_credentials.get(harness.acc1) is None
-    assert harness.credentials.get(harness.acc2) is not None
+    assert harness.smtp_credentials.get(harness.acc2) is not None
 
 
 def test_shared_object_file_preserved_for_other_account(tmp_path) -> None:
@@ -199,7 +198,6 @@ def test_delete_audit_is_minimal_and_secret_free(tmp_path) -> None:
     assert "account_delete" in harness.audit_actions()
     for details in harness.audit_details():
         serialized = str(details)
-        assert QWEN_CANARY not in serialized
         assert SMTP_CANARY not in serialized
         assert "我的对话" not in serialized
 

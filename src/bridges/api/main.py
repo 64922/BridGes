@@ -25,6 +25,7 @@ from bridges.ai import (
     QwenWanAdapter,
     StubQwenAdapter,
 )
+from bridges.ai.fixed_models import ASR_MODEL_ID, CHAT_MODEL_ID, TTS_MODEL_ID
 from bridges.api import (
     auth,
     chat,
@@ -81,8 +82,6 @@ from bridges.credentials.global_credential import (
     GLOBAL_QWEN_KEY_GUIDANCE,
     is_global_qwen_key_configured,
 )
-from bridges.credentials.probes import CapabilityProbeService
-from bridges.credentials.service import KeyCredentialService
 from bridges.credentials.store import (
     CredentialStorePort,
     EncryptedVolumeCredentialStore,
@@ -222,7 +221,7 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3.7-plus-2026-05-26",
+            model_id=CHAT_MODEL_ID,
             input_schema_version="chat-messages-v1",
             output_schema_version="chat-completion-v1",
             status=CapabilityStatus.VERIFIED,
@@ -305,7 +304,7 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3-asr-flash",
+            model_id=ASR_MODEL_ID,
             input_schema_version="audio-upload-v1",
             output_schema_version="transcript-v1",
             status=CapabilityStatus.VERIFIED,
@@ -338,7 +337,7 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             kind=CapabilityKind.MODEL,
             vendor="qwen",
             region="cn-beijing",
-            model_id="qwen3-tts-flash-2025-11-27",
+            model_id=TTS_MODEL_ID,
             input_schema_version="tts-text-v1",
             output_schema_version="tts-audio-v1",
             supported_modalities=["text", "audio"],
@@ -500,7 +499,7 @@ def _has_real_qwen_key(settings: Settings | None) -> bool:
     GQ-01：全局凭据是正式运行唯一的 Qwen 认证来源，真实适配器注册与模型
     网关接线都以本判定为准——无真实凭据时能力保持未绑定，绝不注册 Stub
     或假成功；启动硬门（CLI 与健康检查）保证正式运行不会缺 Key 半启动。
-    账户级密钥在迁移期仍驱动能力探测与 Embedding（GQ-02～GQ-05 逐步迁移）。
+    账户级密钥已随 GQ-06/GQ-07 整体清退，不再驱动任何能力判定。
     """
     return settings is not None and is_global_qwen_key_configured(settings)
 
@@ -845,61 +844,21 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     app.router.add_event_handler("shutdown", _shutdown_mcp_servers)
 
-    # Issue 10 遗留：账户级百炼凭据存储（GQ-06 后无公开调用方，仅账户
-    # 删除清理使用，GQ-07 将整体清退）。源码环境使用操作系统凭据库
-    # （keyring，Windows 兜底 DPAPI）；容器环境使用自动生成主密钥保护的
-    # 加密凭据卷（数据目录 credentials/ 子目录）。未配置数据库（内存模式，
-    # 测试/E2E）时使用进程内替身，保证测试确定性。
+    # Issue 33: QQ SMTP 授权码使用独立命名空间（smtp）的凭据存储（GQ-07
+    # 后是凭据存储唯一用途，账户 Qwen 命名空间已整体清退）；授权码绝不
+    # 进入 SQLite、日志、模型或导出。源码环境使用操作系统凭据库（keyring，
+    # Windows 兜底 DPAPI）；容器环境使用自动生成主密钥保护的加密凭据卷
+    # （数据目录 credentials/ 子目录）。未配置数据库（内存模式，测试/E2E）
+    # 时使用进程内替身，保证测试确定性。
     settings_at_credential = app.state.settings
-    credential_store: CredentialStorePort = InMemoryCredentialStore()
     data_dir: Path | None = None
     if isinstance(state_store, SqliteStateStore) and state_store.path != ":memory:":
         data_dir = Path(state_store.path).parent
-    if settings_at_credential is not None and data_dir is not None:
-        if settings_at_credential.credential_backend == "encrypted-volume":
-            credential_store = EncryptedVolumeCredentialStore(data_dir)
-        else:
-            credential_store = OsCredentialStore(data_dir=data_dir)
-    app.state.credential_service = KeyCredentialService(
-        credential_store=credential_store,
-        probe_service=CapabilityProbeService(
-            state_store=state_store,
-            region=(
-                settings_at_credential.qwen_region
-                if settings_at_credential is not None
-                else "cn-beijing"
-            ),
-            workspace_id=(
-                settings_at_credential.qwen_workspace_id
-                if settings_at_credential is not None
-                else None
-            ),
-            cassette_dir=(
-                settings_at_credential.qwen_cassette_dir
-                if settings_at_credential is not None
-                else None
-            ),
-            record_mode=(
-                settings_at_credential.qwen_record_cassettes
-                if settings_at_credential is not None
-                else False
-            ),
-        ),
-        observability_service=app.state.observability_service,
-        state_store=state_store,
-    )
-    app.state.credential_store = credential_store
-
-    # Issue 33: QQ SMTP 授权码使用独立命名空间（smtp）的凭据存储，
-    # 与百炼 Key 在操作系统凭据库/加密卷中完全分离；授权码绝不进入
-    # SQLite、日志、模型或导出。
     smtp_credential_store: CredentialStorePort = InMemoryCredentialStore(
         namespace="smtp"
     )
-    if data_dir is not None:
-        if settings_at_credential is not None and (
-            settings_at_credential.credential_backend == "encrypted-volume"
-        ):
+    if settings_at_credential is not None and data_dir is not None:
+        if settings_at_credential.credential_backend == "encrypted-volume":
             smtp_credential_store = EncryptedVolumeCredentialStore(
                 data_dir, namespace="smtp"
             )
@@ -1011,7 +970,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     # Issue 41（AC3）：StubQwenAdapter 只注册在显式 test 环境（本地与 CI
     # 测试确定性，与 /_test/* 端点同一门控）——development/production
-    # 配置绝不注册任何 Stub：真实模型能力未配置账户密钥时保持未绑定，由
+    # 配置绝不注册任何 Stub：真实模型能力未配置全局凭据时保持未绑定，由
     # 网关返回明确的"未绑定适配器"阻塞结果；内置 deterministic 工具能力
     # （领域包校验器）由领域包运行时直接执行。qwen_force_stub 环境开关
     # 已随 Issue 41 移除，任何环境都无法通过配置项开启生产假成功。
@@ -1225,11 +1184,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         )
 
     # Issue 37: 数据生命周期（导出/删除/备份/恢复）。导出只读业务表（不读
-    # 凭据/会话）；删除与恢复会清除账户级外部凭据（QQ SMTP 授权码，
-    # 恢复后需重新配置；账户 Qwen Key 清理由 GQ-07 清退）；备份在受控
-    # 一致性点打包数据库快照、对象与身份账户数据，绝不包含凭据、会话令牌
-    # 或运行密钥。全部敏感端点经 RecentAuthRequired 敏感门；未配置数据库
-    # （内存模式）时服务为 None，
+    # 凭据/会话）；删除与恢复会清除账户级外部凭据（QQ SMTP 授权码，恢复后
+    # 需重新配置；账户 Qwen Key 已由 GQ-07 启动清退整体退役，不再参与）；
+    # 备份在受控一致性点打包数据库快照、对象与身份账户数据，绝不包含凭据、
+    # 会话令牌或运行密钥。全部敏感端点经 RecentAuthRequired 敏感门；未配置
+    # 数据库（内存模式）时服务为 None，
     # 路由统一 503（与既有持久化服务一致）。
     bridges_database_for_lifecycle = getattr(app.state, "bridges_database", None)
     object_repository_for_lifecycle = getattr(app.state, "object_repository", None)
@@ -1248,17 +1207,14 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             database=bridges_database_for_lifecycle,
             object_repository=object_repository_for_lifecycle,
             identity_service=app.state.identity_service,
-            credential_store=app.state.credential_store,
             smtp_credential_store=app.state.smtp_credential_store,
             observability_service=app.state.observability_service,
-            key_credential_service=app.state.credential_service,
         )
         app.state.backup_service = BackupService(
             database=bridges_database_for_lifecycle,
             object_repository=object_repository_for_lifecycle,
             object_store=object_store_for_lifecycle,
             identity_service=app.state.identity_service,
-            credential_store=app.state.credential_store,
             smtp_credential_store=app.state.smtp_credential_store,
             observability_service=app.state.observability_service,
             # 挂载条件保证 state_store 是 SqliteStateStore（bridges.db 与

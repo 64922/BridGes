@@ -2,8 +2,8 @@
 
 Harness 使用真实文件数据库（备份/恢复需要快照与原子替换语义），对象库
 落在 tmp_path；两个账户共享同一数据目录，供导出/删除/备份的隔离断言。
-金丝雀写入全部凭据类别（百炼 Key/SMTP 授权码），测试断言导出与备份
-字节绝不包含它们。
+GQ-07 后账户 Qwen Key 已整体清退，金丝雀只覆盖剩余账户级凭据类别
+（QQ SMTP 授权码），测试断言导出与备份字节绝不包含它们。
 """
 
 from __future__ import annotations
@@ -24,8 +24,7 @@ from bridges.storage.database import BridgesDatabase
 from bridges.storage.object_store import EncryptedFileObjectStore
 from bridges.storage.repository import BridgesObjectRepository
 
-#: 秘密金丝雀：写入全部凭据类别后，导出/备份必须完全不包含这些正文。
-QWEN_CANARY = "sk-test-canary-qwen-1234567890abcdef1234567890abcdef"
+#: 秘密金丝雀：写入剩余账户级凭据类别后，导出/备份必须完全不包含这些正文。
 SMTP_CANARY = "qqsmtp-canary-abcdef123456"
 PASSWORD_CANARY = "canary-password-987654321"
 
@@ -60,7 +59,7 @@ class Harness:
             state_store=self.state, object_repository=self.objects
         )
         self.observability = _RecordingObservability()
-        self.credentials = InMemoryCredentialStore()
+        # GQ-07 后账户 Qwen 命名空间凭据已清退，生命周期服务只持有 SMTP。
         self.smtp_credentials = InMemoryCredentialStore(namespace="smtp")
         self.acc1 = self.register_account("alice", "10001@qq.com")
         self.acc2 = self.register_account("bob", "10002@qq.com")
@@ -71,7 +70,6 @@ class Harness:
             database=self.database,
             object_repository=self.objects,
             identity_service=self.identity,
-            credential_store=self.credentials,
             smtp_credential_store=self.smtp_credentials,
             observability_service=self.observability,  # type: ignore
         )
@@ -80,7 +78,6 @@ class Harness:
             object_repository=self.objects,
             object_store=self.object_store,
             identity_service=self.identity,
-            credential_store=self.credentials,
             smtp_credential_store=self.smtp_credentials,
             observability_service=self.observability,  # type: ignore
             state_store=self.state,
@@ -165,9 +162,7 @@ class Harness:
         )
 
     def inject_canaries(self) -> None:
-        """写入全部凭据类别的金丝雀（百炼 Key 与 SMTP 授权码）。"""
-        self.credentials.save(self.acc1, SecretStr(QWEN_CANARY))
-        self.credentials.save(self.acc2, SecretStr(QWEN_CANARY + "-b"))
+        """写入剩余账户级凭据类别的金丝雀（SMTP 授权码）。"""
         self.smtp_credentials.save(self.acc1, SecretStr(SMTP_CANARY))
         self.smtp_credentials.save(self.acc2, SecretStr(SMTP_CANARY + "-b"))
 

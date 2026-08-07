@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 
 import pytest
-from harness import QWEN_CANARY, SMTP_CANARY, Harness, logical_summary
+from harness import SMTP_CANARY, Harness, logical_summary
 
 from bridges.contracts.lifecycle import DataLifecycleError
 
@@ -95,11 +95,9 @@ def test_export_excludes_all_secret_canaries(tmp_path) -> None:
     harness.inject_canaries()
     filename, payload = harness.export.export_data(harness.acc1)
     raw = payload.decode("utf-8", errors="replace")
-    assert QWEN_CANARY not in raw
     assert SMTP_CANARY not in raw
     # 密码哈希（身份存储）与 B 的金丝雀同样不出现。
     assert "canary-password" not in raw
-    assert QWEN_CANARY + "-b" not in raw
 
 
 def test_export_isolated_between_accounts(tmp_path) -> None:
@@ -130,7 +128,6 @@ def test_export_audit_contains_counts_not_content(tmp_path) -> None:
     details = harness.audit_details()[-1]
     assert details["total_items"] >= 1
     assert "我的对话" not in str(details)
-    assert QWEN_CANARY not in str(details)
 
 
 def test_export_matches_logical_summary(tmp_path) -> None:

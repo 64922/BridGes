@@ -285,14 +285,11 @@ def test_new_account_without_any_key_can_send_and_receive_answer(
     client: TestClient, sqlite_app: Any
 ) -> None:
     """全新注册账户（无 Key、无密钥元数据、无探测记录）直接走通流式回答。"""
-    account = _register(client)
-    # 显式证明：该账户不存在任何 Key/探测记录（GQ-02 AC1）
-    assert not sqlite_app.state.credential_store.get(account["id"])
-    snapshot = sqlite_app.state.credential_service._probes.status_snapshot(
-        account["id"]
-    )
-    # 固定矩阵摘要全部为"未探测"（无任何真实探测记录）
-    assert all(p.status.value == "not_probed" for p in snapshot)
+    _register(client)
+    # GQ-07 后组合根不再持有账户 Qwen 凭据服务或探测服务（GQ-02 AC1：
+    # 新账户无需任何个人 Qwen 配置即可聊天，账户级密钥机制已整体删除）
+    assert not hasattr(sqlite_app.state, "credential_service")
+    assert not hasattr(sqlite_app.state, "credential_store")
     conversation_id = _create_conversation(client)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -614,10 +611,10 @@ def test_restart_runtime_restores_same_conversation(
     get_settings.cache_clear()
     app1 = create_app()
     client1 = TestClient(app1)
-    account = _register(client1, "7")
-    # 新账户不创建任何账户 Key/探测记录：test 环境全局确定性适配器
-    # 是唯一放行机制（GQ-02 AC7）
-    assert not app1.state.credential_store.get(account["id"])
+    _register(client1, "7")
+    # 组合根不再持有账户 Qwen 凭据存储（GQ-07）：test 环境全局确定性
+    # 适配器是唯一放行机制（GQ-02 AC7）
+    assert not hasattr(app1.state, "credential_store")
     conversation_id = _create_conversation(client1)
     sent = client1.post(
         f"/chat/conversations/{conversation_id}/messages",

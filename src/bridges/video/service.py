@@ -1087,7 +1087,7 @@ class VideoService:
 
     def _model_id(self) -> str:
         """返回固定视频模型快照标识（ADR-0009 矩阵单一事实源）。"""
-        from bridges.credentials.matrix import VIDEO_MODEL_ID
+        from bridges.ai.fixed_models import VIDEO_MODEL_ID
 
         return VIDEO_MODEL_ID
 

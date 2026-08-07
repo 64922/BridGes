@@ -119,10 +119,8 @@ def test_scheduler_stops_delivering_after_account_deletion(tmp_path: Path) -> No
         database=database,
         object_repository=objects,
         identity_service=identity,
-        credential_store=InMemoryCredentialStore(),
         smtp_credential_store=InMemoryCredentialStore(namespace="smtp"),
         observability_service=_RecordingObservability(),  # type: ignore[arg-type]
-        key_credential_service=None,  # type: ignore[arg-type]
     )
     deletion.delete_account(account_id)
     rows = database.connection.execute(
@@ -173,10 +171,8 @@ def test_executor_stops_processing_after_account_deletion(tmp_path: Path) -> Non
         database=database,
         object_repository=objects,
         identity_service=identity,
-        credential_store=InMemoryCredentialStore(),
         smtp_credential_store=InMemoryCredentialStore(namespace="smtp"),
         observability_service=_RecordingObservability(),  # type: ignore[arg-type]
-        key_credential_service=None,  # type: ignore[arg-type]
     )
     deletion.delete_account(account_id)
     task_rows = database.connection.execute(
@@ -224,10 +220,8 @@ def test_account_scoped_queries_cannot_see_deleted_account_rows(tmp_path: Path) 
         database=database,
         object_repository=objects,
         identity_service=identity,
-        credential_store=InMemoryCredentialStore(),
         smtp_credential_store=InMemoryCredentialStore(namespace="smtp"),
         observability_service=_RecordingObservability(),  # type: ignore[arg-type]
-        key_credential_service=None,  # type: ignore[arg-type]
     )
     deletion.delete_account(account_id)
 

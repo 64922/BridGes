@@ -24,6 +24,9 @@ class StateStore(Protocol):
     def save(self, namespace: str, state: dict[str, Any]) -> None:
         """Atomically replace one namespace."""
 
+    def delete(self, namespace: str) -> None:
+        """Delete one namespace; missing namespaces are silent no-ops."""
+
 
 class PersistenceError(ValueError):
     """Raised for an invalid or unsupported database configuration."""
@@ -79,6 +82,14 @@ class SqliteStateStore:
                     updated_at = CURRENT_TIMESTAMP
                 """,
                 (namespace, payload),
+            )
+            self._connection.commit()
+
+    def delete(self, namespace: str) -> None:
+        """删除一个命名空间；不存在时静默成功（GQ-07 升级清退使用）。"""
+        with self._lock:
+            self._connection.execute(
+                "DELETE FROM application_state WHERE namespace = ?", (namespace,)
             )
             self._connection.commit()
 

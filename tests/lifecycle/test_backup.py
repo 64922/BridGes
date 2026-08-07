@@ -14,13 +14,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
-from harness import (
-    PASSWORD_CANARY,
-    QWEN_CANARY,
-    SMTP_CANARY,
-    Harness,
-    logical_summary,
-)
+from harness import PASSWORD_CANARY, SMTP_CANARY, Harness, logical_summary
 
 from bridges.contracts.lifecycle import DataLifecycleError
 from bridges.lifecycle.backup import BACKUP_FORMAT_VERSION, BACKUP_MAGIC, _sha256
@@ -64,7 +58,6 @@ def test_backup_excludes_secrets_and_sessions(tmp_path) -> None:
     harness = Harness(tmp_path)
     _, backup_bytes = _create_and_backup(harness)
     raw = backup_bytes.decode("utf-8", errors="replace")
-    assert QWEN_CANARY not in raw
     assert SMTP_CANARY not in raw
     # 身份只含账户数据：密码哈希在（恢复后可登录），会话/恢复令牌与设备
     # 绑定不在 payload 中（identity.json 只有账户与索引）。
@@ -219,11 +212,10 @@ def test_restore_preserves_login_but_clears_external_credentials(tmp_path) -> No
     harness = Harness(tmp_path)
     harness.seed_everything()
     _, backup_bytes = harness.backup.create_backup(PASSPHRASE)
-    # 恢复后：密码哈希保留（可登录）、外部凭据清除（待重新配置）。
+    # 恢复后：密码哈希保留（可登录）、SMTP 凭据清除（待重新配置）。
     preview = harness.backup.restore_backup(PASSPHRASE, backup_bytes, confirmation="恢复")
     assert preview.ok
     assert harness.identity.get_account(harness.acc1) is not None
-    assert harness.credentials.get(harness.acc1) is None
     assert harness.smtp_credentials.get(harness.acc1) is None
     # 会话全部失效（备份不含会话）。
     stored = harness.state.load("identity") or {}
@@ -363,7 +355,6 @@ def test_restore_audit_events(tmp_path) -> None:
     assert "restore_complete" in harness.audit_actions()
     for details in harness.audit_details():
         serialized = str(details)
-        assert QWEN_CANARY not in serialized
         assert SMTP_CANARY not in serialized
 
 
@@ -416,10 +407,10 @@ def test_restore_swap_midway_failure_rolls_back(tmp_path, monkeypatch) -> None:
     assert excinfo.value.code == "restore_swap_failed"
     monkeypatch.undo()
     # 原子回滚：数据（逻辑摘要；WAL checkpoint 会重写文件字节，按内容
-    # 比对）、身份、凭据全部保持恢复前状态。
+    # 比对）、身份、SMTP 凭据全部保持恢复前状态。
     assert logical_summary(harness, harness.acc1) == summary_before
     assert harness.identity.get_account(harness.acc1) is not None
-    assert harness.credentials.get(harness.acc1) is not None
+    assert harness.smtp_credentials.get(harness.acc1) is not None
     assert (harness.state.load("identity") or {}) == original_state
 
 

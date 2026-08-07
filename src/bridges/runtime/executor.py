@@ -32,6 +32,7 @@ from bridges.ai import (
     QwenVisionAdapter,
     QwenWanAdapter,
 )
+from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID
 from bridges.chat.repository import ConversationRepository
 from bridges.config import Settings
 from bridges.contracts.ai import (
@@ -41,7 +42,6 @@ from bridges.contracts.ai import (
     RetryPolicy,
 )
 from bridges.credentials.global_credential import is_global_qwen_key_configured
-from bridges.credentials.matrix import IMAGE_MODEL_ID, VIDEO_MODEL_ID
 from bridges.credentials.store import EncryptedVolumeCredentialStore, OsCredentialStore
 from bridges.identity.service import IdentityService
 from bridges.image.service import ImageService
@@ -338,11 +338,8 @@ class BackgroundExecutor:
         settings = self._settings
         try:
             data_dir = Path(resolve_database_path(settings.database_url or "")).parent
-            credential_store = (
-                EncryptedVolumeCredentialStore(data_dir)
-                if settings.credential_backend == "encrypted-volume"
-                else OsCredentialStore(data_dir=data_dir)
-            )
+            # GQ-07 后账户 Qwen 命名空间凭据已整体清退，后台执行器只构造
+            # SMTP 命名空间的凭据存储供账户删除清理使用。
             smtp_credential_store = (
                 EncryptedVolumeCredentialStore(data_dir, namespace="smtp")
                 if settings.credential_backend == "encrypted-volume"
@@ -359,7 +356,6 @@ class BackgroundExecutor:
                 database=self._database,
                 object_repository=repository,
                 identity_service=identity_service,
-                credential_store=credential_store,
                 smtp_credential_store=smtp_credential_store,
                 observability_service=ObservabilityService(),
             )

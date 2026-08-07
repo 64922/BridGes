@@ -69,3 +69,13 @@
 - [x] T4 E2E 负向回归替换（issue10 重写；issue08/12/04 菜单三项；issue30/36 移除探测替身）→ verify: 60 相关 E2E 通过（1 项 issue04 附件为基线既有失败）
 - [x] T5 双轴代码审查修复（issue36 sed 误删导航行、contracts 描述、陈旧注释、临时产物清理、issue08 视觉 cookie 注入修复）→ verify: 全量 2204 pytest + 构建 + ruff/mypy 与基线一致
 - [x] T6 提交 → verify: adaa6d1
+
+## GQ-07：安全清退历史账户百炼秘密、探测状态与旧实现（2026-08-08）
+
+来源：`.scratch/收尾/全局千问密钥整改-Issue计划.md` GQ-07（ready-for-agent）。
+
+- [x] T1 固定模型常量迁移到 AI 领域所有者（ai/fixed_models.py 单一事实源，含 api/main.py 与 evaluation 全量收敛）→ verify: ruff/mypy + 相关测试
+- [x] T2 删除账户 Qwen 凭据服务/探测模块/契约与生命周期接线（service/probes/matrix/contracts.credentials；组合根、deletion、backup、executor、测试夹具）→ verify: tests/lifecycle tests/reminder tests/security tests/chat + rg 无活跃命中
+- [x] T3 一次性幂等秘密清退模块 + CLI 启动硬门（StateStore.delete、has_credential_backend、retire.py、start/api/worker 三处接线；枚举并入 key_metadata 残留账户）→ verify: tests/credentials/test_retire.py 9 条 + 子进程级成功/失败/幂等验证
+- [x] T4 文档同步（ADR-0005/0007/0009/0016/0018/0024、CONTEXT.md、README.md、审计枚举 legacy 注明、contracts/video.py）→ verify: 最终 rg 扫描仅命中允许项（9 处，全部为遗留注明）
+- [x] T5 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest 2192 通过 + ruff/mypy 与基线持平（审查修复：模型常量全量收敛、残留账户枚举、sqlite 损坏中文包装）

@@ -1,6 +1,7 @@
-"""账户级模型凭据存储：OS 凭据库与加密凭据卷。
+"""按命名空间隔离的账户级凭据存储：OS 凭据库与加密凭据卷。
 
-BridGes 的百炼 Key 只能由登录用户为当前账户配置（ADR-0005）：
+GQ-07 后账户百炼密钥已整体清退，本存储唯一服务 QQ SMTP 授权码
+（``smtp`` 命名空间，ADR-0004/0017）：
 
 - 源码环境（Conda / .venv）使用操作系统凭据库：``keyring``
   （Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）为项目
@@ -8,9 +9,9 @@ BridGes 的百炼 Key 只能由登录用户为当前账户配置（ADR-0005）�
   （CryptProtectData，系统级凭据保护）加密的账户密文，密文仍由操作系统
   密钥保护。其余平台无凭据库时明确报错，绝不写入明文文件。
 - 容器环境使用自动生成主密钥保护的加密凭据卷：首次启动自动生成 Fernet
-  主密钥并写入数据目录（0600 权限），每账户 Key 用主密钥加密后单独落盘。
+  主密钥并写入数据目录（0600 权限），每账户凭据用主密钥加密后单独落盘。
 
-任何实现都不把 Key 写入 SQLite 明文字段、``.env``、日志或 API 响应；
+任何实现都不把秘密写入 SQLite 明文字段、``.env``、日志或 API 响应；
 凭据存储不可用时抛出中文错误，绝不静默降级为明文文件。
 """
 
@@ -38,8 +39,9 @@ except ImportError:  # pragma: no cover - 依赖可选，覆盖路径由 CI 判�
 #: keyring 服务名与用户名命名空间。
 _KEYRING_SERVICE = "BridGes"
 _KEYRING_USERNAME_PREFIX = "account:"
-#: 默认凭据命名空间（百炼 Key）；Issue 33 的 QQ SMTP 授权码使用
-#: ``smtp`` 命名空间，与模型凭据在存储与文件层面完全分离。
+#: 默认凭据命名空间（历史账户百炼 Key，GQ-07 已清退，仅升级清退与
+#: 测试使用）；QQ SMTP 授权码使用 ``smtp`` 命名空间，与旧模型凭据在
+#: 存储与文件层面完全分离。
 _DEFAULT_NAMESPACE = "account"
 
 #: 加密凭据卷子目录与文件布局。
@@ -54,6 +56,19 @@ class CredentialStoreError(Exception):
 
     消息面向运维与用户，说明存储不可用的中文原因，不包含任何秘密正文。
     """
+
+
+def has_credential_backend(data_dir: Path | None = None) -> bool:
+    """当前环境是否存在可用的操作系统凭据后端（GQ-07 清退判定用）。
+
+    keyring 可用（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret
+    Service）或 Windows DPAPI 兜底（需要数据目录落盘）时返回 True。
+    两者皆无的环境里，旧实现同样拒绝写入任何账户秘密，升级清退可以
+    安全跳过秘密删除而不必失败关闭。
+    """
+    if keyring is not None:
+        return True
+    return _dpapi_available() and data_dir is not None
 
 
 class CredentialStorePort(ABC):

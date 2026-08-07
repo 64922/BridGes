@@ -24,8 +24,8 @@ from bridges.ai.adapters import (
     RegionError,
     TransientError,
 )
+from bridges.ai.fixed_models import EMBEDDING_MODEL_ID
 from bridges.ai.qwen_client import CassetteStore, QwenApiClient
-from bridges.credentials.matrix import EMBEDDING_MODEL_ID
 
 #: 合同锁定的向量维度（与固定矩阵参数一致）。
 EMBEDDING_DIMENSIONS = 1024

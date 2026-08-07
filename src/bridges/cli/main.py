@@ -103,6 +103,56 @@ def _require_global_qwen_key(settings: Settings) -> None:
         raise typer.Exit(1) from exc
 
 
+def _retire_legacy_account_qwen_keys(settings: Settings) -> None:
+    """GQ-07 升级清理门：一次性、幂等清退历史账户 Qwen 秘密与探测状态。
+
+    与全局 Key 硬门同序执行：test 环境跳过；未配置数据库时从未持久化
+    过账户秘密，跳过。无法访问旧秘密存储（OS 凭据库或加密凭据卷）时
+    失败关闭并给出不含秘密的处置提示，避免留下用户无法再管理的孤儿凭据。
+    完成标记持久化后重复启动直接跳过（幂等）。
+    """
+    if settings.environment.lower() == "test":
+        return
+    database_url = settings.database_url
+    if database_url is None or not database_url.get_secret_value():
+        return
+    import sqlite3
+
+    from bridges.credentials.retire import (
+        QwenKeyRetirementError,
+        run_qwen_key_retirement,
+    )
+    from bridges.credentials.store import (
+        CredentialStorePort,
+        EncryptedVolumeCredentialStore,
+        OsCredentialStore,
+        has_credential_backend,
+    )
+    from bridges.persistence import PersistenceError, build_state_store, resolve_database_path
+
+    try:
+        data_dir = Path(resolve_database_path(database_url)).parent
+        state_store = build_state_store(
+            database_url, encryption_key=settings.secret_key
+        )
+        credential_store: CredentialStorePort | None = None
+        if settings.credential_backend == "encrypted-volume":
+            credential_store = EncryptedVolumeCredentialStore(data_dir)
+        elif has_credential_backend(data_dir):
+            credential_store = OsCredentialStore(data_dir=data_dir)
+        # 其余情况（无 keyring、无 DPAPI）：旧实现同样无法写入账户秘密，
+        # 跳过秘密删除，只清理状态命名空间并标记完成。
+        if run_qwen_key_retirement(
+            state_store=state_store, credential_store=credential_store
+        ):
+            typer.echo("GQ-07: 历史账户百炼密钥、元数据与探测状态已清退。")
+    except (QwenKeyRetirementError, PersistenceError, sqlite3.Error) as exc:
+        # sqlite3.Error：状态库损坏等基础设施故障同样给出中文处置提示，
+        # 不抛原始 traceback（正文不含任何秘密）。
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command()
 def doctor() -> None:
     """Run environment and dependency diagnostics."""
@@ -212,6 +262,8 @@ def api(
     # GQ-01 硬门：独立启动 API 也必须在缺少全局百炼凭据时失败关闭，避免
     # 绕过 ``BridGes start`` 得到 "ready=pass、模型不可用" 的实例。
     _require_global_qwen_key(settings)
+    # GQ-07 升级清理门：与 GQ-01 同序执行，幂等清退历史账户 Qwen 秘密。
+    _retire_legacy_account_qwen_keys(settings)
     uvicorn.run(
         "bridges.api.main:create_app",
         host=host or settings.api_host,
@@ -464,6 +516,9 @@ def _serve(profile: str) -> None:
     #    子进程之前验证全局百炼运行凭据可读取；缺失时直接失败关闭，
     #    不启动"只能登录、不能使用核心能力"的降级实例。
     _require_global_qwen_key(settings)
+    #    GQ-07 升级清理门：与 GQ-01 同序执行，一次性、幂等清退历史账户
+    #    Qwen 秘密、元数据与探测状态；无法访问旧秘密存储时同样失败关闭。
+    _retire_legacy_account_qwen_keys(settings)
 
     # 2) 依赖与构建产物校验（可操作中文错误，非零退出）
     web_dir = _repo_root() / "apps" / "web"
@@ -630,6 +685,8 @@ def worker(
     # GQ-01 硬门：后台执行器与 API 共用同一全局凭据，单独启动时同样在
     # 缺少 Key 时失败，保证规范 ``BridGes start`` 不会出现分裂状态。
     _require_global_qwen_key(settings)
+    # GQ-07 升级清理门：与 GQ-01 同序执行（幂等，重复启动直接跳过）。
+    _retire_legacy_account_qwen_keys(settings)
     BackgroundExecutor(settings).run_loop(
         interval=float(interval), stop=_stop_event(), emit=typer.echo
     )

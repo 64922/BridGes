@@ -17,13 +17,13 @@ from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from typing import Any
 
+from bridges.ai.fixed_models import EMBEDDING_MODEL_ID
 from bridges.contracts.ingestion import (
     IndexContractProjection,
     IndexStatusProjection,
     IndexVersionProjection,
     IndexVersionStatus,
 )
-from bridges.credentials.matrix import EMBEDDING_MODEL_ID
 from bridges.ingestion.chunker import CHUNKER_VERSION
 from bridges.ingestion.embedding import EMBEDDING_DIMENSIONS, NORMALIZATION, EmbeddingPort
 from bridges.storage.database import BridgesDatabase

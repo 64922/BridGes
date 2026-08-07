@@ -67,6 +67,8 @@ class AuditAction(str, Enum):
     VIDEO_TASK_CANCEL = "video_task_cancel"
     VIDEO_ASSET_DELETE = "video_asset_delete"
     VIDEO_DESCRIPTION_UPDATE = "video_description_update"
+    # 旧合同遗留事件（ADR-0005 账户级百炼密钥，GQ-07 已清退）：枚举值
+    # 必须保留，供历史审计记录解码；新版本不再产生这些事件。
     KEY_SAVE = "key_save"
     KEY_DELETE = "key_delete"
     KEY_PROBE = "key_probe"
