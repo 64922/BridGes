@@ -20,6 +20,9 @@ dependencies = [
     "pymupdf>=1.28",
     "cryptography>=42.0",
     "keyring>=25.0",
+    # GQ-08：Windows 无系统 IANA 时区库，zoneinfo 需要 tzdata 包提供
+    # （提醒时区换算依赖，缺失时 Asia/Shanghai 等时区校验直接崩溃）。
+    "tzdata>=2024.1; platform_system == \"Windows\"",
 ]
 
 [project.optional-dependencies]

@@ -1,11 +1,12 @@
-"""Issue 17 人工冒烟：账户级 text-embedding-v4 真实向量化与摄取编排。
+"""Issue 17 人工冒烟：全局百炼凭据驱动的 text-embedding-v4 真实向量化与摄取编排。
 
 用法（Key 只通过环境变量显式提供，绝不写入仓库或 .env）：
 
     BRIDGES_SMOKE_QWEN_KEY=sk-... conda run -n agent python scripts/smoke_ingestion_embedding.py
 
 脚本会：
-1. 用内存凭据替身保存显式提供的 Key（不触碰真实凭据库）；
+1. 用显式提供的全局百炼凭据构造真实 Embedding 端口（GQ-05：只读全局
+   凭据，不触碰任何账户凭据存储）；
 2. 以真实 ``text-embedding-v4`` 对固定文本执行向量化，校验 1024 维、
    L2 规范化合同与维度错误拒绝路径；
 3. 在临时 bridges.db 上跑完整摄取编排（解析 → 分块 → 向量化 → 版本化
@@ -21,17 +22,13 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
-from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import SecretStr
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus  # noqa: E402
-from bridges.credentials.matrix import EMBEDDING_MODEL_ID  # noqa: E402
-from bridges.credentials.probes import CapabilityProbeService  # noqa: E402
-from bridges.credentials.store import InMemoryCredentialStore  # noqa: E402
+from bridges.ai.fixed_models import EMBEDDING_MODEL_ID  # noqa: E402
 from bridges.ingestion.embedding import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
     QwenEmbeddingPort,
@@ -45,6 +42,8 @@ from bridges.storage import (  # noqa: E402
     EncryptedFileObjectStore,
 )
 
+# 冒烟专用环境变量（刻意区别于运行合同的 BRIDGES_QWEN_API_KEY）：
+# 避免误读启动服务的全局 Key，冒烟必须显式、独立地提供密钥。
 _SMOKE_KEY_ENV = "BRIDGES_SMOKE_QWEN_KEY"
 _SAMPLE_TEXT = "Bridge 是连接科学与理解的长期学习伙伴。"
 
@@ -53,7 +52,7 @@ def main() -> int:
     key_value = os.environ.get(_SMOKE_KEY_ENV, "").strip()
     if not key_value:
         print(
-            f"未提供测试账户 Key：请显式设置 {_SMOKE_KEY_ENV}=sk-... 后重试。"
+            f"未提供全局百炼凭据：请显式设置 {_SMOKE_KEY_ENV}=sk-... 后重试。"
             "自动化测试不要求也不允许把 Key 写入仓库或 .env。"
         )
         return 2
@@ -61,10 +60,8 @@ def main() -> int:
     account_id = "smoke-account"
     failures: list[str] = []
 
-    # 1) 真实向量化：合同维度 + L2 规范化
-    credential_store = InMemoryCredentialStore()
-    credential_store.save(account_id, key)
-    port = QwenEmbeddingPort(credential_store=credential_store)
+    # 1) 真实向量化：合同维度 + L2 规范化（GQ-05：从全局凭据构造端口）
+    port = QwenEmbeddingPort(api_key=key)
     print(f"开始真实向量化（{EMBEDDING_MODEL_ID}，{EMBEDDING_DIMENSIONS} 维）…")
     vectors = port.embed(account_id, [_SAMPLE_TEXT, "第二条固定非用户样本。"])
     print(f"  返回 {len(vectors)} 个向量，维度 {len(vectors[0])}")
@@ -94,23 +91,10 @@ def main() -> int:
             ),
         )
         account = repository.register_account("smoke@qq.com")
-        probe_service = CapabilityProbeService(state_store=None)
-        probe_service._put_record(
-            account,
-            ProbeRecord(
-                probe_id="smoke-probe",
-                capability_id="embedding",
-                model_id=EMBEDDING_MODEL_ID,
-                region="cn-beijing",
-                parameters={"dimensions": 1024},
-                status=ProbeStatus.AVAILABLE,
-                probed_at=datetime.now(UTC),
-            ),
-        )
+        # GQ-05：摄取不再有账户探测门禁，可用性由端口构造与实际调用决定。
         service = IngestionService(
             database=database,
             object_repository=repository,
-            probe_service=probe_service,
             embedding=port,
             index=VersionedIndex(database, port),
         )

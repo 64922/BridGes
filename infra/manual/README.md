@@ -34,11 +34,17 @@ BridGes 支持以下四种生产运行合同骨架：
 ```bash
 export BRIDGES_SECRET_KEY_FILE=/run/secrets/secret_key
 export BRIDGES_DATABASE_URL_FILE=/run/secrets/database_url
+export BRIDGES_QWEN_API_KEY_FILE=/run/secrets/qwen_key
 ```
 
 文件引用的后缀为 `<NAME>_FILE`，其内容会被读取并赋值给对应字段。生产环境
 （Docker / Podman / systemd）应优先使用文件引用，避免把密钥写入普通环境变量。
 密钥不进入普通配置文件、CLI 参数回显、日志或 API 响应。
+
+`BRIDGES_QWEN_API_KEY`（或 `BRIDGES_QWEN_API_KEY_FILE`）是正式运行的**必需**
+配置：不配置、配置为空或文件不可读时，`BridGes start`、`BridGes api`、
+`BridGes worker` 都会在启动边界失败关闭（见"生产合同说明"）。全局 Key 轮换后
+必须重启相关服务，首轮整改不提供运行期热更新。
 
 ## 手动分进程
 
@@ -68,6 +74,9 @@ BridGes start
 # 本地开发（Next.js 开发服务器，需先 npm install）
 BridGes start --profile development
 ```
+
+启动前必须先配置全局百炼运行凭据（`BRIDGES_QWEN_API_KEY` 环境变量或
+`BRIDGES_QWEN_API_KEY_FILE` 文件引用）；正式环境不读取 `.env`，不创建该文件。
 
 `start` 默认以生产 profile 同步启动构建后的 **Web、API、后台执行器与提醒
 调度器**四个进程。启动前会校验依赖与数据目录权限、获取数据目录单实例锁、
@@ -105,7 +114,13 @@ curl http://127.0.0.1:8000/health/degraded
 - Web、API、后台执行器和提醒调度器在不同载体中均保持独立进程边界；统一
   CLI 只是监管入口，容器路径由 Compose 编排同一组进程。
 - Web 只承诺电脑端使用，不承诺手机、平板或移动浏览器访问。
-- 未配置全局环境密钥 `BRIDGES_QWEN_API_KEY` 时，Qwen 模型调用能力明确
-  停用并显示真实不可用状态（生产配置不注册离线桩或固定样例）；账户级
-  百炼密钥在登录后受保护设置中配置，用于真实能力探测与知识库 Embedding
-  检索。
+- 全局百炼运行凭据（`BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE`
+  文件引用）是正式运行（development/production）的**必需配置**：缺失、为空
+  或文件不可读时，`BridGes start`、`BridGes api`、`BridGes worker` 都在启动
+  边界失败关闭并输出不含秘密正文的中文配置指引，不启动"只能登录、不能使用
+  核心能力"的降级实例。`test` 环境继续由确定性适配器驱动，自动测试不依赖
+  真实 Key。启动检查只验证必需值可读取，不发起可能计费的探测；Key 轮换后
+  必须重启相关服务。
+- 普通账户不再有任何百炼密钥设置或账户能力探测；登录用户无需配置个人 Key
+  即可使用全部已登记 Qwen/Wan 能力。QQ SMTP 授权码仍是账户级凭据，通过
+  登录后的账户设置（提醒配置）设置与验证。

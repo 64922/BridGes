@@ -17,8 +17,20 @@ services:
       - BRIDGES_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
       # Issue 10：容器使用自动生成主密钥保护的加密凭据卷（bridges-data 卷）。
       - BRIDGES_CREDENTIAL_BACKEND=encrypted-volume
+      # GQ-08：全局百炼运行凭据由宿主机注入（Compose 不创建、不读取 .env）。
+      # 在宿主机配置 BRIDGES_QWEN_API_KEY=sk-... 后执行
+      #   docker compose -f infra/compose/docker-compose.yml up
+      # 或使用 `docker compose --env-file <秘密文件> up` 传入。
+      # 挂载 Key 文件方式（容器/长期部署优先）：宿主机准备只读密钥文件，
+      # 取消下方 volumes 中的注释行，把宿主机路径设为 QWEN_KEY_FILE_HOST
+      # 并把 BRIDGES_QWEN_API_KEY_FILE 指向容器内路径：
+      #   QWEN_KEY_FILE_HOST=/host/path/qwen.key BRIDGES_QWEN_API_KEY_FILE=/run/secrets/qwen_key docker compose up
+      # Key 轮换后必须重建/重启全部服务，不提供运行期热更新。
+      - BRIDGES_QWEN_API_KEY=${BRIDGES_QWEN_API_KEY:-}
+      - BRIDGES_QWEN_API_KEY_FILE=${BRIDGES_QWEN_API_KEY_FILE:-}
     volumes:
       - bridges-data:/var/lib/bridges
+      # - ${QWEN_KEY_FILE_HOST:-}:/run/secrets/qwen_key:ro
     healthcheck:
       test:
         - CMD
@@ -49,8 +61,10 @@ services:
         condition: service_healthy
     stop_signal: SIGTERM
 
-  # 后台执行器与提醒调度器与 API 使用同一镜像与入口：共享 bridges-data 卷、
-  # 同一密钥自举与数据库地址，保证数据、对象与加密凭据语义与 API 完全一致。
+  # 后台执行器与 API 使用同一镜像与入口：共享 bridges-data 卷、同一全局
+  # 百炼凭据与数据库地址，保证数据、对象与加密凭据语义与 API 完全一致。
+  # 缺少全局 Key 时 worker 与 API 一样在容器启动阶段失败关闭，杜绝
+  # "API 有 Key、worker 无 Key"的分裂状态。
   worker:
     build:
       context: ../..
@@ -58,8 +72,12 @@ services:
     environment:
       - BRIDGES_ENVIRONMENT=production
       - BRIDGES_DATABASE_URL=sqlite:////var/lib/bridges/bridges.db
+      # GQ-08：与 API 使用同一全局百炼运行凭据（直接注入或文件引用）。
+      - BRIDGES_QWEN_API_KEY=${BRIDGES_QWEN_API_KEY:-}
+      - BRIDGES_QWEN_API_KEY_FILE=${BRIDGES_QWEN_API_KEY_FILE:-}
     volumes:
       - bridges-data:/var/lib/bridges
+      # - ${QWEN_KEY_FILE_HOST:-}:/run/secrets/qwen_key:ro
     depends_on:
       api:
         condition: service_healthy
@@ -83,9 +101,13 @@ services:
 
 # Podman-compatible: podman-compose -f infra/compose/docker-compose.yml up
 # Production images use standard Python and Node.js runtimes.
-# 容器部署不要求宿主机创建 `.env`：全部运行配置由上方 Compose 环境变量注入，
-# 秘密（如 BRIDGES_SECRET_KEY、BRIDGES_QWEN_API_KEY）可通过
-# `docker compose run -e`、`--env-file` 或受保护账户设置提供。
+# 容器部署不要求宿主机创建 `.env`：全部运行配置由上方 Compose 环境变量注入。
+# 全局百炼运行凭据 BRIDGES_QWEN_API_KEY（或挂载的 BRIDGES_QWEN_API_KEY_FILE）
+# 必须在启动前由宿主机提供：缺失、为空或文件不可读时，API/worker 在容器
+# 启动阶段失败关闭（healthcheck 判定不健康，web 因 depends_on 不启动），
+# 不会出现 Web 正常但 AI 不可用的半启动状态。Key 轮换后必须重建/重启相关
+# 服务，不提供运行期热更新。该 Key 只存在于服务进程配置，不进入浏览器、
+# API 响应、日志、审计正文、数据导出或备份。
 
 volumes:
   bridges-data:

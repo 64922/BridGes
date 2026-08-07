@@ -56,7 +56,15 @@ cd ../..
 **不需要创建 `.env`**：未配置的项全部使用安全默认值（本地开发默认
 进程内存储；需要持久化或生产部署时通过环境变量覆盖，见“配置与密钥引用”）。
 
+**必须配置全局百炼运行凭据**：正式运行（`development`/`production`）在
+`BridGes start` 前通过环境变量 `BRIDGES_QWEN_API_KEY` 或文件引用
+`BRIDGES_QWEN_API_KEY_FILE` 注入唯一一把全局百炼 API Key（文件引用优先
+用于容器或长期部署）。不配置、配置为空或文件不可读时启动直接失败并给出
+中文指引，不会启动“只能登录、不能使用核心能力”的降级实例。Key 轮换后
+必须重启相关服务，不提供运行期热更新。
+
 ```bash
+export BRIDGES_QWEN_API_KEY=sk-...
 BridGes start
 ```
 
@@ -85,12 +93,16 @@ BridGes 是**电脑端产品**：只面向桌面浏览器（Windows、Linux、ma
 验证 QQ 邮箱 SMTP 授权码）。
 
 联网模型能力（Qwen 文本、结构化输出、OCR、视觉、ASR、TTS、图片、Wan
-视频等）由全局环境密钥 `BRIDGES_QWEN_API_KEY`（或 `*_FILE` 文件引用）在
-启动前统一驱动；普通账户无需也不存在个人百炼密钥配置。未配置密钥或
-供应商不可用时，对应能力明确停用并显示真实不可用状态**
-（生产配置不注册离线桩或固定样例，也不会静默降级模型），`BridGes doctor`
-会给出中文可操作提示。启动本身不会主动调用 Qwen，实际使用相关功能时才
-会发起网络请求。模型绑定为固定矩阵（ADR-0009），用户不能切换模型。
+视频等）由全局百炼运行凭据 `BRIDGES_QWEN_API_KEY`（或 `*_FILE` 文件引用）
+在启动前统一驱动；普通账户无需也不存在个人百炼密钥配置。正式运行缺少、
+为空或无法读取全局 Key 时，`BridGes start`、`BridGes api` 与 `BridGes
+worker` 都在启动边界失败关闭并给出不含秘密的中文配置指引（`BridGes
+doctor` 同样报告失败）——不注册离线桩或固定样例，也不会静默降级模型。
+启动本身不会主动调用 Qwen，实际使用相关功能时才会发起网络请求；若全局
+Key 无效、无权限或供应商限流，调用呈现稳定的中文服务配置错误，不会引导
+用户访问任何密钥设置页面。模型绑定为固定矩阵（ADR-0009），用户不能切换
+模型。所有账户共享同一把全局 Key：共享供应商配额、限流与费用，应用审计
+仍按发起账户记录，但不代表供应商侧独立计费（见发布说明）。
 
 ### Docker / Podman 部署
 
@@ -99,18 +111,27 @@ Compose 环境变量注入，API 容器入口会在数据卷内首次启动时�
 主密钥（也可通过 `-e BRIDGES_SECRET_KEY=...` 显式覆盖）。在项目根目录执行：
 
 ```bash
-docker compose -f infra/compose/docker-compose.yml up --build
+BRIDGES_QWEN_API_KEY=sk-... docker compose -f infra/compose/docker-compose.yml up --build
 # 或
 podman-compose -f infra/compose/docker-compose.yml up --build
 ```
+
+**全局百炼 Key 注入**：Compose 将宿主机环境变量 `BRIDGES_QWEN_API_KEY`
+透传给 API 与后台执行器（缺失、为空或不可读时两者都在容器启动阶段失败
+关闭，Web 因 `depends_on` 健康门不启动，不会出现 Web 正常但 AI 不可用的
+半启动状态）；也可以改用 `--env-file` 传入秘密文件，或使用文件挂载方式
+（容器/长期部署优先）：把密钥写入宿主机只读文件，取消 `docker-compose.yml`
+中注释的 bind mount 示例行，宿主机路径通过 `QWEN_KEY_FILE_HOST` 环境变量
+传入、`BRIDGES_QWEN_API_KEY_FILE` 保持指向容器内路径（如
+`/run/secrets/qwen_key`），再执行 Compose 启动。
 
 Compose 由同一源码构建 **API、Web、后台执行器与提醒调度器**四个服务，它们
 共享同一 `bridges-data` 命名卷：数据库（`bridges.db`）、加密对象库
 （`objects/`）与加密凭据（`secret.key`）都保存在该卷中，后续交付的本地索引
 文件同样写入同一数据目录——数据、对象、索引与加密凭据在 Docker 与 Podman
 下具有一致的卷语义，容器重建不会丢失。Web 容器会等待 API 的
-`/health/ready` 通过后再启动；worker 与 scheduler 使用与 API 相同的入口脚本
-完成密钥自举。如果 API 一直不健康，优先检查 `BridGes doctor` 输出与密钥配置，
+`/health/ready` 通过后再启动；worker 与 API 使用同一全局百炼凭据与入口脚本。
+如果 API 一直不健康，优先检查 `BridGes doctor` 输出与密钥配置，
 以及是否误用了 `BRIDGES_SECRET_KEY_FILE` 的宿主机路径（容器内应改用直接的
 `BRIDGES_SECRET_KEY`，或自行挂载密钥文件）。Compose 会将容器内的
 `BRIDGES_DATABASE_URL` 固定为挂载卷中的
@@ -160,6 +181,8 @@ export BRIDGES_ENVIRONMENT=production
 export BRIDGES_API_HOST=127.0.0.1
 export BRIDGES_API_PORT=8000
 export BRIDGES_SECRET_KEY_FILE=/run/secrets/secret_key
+# 全局百炼运行凭据：正式运行必需，缺失时 BridGes start 失败关闭。
+export BRIDGES_QWEN_API_KEY_FILE=/run/secrets/qwen_key
 # 本地单进程开发持久化；生产环境必须配置等价的持久化数据库地址。
 export BRIDGES_DATABASE_URL=sqlite:///./bridges.db
 ```
@@ -168,8 +191,10 @@ export BRIDGES_DATABASE_URL=sqlite:///./bridges.db
 未配置数据库地址时仅进入明确的开发内存模式；生产环境会在就绪检查中失败，避免数据静默丢失。
 当前仓库内置的是带 WAL 和 Fernet 状态加密的 SQLite 单实例适配器，适合本地开发和 Compose 单实例；配置数据库时必须同时提供 `BRIDGES_SECRET_KEY` 或文件引用。未接入的 PostgreSQL 地址会明确报错，不会回退到内存。
 
-密钥（百炼 Key、QQ SMTP 授权码、密码、加密主密钥）不进入普通配置文件、
-CLI 参数回显、日志或 API 响应；账户级凭据通过登录后的受保护账户设置配置。
+密钥（全局百炼 Key、QQ SMTP 授权码、密码、加密主密钥）不进入普通配置文件、
+CLI 参数回显、日志或 API 响应。全局百炼 Key 只存在于服务进程配置中；账户级
+凭据仅剩 QQ SMTP 授权码，通过登录后的账户设置（提醒配置）设置与验证，普通
+账户不存在百炼密钥管理入口。
 
 ## 品牌迁移说明
 
@@ -200,7 +225,8 @@ Issue 移除，规范入口仅为 `bridges` / `BridGes` / `BRIDGES_*`。历史�
 |---|---|
 | 进程能启动，但 `/health/ready` 为 `fail` | 通常是配置了数据库却没有配置 `BRIDGES_SECRET_KEY`，或生产模式没有数据库地址；补齐环境变量后重启 API。 |
 | API 返回 `503` 且提示持久化不可用 | 系统为避免数据静默写入内存而主动拒绝业务请求；检查数据库 URL、密钥和数据库目录权限。 |
-| Qwen 功能显示不可用或报网络/鉴权错误 | 全局百炼密钥未配置、无效或供应商不可用；检查启动服务时的 `BRIDGES_QWEN_API_KEY` 配置与供应商权限，重启服务后重试。 |
+| 启动即报"未配置全局百炼运行凭据" | `BRIDGES_QWEN_API_KEY`（或文件引用）缺失、为空或不可读；配置后重新执行 `BridGes start`，Key 轮换后同样重启。 |
+| 运行时报网络/鉴权/限流错误 | 全局百炼 Key 无效、无供应商权限或供应商限流；检查启动服务时的 `BRIDGES_QWEN_API_KEY` 配置与百炼账户权限/额度，重启服务后重试。 |
 | Web 无法打开 | 先确认 API 的 `/health/ready` 为 `pass`，再检查 8000 和 3000 端口是否被其他程序占用。 |
 | 改了环境变量但配置未生效 | 停止并重新启动 API；同时确认命令是在项目根目录执行。 |
 

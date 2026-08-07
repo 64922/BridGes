@@ -1,6 +1,7 @@
 """Issue 31 人工冒烟：真实图片生成与编辑链路验证。
 
-用法（Key 只通过环境变量显式提供，绝不写入仓库或 .env）：
+用法（Key 只通过环境变量显式提供，绝不写入仓库或 .env；真实调用会
+**计费**，执行前请确认百炼账户额度）：
 
     BRIDGES_SMOKE_QWEN_KEY=sk-... python scripts/smoke_image_generation.py
 
@@ -11,7 +12,8 @@
         python scripts/smoke_image_generation.py
 
 脚本会：
-1. 用内存凭据替身保存显式提供的 Key（不触碰真实凭据库）；
+1. 用显式提供的全局百炼凭据构造固定绑定客户端（GQ-01/GQ-04：只读全局
+   凭据，不触碰任何账户凭据存储）；
 2. 用固定绑定 qwen-image-2.0-pro-2026-06-22 提交真实生成任务，轮询
    DashScope 云端任务直到终态，下载结果字节；
 3. 用刚生成的图片执行一次编辑（base_image data URL 直传），再次轮询
@@ -40,6 +42,7 @@ from bridges.ai import (  # noqa: E402
     QwenApiClient,
     QwenImageAdapter,
 )
+from bridges.ai.fixed_models import IMAGE_MODEL_ID  # noqa: E402
 from bridges.ai.qwen_image_adapter import image_data_url  # noqa: E402
 from bridges.contracts.ai import (  # noqa: E402
     CapabilityKind,
@@ -47,8 +50,9 @@ from bridges.contracts.ai import (  # noqa: E402
     CapabilityStatus,
     RetryPolicy,
 )
-from bridges.credentials.matrix import IMAGE_MODEL_ID  # noqa: E402
 
+# 冒烟专用环境变量（刻意区别于运行合同的 BRIDGES_QWEN_API_KEY）：
+# 避免误读启动服务的全局 Key，冒烟必须显式、独立地提供密钥。
 _SMOKE_KEY_ENV = "BRIDGES_SMOKE_QWEN_KEY"
 _SMOKE_KEY_FILE_ENV = "BRIDGES_SMOKE_QWEN_KEY_FILE"
 #: 云端任务轮询间隔与上限（人工冒烟可接受分钟级等待）。
@@ -144,7 +148,7 @@ def main() -> int:
     key_value = _resolve_smoke_key()
     if not key_value:
         print(
-            f"未提供测试账户 Key：请显式设置 {_SMOKE_KEY_ENV}=sk-...（或"
+            f"未提供全局百炼凭据：请显式设置 {_SMOKE_KEY_ENV}=sk-...（或"
             f"{_SMOKE_KEY_FILE_ENV}=密钥文件路径）后重试。自动化测试不要求"
             "也不允许把 Key 写入仓库或 .env。"
         )

@@ -94,7 +94,9 @@ test("设置中心入口与导出范围表（确认前可见）", async ({ page 
   await expect(table).toContainText("授权记录");
   await expect(table).toContainText("资产清单");
   await expect(table).toContainText("总计");
-  await expect(page.getByText(/不包含百炼 Key/)).toBeVisible();
+  // GQ-06/07：账户百炼 Key 已整体移除，导出范围表不再出现该文案；
+  // 导出不含 SMTP 授权码、会话令牌与运行密钥（含全局百炼运行凭据）。
+  await expect(page.getByText(/不包含 QQ SMTP 授权码、会话令牌、运行密钥/)).toBeVisible();
 });
 
 test("导出数据：近期密码确认后下载 JSON 附件", async ({ page }) => {

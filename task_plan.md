@@ -79,3 +79,16 @@
 - [x] T3 一次性幂等秘密清退模块 + CLI 启动硬门（StateStore.delete、has_credential_backend、retire.py、start/api/worker 三处接线；枚举并入 key_metadata 残留账户）→ verify: tests/credentials/test_retire.py 9 条 + 子进程级成功/失败/幂等验证
 - [x] T4 文档同步（ADR-0005/0007/0009/0016/0018/0024、CONTEXT.md、README.md、审计枚举 legacy 注明、contracts/video.py）→ verify: 最终 rg 扫描仅命中允许项（9 处，全部为遗留注明）
 - [x] T5 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest 2192 通过 + ruff/mypy 与基线持平（审查修复：模型常量全量收敛、残留账户枚举、sqlite 损坏中文包装）
+
+## GQ-08：完成全载体文档、黄金路径与发布门验收（2026-08-08）
+
+来源：`.scratch/收尾/全局千问密钥整改-Issue计划.md` GQ-08（ready-for-agent）。
+
+- [x] T1 现状核查（README/manual/Compose/CLI 帮助/黄金路径测试/脚本）→ verify: 差距清单（manual 旧账户密钥文案、Compose 未注入 Key、CLI start 帮助缺说明、三个冒烟脚本引用已删除模块）
+- [x] T2 全载体文档修复（README 启动/能力/FAQ/密钥段落、manual、compose 注入 + 文件挂载示例、CLI start docstring、pyproject 补 tzdata）→ verify: rg 残留仅命中遗留注明
+- [x] T3 黄金路径纵向测试（全新数据目录 + 零 Key 配置：注册→聊天→知识库向量化/检索→听写→朗读→图片→视频全成功）→ verify: tests/integration/test_gq08_golden_path.py 通过
+- [x] T4 启动失败三态显式测试（缺失/空串/不可读文件 → 中文错误 + 非零退出 + 无孤儿进程）→ verify: test_runtime_smoke 12 通过
+- [x] T5 冒烟脚本收口（删除 smoke_key_probes 死代码、ingestion/image/video 迁到全局凭据与 fixed_models、计费提示）→ verify: 编译通过
+- [x] T6 修复 issue37 陈旧断言（导出范围表"不包含百炼 Key"→ 现文案）→ verify: 单跑 6/6 通过
+- [x] T7 全量验证（openapi 幂等 / lint 0 error / typecheck / unit 19 / build / ruff·mypy 变更文件干净 / pytest 全量）→ verify: 见发布报告
+- [x] T8 发布报告 + 计划状态 + 提交 → verify: .scratch/收尾/GQ-08-发布验收报告.md

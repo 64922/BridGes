@@ -637,6 +637,11 @@ def start(
 
     默认生产模式启动构建后的 Web；本地开发请使用 ``--profile development``。
     ``serve`` 为历史同实现别名，两者共享同一实现，不维护两套。
+
+    正式运行（development/production）必须在启动前配置全局百炼运行凭据：
+    环境变量 BRIDGES_QWEN_API_KEY 或文件引用 BRIDGES_QWEN_API_KEY_FILE
+    （不读取、不创建 .env）；缺失、为空或不可读时启动失败并给出中文指引。
+    全局 Key 轮换后必须重启相关服务，不提供运行期热更新。
     """
     _serve(profile)
 

@@ -1,6 +1,7 @@
 """Issue 32 人工冒烟：真实 Wan 文生视频链路验证。
 
-用法（Key 只通过环境变量显式提供，绝不写入仓库或 .env）：
+用法（Key 只通过环境变量显式提供，绝不写入仓库或 .env；真实调用会
+**计费**，执行前请确认百炼账户额度）：
 
     BRIDGES_SMOKE_QWEN_KEY=sk-... python scripts/smoke_video_generation.py
 
@@ -11,7 +12,8 @@
         python scripts/smoke_video_generation.py
 
 脚本会：
-1. 用内存凭据替身保存显式提供的 Key（不触碰真实凭据库）；
+1. 用显式提供的全局百炼凭据构造固定绑定客户端（GQ-01/GQ-04：只读全局
+   凭据，不触碰任何账户凭据存储）；
 2. 用固定绑定 wan2.7-t2v-2026-06-12（ADR-0007：Wan 是矩阵唯一非 Qwen
    系列例外）提交真实文生视频任务，轮询 DashScope 云端任务直到终态，
    下载结果字节；
@@ -39,20 +41,22 @@ from bridges.ai import (  # noqa: E402
     QwenApiClient,
     QwenWanAdapter,
 )
+from bridges.ai.fixed_models import VIDEO_MODEL_ID  # noqa: E402
 from bridges.contracts.ai import (  # noqa: E402
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
     RetryPolicy,
 )
-from bridges.credentials.matrix import VIDEO_MODEL_ID  # noqa: E402
 
+# 冒烟专用环境变量（刻意区别于运行合同的 BRIDGES_QWEN_API_KEY）：
+# 避免误读启动服务的全局 Key，冒烟必须显式、独立地提供密钥。
 _SMOKE_KEY_ENV = "BRIDGES_SMOKE_QWEN_KEY"
 _SMOKE_KEY_FILE_ENV = "BRIDGES_SMOKE_QWEN_KEY_FILE"
 #: 云端任务轮询间隔与上限（视频生成分钟级，人工冒烟可接受等待）。
 _POLL_INTERVAL_SECONDS = 10
 _POLL_MAX = 60
-#: 固定生成尺寸（与能力矩阵探测参数一致，用户不可选）。
+#: 固定生成尺寸（固定模型矩阵的一部分，用户不可选）。
 _SMOKE_PROMPT = "一条静谧的河在晨雾中缓缓流淌，两岸是初春的树林，镜头缓慢推进"
 
 
@@ -72,8 +76,8 @@ def _resolve_smoke_key() -> str:
 def _gateway(api_key: SecretStr) -> ModelGateway:
     client = QwenApiClient(api_key=api_key)
     registry = CapabilityRegistry()
-    # ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外，仍使用同一账户级
-    # 百炼密钥，遵守单类别单快照、用户不可更改合同。
+    # ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外，仍使用同一全局百炼
+    # 运行凭据（ADR-0024），遵守单类别单快照、用户不可更改合同。
     registry.register(
         CapabilityRecord(
             name="qwen_wan",
@@ -146,7 +150,7 @@ def main() -> int:
     key_value = _resolve_smoke_key()
     if not key_value:
         print(
-            f"未提供测试账户 Key：请显式设置 {_SMOKE_KEY_ENV}=sk-...（或"
+            f"未提供全局百炼凭据：请显式设置 {_SMOKE_KEY_ENV}=sk-...（或"
             f"{_SMOKE_KEY_FILE_ENV}=密钥文件路径）后重试。自动化测试不要求"
             "也不允许把 Key 写入仓库或 .env。"
         )
