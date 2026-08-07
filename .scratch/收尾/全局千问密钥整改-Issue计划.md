@@ -252,7 +252,7 @@ python -m pytest tests/security/test_disclosure_scrubbing.py -q
 
 ## GQ-06 — 删除账户级百炼密钥用户面与公开 API 合同
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交，adaa6d1）  
 User stories: US-03
 
 ### What to build

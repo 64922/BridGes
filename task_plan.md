@@ -58,3 +58,14 @@
 - [x] T5 新增多账户隔离回归（同一全局 Embedding 端口两账户互不可见）→ verify: 新测试绿
 - [x] T6 全量回归 + 安全披露 + ruff/mypy → verify: 2209 pytest 全绿，ruff/mypy 与基线一致
 - [x] T7 双轴代码审查 + 提交 → verify: c724553（审查修复：embed 失败改关键词降级+恢复、检索侧可操作原因、合同描述与前端信号同步）
+
+## GQ-06：删除账户级百炼密钥用户面与公开 API 合同（2026-08-08）
+
+来源：`.scratch/收尾/全局千问密钥整改-Issue计划.md` GQ-06（ready-for-agent）。
+
+- [x] T1 删除前端密钥用户面（页面/组件/菜单项/设置中心卡片/API 客户端方法/模板入口/DataPrivacy 文案）→ verify: typecheck 干净、issue10 负向 E2E 4 条通过
+- [x] T2 删除后端公开路由（/auth/key-settings* 与 _test/capabilities），RecentAuthRequired 迁至 auth.py → verify: test_auth_api 负向测试 404 断言通过
+- [x] T3 重新生成 OpenAPI 与 TypeScript 合同（账户 Qwen Key 投影/探测状态清零）→ verify: test_openapi_sync 通过
+- [x] T4 E2E 负向回归替换（issue10 重写；issue08/12/04 菜单三项；issue30/36 移除探测替身）→ verify: 60 相关 E2E 通过（1 项 issue04 附件为基线既有失败）
+- [x] T5 双轴代码审查修复（issue36 sed 误删导航行、contracts 描述、陈旧注释、临时产物清理、issue08 视觉 cookie 注入修复）→ verify: 全量 2204 pytest + 构建 + ruff/mypy 与基线一致
+- [x] T6 提交 → verify: adaa6d1
