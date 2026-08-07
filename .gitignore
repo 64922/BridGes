@@ -42,3 +42,4 @@ Thumbs.db
 
 # Virtual env
 .venv/
+bridges.lock
