@@ -22785,7 +22785,7 @@
           "speech"
         ],
         "summary": "Transcribe Dictation",
-        "description": "提交一段完整录音音频到固定 ASR 快照，返回可编辑转写文本。\n\n音频通过请求体原样上传（Content-Type 为音频 MIME，时长经\n``x-bridges-audio-duration`` 头声明）；只接受音频 MIME，空音频、\n超限音频与不支持格式在调用前确定性拒绝。转写失败返回 failed\n投影（含稳定错误码与中文原因），不产生用户消息、不落盘音频。",
+        "description": "提交一段完整录音音频到固定 ASR 快照，返回可编辑转写文本。\n\n音频通过请求体原样上传（Content-Type 为音频 MIME，时长经\n``x-bridges-audio-duration`` 头声明）；只接受音频 MIME，空音频、\n超限音频与不支持格式在调用前确定性拒绝。不检查账户凭据或探测\n快照（GQ-03）：新账户无需任何个人 Qwen 配置即可提交。转写失败\n返回 failed 投影（含稳定错误码与中文原因），不产生用户消息、\n不落盘音频。",
         "operationId": "transcribe_dictation_chat_conversations__conversation_id__dictation_post",
         "parameters": [
           {
@@ -22874,7 +22874,7 @@
           "speech"
         ],
         "summary": "Generate Read Aloud",
-        "description": "为一条已完成的助手回答生成朗读（固定 TTS 快照）。\n\n同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先\n清理再写新对象。生成失败返回 failed 投影与重试语义，回答正文\n不受影响。",
+        "description": "为一条已完成的助手回答生成朗读（固定 TTS 快照）。\n\n同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先\n清理再写新对象。不检查账户凭据或探测快照（GQ-03）：新账户无需\n任何个人 Qwen 配置即可生成朗读。生成失败返回 failed 投影与重试\n语义，回答正文不受影响。",
         "operationId": "generate_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_post",
         "parameters": [
           {

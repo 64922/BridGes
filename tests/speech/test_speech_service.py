@@ -19,7 +19,12 @@ import httpx
 import pytest
 
 from bridges.ai import ModelGateway
-from bridges.ai.adapters import AdapterResult, TransientError
+from bridges.ai.adapters import (
+    AdapterResult,
+    AuthError,
+    RateLimitError,
+    TransientError,
+)
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
@@ -299,6 +304,33 @@ def test_transcribe_transient_failure_retryable_same_snapshot(tmp_path: Path) ->
     assert h.lock_model_ids() == [ASR_MODEL]
 
 
+def test_transcribe_auth_error_maps_to_global_config_hint(tmp_path: Path) -> None:
+    """GQ-03：鉴权失败折叠为指向全局运行配置的中文提示，不输出供应商原文。"""
+    h = _SpeechHarness(tmp_path)
+    h.asr._error = AuthError("Qwen authentication/authorization failed.")
+    projection = h.service.transcribe(
+        h.account_id, h.conversation_id, _make_probe_wav(), "audio/wav", 1.0
+    )
+    assert projection.status.value == "failed"
+    assert projection.error_code == "auth_error"
+    assert projection.retryable is False
+    assert "全局百炼配置" in projection.error_message
+    assert "authentication" not in projection.error_message
+
+
+def test_transcribe_rate_limit_maps_to_retry_hint(tmp_path: Path) -> None:
+    """GQ-03：限流折叠为中文稍后重试提示，错误码保持稳定。"""
+    h = _SpeechHarness(tmp_path)
+    h.asr._error = RateLimitError("Qwen rate limit (429).")
+    projection = h.service.transcribe(
+        h.account_id, h.conversation_id, _make_probe_wav(), "audio/wav", 1.0
+    )
+    assert projection.status.value == "failed"
+    assert projection.error_code == "rate_limit"
+    assert projection.retryable is True
+    assert "限流" in projection.error_message
+
+
 def test_transcribe_empty_transcript_failed_retryable(tmp_path: Path) -> None:
     h = _SpeechHarness(tmp_path)
     h.asr._transcript = "   "
@@ -404,6 +436,23 @@ def test_read_aloud_tts_failure_marks_failed_retryable(tmp_path: Path) -> None:
     assert projection.retryable is True
     assert projection.error_code is not None
     assert h.object_count(h.account_id) == 0
+
+
+def test_read_aloud_auth_error_maps_to_global_config_hint(tmp_path: Path) -> None:
+    """GQ-03：朗读鉴权失败同样折叠为全局运行配置提示，快照写回 failed。"""
+    h = _SpeechHarness(tmp_path)
+    h.seed_message("m-1", content="回答")
+    h.tts._error = AuthError("Qwen authentication/authorization failed.")
+    projection = h.service.generate_read_aloud(h.account_id, h.conversation_id, "m-1")
+    assert projection.state == ReadAloudState.FAILED
+    assert projection.error_code == "auth_error"
+    assert projection.retryable is False
+    assert "全局百炼配置" in projection.error_message
+    assert "authentication" not in projection.error_message
+    # 失败快照写回消息，刷新后仍呈现同一中文原因。
+    reloaded = h.service.get_read_aloud(h.account_id, h.conversation_id, "m-1")
+    assert reloaded.state == ReadAloudState.FAILED
+    assert "全局百炼配置" in reloaded.error_message
 
 
 def test_read_aloud_download_failure_marks_failed(tmp_path: Path) -> None:

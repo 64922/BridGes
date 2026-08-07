@@ -85,7 +85,13 @@ import {
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
-/** Issue 30：把账户级探测快照折叠为语音入口可用性（不可用时带中文原因）。 */
+/**
+ * GQ-03：ASR/TTS 由全局运行凭据驱动，不再按账户探测禁用入口——新账户
+ * 无需任何个人 Qwen 配置即可听写/朗读。image/video 门控保留至 GQ-04。
+ */
+const SPEECH_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
+
+/** Issue 31/32：把账户级探测快照折叠为 image/video 入口可用性（GQ-04 迁移前）。 */
 function speechAvailability(
   capabilities: CapabilityProbeSummary[] | null | undefined,
   capabilityId: string,
@@ -190,8 +196,8 @@ export default function ChatConversationPage() {
   >([]);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
-  // Issue 30：账户级语音能力探测快照（asr 听写 / tts 朗读独立门控；
-  // 不可用时禁用入口并说明原因，服务端仍做权威校验）
+  // Issue 31/32：账户级探测快照仅用于 image/video 入口门控（GQ-04
+  // 迁移前；GQ-03 后 asr/tts 已由全局运行凭据驱动，不再按探测禁用）
   const [speechCapabilities, setSpeechCapabilities] = useState<
     CapabilityProbeSummary[] | null
   >(null);
@@ -233,8 +239,8 @@ export default function ChatConversationPage() {
     void load();
   }, [load]);
 
-  // Issue 30：拉取一次账户级语音能力探测快照（asr/tts 独立门控）；
-  // 切换对话/离开页面/切换账户时安全停止朗读播放会话。
+  // Issue 31/32：拉取一次账户级探测快照（image/video 入口门控，GQ-04
+  // 迁移前）；切换对话/离开页面/切换账户时安全停止朗读播放会话。
   useEffect(() => {
     setSpeechCapabilities(null);
     void fetchKeySettings()
@@ -1076,7 +1082,7 @@ export default function ChatConversationPage() {
                 }
                 onRetryIngestion={retryIngestion}
                 conversationId={conversationId}
-                tts={speechAvailability(speechCapabilities, "tts", "语音朗读")}
+                tts={SPEECH_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
                 announcement={announcement}
                 onConfirmMcpCall={confirmMessageMcp}
@@ -1115,7 +1121,7 @@ export default function ChatConversationPage() {
                     image={speechAvailability(speechCapabilities, "image", "图片生成与编辑")}
                     onOpenVideo={() => setVideoOpen(true)}
                     video={speechAvailability(speechCapabilities, "video", "视频生成")}
-                    asr={speechAvailability(speechCapabilities, "asr", "语音转写")}
+                    asr={SPEECH_ALWAYS_AVAILABLE}
                     pluginSelection={pluginSelection}
                     pluginNames={pluginNames}
                     onSelectPlugins={() => setPluginPickerOpen(true)}

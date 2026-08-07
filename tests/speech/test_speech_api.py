@@ -1,9 +1,10 @@
-"""听写与朗读 API 测试（Issue 30）。
+"""听写与朗读 API 测试（Issue 30，GQ-03 迁移）。
 
-用临时 sqlite 应用验证：ASR/TTS 独立能力门控（未配置 Key / 探测中 /
-不可用分别返回可操作中文提示）、听写端点校验（MIME/空音频/超限）、
+用临时 sqlite 应用验证：新账户无任何账户 Key/探测记录即可提交听写与
+朗读（GQ-03：入口由全局运行凭据驱动，不再返回 no_api_key 或
+capability_probing 门禁错误）、听写端点校验（MIME/空音频/超限）、
 朗读端点状态机与跨账户拒绝。真实供应商调用由服务级测试的固定快照
-覆盖；这里验证 API 边界与门控语义。
+覆盖；这里验证 API 边界与 GQ-03 后语义。
 """
 
 from __future__ import annotations
@@ -12,18 +13,14 @@ import io
 import json
 import struct
 import wave
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.api.main import create_app
 from bridges.config import get_settings
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 
 def _make_probe_wav() -> bytes:
@@ -63,31 +60,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _set_capability(
-    sqlite_app: Any,
-    account_id: str,
-    capability_id: str,
-    model_id: str,
-    status: ProbeStatus,
-) -> None:
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{capability_id}-{account_id}",
-            capability_id=capability_id,
-            model_id=model_id,
-            region="cn-beijing",
-            parameters={},
-            status=status,
-            probed_at=datetime.now(UTC),
-            error_message="测试原因。" if status == ProbeStatus.UNAVAILABLE else None,
-        ),
-    )
-
-
 def _create_conversation(client: TestClient) -> str:
     response = client.post("/chat/conversations", json={})
     assert response.status_code == 201, response.text
@@ -124,76 +96,38 @@ def _seed_done_assistant_message(client: TestClient, conversation_id: str) -> st
 
 
 # ---------------------------------------------------------------------------
-# 能力门控
+# GQ-03：无账户凭据门禁
 # ---------------------------------------------------------------------------
 
 
-def test_dictation_requires_asr_capability(client: TestClient, sqlite_app: Any) -> None:
+def test_new_account_dictation_without_any_key_or_probe(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    """全新账户（无 Key、无探测记录）可直接提交听写，不再被预检拦截。
+
+    测试环境无真实 ASR 适配器：请求进入全局网关确定性失败（空转写），
+    但绝不再返回 no_api_key / capability_probing。
+    """
     _register(client)
     conversation_id = _create_conversation(client)
-    audio = _make_probe_wav()
-    # 未配置 Key → no_api_key。
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/dictation",
-        content=audio,
-        headers={
-            "Content-Type": "audio/wav",
-            "X-Bridges-Audio-Duration": "1",
-        },
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "no_api_key"
-
-
-def test_dictation_probing_and_unavailable_gates(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
-    conversation_id = _create_conversation(client)
-    _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.PROBING
-    )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",
         content=_make_probe_wav(),
         headers={"Content-Type": "audio/wav", "X-Bridges-Audio-Duration": "1"},
     )
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "capability_probing"
-    assert "语音转写" in response.json()["detail"]["message"]
-
-    _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.UNAVAILABLE
-    )
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/dictation",
-        content=_make_probe_wav(),
-        headers={"Content-Type": "audio/wav", "X-Bridges-Audio-Duration": "1"},
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "capability_unavailable"
-    assert "测试原因" in response.json()["detail"]["message"]
-
-
-def test_read_aloud_requires_tts_capability(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
-    conversation_id = _create_conversation(client)
-    # 只配置 asr 可用、tts 未探测 → 朗读入口被独立门控拒绝（asr 可用不影响 tts）。
-    _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.AVAILABLE
-    )
-    response = client.post(f"/chat/conversations/{conversation_id}/messages/m-none/read-aloud")
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "capability_unavailable"
-    assert "语音朗读" in response.json()["detail"]["message"]
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "failed"
+    assert payload["error_code"] == "empty_transcript"
+    assert payload["retryable"] is True
+    assert payload["error_code"] not in {"no_api_key", "capability_probing"}
 
 
 def test_dictation_rejects_unsupported_mime_and_empty_audio(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = _register(client)
+    _register(client)
     conversation_id = _create_conversation(client)
-    _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.AVAILABLE
-    )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",
         content=b"not-audio",
@@ -211,15 +145,12 @@ def test_dictation_rejects_unsupported_mime_and_empty_audio(
     assert response.json()["detail"]["error"] == "empty_audio"
 
 
-def test_dictation_gate_passes_and_reports_deterministic_failure(
+def test_dictation_reports_deterministic_failure(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    """能力可用时端点可达；无真实适配器时网关确定性失败（不模拟成功）。"""
-    account = _register(client)
+    """无真实适配器时网关确定性失败（不模拟成功），新账户直接可达。"""
+    _register(client)
     conversation_id = _create_conversation(client)
-    _set_capability(
-        sqlite_app, account["id"], "asr", "qwen3-asr-flash", ProbeStatus.AVAILABLE
-    )
     response = client.post(
         f"/chat/conversations/{conversation_id}/dictation",
         content=_make_probe_wav(),
@@ -234,14 +165,9 @@ def test_dictation_gate_passes_and_reports_deterministic_failure(
 
 
 def test_read_aloud_endpoints_account_scoped(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
+    """朗读端点状态机与账户隔离：无任何 Key/探测记录即可发起（GQ-03）。"""
+    _register(client)
     conversation_id = _create_conversation(client)
-    _set_capability(
-        sqlite_app, account["id"], "tts", "qwen3-tts-flash-2025-11-27", ProbeStatus.AVAILABLE
-    )
-    _set_capability(
-        sqlite_app, account["id"], "chat", "qwen3.7-plus-2026-05-26", ProbeStatus.AVAILABLE
-    )
     # 不存在的消息 → 404。
     response = client.post(f"/chat/conversations/{conversation_id}/messages/m-none/read-aloud")
     assert response.status_code == 404
@@ -268,11 +194,8 @@ def test_read_aloud_endpoints_account_scoped(client: TestClient, sqlite_app: Any
     )
     assert response.status_code == 200
     assert response.json()["state"] == "not_generated"
-    # 跨账户访问：他人账户能力就绪后，原对话的消息仍不可见（404，不泄漏存在性）。
-    other = _register(client, "2")
-    _set_capability(
-        sqlite_app, other["id"], "tts", "qwen3-tts-flash-2025-11-27", ProbeStatus.AVAILABLE
-    )
+    # 跨账户访问：他人账户消息仍不可见（404，不泄漏存在性）。
+    _register(client, "2")
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud"
     )

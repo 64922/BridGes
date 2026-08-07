@@ -603,7 +603,9 @@ test("刷新后朗读状态保持，可重新请求播放", async ({ page }) => 
   await expect(page.getByRole("button", { name: "暂停朗读" })).toBeVisible();
 });
 
-test("能力不可用时禁用听写与朗读入口并说明原因", async ({ page }) => {
+test("语音能力探测不可用时入口仍可用（GQ-03 全局凭据语义）", async ({ page }) => {
+  // GQ-03：听写/朗读由全局运行凭据驱动，不再按账户探测禁用入口。
+  // 探测记录为 unavailable/probing 时入口仍可用，且不出现密钥页引导。
   const credentials = uniqueCredentials("sp30c");
   await signUp(page, credentials.username, credentials.qqEmail, "correct-horse-30");
   await mockKeySettings(page, { asr: "unavailable", tts: "probing" });
@@ -611,11 +613,13 @@ test("能力不可用时禁用听写与朗读入口并说明原因", async ({ pa
   void chat;
   await page.goto("/chat/mock-1");
   await expect(page.getByTestId("composer")).toBeVisible();
-  // 听写入口禁用并说明原因。
-  await expect(page.getByRole("button", { name: "开始听写" })).toBeDisabled();
-  await expect(page.getByText("语音转写能力当前不可用：测试原因：能力不可用。")).toBeVisible();
-  // 朗读入口（消息操作栏）禁用并说明原因（探测中）。
+  // 听写入口可用（不被探测状态禁用）。
+  const mic = page.getByRole("button", { name: "开始听写" });
+  await expect(mic).toBeEnabled();
+  await expect(page.getByText("前往「设置」", { exact: false })).toHaveCount(0);
+  // 朗读入口可用（消息操作栏不禁用）。
   const toolbar = page.getByRole("toolbar", { name: "消息操作" });
-  await expect(toolbar.getByRole("button", { name: "朗读" })).toBeDisabled();
-  await expect(page.getByText("语音朗读能力正在探测中")).toBeVisible();
+  await expect(toolbar.getByRole("button", { name: "朗读" })).toBeEnabled();
+  // 无密钥横幅：GQ-03 后不因探测状态拦截使用。
+  await expect(page.getByText("语音朗读能力正在探测中")).toHaveCount(0);
 });

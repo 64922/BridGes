@@ -148,7 +148,7 @@ python -m pytest tests/security/test_disclosure_scrubbing.py tests/security/test
 
 ## GQ-03 — 让听写与回答朗读只使用全局运行凭据
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交）  
 User stories: US-02
 
 ### What to build

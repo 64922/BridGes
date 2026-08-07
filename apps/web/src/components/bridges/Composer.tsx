@@ -479,7 +479,9 @@ export function Composer({
   const startRecording = async () => {
     if (dictationPhase === "recording" || dictationPhase === "transcribing") return;
     if (!asr.available) {
-      setDictationError(asr.reason ?? "语音转写能力不可用，请前往「设置」重新探测。");
+      // GQ-03：听写由全局运行凭据驱动，入口恒可用；该分支仅防御未来
+      // 调用方传入不可用状态，不再引导前往密钥设置页。
+      setDictationError(asr.reason ?? "语音转写能力暂不可用，请稍后重试。");
       setDictationPhase("error");
       return;
     }

@@ -50,6 +50,32 @@ from bridges.storage.repository import BridgesObjectRepository
 #: 朗读默认音色（与固定矩阵一致，用户不可选）。
 _DEFAULT_VOICE = "Cherry"
 
+#: 稳定错误码 → 可操作中文提示（GQ-03：与主对话同源，指向服务运行
+#: 配置或稍后重试；只收录语音链路实际可能产生的供应商错误分类，未命
+#: 中的错误码回退网关原始消息，与 chat/turn.py 的 user_facing_error
+#: 语义一致，不伪造分类）。
+_USER_FACING_ERRORS: dict[str, str] = {
+    "rate_limit": "请求过于频繁（已触发限流），请稍后重试。",
+    "transient": "连接中断或服务暂时不可用，请检查网络后重试。",
+    "region_error": "无法连接 Qwen 服务，请检查网络后重试。",
+    "auth_error": "Qwen API Key 无效或已失效，请检查启动服务的全局百炼配置与权限。",
+    "capability_not_verified": "语音能力未通过验证，请检查启动服务的全局百炼配置与权限。",
+}
+
+
+def _user_facing_error(
+    error_code: str | None, fallback_message: str | None, default_message: str
+) -> str:
+    """把网关错误码折叠为面向用户的中文说明。
+
+    ``fallback_message`` 是网关返回的原始消息（可能为供应商英文原文），
+    只在映射未命中时保留，保证分类错误仍给出可读中文。
+    """
+    mapped = _USER_FACING_ERRORS.get(error_code or "")
+    if mapped is not None:
+        return mapped
+    return fallback_message or default_message
+
 #: Markdown 语法剥离：代码围栏、内联代码、标题、强调、链接、图片、
 #: 列表、引用与表格符号。只用于让朗读文本可听，不改变事实内容。
 _MD_FENCE_RE = re.compile(r"```.*?```", re.DOTALL)
@@ -114,8 +140,10 @@ def _truncate_for_tts(text: str) -> tuple[str, bool]:
 class SpeechService:
     """听写与朗读编排；全部操作限定在传入的账户 ID 内。
 
-    能力就绪门控由 API 层按账户级探测快照执行（与聊天发送同一模式）；
-    本服务只依赖固定绑定与 ModelGateway，绝不切换模型或模拟成功。
+    GQ-03 后不再有账户级能力门禁：新账户无需任何个人 Qwen 配置即可
+    提交听写与朗读，调用由已注册的全局模型网关固定适配器执行；供应商
+    错误按稳定错误码折叠为指向全局运行配置的中文提示。本服务只依赖
+    固定绑定与 ModelGateway，绝不切换模型或模拟成功。
     """
 
     def __init__(
@@ -245,7 +273,9 @@ class SpeechService:
             )
 
         error_code = result.error_code or "transcription_failed"
-        error_message = result.error_message or "语音转写失败，请重试。"
+        error_message = _user_facing_error(
+            error_code, result.error_message, "语音转写失败，请重试。"
+        )
         retryable = result.status == ModelCallStatus.RETRYABLE_FAIL
         self._audit(
             account_id,
@@ -329,7 +359,9 @@ class SpeechService:
 
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "synthesis_failed"
-            error_message = result.error_message or "朗读生成失败，请重试。"
+            error_message = _user_facing_error(
+                error_code, result.error_message, "朗读生成失败，请重试。"
+            )
             retryable = result.status == ModelCallStatus.RETRYABLE_FAIL
             projection = ReadAloudProjection(
                 message_id=message_id,
