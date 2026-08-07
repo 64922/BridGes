@@ -73,7 +73,7 @@ GQ-02～GQ-05 可在 GQ-01 合并后并行实施；每个切片必须独立保�
 
 ## GQ-01 — 建立唯一的全局百炼运行凭据与启动硬门
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交，755136c）  
 User stories: US-01、US-05
 
 ### What to build
