@@ -39,14 +39,12 @@ from bridges.contracts.ai import (
     ModelCallStatus,
     ModelRunLock,
 )
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
 from bridges.contracts.evaluation_suite import (
     EvalCase,
     ToolCallRecord,
 )
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.credentials.store import CredentialStorePort
 from bridges.image.service import ImageService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
@@ -513,20 +511,16 @@ class EvalEnvironment:
         ):
             self.gateway.register_adapter(name, "1", self.scripted)
 
-        self.probe_service = CapabilityProbeService(state_store=None)
-        self._seed_embedding_probe()
         self.embedding = DeterministicEmbeddingPort()
         self.ingestion = IngestionService(
             database=self.database,
             object_repository=self.object_repository,
-            probe_service=self.probe_service,
             embedding=self.embedding,
             index=VersionedIndex(self.database, self.embedding),
         )
         self.retrieval = LayeredRetrievalService(
             database=self.database,
             embedding=self.embedding,
-            probe_service=self.probe_service,
             object_repository=self.object_repository,
         )
         self.profiles = ProfileService(repository=SqliteProfileRepository(self.database))
@@ -621,20 +615,6 @@ class EvalEnvironment:
         return script
 
     cases: dict[str, EvalCase] = {}
-
-    def _seed_embedding_probe(self) -> None:
-        self.probe_service._put_record(  # noqa: SLF001 - 与 tests/ingestion/conftest 同模式
-            self.account_id,
-            ProbeRecord(
-                probe_id=f"probe-{EVAL_QQ_EMAIL}",
-                capability_id="embedding",
-                model_id="text-embedding-v4",
-                region="cn-beijing",
-                parameters={"dimensions": 1024},
-                status=ProbeStatus.AVAILABLE,
-                probed_at=datetime.now(UTC),
-            ),
-        )
 
     def seed_knowledge_base(self, case: EvalCase) -> None:
         """把案例的知识库材料摄取为全局知识库（可检索证据）。"""

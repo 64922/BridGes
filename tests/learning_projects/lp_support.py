@@ -8,12 +8,9 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.chat.repository import MessageRecord
 from bridges.contracts.chat import ChatMessageRole, ChatMessageStatus
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 
 def register_account(client: TestClient, tag: str = "1") -> dict[str, Any]:
@@ -28,25 +25,6 @@ def register_account(client: TestClient, tag: str = "1") -> dict[str, Any]:
     )
     assert response.status_code == 201, response.text
     return response.json()["account"]
-
-
-def make_capability_ready(app: Any, account_id: str) -> None:
-    """注入"已配置 Key + 探测可用"（真实探测需要网络与真实 Key）。"""
-    credential_service = app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="chat",
-            model_id="qwen3.7-plus-2026-05-26",
-            region="cn-beijing",
-            parameters={},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-        ),
-    )
 
 
 def create_project(

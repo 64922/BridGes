@@ -8,12 +8,9 @@ from typing import Any
 from urllib.parse import quote
 
 from fastapi.testclient import TestClient
-from kb_support import seed_probe_for_account
 
 from bridges.api.main import create_app
 from bridges.config import get_settings
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -60,35 +57,18 @@ def _upload(
     )
 
 
-def _worker_service(app: Any) -> tuple[IngestionService, CapabilityProbeService]:
-    """构造与 API 进程共享同一数据库的 worker 侧摄取服务（确定性向量）。"""
+def _worker_service(app: Any) -> IngestionService:
+    """构造与 API 进程共享同一数据库的 worker 侧摄取服务（确定性向量）。
+
+    GQ-05：可用性即「已构造全局 Embedding 端口」，不再播种账户探测状态。
+    """
     database: BridgesDatabase = app.state.bridges_database
-    probe_service = CapabilityProbeService(state_store=None)
     embedding = DeterministicEmbeddingPort()
-    service = IngestionService(
+    return IngestionService(
         database=database,
         object_repository=app.state.object_repository,
-        probe_service=probe_service,
         embedding=embedding,
         index=VersionedIndex(database, embedding),
-    )
-    return service, probe_service
-
-
-def _seed_embedding_available(app: Any, account_id: str) -> None:
-    """在 API 进程的探测服务上标记 Embedding 可用（用于投影原因展示）。"""
-    probe_service: CapabilityProbeService = app.state.ingestion_service._probes  # type: ignore[attr-defined]
-    probe_service._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="embedding",
-            model_id="text-embedding-v4",
-            region="cn-beijing",
-            parameters={"dimensions": 1024},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-        ),
     )
 
 
@@ -109,7 +89,7 @@ def _hold_lease(app: Any, document_id: str) -> None:
 
 def test_upload_list_detail_download_happy_path(tmp_path: Path, monkeypatch: Any) -> None:
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "kba")
+    _register(client, "kba")
 
     uploaded = _upload(client, "课程笔记.txt", "第一段。\n\n第二段。".encode())
     assert uploaded.status_code == 201, uploaded.text
@@ -137,9 +117,7 @@ def test_upload_list_detail_download_happy_path(tmp_path: Path, monkeypatch: Any
     assert detail.json()["document_id"] == f"doc-{object_id}"
 
     # worker 侧处理一轮后呈现 ready（同一数据库）
-    _seed_embedding_available(client.app, account["id"])
-    worker, worker_probes = _worker_service(client.app)
-    seed_probe_for_account(worker_probes, account["id"], available=True)
+    worker = _worker_service(client.app)
     assert "处理 1 份文档" in worker.process_pending()
 
     detail = client.get(f"/knowledge-base/materials/{object_id}")
@@ -166,15 +144,14 @@ def test_upload_rejects_unsupported_media_type(tmp_path: Path, monkeypatch: Any)
 
 def test_retry_failed_material(tmp_path: Path, monkeypatch: Any) -> None:
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "kbf")
+    _register(client, "kbf")
     uploaded = _upload(
         client, "坏文件.pdf", b"%PDF-1.7\ngarbage", content_type="application/pdf"
     )
     assert uploaded.status_code == 201, uploaded.text
     object_id = uploaded.json()["object_id"]
 
-    worker, worker_probes = _worker_service(client.app)
-    seed_probe_for_account(worker_probes, account["id"], available=True)
+    worker = _worker_service(client.app)
     worker.process_pending()
 
     detail = client.get(f"/knowledge-base/materials/{object_id}")
@@ -193,11 +170,10 @@ def test_retry_failed_material(tmp_path: Path, monkeypatch: Any) -> None:
 
 def test_rebuild_endpoint_and_processing_conflict(tmp_path: Path, monkeypatch: Any) -> None:
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "kbr")
+    _register(client, "kbr")
     object_id = _upload(client, "重建.txt", "显式重建内容。".encode()).json()["object_id"]
 
-    worker, worker_probes = _worker_service(client.app)
-    seed_probe_for_account(worker_probes, account["id"], available=True)
+    worker = _worker_service(client.app)
     worker.process_pending()
     version_before = client.get(f"/knowledge-base/materials/{object_id}").json()[
         "index_version_id"
@@ -223,10 +199,9 @@ def test_rebuild_endpoint_and_processing_conflict(tmp_path: Path, monkeypatch: A
 
 def test_delete_endpoint_and_processing_conflict(tmp_path: Path, monkeypatch: Any) -> None:
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "kbd")
+    _register(client, "kbd")
     object_id = _upload(client, "待删除.txt", "删除测试内容。".encode()).json()["object_id"]
-    worker, worker_probes = _worker_service(client.app)
-    seed_probe_for_account(worker_probes, account["id"], available=True)
+    worker = _worker_service(client.app)
     worker.process_pending()
 
     # 处理中删除：409 且消息可恢复（中文提示稍后重试）
@@ -269,36 +244,25 @@ def test_cross_account_operations_are_uniform_404(tmp_path: Path, monkeypatch: A
         assert response.json()["detail"]["error"] == "material_not_found"
 
 
-def test_vector_degraded_presentation(tmp_path: Path, monkeypatch: Any) -> None:
-    """Embedding 探测不可用：投影呈现全文就绪/向量不可用与中文原因。"""
+def test_new_account_vectors_without_probes(tmp_path: Path, monkeypatch: Any) -> None:
+    """GQ-05：新账户零账户 Key、零探测记录即可构建向量索引并混合检索。
+
+    投影呈现向量就绪（embedding_available=True），不依赖账户探测快照；
+    Embedding 调用失败的诚实降级路径由摄取服务失败重试用例覆盖。
+    """
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "kbv")
-    object_id = _upload(client, "降级.txt", "向量降级内容。".encode()).json()["object_id"]
+    _register(client, "kbv")
+    object_id = _upload(client, "向量就绪.txt", "向量索引内容。".encode()).json()[
+        "object_id"
+    ]
 
-    worker, worker_probes = _worker_service(client.app)
-    seed_probe_for_account(worker_probes, account["id"], available=False)
+    worker = _worker_service(client.app)
     worker.process_pending()
-
-    # API 进程探测快照同样标记不可用：投影呈现降级原因而非"尚未探测"
-    probe_service: CapabilityProbeService = client.app.state.ingestion_service._probes  # type: ignore[attr-defined]
-    probe_service._put_record(
-        account["id"],
-        ProbeRecord(
-            probe_id=f"probe-{account['id']}",
-            capability_id="embedding",
-            model_id="text-embedding-v4",
-            region="cn-beijing",
-            parameters={"dimensions": 1024},
-            status=ProbeStatus.UNAVAILABLE,
-            probed_at=datetime.now(UTC),
-            error_message="凭据缺失。",
-        ),
-    )
 
     body = client.get(f"/knowledge-base/materials/{object_id}").json()
     assert body["status"] == "ready"
     assert body["usable_for_chat"] is True
-    assert body["vector_indexed"] is False
-    assert body["embedding_available"] is False
-    assert "Embedding" in (body["vector_unavailable_reason"] or "")
+    assert body["vector_indexed"] is True
+    assert body["embedding_available"] is True
+    assert body["vector_unavailable_reason"] is None
     assert body["index_version_id"] is not None

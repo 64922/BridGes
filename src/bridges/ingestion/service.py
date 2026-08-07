@@ -1,10 +1,12 @@
-"""持久化文档摄取状态机（Issue 17）。
+"""持久化文档摄取状态机（Issue 17，GQ-05 迁移）。
 
 把账户内的安全对象转换为可追溯、可恢复的本地检索材料：入队 → 解析
-（账户内同内容复用解析缓存）→ 哈希分块 → 向量化（按能力探测门）→
-写入版本化全文/向量索引。失败保留原文件与中文原因，可从失败阶段
-安全重试且不产生重复分块；后台执行器重启后按租约自动恢复未完成任务，
-重复领取保持幂等。
+（账户内同内容复用解析缓存）→ 哈希分块 → 向量化（凭据来源为唯一的
+全局百炼运行凭据，GQ-01/GQ-05）→ 写入版本化全文/向量索引。失败保留
+原文件与中文原因，可从失败阶段安全重试且不产生重复分块；后台执行器
+重启后按租约自动恢复未完成任务，重复领取保持幂等。Embedding 可用性
+由运行时是否成功构造全局端口决定，不再依赖账户探测快照；调用失败时
+全文索引仍独立完成，绝不写空向量或伪装向量就绪。
 """
 
 from __future__ import annotations
@@ -20,13 +22,8 @@ from bridges.contracts.ingestion import (
     IndexStatusProjection,
 )
 from bridges.contracts.knowledge_base import KnowledgeBaseMaterialProjection
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.chunker import TextChunk, chunk_document
-from bridges.ingestion.embedding import (
-    EmbeddingError,
-    EmbeddingPort,
-    embedding_availability,
-)
+from bridges.ingestion.embedding import EmbeddingError, EmbeddingPort
 from bridges.ingestion.index import IndexWriteError, VersionedIndex, build_index_status
 from bridges.ingestion.parsers import (
     DOCX_PARSER_VERSION,
@@ -150,8 +147,9 @@ def display_ingestion_status(
 class IngestionService:
     """摄取状态机的写模型与投影面。
 
-    API 进程只使用入队/重试/投影路径（只读数据库 + 探测快照）；
-    后台执行器进程使用领取/处理/索引维护路径（解析、向量化与版本化索引）。
+    API 进程只使用入队/重试/投影路径（只读数据库 + 全局 Embedding
+    端口可用性）；后台执行器进程使用领取/处理/索引维护路径（解析、
+    向量化与版本化索引）。
     """
 
     def __init__(
@@ -159,14 +157,12 @@ class IngestionService:
         *,
         database: BridgesDatabase,
         object_repository: BridgesObjectRepository,
-        probe_service: CapabilityProbeService | None = None,
         embedding: EmbeddingPort | None = None,
         index: VersionedIndex | None = None,
         task_queue: TaskQueue | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
-        self._probes = probe_service
         self._embedding = embedding
         self._index = index
         # Issue 43：领取/租约/退避/崩溃恢复由统一任务队列承担；本服务
@@ -277,23 +273,27 @@ class IngestionService:
         """返回当前账户索引状态（含向量可用性与版本链）。
 
         只读数据库即可构造：API 进程与 worker 进程都展示真实版本链，
-        不依赖本实例是否挂载了索引写组件。
+        不依赖本实例是否挂载了索引写组件。向量可用性由运行时是否成功
+        构造全局 Embedding 端口决定（GQ-05），不再依赖账户探测快照。
         """
-        available, reason, probed = self._embedding_availability(account_id)
+        available, reason = self._embedding_availability()
         return build_index_status(
             self._database,
             account_id,
-            embedding_probed=probed,
+            embedding_probed=available,
             embedding_available=available,
             vector_unavailable_reason=reason,
         )
 
-    def _embedding_availability(
-        self, account_id: str
-    ) -> tuple[bool, str | None, bool]:
-        if self._probes is None:
-            return False, "向量索引不可用：Embedding 能力探测未启用。", False
-        return embedding_availability(self._probes, account_id)
+    def _embedding_availability(self) -> tuple[bool, str | None]:
+        """Embedding 可用性：是否已构造全局 Embedding 端口。
+
+        构造成功即视为可用；调用结果失败（认证/限流等）由调用方如实
+        折叠为失败原因与关键词检索降级，绝不伪装向量就绪。
+        """
+        if self._embedding is None:
+            return False, "向量索引不可用：全局 Embedding 能力未启用。"
+        return True, None
 
     def _projection_from_row(
         self, account_id: str, row: sqlite3.Row
@@ -301,7 +301,7 @@ class IngestionService:
         raw_status = str(row["status"])
         lease = str(row["lease_expires_at"]) if row["lease_expires_at"] else None
         status = display_ingestion_status(raw_status, lease)
-        _, vector_reason, _ = self._embedding_availability(account_id)
+        _, vector_reason = self._embedding_availability()
         rebuilding = self._index_rebuilding(account_id)
         return DocumentIngestionProjection(
             document_id=str(row["document_id"]),
@@ -577,7 +577,7 @@ class IngestionService:
 
     def _material_index_context(self, account_id: str) -> _MaterialIndexContext:
         """材料投影共享的索引上下文：向量可用性、活跃版本与重建标记。"""
-        embedding_available, vector_reason, _ = self._embedding_availability(account_id)
+        embedding_available, vector_reason = self._embedding_availability()
         active = self._database.connection.execute(
             "SELECT version_id FROM index_active WHERE account_id = ?",
             (account_id,),
@@ -730,7 +730,7 @@ class IngestionService:
         ).fetchall()
         if not rows:
             return
-        available, _, _ = self._embedding_availability(account_id)
+        available, _ = self._embedding_availability()
         try:
             self._index.rebuild(account_id, embedding_available=available)
         except IndexWriteError:
@@ -784,32 +784,30 @@ class IngestionService:
             self._fail(account_id, document_id, "chunk", "分块写入失败，请检查数据目录。")
             return False
 
-        available, _, _ = self._embedding_availability(account_id)
-        vectors: list[list[float] | None]
+        available = self._embedding is not None
+        vectors: list[list[float] | None] = [None] * len(chunks)
         if available:
             try:
-                assert self._embedding is not None
-                embedded = self._embedding.embed(
+                embedded = self._embedding.embed(  # type: ignore[union-attr]
                     account_id, [chunk.content for chunk in chunks]
                 )
-            except EmbeddingError as exc:
-                # 凭据缺失等不可重试错误不消耗自动重试额度
-                self._fail(
-                    account_id, document_id, "embed", exc.message,
-                    permanent=not exc.retryable,
-                )
-                return False
-            vectors = list(embedded)
-        else:
-            vectors = [None] * len(chunks)
+                vectors = list(embedded)
+            except EmbeddingError:
+                # GQ-05：向量化调用失败 → 全文索引仍独立完成（关键词检索
+                # 诚实降级），不写空向量、不伪装向量就绪；能力恢复后由
+                # ensure_contract 检测向量覆盖不全触发全量重建补向量。
+                pass
+        # 索引合同按实际向量化结果启用：向量全缺时按纯全文合同写入，
+        # 恢复后重建补向量（保证 build_initial 的向量覆盖校验通过）。
+        vectorized = available and all(vector is not None for vector in vectors)
 
-        if not self._index_document(account_id, document_id, chunks, vectors, available):
+        if not self._index_document(account_id, document_id, chunks, vectors, vectorized):
             return False
 
         self._mark_ready(
             account_id, document_id, parsed, chunks,
-            vector_enabled=available,
-            vector_indexed=available,
+            vector_enabled=vectorized,
+            vector_indexed=vectorized,
         )
         return True
 
@@ -979,7 +977,7 @@ class IngestionService:
     def _maintain_account_index(self, account_id: str) -> None:
         """确保账户索引满足当前合同与向量能力（合同变化触发全量重建）。"""
         assert self._index is not None
-        available, _, _ = self._embedding_availability(account_id)
+        available, _ = self._embedding_availability()
         try:
             self._index.ensure_contract(account_id, embedding_available=available)
         except IndexWriteError:

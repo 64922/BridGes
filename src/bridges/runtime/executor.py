@@ -42,7 +42,6 @@ from bridges.contracts.ai import (
 )
 from bridges.credentials.global_credential import is_global_qwen_key_configured
 from bridges.credentials.matrix import IMAGE_MODEL_ID, VIDEO_MODEL_ID
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.credentials.store import EncryptedVolumeCredentialStore, OsCredentialStore
 from bridges.identity.service import IdentityService
 from bridges.image.service import ImageService
@@ -116,7 +115,14 @@ class BackgroundExecutor:
         return repository
 
     def _ensure_ingestion(self) -> IngestionService | None:
-        """惰性建立摄取服务；与 API 进程共享同一数据目录与探测状态。"""
+        """惰性建立摄取服务；与 API 进程共享同一数据目录与全局凭据。
+
+        GQ-01 启动硬门保证规范运行下 API 与 worker 使用同一全局百炼
+        凭据；GQ-05 起摄取/重建与 API 查询向量共用同一 Embedding 端口
+        构造（模型/区域/workspace/cassette 同一策略）。与 GQ-04 图片/
+        视频「缺凭据待机」不同：全文索引是本地能力，向量失败时文档按
+        关键词检索诚实降级继续处理，向量由能力恢复后的重建补齐。
+        """
         if self._ingestion is not None or self._idle_reason is not None:
             return self._ingestion
         repository = self._ensure_repository()
@@ -130,38 +136,23 @@ class BackgroundExecutor:
             )
             return None
         try:
-            data_dir = Path(resolve_database_path(database_url)).parent
-            state_store = build_state_store(
-                database_url, encryption_key=settings.secret_key
-            )
-            region = settings.qwen_region
-            workspace_id = settings.qwen_workspace_id
-            cassette_dir = settings.qwen_cassette_dir
-            record_mode = settings.qwen_record_cassettes
-            credential_store = (
-                EncryptedVolumeCredentialStore(data_dir)
-                if settings.credential_backend == "encrypted-volume"
-                else OsCredentialStore(data_dir=data_dir)
-            )
-            probe_service = CapabilityProbeService(
-                state_store=state_store,
-                region=region,
-                workspace_id=workspace_id,
-                cassette_dir=cassette_dir,
-                record_mode=record_mode,
+            # Issue 39 AC5 / GQ-04：cassette 录制禁令与 API 进程同一语义——
+            # production 强制禁止录制（私人提示或响应正文绝不落盘）。
+            record_mode = (
+                settings.qwen_record_cassettes
+                and settings.environment.lower() != "production"
             )
             embedding = QwenEmbeddingPort(
-                credential_store=credential_store,
-                region=region,
-                workspace_id=workspace_id,
-                cassette_dir=cassette_dir,
+                api_key=settings.qwen_api_key,
+                region=settings.qwen_region,
+                workspace_id=settings.qwen_workspace_id,
+                cassette_dir=settings.qwen_cassette_dir,
                 record_mode=record_mode,
             )
             assert self._database is not None
             self._ingestion = IngestionService(
                 database=self._database,
                 object_repository=repository,
-                probe_service=probe_service,
                 embedding=embedding,
                 index=VersionedIndex(self._database, embedding),
             )

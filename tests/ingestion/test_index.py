@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import pytest
-from conftest import make_ingestion, seed_accounts_with_probes, upload_text
+from conftest import make_ingestion, upload_text
 
 import bridges.ingestion.index as index_module
 from bridges.ingestion.embedding import DeterministicEmbeddingPort, EmbeddingError
@@ -186,16 +186,26 @@ def test_rebuild_failure_keeps_previous_version_serving(
 
 
 def test_embedding_recovery_rebuilds_to_add_vectors(storage) -> None:
-    service, embedding = make_ingestion(storage, embedding_available=False)
+    service, embedding = make_ingestion(storage, embedding_available=True)
     account_id, object_id = _seed_document(storage, service)
     index = service._index
     assert index is not None
     first_version = index.active_version(account_id)
     assert first_version is not None
-    assert int(first_version["vector_count"]) == 0
+    assert int(first_version["vector_count"]) == 1
 
-    # 向量能力恢复：ensure_contract 检测覆盖不全 → 重建补向量
-    seed_accounts_with_probes(service._probes, storage, available=True)
+    # 存量升级场景：旧版本向量覆盖不全（全无向量）时，向量能力恢复后
+    # ensure_contract 检测覆盖不全 → 重建补向量并原子切换（GQ-05：可用性
+    # 即全局端口已构造，直接以 embedding_available=True 驱动重建）。
+    version_id = str(first_version["version_id"])
+    storage["database"].connection.execute(
+        "DELETE FROM index_vectors WHERE version_id = ?", (version_id,)
+    )
+    storage["database"].connection.execute(
+        "UPDATE index_versions SET vector_count = 0 WHERE version_id = ?",
+        (version_id,),
+    )
+    embedding.embed_calls.clear()
     target = index.ensure_contract(account_id, embedding_available=True)
     assert target.version_row is not None
     assert int(target.version_row["vector_count"]) == 1

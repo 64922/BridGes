@@ -40817,7 +40817,7 @@
           "embedding_probed": {
             "type": "boolean",
             "title": "Embedding Probed",
-            "description": "是否完成 Embedding 能力探测。"
+            "description": "Embedding 可用性是否已确定（全局端口已构造，GQ-05 起不再有账户探测）。"
           },
           "embedding_available": {
             "type": "boolean",
@@ -40862,7 +40862,7 @@
           "embedding_available"
         ],
         "title": "IndexStatusProjection",
-        "description": "当前账户的索引整体状态（用于展示向量可用性与版本链）。"
+        "description": "当前账户的索引整体状态（用于展示向量可用性与版本链）。\n\nGQ-05 起向量可用性由运行时是否成功构造全局 Embedding 端口决定，\n不再依赖账户能力探测；``embedding_probed`` 保留字段位，语义为\n「Embedding 可用性已确定」（端口已构造即 True），与\n``embedding_available`` 取值一致。"
       },
       "IndexVersionProjection": {
         "properties": {

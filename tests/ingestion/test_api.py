@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
-from conftest import seed_probe_for_account
 from fastapi.testclient import TestClient
 
 from bridges.api.main import create_app
 from bridges.config import get_settings
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -70,40 +66,18 @@ def _upload(
     )
 
 
-def _worker_service(
-    app: Any, *, embedding_available: bool = True
-) -> tuple[IngestionService, CapabilityProbeService]:
+def _worker_service(app: Any) -> IngestionService:
     """构造与 API 进程共享同一数据库的 worker 侧摄取服务（确定性向量）。
 
-    返回 (服务, 探测服务)：探测状态按需播种，模拟 worker 的能力门。
+    GQ-05：不再播种账户探测状态——可用性即「已构造全局 Embedding 端口」。
     """
     database: BridgesDatabase = app.state.bridges_database
-    probe_service = CapabilityProbeService(state_store=None)
     embedding = DeterministicEmbeddingPort()
-    service = IngestionService(
+    return IngestionService(
         database=database,
         object_repository=app.state.object_repository,
-        probe_service=probe_service,
         embedding=embedding,
         index=VersionedIndex(database, embedding),
-    )
-    return service, probe_service
-
-
-def _seed_embedding_available(app: Any, account_id: str) -> None:
-    """在 API 进程的探测服务上标记 Embedding 可用（用于投影原因展示）。"""
-    probe_service: CapabilityProbeService = app.state.ingestion_service._probes  # type: ignore[attr-defined]
-    probe_service._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="embedding",
-            model_id="text-embedding-v4",
-            region="cn-beijing",
-            parameters={"dimensions": 1024},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-        ),
     )
 
 
@@ -111,7 +85,7 @@ def test_upload_enqueues_and_detail_shows_queued_then_ready(
     tmp_path: Path, monkeypatch: Any
 ) -> None:
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "ing")
+    _register(client, "ing")
     conversation_id = _create_conversation(client)
 
     uploaded = _upload(client, conversation_id, "课程笔记.txt", "第一段。\n\n第二段。".encode())
@@ -129,9 +103,7 @@ def test_upload_enqueues_and_detail_shows_queued_then_ready(
     assert body["chunk_count"] == 0
 
     # worker 侧处理一轮后，API 投影呈现 ready（同一数据库）
-    _seed_embedding_available(client.app, account["id"])
-    worker, worker_probes = _worker_service(client.app, embedding_available=True)
-    seed_probe_for_account(worker_probes, account["id"], available=True)
+    worker = _worker_service(client.app)
     summary = worker.process_pending()
     assert "处理 1 份文档" in summary
 
@@ -159,7 +131,7 @@ def test_detail_and_retry_for_failed_document(tmp_path: Path, monkeypatch: Any) 
     assert uploaded.status_code == 201, uploaded.text
     object_id = uploaded.json()["object_id"]
 
-    worker, _ = _worker_service(client.app)
+    worker = _worker_service(client.app)
     worker.process_pending()
 
     detail = client.get(
@@ -213,7 +185,9 @@ def test_index_status_endpoint(tmp_path: Path, monkeypatch: Any) -> None:
     body = status.json()
     assert body["active_version"] is None
     assert body["versions"] == []
-    assert "尚未探测" in (body["vector_unavailable_reason"] or "")
+    # GQ-05：新账户无需账户探测记录——全局 Embedding 端口已构造即可用。
+    assert body["embedding_available"] is True
+    assert body["vector_unavailable_reason"] is None
 
 
 def test_unsupported_type_shows_none_status(tmp_path: Path, monkeypatch: Any) -> None:
@@ -250,13 +224,12 @@ def test_index_status_shows_real_versions_after_worker_build(
 ) -> None:
     """API 进程的索引状态端点展示 worker 构建的真实版本链（非"未启用"）。"""
     client = _app(tmp_path, monkeypatch)
-    account = _register(client, "idxv")
+    _register(client, "idxv")
     conversation_id = _create_conversation(client)
     uploaded = _upload(client, conversation_id, "材料.txt", "索引状态测试。\n".encode())
     assert uploaded.status_code == 201, uploaded.text
 
-    worker, worker_probes = _worker_service(client.app, embedding_available=True)
-    seed_probe_for_account(worker_probes, account["id"], available=True)
+    worker = _worker_service(client.app)
     worker.process_pending()
 
     status = client.get("/chat/ingestion/index")

@@ -1046,11 +1046,32 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 conversation_repository=ConversationRepository(bridges_database),
             )
             # Issue 17: 文档摄取服务（API 进程只做入队/重试/投影，处理在后台
-            # 执行器进程）。探测快照复用同一 StateStore，读取不产生写竞争。
+            # 执行器进程）。GQ-05：查询向量与 worker 摄取/重建共用同一全局
+            # Embedding 端口；可用性由构造与调用结果决定，不再依赖账户探测。
+            embedding_port = QwenEmbeddingPort(
+                api_key=(settings.qwen_api_key if settings is not None else None),
+                region=(
+                    settings.qwen_region if settings is not None else "cn-beijing"
+                ),
+                workspace_id=(
+                    settings.qwen_workspace_id if settings is not None else None
+                ),
+                cassette_dir=(
+                    settings.qwen_cassette_dir if settings is not None else None
+                ),
+                # Issue 39 AC5 / GQ-04：生产环境强制禁止录制（与 QwenApiClient
+                # 一致），API 与 worker 同一 cassette 策略。
+                record_mode=(
+                    settings.qwen_record_cassettes
+                    and settings.environment.lower() != "production"
+                    if settings is not None
+                    else False
+                ),
+            )
             app.state.ingestion_service = IngestionService(
                 database=bridges_database,
                 object_repository=object_repository,
-                probe_service=CapabilityProbeService(state_store=state_store),
+                embedding=embedding_port,
             )
             # Issue 18: 全局本地知识库（材料不绑定对话，复用摄取状态机）。
             app.state.knowledge_base_service = KnowledgeBaseService(
@@ -1066,30 +1087,10 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 ConversationRepository(bridges_database),
             )
             # Issue 20: 分层本地检索（API 进程只读检索 + 写入检索记录）。查询
-            # 向量经账户级百炼 Key 调用固定 Embedding 模型；探测快照与摄取
-            # 服务共享同一 StateStore，读取不产生写竞争。
+            # 向量经唯一的全局百炼运行凭据调用固定 Embedding 模型（GQ-05）。
             app.state.retrieval_service = LayeredRetrievalService(
                 database=bridges_database,
-                embedding=QwenEmbeddingPort(
-                    credential_store=credential_store,
-                    region=(
-                        settings.qwen_region if settings is not None else "cn-beijing"
-                    ),
-                    workspace_id=(
-                        settings.qwen_workspace_id if settings is not None else None
-                    ),
-                    cassette_dir=(
-                        settings.qwen_cassette_dir if settings is not None else None
-                    ),
-                    # Issue 39 AC5：生产环境强制禁止录制（与 QwenApiClient 一致）
-                    record_mode=(
-                        settings.qwen_record_cassettes
-                        and settings.environment.lower() != "production"
-                        if settings is not None
-                        else False
-                    ),
-                ),
-                probe_service=CapabilityProbeService(state_store=state_store),
+                embedding=embedding_port,
                 # Issue 45：跨域读取经属主仓库构造注入（conversations/
                 # chat_attachments 属 chat 域、objects 属 storage 域），
                 # 检索服务不再直读非己表。

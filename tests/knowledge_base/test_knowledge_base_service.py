@@ -248,22 +248,21 @@ def test_account_isolation_for_all_operations(storage: dict[str, Any]) -> None:
     assert material.filename == "私有材料.txt"
 
 
-def test_vector_degraded_presentation(storage: dict[str, Any]) -> None:
-    """Embedding 探测不可用：全文就绪但向量降级，不伪装整体就绪。"""
-    knowledge_base, ingestion = make_knowledge_base(storage, embedding_available=False)
+def test_new_account_vectors_without_probes(storage: dict[str, Any]) -> None:
+    """GQ-05：新账户零账户 Key、零探测记录即可摄取并构建向量索引。"""
+    knowledge_base, ingestion = make_knowledge_base(storage)
     account = storage["account_a"]
-    projection, _ = knowledge_base.upload(account, "降级材料.txt", "降级呈现测试内容。".encode())
+    projection, _ = knowledge_base.upload(account, "就绪材料.txt", "向量就绪测试内容。".encode())
     ingestion.process_pending()
 
     material = knowledge_base.get_material(account, projection.object_id)
     assert material.status == DocumentIngestionStatus.READY
-    assert material.usable_for_chat is True  # 全文检索可用
-    assert material.embedding_available is False
-    assert material.vector_enabled is False
-    assert material.vector_indexed is False
-    assert material.vector_unavailable_reason is not None
-    assert "Embedding" in material.vector_unavailable_reason
-    assert material.index_version_id is not None  # 全文索引版本真实存在
+    assert material.usable_for_chat is True  # 全文与向量均可用
+    assert material.embedding_available is True
+    assert material.vector_enabled is True
+    assert material.vector_indexed is True
+    assert material.vector_unavailable_reason is None
+    assert material.index_version_id is not None  # 索引版本真实存在
 
 
 def test_rebuild_conflict_when_lease_acquired_between_check_and_purge(

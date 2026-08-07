@@ -46,3 +46,15 @@
 - [ ] 候选 7 完成（Issue 48）
 - [ ] 候选 8 + 小摩擦完成（Issue 49）
 - [ ] 提交 + 验收证据汇总
+
+## GQ-05：知识库向量化、摄取与检索只使用全局运行凭据（2026-08-08）
+
+来源：`.scratch/收尾/全局千问密钥整改-Issue计划.md` GQ-05（ready-for-agent）。
+
+- [x] T1 改造 QwenEmbeddingPort：全局 Secret 构造、删除账户凭据依赖与探测门函数 → verify: tests/ingestion 45 通过
+- [x] T2 服务层移除账户探测门（ingestion/retrieval service）→ verify: tests/ingestion tests/retrieval 全绿
+- [x] T3 组合根接线（api/main.py + runtime/executor.py 同构构造 + 生产录制禁令）→ verify: 相关集成测试全绿
+- [x] T4 测试夹具清理（conftest/kb_support/lp 等移除逐账户探测播种）→ verify: 五大测试目录全绿
+- [x] T5 新增多账户隔离回归（同一全局 Embedding 端口两账户互不可见）→ verify: 新测试绿
+- [x] T6 全量回归 + 安全披露 + ruff/mypy → verify: 2209 pytest 全绿，ruff/mypy 与基线一致
+- [ ] T7 双轴代码审查 + 提交 → verify: commit

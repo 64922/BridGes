@@ -94,9 +94,9 @@ function mediaTypeLabel(material: KnowledgeBaseMaterialProjection): string {
   return mediaType;
 }
 
-/** 向量降级：材料本身已就绪，但当前 Embedding 能力不可用。 */
+/** 向量降级：材料本身已就绪，但本文档向量未建成（GQ-05 后按文档级信号判断）。 */
 function isVectorDegraded(material: KnowledgeBaseMaterialProjection): boolean {
-  return material.status === "ready" && !material.embedding_available;
+  return material.status === "ready" && !material.vector_indexed;
 }
 
 // ---------------------------------------------------------------------------
@@ -119,11 +119,9 @@ function deriveStageStates(material: KnowledgeBaseMaterialProjection): StageStat
       upload: "done",
       parse: "done",
       fulltext: "done",
-      vector: material.vector_indexed
-        ? "done"
-        : material.embedding_available
-          ? "pending"
-          : "unavailable",
+      // GQ-05：就绪但向量缺失 = 向量化降级/不可用（不再以全局可用性
+      // 当作「处理中 pending」）。
+      vector: material.vector_indexed ? "done" : "unavailable",
     };
   }
   if (material.status === "error") {

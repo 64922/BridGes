@@ -1,9 +1,11 @@
-"""向量化端口：固定 Embedding 模型与确定性替身（Issue 17）。
+"""向量化端口：固定 Embedding 模型与确定性替身（Issue 17，GQ-05 迁移）。
 
 真实实现固定使用 ``text-embedding-v4``（ADR-0008 合同锁定）与 1024 维，
 写入前做 L2 规范化并逐条校验维度；任何维度不符都抛中文错误，绝不写空
-向量或降级模型。能力可用性由账户级探测快照把关：Embedding 未探测或
-不可用时，上游走"向量索引不可用"路径，全文索引仍独立完成。
+向量或降级模型。凭据来源是唯一的全局百炼运行凭据（GQ-01）：真实端口
+从全局 Secret 构造客户端，可用性由运行时是否成功构造端口以及实际调用
+结果决定——不再读取账户凭据或探测快照。调用失败时上游走"关键词检索
+诚实降级"路径，全文索引仍独立完成，绝不伪装向量就绪。
 """
 
 from __future__ import annotations
@@ -23,10 +25,7 @@ from bridges.ai.adapters import (
     TransientError,
 )
 from bridges.ai.qwen_client import CassetteStore, QwenApiClient
-from bridges.contracts.credentials import CapabilityProbeSummary, ProbeStatus
 from bridges.credentials.matrix import EMBEDDING_MODEL_ID
-from bridges.credentials.probes import CapabilityProbeService
-from bridges.credentials.store import CredentialStoreError, CredentialStorePort
 
 #: 合同锁定的向量维度（与固定矩阵参数一致）。
 EMBEDDING_DIMENSIONS = 1024
@@ -51,37 +50,40 @@ class EmbeddingPort(Protocol):
 
 
 class QwenEmbeddingPort:
-    """按账户百炼 Key 调用固定 Embedding 模型的真实实现。
+    """用全局百炼运行凭据调用固定 Embedding 模型的真实实现（GQ-05）。
 
-    每次调用按当前账户凭据构造独立客户端；Key 缺失、探测不可用由
-    调用方（摄取服务）把关，本端口不自行决定降级。
+    API 查询向量与 worker 摄取/重建共享同一端口构造（同一模型 ID、
+    区域、workspace 与 cassette 策略）；``api_key`` 为 None 时（仅
+    test 环境可能）调用直接给出指向服务运行配置的中文错误，由调用方
+    走关键词检索诚实降级，本端口不自行决定降级。
     """
 
     def __init__(
         self,
         *,
-        credential_store: CredentialStorePort,
+        api_key: SecretStr | None,
         region: str = "cn-beijing",
         workspace_id: str | None = None,
         cassette_dir: str | None = None,
         record_mode: bool = False,
     ) -> None:
-        self._credential_store = credential_store
+        self._api_key = api_key
         self._region = region
         self._workspace_id = workspace_id
         self._cassette_dir = cassette_dir
         self._record_mode = record_mode
 
     def embed(self, account_id: str, texts: list[str]) -> list[list[float]]:
+        # account_id 保留以维持端口签名稳定；全局凭据共享，账户不参与
+        # 客户端构造，账户隔离由调用方（摄取/检索）的 SQL 作用域承担。
         if not texts:
             return []
-        try:
-            api_key = self._credential_store.get(account_id)
-        except CredentialStoreError as exc:
-            raise EmbeddingError(f"向量化失败：凭据存储不可用（{exc}）。") from exc
-        if api_key is None:
-            raise EmbeddingError("向量化失败：当前账户尚未配置百炼 Key。", retryable=False)
-        client = self._build_client(api_key)
+        if self._api_key is None or not self._api_key.get_secret_value():
+            raise EmbeddingError(
+                "向量化失败：未配置全局百炼运行凭据，请检查启动服务的全局配置。",
+                retryable=False,
+            )
+        client = self._build_client(self._api_key)
         try:
             response = client.embeddings(
                 {
@@ -91,7 +93,9 @@ class QwenEmbeddingPort:
             )
         except AuthError as exc:
             raise EmbeddingError(
-                "向量化失败：凭据无效或没有该模型权限，请检查百炼 Key。", retryable=False
+                "向量化失败：全局百炼凭据无效或没有该模型权限，"
+                "请检查启动服务的全局百炼配置与权限。",
+                retryable=False,
             ) from exc
         except RegionError as exc:
             raise EmbeddingError("向量化失败：区域接入点不可达，请检查网络。") from exc
@@ -180,35 +184,5 @@ def _adapter_reason(exc: AdapterError) -> str:
     code = getattr(exc, "code", "") or ""
     message = getattr(exc, "message", "") or ""
     if "authentication" in code or "permission" in code:
-        return "凭据无效或没有该模型权限，请检查百炼 Key"
+        return "全局百炼凭据无效或没有该模型权限，请检查启动服务的全局配置与权限"
     return message.strip() or "接口调用异常"
-
-
-def embedding_availability(
-    probe_service: CapabilityProbeService, account_id: str
-) -> tuple[bool, str | None, bool]:
-    """按账户探测快照判定 Embedding 是否可用；返回 (可用, 中文原因, 是否已探测)。
-
-    未探测、探测中、不可用都视为不可用并给出可操作原因——绝不以
-    Stub 或空向量标记成功。
-    """
-    snapshot = probe_service.status_snapshot(account_id)
-    summary = next(
-        (
-            item
-            for item in snapshot
-            if isinstance(item, CapabilityProbeSummary)
-            and item.capability_id == "embedding"
-        ),
-        None,
-    )
-    if summary is None:
-        return False, "尚未完成 Embedding 能力探测。", False
-    if summary.status == ProbeStatus.AVAILABLE:
-        return True, None, True
-    if summary.status == ProbeStatus.PROBING:
-        return False, "Embedding 能力正在探测中。", True
-    if summary.status == ProbeStatus.UNAVAILABLE:
-        reason = summary.message or "Embedding 能力不可用。"
-        return False, f"Embedding 能力不可用：{reason}", True
-    return False, summary.message or "Embedding 能力尚未探测。", True

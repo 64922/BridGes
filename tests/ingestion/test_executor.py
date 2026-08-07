@@ -41,7 +41,10 @@ def test_worker_tick_processes_queued_documents_and_cleans(tmp_path: Path) -> No
     )
 
     executor = BackgroundExecutor(settings)
-    # 入队由 API 上传路径触发；此处直接经执行器服务入队后跑一轮 worker
+    # 入队由 API 上传路径触发；此处直接经执行器服务入队后跑一轮 worker。
+    # GQ-05：worker 与 API 同一全局 Embedding 端口构造；测试环境未配置
+    # 全局 Key 时向量化如实失败 → 文档按关键词检索诚实降级（全文索引
+    # 仍独立完成，不写空向量、不伪装向量就绪）。
     executor._ensure_ingestion()  # type: ignore[attr-defined]
     executor._ingestion.enqueue(account_id, object_id, "conversation-1")  # type: ignore[attr-defined]
     summary = executor.run_tick()
@@ -49,14 +52,17 @@ def test_worker_tick_processes_queued_documents_and_cleans(tmp_path: Path) -> No
     assert "处理 1 份文档" in summary
 
     row = database.connection.execute(
-        "SELECT status FROM document_records WHERE account_id = ? AND object_id = ?",
+        "SELECT status, vector_enabled, vector_indexed FROM document_records"
+        " WHERE account_id = ? AND object_id = ?",
         (account_id, object_id),
     ).fetchone()
     assert row is not None and str(row["status"]) == "ready"
+    assert int(row["vector_enabled"]) == 0
+    assert int(row["vector_indexed"]) == 0
     fts = database.connection.execute(
         "SELECT count(*) AS count FROM fts_chunks WHERE account_id = ?", (account_id,)
     ).fetchone()
-    assert int(fts["count"]) == 1
+    assert int(fts["count"]) == 1  # 全文索引独立完成，文档可关键词检索
     # 对象清理照常执行
     assert "清理完成 0 个待清理对象" in summary
     executor._database.close()  # type: ignore[attr-defined]
@@ -102,8 +108,11 @@ def test_worker_tick_recovers_after_restart(tmp_path: Path) -> None:
     summary = second.run_tick()
     assert "处理 1 份文档" in summary
     row = database.connection.execute(
-        "SELECT status FROM document_records WHERE object_id = ?", (object_id,)
+        "SELECT status FROM document_records WHERE object_id = ?",
+        (object_id,),
     ).fetchone()
+    # GQ-05：无全局 Key 的测试环境向量化如实失败为关键词降级，租约恢复
+    # 链路本身照常完成（领取 → 处理 → 收敛，不再重复领取）。
     assert row is not None and str(row["status"]) == "ready"
     second._database.close()  # type: ignore[attr-defined]
 

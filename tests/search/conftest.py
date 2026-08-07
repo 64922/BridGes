@@ -17,7 +17,6 @@ import pytest
 from pydantic import SecretStr
 
 from bridges.chat.repository import ConversationRepository
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -61,24 +60,17 @@ def storage(tmp_path: Path) -> dict[str, Any]:
 
 def make_search_env(storage: dict[str, Any]) -> dict[str, Any]:
     """完整搜索环境：摄取服务（确定性 Embedding）+ 统一搜索服务。"""
-    from tests.ingestion.conftest import seed_probe_for_account
-
     database = storage["database"]
     repository = storage["repository"]
-    probe_service = CapabilityProbeService(state_store=None)
     embedding = DeterministicEmbeddingPort()
-    for account_id in (storage["account_a"], storage["account_b"]):
-        seed_probe_for_account(probe_service, account_id, available=True)
     ingestion = IngestionService(
         database=database,
         object_repository=repository,
-        probe_service=probe_service,
         embedding=embedding,
         index=VersionedIndex(database, embedding),
     )
     return {
         **storage,
-        "probe_service": probe_service,
         "ingestion": ingestion,
         "search": SearchService(database),
         "conversations": ConversationRepository(database),

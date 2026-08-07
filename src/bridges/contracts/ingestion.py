@@ -89,9 +89,17 @@ class IndexVersionProjection(BaseModel):
 
 
 class IndexStatusProjection(BaseModel):
-    """当前账户的索引整体状态（用于展示向量可用性与版本链）。"""
+    """当前账户的索引整体状态（用于展示向量可用性与版本链）。
 
-    embedding_probed: bool = Field(description="是否完成 Embedding 能力探测。")
+    GQ-05 起向量可用性由运行时是否成功构造全局 Embedding 端口决定，
+    不再依赖账户能力探测；``embedding_probed`` 保留字段位，语义为
+    「Embedding 可用性已确定」（端口已构造即 True），与
+    ``embedding_available`` 取值一致。
+    """
+
+    embedding_probed: bool = Field(
+        description="Embedding 可用性是否已确定（全局端口已构造，GQ-05 起不再有账户探测）。"
+    )
     embedding_available: bool = Field(description="Embedding 能力当前是否可用。")
     vector_unavailable_reason: str | None = Field(
         default=None, description="向量索引不可用时的中文原因。"

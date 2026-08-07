@@ -10,7 +10,6 @@ from conftest import (
 )
 
 from bridges.contracts.ingestion import DocumentIngestionStatus
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort, EmbeddingError
 from bridges.ingestion.service import IngestionService
 
@@ -53,28 +52,31 @@ def test_queued_document_becomes_ready_with_structure(storage) -> None:
     assert row is not None and int(row["count"]) == EXPECTED_CHUNKS
 
 
-def test_embedding_unavailable_keeps_fulltext_and_reports_reason(storage) -> None:
+def test_embedding_unavailable_reports_reason_without_faking(storage) -> None:
+    """未构造全局 Embedding 端口时如实报告不可用，不伪装向量就绪（GQ-05）。
+
+    Embedding 可用性由运行时是否构造全局端口决定（不再是账户探测门）：
+    缺少端口时 worker 待机不处理，索引状态投影给出中文原因；端口已构造
+    但调用失败（认证/限流等）的诚实降级由失败重试用例覆盖。
+    """
     service, embedding = make_ingestion(storage, embedding_available=False)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
 
     service.enqueue(account_id, object_id, "conversation-1")
-    service.process_pending()
-    ready = _ready_projection(service, account_id, object_id)
-    assert ready.status == DocumentIngestionStatus.READY
-    assert ready.vector_enabled is False
-    assert ready.vector_indexed is False
-    assert ready.vector_unavailable_reason is not None
-    assert "Embedding" in ready.vector_unavailable_reason
+    summary = service.process_pending()
+    assert "未启用" in summary  # 缺少向量化组件：worker 待机，不假成功
+    projection = _ready_projection(service, account_id, object_id)
+    assert projection.status == DocumentIngestionStatus.QUEUED
+    status = service.index_status(account_id)
+    assert status.embedding_available is False
+    assert status.vector_unavailable_reason is not None
+    assert "Embedding" in status.vector_unavailable_reason
     assert not embedding.embed_calls  # 不得以 Stub/空向量标记成功
     row = storage["database"].connection.execute(
         "SELECT count(*) AS count FROM index_vectors", ()
     ).fetchone()
     assert int(row["count"]) == 0
-    row = storage["database"].connection.execute(
-        "SELECT count(*) AS count FROM fts_chunks WHERE account_id = ?", (account_id,)
-    ).fetchone()
-    assert int(row["count"]) == EXPECTED_CHUNKS  # 全文解析独立完成
 
 
 def test_parse_failure_keeps_object_and_chinese_reason(storage) -> None:
@@ -110,28 +112,40 @@ class _FlakyEmbeddingPort(DeterministicEmbeddingPort):
         return super().embed(account_id, texts)
 
 
-def test_embed_failure_retry_resumes_without_duplicate_chunks(storage) -> None:
-    probe_service = CapabilityProbeService(state_store=None)
-    flaky = _FlakyEmbeddingPort(failures=1)
-    service, _ = make_ingestion(
-        storage, embedding_available=True, probe_service=probe_service, embedding=flaky
-    )
+def test_embed_failure_degrades_to_keyword_and_recovers(storage) -> None:
+    """GQ-05：向量化调用失败 → 全文索引仍独立完成（关键词检索降级）。
+
+    文档保持 ready 可检索（不写空向量、不伪装向量就绪）；能力恢复后
+    （如重启后全局 Key 生效）索引维护检测向量覆盖不全触发全量重建
+    补向量，且不产生重复分块。
+    """
+    failing = _FlakyEmbeddingPort(failures=999)
+    service, _ = make_ingestion(storage, embedding_available=True, embedding=failing)
     account_id = storage["account_a"]
     object_id = upload_text(storage, account_id, "材料.txt", TEXT_CONTENT.encode("utf-8"))
 
     service.enqueue(account_id, object_id, "conversation-1")
     service.process_pending()
-    failed = _ready_projection(service, account_id, object_id)
-    assert failed.status == DocumentIngestionStatus.ERROR
-    assert failed.failure_stage == "embed"
-    assert "向量化失败" in (failed.failure_reason or "")
+    degraded = _ready_projection(service, account_id, object_id)
+    assert degraded.status == DocumentIngestionStatus.READY
+    assert degraded.vector_enabled is False
+    assert degraded.vector_indexed is False
+    # 全文索引已独立完成，向量行未写（不写空向量）
+    fts = storage["database"].connection.execute(
+        "SELECT count(*) AS count FROM fts_chunks WHERE account_id = ?",
+        (account_id,),
+    ).fetchone()
+    assert int(fts["count"]) == EXPECTED_CHUNKS
+    vectors = storage["database"].connection.execute(
+        "SELECT count(*) AS count FROM index_vectors", ()
+    ).fetchone()
+    assert int(vectors["count"]) == 0
 
-    service.mark_retry(account_id, object_id)
-    retried = _ready_projection(service, account_id, object_id)
-    assert retried.status == DocumentIngestionStatus.QUEUED
-
-    service.process_pending()
-    ready = _ready_projection(service, account_id, object_id)
+    # 能力恢复：同一数据目录的新 worker（确定性端口）检测向量覆盖不全
+    # → 全量重建补齐并原子切换（模拟重启后全局 Key 生效）。
+    recovered, _ = make_ingestion(storage, embedding_available=True)
+    recovered.process_pending()
+    ready = _ready_projection(recovered, account_id, object_id)
     assert ready.status == DocumentIngestionStatus.READY
     assert ready.vector_indexed is True
 

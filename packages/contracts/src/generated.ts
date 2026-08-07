@@ -545,12 +545,13 @@ export interface paths {
          * @description 发送用户消息并流式接收真实 Qwen 回答（SSE）。
          *
          *     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话不检查
-         *     账户凭据或探测快照（GQ-02）：新账户无需任何个人 Qwen 配置即可发送，
-         *     模型调用由已注册的全局模型网关执行。发送前可关闭本轮全局知识库层
-         *     （``use_knowledge_base=false``）：关闭后本轮检索记录与引用均不包含
-         *     知识库候选；也可关闭本轮画像使用（``use_profile=false``，Issue 27）：
-         *     关闭后模型请求、审计与上下文说明均不含任何画像切片。
+         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话与
+         *     图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）：新账户
+         *     无需任何个人 Qwen 配置即可发送，模型调用由已注册的全局模型网关
+         *     执行。发送前可关闭本轮全局知识库层（``use_knowledge_base=false``）：
+         *     关闭后本轮检索记录与引用均不包含知识库候选；也可关闭本轮画像使用
+         *     （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
+         *     说明均不含任何画像切片。
          */
         post: operations["send_message_chat_conversations__conversation_id__messages_post"];
         delete?: never;
@@ -4934,8 +4935,10 @@ export interface paths {
          *
          *     音频通过请求体原样上传（Content-Type 为音频 MIME，时长经
          *     ``x-bridges-audio-duration`` 头声明）；只接受音频 MIME，空音频、
-         *     超限音频与不支持格式在调用前确定性拒绝。转写失败返回 failed
-         *     投影（含稳定错误码与中文原因），不产生用户消息、不落盘音频。
+         *     超限音频与不支持格式在调用前确定性拒绝。不检查账户凭据或探测
+         *     快照（GQ-03）：新账户无需任何个人 Qwen 配置即可提交。转写失败
+         *     返回 failed 投影（含稳定错误码与中文原因），不产生用户消息、
+         *     不落盘音频。
          */
         post: operations["transcribe_dictation_chat_conversations__conversation_id__dictation_post"];
         delete?: never;
@@ -4962,8 +4965,9 @@ export interface paths {
          * @description 为一条已完成的助手回答生成朗读（固定 TTS 快照）。
          *
          *     同一条回答的受控重试复用同一消息正文重新合成；成功后旧音频先
-         *     清理再写新对象。生成失败返回 failed 投影与重试语义，回答正文
-         *     不受影响。
+         *     清理再写新对象。不检查账户凭据或探测快照（GQ-03）：新账户无需
+         *     任何个人 Qwen 配置即可生成朗读。生成失败返回 failed 投影与重试
+         *     语义，回答正文不受影响。
          */
         post: operations["generate_read_aloud_chat_conversations__conversation_id__messages__message_id__read_aloud_post"];
         /**
@@ -5056,7 +5060,8 @@ export interface paths {
          * Retry Image Task
          * @description 重试失败任务：同输入（提示/来源不变）重新入队，固定同一快照。
          *
-         *     重试需要图片能力仍可用（能力不可用时入口明确拒绝并说明原因）。
+         *     不检查账户凭据或探测快照（GQ-04）：新账户无需任何个人 Qwen 配置
+         *     即可重试，云端调用由已注册的全局模型网关固定适配器执行。
          */
         post: operations["retry_image_task_chat_conversations__conversation_id__image_tasks__task_id__retry_post"];
         delete?: never;
@@ -5195,7 +5200,8 @@ export interface paths {
          * Retry Video Task
          * @description 重试失败任务：同输入（提示不变）重新入队，固定同一快照。
          *
-         *     重试需要视频能力仍可用（能力不可用时入口明确拒绝并说明原因）。
+         *     不检查账户凭据或探测快照（GQ-04）：新账户无需任何个人 Qwen 配置
+         *     即可重试，云端调用由已注册的全局模型网关固定适配器执行。
          */
         post: operations["retry_video_task_chat_conversations__conversation_id__video_tasks__task_id__retry_post"];
         delete?: never;
@@ -13597,11 +13603,16 @@ export interface components {
         /**
          * IndexStatusProjection
          * @description 当前账户的索引整体状态（用于展示向量可用性与版本链）。
+         *
+         *     GQ-05 起向量可用性由运行时是否成功构造全局 Embedding 端口决定，
+         *     不再依赖账户能力探测；``embedding_probed`` 保留字段位，语义为
+         *     「Embedding 可用性已确定」（端口已构造即 True），与
+         *     ``embedding_available`` 取值一致。
          */
         IndexStatusProjection: {
             /**
              * Embedding Probed
-             * @description 是否完成 Embedding 能力探测。
+             * @description Embedding 可用性是否已确定（全局端口已构造，GQ-05 起不再有账户探测）。
              */
             embedding_probed: boolean;
             /**

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from typing import Any
 
 from bridges.chat import ConversationRepository
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
 from bridges.contracts.ingestion import DocumentIngestionStatus
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -21,25 +18,10 @@ def _make_services(
     """构造学习项目服务 + 带 worker 组件的摄取服务（确定性向量）。"""
     database = storage["database"]
     repository = storage["repository"]
-    probe_service = CapabilityProbeService(state_store=None)
-    for account_id in (storage["account_a"], storage["account_b"]):
-        probe_service._put_record(
-            account_id,
-            ProbeRecord(
-                probe_id=f"probe-{account_id}",
-                capability_id="embedding",
-                model_id="text-embedding-v4",
-                region="cn-beijing",
-                parameters={"dimensions": 1024},
-                status=ProbeStatus.AVAILABLE,
-                probed_at=datetime.now(UTC),
-            ),
-        )
     embedding = DeterministicEmbeddingPort()
     ingestion = IngestionService(
         database=database,
         object_repository=repository,
-        probe_service=probe_service,
         embedding=embedding,
         index=VersionedIndex(database, embedding),
     )

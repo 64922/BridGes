@@ -1,8 +1,9 @@
-"""Issue 20：分层本地检索测试基建。
+"""Issue 20：分层本地检索测试基建（GQ-05 迁移）。
 
 构造临时数据目录上的权威数据库 + 加密对象库，经真实摄取状态机把材料
-写入三层作用域（聊天附件 / 项目文件 / 知识库），并挂载只读检索服务
-（确定性 Embedding + 账户级探测）。
+写入三层作用域（聊天附件 / 项目文件 / 知识库），并挂载只读检索服务。
+Embedding 使用全局确定性端口（GQ-05：不再播种账户探测状态，可用性
+即端口已构造）。
 """
 
 from __future__ import annotations
@@ -16,7 +17,6 @@ import pytest
 from pydantic import SecretStr
 
 from bridges.chat.repository import ConversationRepository
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -58,39 +58,24 @@ def storage(tmp_path: Path) -> dict[str, Any]:
     return make_storage(tmp_path)
 
 
-def _probe_available(
-    probe_service: CapabilityProbeService, account_id: str
-) -> None:
-    """为账户写入 Embedding 可用探测状态（供 availability 门使用）。"""
-    from tests.ingestion.conftest import seed_probe_for_account
-
-    seed_probe_for_account(probe_service, account_id, available=True)
-
-
 def make_retrieval_env(storage: dict[str, Any]) -> dict[str, Any]:
     """完整检索环境：摄取服务（确定性 Embedding）+ 检索服务 + 对话仓库。"""
     database = storage["database"]
     repository = storage["repository"]
-    probe_service = CapabilityProbeService(state_store=None)
     embedding = DeterministicEmbeddingPort()
-    for account_id in (storage["account_a"], storage["account_b"]):
-        _probe_available(probe_service, account_id)
     ingestion = IngestionService(
         database=database,
         object_repository=repository,
-        probe_service=probe_service,
         embedding=embedding,
         index=VersionedIndex(database, embedding),
     )
     retrieval = LayeredRetrievalService(
         database=database,
         embedding=embedding,
-        probe_service=probe_service,
         object_repository=repository,
     )
     return {
         **storage,
-        "probe_service": probe_service,
         "embedding": embedding,
         "ingestion": ingestion,
         "retrieval": retrieval,

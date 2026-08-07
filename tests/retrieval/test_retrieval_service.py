@@ -18,16 +18,31 @@ from bridges.contracts.retrieval import (
     RetrievalSourceLayer,
     RetrievalSufficiency,
 )
+from bridges.ingestion.embedding import EmbeddingError
 from bridges.ingestion.index import VersionedIndex
-from bridges.retrieval.service import RetrievalError
+from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 from bridges.storage.database import BridgesDatabase
-from tests.ingestion.conftest import seed_probe_for_account
 from tests.retrieval.conftest import (
     add_material,
     add_user_message,
     seed_conversation,
     seed_project,
 )
+
+
+class _KeywordOnlyEmbeddingPort:
+    """查询向量化必然失败的替身（GQ-05 诚实降级路径）。
+
+    替代原「账户探测不可用」门：向量调用失败时检索如实回退关键词检索，
+    不伪装向量就绪。
+    """
+
+    def embed(self, account_id: str, texts: list[str]) -> list[list[float]]:
+        raise EmbeddingError(
+            "向量化失败：全局百炼凭据无效或没有该模型权限，"
+            "请检查启动服务的全局百炼配置与权限。",
+            retryable=False,
+        )
 
 
 def _run(
@@ -39,8 +54,10 @@ def _run(
     *,
     user_message_id: str | None = None,
     use_knowledge_base: bool = True,
+    retrieval: LayeredRetrievalService | None = None,
 ):
-    return env["retrieval"].run_round(
+    service = retrieval if retrieval is not None else env["retrieval"]
+    return service.run_round(
         account_id,
         conversation_id,
         assistant_message_id,
@@ -202,6 +219,49 @@ def test_cross_account_same_content_is_isolated(env: dict[str, Any]) -> None:
     assert excinfo.value.code == "citation_not_found"
 
 
+def test_shared_global_embedding_port_keeps_accounts_isolated(
+    env: dict[str, Any],
+) -> None:
+    """GQ-05 多账户回归：同一全局 Embedding 端口为两账户建索引，查询互不可见。
+
+    全局凭据共享绝不演变为共享知识库：向量行按账户写入、候选/引用严格
+    作用域过滤；同一端口实例被摄取与检索共用（与生产组合根同构）。
+    """
+    account_a = env["account_a"]
+    account_b = env["account_b"]
+    conversation_a = seed_conversation(env, account_a)
+    conversation_b = seed_conversation(env, account_b)
+    object_a = add_material(
+        env, account_a, "甲的量子材料.txt", "量子力学波函数坍缩与叠加态。",
+        layer="knowledge_base",
+    )
+    object_b = add_material(
+        env, account_b, "乙的热力材料.txt", "热力学第二定律熵增原理。",
+        layer="knowledge_base",
+    )
+    # 同一全局端口被摄取（两账户）与检索共用：单实例、单模型合同
+    assert env["ingestion"]._embedding is env["embedding"]  # type: ignore[attr-defined]
+    assert env["retrieval"]._embedding is env["embedding"]  # type: ignore[attr-defined]
+
+    rows = env["database"].connection.execute(
+        "SELECT account_id, COUNT(*) AS count FROM index_vectors"
+        " GROUP BY account_id"
+    ).fetchall()
+    assert sorted((str(r["account_id"]), int(r["count"])) for r in rows) == sorted(
+        [(account_a, 1), (account_b, 1)]
+    )  # 向量行严格按账户归属：每账户各一行
+
+    round_a = _run(env, account_a, conversation_a, "assistant-a", "量子力学")
+    assert round_a is not None
+    assert [c.object_id for c in round_a.citations] == [object_a]
+    assert all(c.filename.startswith("甲的") for c in round_a.citations)
+
+    round_b = _run(env, account_b, conversation_b, "assistant-b", "热力学")
+    assert round_b is not None
+    assert [c.object_id for c in round_b.citations] == [object_b]
+    assert all(c.filename.startswith("乙的") for c in round_b.citations)
+
+
 # ---------------------------------------------------------------------------
 # 充足性信号
 # ---------------------------------------------------------------------------
@@ -211,14 +271,22 @@ def test_no_hits_is_structured_not_silent_success(env: dict[str, Any]) -> None:
     account = env["account_a"]
     conversation_id = seed_conversation(env, account)
     add_material(env, account, "材料.txt", "量子力学波函数坍缩。", layer="knowledge_base")
-    # 关闭向量检索（探测不可用）：关键词无命中时即结构化 no_hits，
-    # 不以空候选表示成功（关键词路径是确定性判定）。
-    seed_probe_for_account(env["probe_service"], account, available=False)
-    round_ = _run(env, account, conversation_id, "assistant-1", "完全无关的问题内容")
+    # GQ-05：查询向量化调用失败（无全局 Key/权限等）→ 诚实回退关键词
+    # 检索；关键词无命中时即结构化 no_hits，不以空候选表示成功。
+    keyword_only = LayeredRetrievalService(
+        database=env["database"],
+        embedding=_KeywordOnlyEmbeddingPort(),
+        object_repository=env["repository"],
+    )
+    round_ = _run(
+        env, account, conversation_id, "assistant-1", "完全无关的问题内容",
+        retrieval=keyword_only,
+    )
     assert round_ is not None
     assert round_.sufficiency == RetrievalSufficiency.NO_HITS
     assert round_.citations == []
     assert "没有找到" in (round_.note or "")
+    assert "关键词检索" in (round_.note or "")
 
 
 def test_conflict_signal_when_keyword_and_vector_disagree(env: dict[str, Any]) -> None:
@@ -257,9 +325,16 @@ def test_sufficient_coverage(env: dict[str, Any]) -> None:
             f"热力学第二定律的第 {index} 条详细阐述内容。",
             layer="knowledge_base",
         )
-    # 关闭向量检索（探测不可用）：纯关键词路径无冲突可能，覆盖达标即充足
-    seed_probe_for_account(env["probe_service"], account, available=False)
-    round_ = _run(env, account, conversation_id, "assistant-1", "热力学第二定律")
+    # GQ-05：向量化调用失败 → 纯关键词路径无冲突可能，覆盖达标即充足
+    keyword_only = LayeredRetrievalService(
+        database=env["database"],
+        embedding=_KeywordOnlyEmbeddingPort(),
+        object_repository=env["repository"],
+    )
+    round_ = _run(
+        env, account, conversation_id, "assistant-1", "热力学第二定律",
+        retrieval=keyword_only,
+    )
     assert round_ is not None
     assert round_.sufficiency == RetrievalSufficiency.SUFFICIENT
     assert len(round_.citations) >= 3

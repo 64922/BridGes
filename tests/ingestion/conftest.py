@@ -1,16 +1,18 @@
-"""Issue 17：文档摄取与版本化索引测试基建。"""
+"""Issue 17：文档摄取与版本化索引测试基建（GQ-05 迁移）。
+
+Embedding 可用性不再由账户探测快照把关（GQ-05）：构造了全局确定性
+Embedding 端口即视为可用；``embedding_available=False`` 时服务不持有
+端口（运行时未构造全局能力），走关键词检索诚实降级路径。
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from pydantic import SecretStr
 
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -45,55 +47,26 @@ def storage(tmp_path: Path) -> dict[str, Any]:
     }
 
 
-def seed_probe_for_account(
-    probe_service: CapabilityProbeService, account_id: str, *, available: bool
-) -> None:
-    """为指定账户写入 Embedding 探测状态（供 availability 门使用）。"""
-    probe_service._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="embedding",
-            model_id="text-embedding-v4",
-            region="cn-beijing",
-            parameters={"dimensions": 1024},
-            status=ProbeStatus.AVAILABLE if available else ProbeStatus.UNAVAILABLE,
-            probed_at=datetime.now(UTC),
-            error_message=None if available else "探测失败。",
-        ),
-    )
-
-
-def seed_accounts_with_probes(
-    probe_service: CapabilityProbeService, storage: dict[str, Any], *, available: bool
-) -> None:
-    """为测试账户全部写入 Embedding 探测状态。"""
-    seed_probe_for_account(probe_service, storage["account_a"], available=available)
-    seed_probe_for_account(probe_service, storage["account_b"], available=available)
-
-
 def make_ingestion(
     storage: dict[str, Any],
     *,
     embedding_available: bool = True,
-    probe_service: CapabilityProbeService | None = None,
     embedding: DeterministicEmbeddingPort | None = None,
     dimensions: int = 1024,
 ) -> tuple[IngestionService, DeterministicEmbeddingPort]:
-    """构造摄取服务；探测状态按账户写入与 availability 一致的记录。"""
+    """构造摄取服务；``embedding_available=False`` 时不注入 Embedding 端口。
+
+    索引写组件始终以确定性端口构造（不可用时不会被调用，仅全文索引）。
+    """
     database = storage["database"]
     repository = storage["repository"]
-    if probe_service is None:
-        probe_service = CapabilityProbeService(state_store=None)
-    seed_accounts_with_probes(probe_service, storage, available=embedding_available)
     if embedding is None:
         embedding = DeterministicEmbeddingPort(dimensions=dimensions)
     index = VersionedIndex(database, embedding)
     service = IngestionService(
         database=database,
         object_repository=repository,
-        probe_service=probe_service,
-        embedding=embedding,
+        embedding=embedding if embedding_available else None,
         index=index,
     )
     return service, embedding

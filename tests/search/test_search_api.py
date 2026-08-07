@@ -16,7 +16,6 @@ from fastapi.testclient import TestClient
 from bridges.api.main import create_app
 from bridges.chat.repository import ConversationRepository
 from bridges.config import get_settings
-from bridges.credentials.probes import CapabilityProbeService
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
@@ -40,16 +39,13 @@ def api_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     app = create_app()
     database = app.state.bridges_database
     repository = app.state.object_repository
-    probe_service = CapabilityProbeService(state_store=None)
     embedding = DeterministicEmbeddingPort()
     env: dict[str, Any] = {
         "database": database,
         "repository": repository,
-        "probe_service": probe_service,
         "ingestion": IngestionService(
             database=database,
             object_repository=repository,
-            probe_service=probe_service,
             embedding=embedding,
             index=VersionedIndex(database, embedding),
         ),
@@ -61,11 +57,6 @@ def api_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     client_b = TestClient(app)
     account_a = _register(client_a, "搜索甲", "10101010@qq.com")
     account_b = _register(client_b, "搜索乙", "20202020@qq.com")
-    # 探测状态按真实账户补齐（注册后才有稳定 account_id）。
-    from tests.ingestion.conftest import seed_probe_for_account
-
-    seed_probe_for_account(probe_service, account_a, available=True)
-    seed_probe_for_account(probe_service, account_b, available=True)
     return {
         **env,
         "app": app,

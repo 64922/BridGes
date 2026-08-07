@@ -11,7 +11,6 @@ from lp_support import (
     create_conversation,
     create_project,
     insert_message,
-    make_capability_ready,
     register_account,
     upload_project_file,
 )
@@ -216,8 +215,7 @@ def test_move_conversation_between_projects_and_detach(
 def test_move_preserves_messages_mode_events_and_attachments(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = register_account(client, "1")
-    make_capability_ready(sqlite_app, account["id"])
+    register_account(client, "1")
     project_a = create_project(client, "项目甲")
     project_b = create_project(client, "项目乙")
     conversation_id = create_conversation(client, project_id=project_a["project_id"])
@@ -305,8 +303,7 @@ def test_delete_keep_detaches_conversations_and_removes_files(
 def test_delete_contents_delete_removes_everything(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = register_account(client, "1")
-    make_capability_ready(sqlite_app, account["id"])
+    register_account(client, "1")
     project = create_project(client)
     project_id = project["project_id"]
     conversation_id = create_conversation(client, project_id=project_id)

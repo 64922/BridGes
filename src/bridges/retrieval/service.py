@@ -5,7 +5,9 @@
 生成开始前，结果固化为检索轮次与引用（展示数据不随索引重建漂移）；
 点击引用时按当前对象状态实时校验授权，对象已删除或权限变化时返回
 安全中文状态。用户发送前关闭全局知识库时，本轮不查询、不记录、不
-引用该层任何候选。
+引用该层任何候选。查询向量凭据来源是唯一的全局百炼运行凭据（GQ-05）：
+可用性由运行时是否成功构造全局 Embedding 端口决定，不再读取账户
+凭据或探测快照；向量调用失败时本轮诚实回退到关键词检索并注明原因。
 """
 
 from __future__ import annotations
@@ -28,8 +30,7 @@ from bridges.contracts.retrieval import (
     RetrievalSourceLayer,
     RetrievalSufficiency,
 )
-from bridges.credentials.probes import CapabilityProbeService
-from bridges.ingestion.embedding import EmbeddingError, EmbeddingPort, embedding_availability
+from bridges.ingestion.embedding import EmbeddingError, EmbeddingPort
 from bridges.retrieval.repository import RetrievalRepository
 from bridges.retrieval.search import (
     LAYER_QUOTAS,
@@ -84,7 +85,6 @@ class LayeredRetrievalService:
         *,
         database: BridgesDatabase,
         embedding: EmbeddingPort | None = None,
-        probe_service: CapabilityProbeService | None = None,
         repository: RetrievalRepository | None = None,
         conversation_repository: ConversationRepository | None = None,
         attachment_repository: AttachmentRepository | None = None,
@@ -92,7 +92,6 @@ class LayeredRetrievalService:
     ) -> None:
         self._database = database
         self._embedding = embedding
-        self._probes = probe_service
         self._repository = repository or RetrievalRepository(database)
         # Issue 45：跨域读取经属主仓库注入——conversations（chat 域）、
         # chat_attachments（chat 域）可缺省构造；objects 属主仓库需要
@@ -191,13 +190,13 @@ class LayeredRetrievalService:
         vector_note: str | None = None
         query_vector: list[float] | None = None
         if self._embedding is not None:
-            available, _, _ = self._embedding_availability(account_id)
-            if available:
-                try:
-                    embedded = self._embedding.embed(account_id, [cleaned_query])
-                    query_vector = list(embedded[0]) if embedded else None
-                except EmbeddingError:
-                    vector_note = _VECTOR_UNAVAILABLE_NOTE
+            try:
+                embedded = self._embedding.embed(account_id, [cleaned_query])
+                query_vector = list(embedded[0]) if embedded else None
+            except EmbeddingError as exc:
+                # GQ-05：向量化调用失败 → 本轮诚实回退关键词检索，并把
+                # 端口给出的可操作原因（全局配置/权限等）呈现给用户。
+                vector_note = f"{_VECTOR_UNAVAILABLE_NOTE}；{exc.message}"
         if query_vector is None:
             vector_note = vector_note or _VECTOR_UNAVAILABLE_NOTE
         for layer in _LAYER_ORDER:
@@ -464,11 +463,6 @@ class LayeredRetrievalService:
         document_ids: list[str],
     ) -> list[dict[str, Any]]:
         return self._repository.vector_rows(account_id, version_id, document_ids)
-
-    def _embedding_availability(self, account_id: str) -> tuple[bool, str | None, bool]:
-        if self._probes is None:
-            return False, "Embedding 能力探测未启用。", False
-        return embedding_availability(self._probes, account_id)
 
     # ------------------------------------------------------------------
     # 持久化与投影
