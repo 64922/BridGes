@@ -25,7 +25,6 @@ import {
   pluginHumanizerKey,
 } from "@/lib/chat-flow";
 import {
-  ApiError,
   createChatConversation,
   updateChatConversation,
   updateChatConversationProject,
@@ -49,7 +48,7 @@ import styles from "@/components/bridges/chat/chat.module.css";
 export function NewChatHome() {
   const router = useRouter();
   const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState<{ message: string; code?: string } | null>(null);
+  const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   // 新聊天默认日常陪伴；用户可切为学习模式后发送（Issue 14，ADR-0022）
   const [mode, setMode] = useState<ChatMode>("companion");
@@ -74,7 +73,6 @@ export function NewChatHome() {
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-        code: error instanceof ApiError ? error.code : undefined,
       });
       return undefined;
     }
@@ -121,7 +119,6 @@ export function NewChatHome() {
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-        code: error instanceof ApiError ? error.code : undefined,
       });
       return false;
     }
@@ -146,7 +143,6 @@ export function NewChatHome() {
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-        code: error instanceof ApiError ? error.code : undefined,
       });
       return false;
     }
@@ -167,7 +163,6 @@ export function NewChatHome() {
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-        code: error instanceof ApiError ? error.code : undefined,
       });
       return false;
     }
@@ -190,7 +185,6 @@ export function NewChatHome() {
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-        code: error instanceof ApiError ? error.code : undefined,
       });
       return false;
     }
@@ -225,7 +219,6 @@ export function NewChatHome() {
     } catch (error) {
       setSendError({
         message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-        code: error instanceof ApiError ? error.code : undefined,
       });
       setSending(false);
       return false;
@@ -252,11 +245,7 @@ export function NewChatHome() {
                 <ModeToggle value={mode} onChange={setMode} />
               </div>
               {sendError && (
-                <ChatSendErrorBanner
-                  message={sendError.message}
-                  code={sendError.code}
-                  align="center"
-                />
+                <ChatSendErrorBanner message={sendError.message} align="center" />
               )}
               <Composer
                 onSend={handleSend}

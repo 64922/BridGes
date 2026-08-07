@@ -112,7 +112,7 @@ None - can start immediately.
 
 ## GQ-02 — 让 BridGes 主对话与结构化生成只使用全局运行凭据
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交）  
 User stories: US-02
 
 ### What to build

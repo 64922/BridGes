@@ -79,7 +79,7 @@ export function CareerPlanningProcessCard({
           <p style={{ margin: "var(--space-1) 0 0", color: "var(--color-text-secondary)" }}>
             {detail ??
               (permission
-                ? "当前账户的核心对话能力不可用，请前往「设置」检查密钥与探测状态。"
+                ? "核心对话能力当前不可用，请检查启动服务的全局百炼配置与权限。"
                 : "规划生成失败，请重试。")}
           </p>
           {retryable && onRetry && (

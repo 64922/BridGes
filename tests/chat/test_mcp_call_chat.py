@@ -10,16 +10,11 @@ approve/deny → 消息投影写回最终结果；刷新/恢复历史对话结�
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
-
-from bridges.credentials.probes import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 from tests.mcp.fixtures import ECHO_YAML, NOTE_YAML
 
@@ -57,27 +52,35 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _make_chat_ready(sqlite_app: Any, account_id: str) -> None:
+def _make_image_ready(sqlite_app: Any, account_id: str) -> None:
+    """注入图片能力探测快照：图片载荷门控在 GQ-04 前仍读取探测记录。
+
+    聊天主链路已不检查探测（GQ-02），此夹具只服务于携带 image 载荷
+    的互斥校验测试，不放行普通聊天。
+    """
+    from datetime import UTC, datetime
+
+    from pydantic import SecretStr
+
+    from bridges.credentials.probes import ProbeRecord, ProbeStatus
+    from bridges.credentials.store import InMemoryCredentialStore
+
     credential_service = sqlite_app.state.credential_service
     credential_service._store = InMemoryCredentialStore()
     credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    for capability_id, model_id in (
-        ("chat", "qwen3.7-plus-2026-05-26"),
-        ("image", "qwen-image-2.0-pro-2026-06-22"),
-    ):
-        credential_service._probes._put_record(
-            account_id,
-            ProbeRecord(
-                probe_id=f"probe-{capability_id}-{account_id}",
-                capability_id=capability_id,
-                model_id=model_id,
-                region="cn-beijing",
-                parameters={},
-                status=ProbeStatus.AVAILABLE,
-                probed_at=datetime.now(UTC),
-                error_message=None,
-            ),
-        )
+    credential_service._probes._put_record(
+        account_id,
+        ProbeRecord(
+            probe_id=f"probe-image-{account_id}",
+            capability_id="image",
+            model_id="qwen-image-2.0-pro-2026-06-22",
+            region="cn-beijing",
+            parameters={},
+            status=ProbeStatus.AVAILABLE,
+            probed_at=datetime.now(UTC),
+            error_message=None,
+        ),
+    )
 
 
 def _install_mcp(client: TestClient, yaml_text: str, filename: str) -> None:
@@ -141,8 +144,7 @@ def _send_mcp_call(
 
 def test_selected_mcp_call_succeeds(sqlite_app: Any, client: TestClient) -> None:
     """选中 MCP 后真实调用成功：SSE mcp_call 事件 + 消息投影持久化。"""
-    account = _register(client)
-    _make_chat_ready(sqlite_app, account["id"])
+    _register(client)
     _install_mcp(client, ECHO_YAML, "echo.yaml")
     conversation_id = _create_conversation(
         client, [{"kind": "mcp", "plugin_id": ECHO}]
@@ -173,8 +175,7 @@ def test_selected_mcp_call_succeeds(sqlite_app: Any, client: TestClient) -> None
 
 def test_unselected_mcp_call_rejected(sqlite_app: Any, client: TestClient) -> None:
     """未选择的 MCP 调用被拒绝（mcp_not_selected），绝不绕过选择器。"""
-    account = _register(client)
-    _make_chat_ready(sqlite_app, account["id"])
+    _register(client)
     _install_mcp(client, ECHO_YAML, "echo.yaml")
     conversation_id = _create_conversation(client)
     events = _send_mcp_call(
@@ -198,8 +199,7 @@ def test_sensitive_pending_approve_flow(
     sqlite_app: Any, client: TestClient, tmp_path: Path
 ) -> None:
     """敏感操作挂起 → chat 域确认 → 结果写回消息投影（刷新可恢复）。"""
-    account = _register(client)
-    _make_chat_ready(sqlite_app, account["id"])
+    _register(client)
     write_dir = tmp_path / "note-out"
     write_dir.mkdir()
     _install_mcp(
@@ -254,8 +254,7 @@ def test_sensitive_pending_deny_flow(
     sqlite_app: Any, client: TestClient, tmp_path: Path
 ) -> None:
     """拒绝敏感操作：调用安全终止并落库 denied 终态。"""
-    account = _register(client)
-    _make_chat_ready(sqlite_app, account["id"])
+    _register(client)
     write_dir = tmp_path / "note-out-deny"
     write_dir.mkdir()
     _install_mcp(
@@ -296,7 +295,7 @@ def test_mcp_call_conflicts_with_image_payload(
 ) -> None:
     """MCP 调用与图片载荷互斥：并发携带 422 拒绝，不静默丢弃。"""
     account = _register(client)
-    _make_chat_ready(sqlite_app, account["id"])
+    _make_image_ready(sqlite_app, account["id"])
     _install_mcp(client, ECHO_YAML, "echo.yaml")
     conversation_id = _create_conversation(
         client, [{"kind": "mcp", "plugin_id": ECHO}]
@@ -322,8 +321,7 @@ def test_cross_account_confirmation_404(
     sqlite_app: Any, client: TestClient, tmp_path: Path
 ) -> None:
     """跨账户确认他人消息的敏感操作统一 404（不泄漏存在性）。"""
-    account_a = _register(client, tag="1")
-    _make_chat_ready(sqlite_app, account_a["id"])
+    _register(client, tag="1")
     write_dir = tmp_path / "note-out-cross"
     write_dir.mkdir()
     _install_mcp(

@@ -9,13 +9,11 @@ done（六类投影 + 正文）；重试沿用原输入；刷新/退出重登后
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterResult, RateLimitError
@@ -24,10 +22,6 @@ from bridges.contracts.ai import (
     CapabilityRecord,
     CapabilityStatus,
     RetryPolicy,
-)
-from bridges.credentials.probes import (  # type: ignore[attr-defined]
-    ProbeRecord,
-    ProbeStatus,
 )
 
 _CAREER_INTENT = "生涯规划助手：我大二在读计算机科学，喜欢数据分析，怎么规划接下来的方向"
@@ -191,28 +185,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return account
 
 
-def _make_capability_ready(sqlite_app: Any, account_id: str) -> None:
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = type(credential_service._store)()
-    from bridges.credentials.store import InMemoryCredentialStore
-
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="chat",
-            model_id="qwen3.7-plus-2026-05-26",
-            region="cn-beijing",
-            parameters={},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-            error_message=None,
-        ),
-    )
-
-
 def _swap_gateways(sqlite_app: Any, structured: Any) -> None:
     gateway = _gateway_with(structured)
     sqlite_app.state.chat_service._gateway = gateway
@@ -295,7 +267,6 @@ def test_career_message_flows_through_real_message_stream(
 ) -> None:
     """六类输出经真实消息流交付：started → career 过程事件 → done 投影。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
@@ -337,7 +308,6 @@ def test_career_process_events_carry_chinese_states(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -355,7 +325,6 @@ def test_career_persists_and_restores_for_same_account_only(
 ) -> None:
     """刷新/退出重登后同一账户可恢复规划结果；其他账户不可读。"""
     account_a = _register(client, tag="1")
-    _make_capability_ready(sqlite_app, account_a["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
     _, _ = _send_career(client, conversation_id)
@@ -392,7 +361,6 @@ def test_career_uses_minimal_authorized_profile_slice(
 ) -> None:
     """只使用当前账户授权的最小画像切片；敏感记录绝不进入模型请求。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
@@ -430,7 +398,6 @@ def test_career_with_profile_disabled_uses_nothing(
 ) -> None:
     """发送前关闭画像：请求、披露与规划投影均不含画像内容。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
@@ -454,7 +421,6 @@ def test_career_without_profile_has_empty_disclosure(
 ) -> None:
     """启用画像但无相关记录：合法空态（empty 披露，回答照常）。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -469,7 +435,6 @@ def test_career_learning_records_enter_evidence(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     _seed_learning_mission(sqlite_app, account["id"])
@@ -490,7 +455,6 @@ def test_career_model_failure_is_recoverable_and_retry_keeps_input(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     failing = _ProgrammableStructuredAdapter(error=RateLimitError("slow"))
     _swap_gateways(sqlite_app, failing)
     conversation_id = _create_conversation(client)
@@ -529,7 +493,6 @@ def test_career_boundary_violation_blocks_delivery(
 ) -> None:
     """承诺词（就业/薪酬/录取保证）触发阻断：不交付规划正文。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     violating = _good_output()
     violating["final_text"] = "选这条路，包就业。"
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=violating))
@@ -555,7 +518,6 @@ def test_career_item_feedback_is_idempotent_and_scoped(
 ) -> None:
     """逐项反馈：定位到具体条目（career_item_ref），幂等，不串号。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
     _, text = _send_career(client, conversation_id)
@@ -582,7 +544,6 @@ def test_career_item_feedback_is_idempotent_and_scoped(
 
     # 反馈按账户隔离：另一账户看不到任何反馈内容（空列表，不泄漏存在性）
     account_b = _register(client, tag="2")
-    _make_capability_ready(sqlite_app, account_b["id"])
     other = client.get(f"/chat/conversations/{conversation_id}/feedback")
     assert other.status_code == 200
     assert other.json() == []
@@ -592,7 +553,6 @@ def test_career_item_ref_requires_career_message(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -621,7 +581,6 @@ def test_career_audit_does_not_leak_body(
 ) -> None:
     """CAREER_PLANNING_GENERATED 审计只记条目数/证据数/画像引用，不含正文。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
     _, _ = _send_career(client, conversation_id)
@@ -644,8 +603,7 @@ def test_second_account_planning_is_isolated_from_first(
     sqlite_app: Any, client: TestClient
 ) -> None:
     """两个账户执行相同问题：只受各自授权画像影响，缓存/引用不串号。"""
-    account_a = _register(client, tag="1")
-    _make_capability_ready(sqlite_app, account_a["id"])
+    _register(client)
     adapter_a = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter_a)
     conversation_a = _create_conversation(client)
@@ -654,8 +612,7 @@ def test_second_account_planning_is_isolated_from_first(
     assert "金融行业" in json.dumps(adapter_a.requests[0], ensure_ascii=False)
 
     # 账户 B 无任何画像：同一问题其请求不含账户 A 的画像内容
-    account_b = _register(client, tag="2")
-    _make_capability_ready(sqlite_app, account_b["id"])
+    _register(client, tag="2")
     adapter_b = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter_b)
     conversation_b = _create_conversation(client)

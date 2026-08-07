@@ -1,23 +1,19 @@
 "use client";
 
-import { ButtonLink } from "@/components/design-system/ButtonLink";
 import { Icon } from "@/components/design-system/Icon";
 
 interface ChatSendErrorBannerProps {
   message: string;
-  code?: string;
   /** 错误横幅的对齐方式（问候区居中 / 输入区顶部通栏） */
   align?: "center" | "stretch";
 }
 
-const KEY_RELATED_CODES = ["no_api_key", "capability_unavailable", "capability_probing"];
-
 /**
- * 发送失败横幅：展示服务端预检返回的可操作中文提示，
- * 密钥相关错误附带「前往设置配置 Key」入口。
+ * 发送失败横幅：展示服务端返回的可操作中文提示。
+ * GQ-02 起不再附带密钥设置页入口——认证类错误由服务端提示
+ * 检查启动服务的全局百炼配置与权限。
  */
-export function ChatSendErrorBanner({ message, code, align = "stretch" }: ChatSendErrorBannerProps) {
-  const showKeyLink = code !== undefined && KEY_RELATED_CODES.includes(code);
+export function ChatSendErrorBanner({ message, align = "stretch" }: ChatSendErrorBannerProps) {
   return (
     <div
       role="alert"
@@ -38,11 +34,6 @@ export function ChatSendErrorBanner({ message, code, align = "stretch" }: ChatSe
     >
       <Icon name="alert" size={16} aria-hidden />
       <span>{message}</span>
-      {showKeyLink && (
-        <ButtonLink href="/account/settings/keys" variant="secondary" ariaLabel="前往设置配置 Key">
-          前往设置配置 Key
-        </ButtonLink>
-      )}
     </div>
   );
 }

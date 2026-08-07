@@ -430,13 +430,13 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await expect(page.getByRole("list", { name: "对话消息" })).toContainText("你好");
   });
 
-  test("无 Key 时建议卡预填后发送仍被服务端预检拦截（不跳过授权与审计）", async ({ page }) => {
+  test("建议卡预填后发送直接进入真实对话流（无需配置 Key）", async ({ page }) => {
     await registerAndEnterHome(page);
 
-    // 能力预检依赖真实后端：未启用对话存储的实例跳过（reuseExistingServer 场景）
+    // 对话能力依赖真实后端：未启用对话存储的实例跳过（reuseExistingServer 场景）
     const chatReady = await page.request.get("/api/chat/conversations");
     if (chatReady.status() === 503) {
-      test.skip(true, "当前 API 实例未启用对话存储（BRIDGES_DATABASE_URL），跳过预检用例。");
+      test.skip(true, "当前 API 实例未启用对话存储（BRIDGES_DATABASE_URL），跳过聊天用例。");
     }
 
     // Issue 28/29：「文章人味化」「生涯规划助手」已改为打开真实任务对话框；
@@ -447,10 +447,15 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await input.type("研一如何安排论文阅读");
     await input.press("Enter");
 
-    // 正常消息流：创建真实对话并跳转，未配置 Key → 预检中文提示 + 设置入口
+    // GQ-02：新账户无需任何个人 Qwen 配置即可发送，无预检拦截；
+    // 正常消息流：创建真实对话并跳转，消息进入线程并产生回答投影
     await page.waitForURL(/\/chat\/[^/]+$/);
-    const alert = page.getByRole("alert").filter({ hasText: "尚未配置 Qwen API Key" });
-    await expect(alert).toContainText("尚未配置 Qwen API Key");
-    await expect(alert.getByRole("link", { name: "前往设置配置 Key" })).toBeVisible();
+    const thread = page.getByRole("list", { name: "对话消息" });
+    await expect(thread).toContainText("论文搜索：研一如何安排论文阅读");
+    await expect(thread).toContainText("回答");
+    // 负向验证：不再出现密钥设置类预检横幅（GQ-02 删除账户凭据门）
+    await expect(
+      page.getByRole("alert").filter({ hasText: /Qwen API Key|密钥/ })
+    ).toHaveCount(0);
   });
 });

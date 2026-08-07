@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
@@ -11,12 +10,9 @@ from urllib.parse import quote
 from zipfile import ZipFile
 
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.api.main import create_app
 from bridges.config import get_settings
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 
 def _app(tmp_path: Path, monkeypatch: Any) -> Any:
@@ -38,24 +34,6 @@ def _register(client: TestClient, tag: str = "attachment") -> dict[str, Any]:
     )
     assert response.status_code == 201, response.text
     return response.json()["account"]
-
-
-def _make_capability_ready(app: Any, account_id: str) -> None:
-    credential_service = app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="chat",
-            model_id="qwen3.7-plus-2026-05-26",
-            region="cn-beijing",
-            parameters={},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-        ),
-    )
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -210,9 +188,8 @@ def test_attachment_binds_to_message_downloads_and_isolated_delete(
 ) -> None:
     app = _app(tmp_path, monkeypatch)
     alice_client = TestClient(app)
-    alice = _register(alice_client, "alice_attachment")
+    _register(alice_client, "alice_attachment")
     conversation_id = _create_conversation(alice_client)
-    _make_capability_ready(app, alice["id"])
 
     content = b"%PDF-1.7\nprivate study notes"
     uploaded = _upload(
@@ -252,9 +229,8 @@ def test_attachment_binds_to_message_downloads_and_isolated_delete(
     assert str(tmp_path) not in download.headers.get("content-disposition", "")
 
     bob_client = TestClient(app)
-    bob = _register(bob_client, "bob_attachment")
+    _register(bob_client, "bob_attachment")
     bob_conversation_id = _create_conversation(bob_client)
-    _make_capability_ready(app, bob["id"])
     assert (
         bob_client.get(
             f"/chat/conversations/{conversation_id}/attachments/{object_id}/download"

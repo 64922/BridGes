@@ -204,10 +204,10 @@ async function registerAndEnterHome(page: Page): Promise<void> {
 }
 
 test.describe("Issue 11 — 持久化流式聊天", () => {
-  test("无 Key 发送被预检拦截：可操作提示 + 设置入口 + 不重复用户消息", async ({ page }) => {
+  test("新账户无需配置 Key 直接收到流式回答，刷新不重复插入", async ({ page }) => {
     await registerAndEnterHome(page);
 
-    // 能力预检依赖真实后端：未启用对话存储的实例跳过（reuseExistingServer 场景）
+    // 对话能力依赖真实后端：未启用对话存储的实例跳过（reuseExistingServer 场景）
     const chatReady = await page.request.get("/api/chat/conversations");
     if (chatReady.status() === 503) {
       test.skip(true, "当前 API 实例未启用对话存储（BRIDGES_DATABASE_URL），跳过聊天用例。");
@@ -218,17 +218,17 @@ test.describe("Issue 11 — 持久化流式聊天", () => {
     await composer.getByLabel("输入消息").fill("你好，介绍一下你自己");
     await composer.getByRole("button", { name: "发送消息" }).click();
 
-    // 进入对话页并自动发送，未配置 Key → 服务端预检返回可操作中文提示
+    // GQ-02：新账户无需任何个人 Qwen 配置即可发送，无预检拦截；
+    // test 环境由确定性适配器返回回答（唯一放行机制）
     await page.waitForURL(/\/chat\/[^/]+$/);
-    const alert = page.getByRole("alert").filter({ hasText: "尚未配置 Qwen API Key" });
-    await expect(alert).toContainText("尚未配置 Qwen API Key");
-    await expect(alert.getByRole("link", { name: "前往设置配置 Key" })).toBeVisible();
-    // 不重复插入用户消息：线程内没有消息项
-    await expect(page.getByRole("list", { name: "对话消息" })).not.toContainText("你好，介绍一下你自己");
+    const thread = page.getByRole("list", { name: "对话消息" });
+    await expect(thread).toContainText("你好，介绍一下你自己");
+    await expect(thread).toContainText("本地替身模式");
 
-    // 刷新后对话仍存在（持久化恢复），但用户消息未被重复插入
+    // 刷新后对话仍存在（持久化恢复），消息未被重复插入
     await page.reload();
-    await expect(page.getByRole("list", { name: "对话消息" })).not.toContainText("你好，介绍一下你自己");
+    await expect(thread).toContainText("你好，介绍一下你自己");
+    await expect(thread.getByText("你好，介绍一下你自己")).toHaveCount(1);
     // Issue 12：新聊天入口在全局侧栏中
     await expect(
       page.getByTestId("app-sidebar").getByRole("link", { name: "新聊天", exact: true })

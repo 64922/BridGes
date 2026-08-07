@@ -158,7 +158,7 @@ export default function ChatConversationPage() {
   const [loadError, setLoadError] = useState("");
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [pendingUser, setPendingUser] = useState<{ id: string; text: string } | null>(null);
-  const [sendError, setSendError] = useState<{ message: string; code?: string } | null>(null);
+  const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
   // 对话所属学习项目名称（Issue 19）：由 project_id 解析，仅供 chip 展示
   const [projectName, setProjectName] = useState<string | null>(null);
@@ -371,7 +371,6 @@ export default function ChatConversationPage() {
       } catch (error) {
         setSendError({
           message: error instanceof Error ? error.message : "更新学习项目归属失败，请稍后重试。",
-          code: error instanceof ApiError ? error.code : undefined,
         });
       }
     },
@@ -402,7 +401,6 @@ export default function ChatConversationPage() {
       } catch (error) {
         setSendError({
           message: error instanceof Error ? error.message : "更新插件选择失败，请稍后重试。",
-          code: error instanceof ApiError ? error.code : undefined,
         });
       }
     },
@@ -704,7 +702,7 @@ export default function ChatConversationPage() {
           return started; // 停止：状态由停止接口收敛
         }
         const message = error instanceof Error ? error.message : "发送失败，请稍后重试。";
-        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setSendError({ message });
         setAnnouncement(`生成失败：${message}`);
         // 断流/内部错误时服务端已收敛消息状态：刷新展示可重试错误
         void load();
@@ -868,7 +866,7 @@ export default function ChatConversationPage() {
         setAnnouncement(`已下载附件：${attachment.original_filename}`);
       } catch (error) {
         const message = error instanceof Error ? error.message : "附件下载失败，请重试。";
-        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setSendError({ message });
         setAnnouncement(`附件下载失败：${message}`);
       }
     },
@@ -887,7 +885,7 @@ export default function ChatConversationPage() {
         await load(true);
       } catch (error) {
         const message = error instanceof Error ? error.message : "附件删除失败，请重试。";
-        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setSendError({ message });
         setAnnouncement(`附件删除失败：${message}`);
       }
     },
@@ -903,7 +901,7 @@ export default function ChatConversationPage() {
         await load(true);
       } catch (error) {
         const message = error instanceof Error ? error.message : "重新解析失败，请重试。";
-        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setSendError({ message });
         setAnnouncement(`重新解析失败：${message}`);
         throw error;
       }
@@ -942,7 +940,7 @@ export default function ChatConversationPage() {
           return;
         }
         const message = error instanceof Error ? error.message : "重试失败，请稍后再试。";
-        setSendError({ message, code: error instanceof ApiError ? error.code : undefined });
+        setSendError({ message });
         setAnnouncement(`重试失败：${message}`);
         void load();
       } finally {
@@ -988,7 +986,6 @@ export default function ChatConversationPage() {
       } catch (error) {
         setSendError({
           message: error instanceof Error ? error.message : "切换模式失败，请稍后重试。",
-          code: error instanceof ApiError ? error.code : undefined,
         });
       }
     },
@@ -1092,7 +1089,7 @@ export default function ChatConversationPage() {
                 />
               )}
               {sendError && (
-                <ChatSendErrorBanner message={sendError.message} code={sendError.code} />
+                <ChatSendErrorBanner message={sendError.message} />
               )}
               <div className={styles.composerWrap}>
                 <div className={styles.composerInner}>

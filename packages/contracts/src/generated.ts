@@ -545,11 +545,12 @@ export interface paths {
          * @description 发送用户消息并流式接收真实 Qwen 回答（SSE）。
          *
          *     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭
-         *     本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索
-         *     记录与引用均不包含知识库候选；也可关闭本轮画像使用
-         *     （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
-         *     说明均不含任何画像切片。
+         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话不检查
+         *     账户凭据或探测快照（GQ-02）：新账户无需任何个人 Qwen 配置即可发送，
+         *     模型调用由已注册的全局模型网关执行。发送前可关闭本轮全局知识库层
+         *     （``use_knowledge_base=false``）：关闭后本轮检索记录与引用均不包含
+         *     知识库候选；也可关闭本轮画像使用（``use_profile=false``，Issue 27）：
+         *     关闭后模型请求、审计与上下文说明均不含任何画像切片。
          */
         post: operations["send_message_chat_conversations__conversation_id__messages_post"];
         delete?: never;
@@ -655,7 +656,8 @@ export interface paths {
          * @description 重试失败的助手消息：创建新的助手尝试并流式生成。
          *
          *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域
-         *     沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。
+         *     沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。重试与
+         *     发送同源：不检查账户凭据或探测快照（GQ-02）。
          */
         post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
         delete?: never;
@@ -4038,7 +4040,7 @@ export interface paths {
         };
         /**
          * Get Media Object
-         * @description Get a generated media object by ID.
+         * @description Get a generated media object by ID (owner-scoped, Issue 39 AC9).
          */
         get: operations["get_media_object_media_objects__object_id__get"];
         put?: never;
@@ -4118,7 +4120,7 @@ export interface paths {
         };
         /**
          * Get Storyboard
-         * @description Get a storyboard by ID.
+         * @description Get a storyboard by ID (owner-scoped, Issue 39 AC9).
          */
         get: operations["get_storyboard_media_storyboards__storyboard_id__get"];
         /**
@@ -4182,7 +4184,7 @@ export interface paths {
         };
         /**
          * Get Sandbox Run
-         * @description Get a sandbox run result by ID.
+         * @description Get a sandbox run result by ID (owner-scoped, Issue 39 AC9).
          */
         get: operations["get_sandbox_run_media_sandbox_runs__run_id__get"];
         put?: never;

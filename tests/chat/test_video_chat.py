@@ -139,26 +139,27 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
 def _make_capabilities_ready(
     sqlite_app: Any, account_id: str, video_status: ProbeStatus = ProbeStatus.AVAILABLE
 ) -> None:
+    """注入视频能力探测快照（GQ-02 起聊天主链路不再检查 chat 探测）。
+
+    视频载荷门控在 GQ-04 前仍读取账户探测快照，故保留 video 记录；
+    聊天预检已删除，不再写入 chat 记录。
+    """
     credential_service = sqlite_app.state.credential_service
     credential_service._store = InMemoryCredentialStore()
     credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    for capability_id, model_id in (
-        ("chat", "qwen3.7-plus-2026-05-26"),
-        ("video", VIDEO_MODEL),
-    ):
-        credential_service._probes._put_record(
-            account_id,
-            ProbeRecord(
-                probe_id=f"probe-{capability_id}-{account_id}",
-                capability_id=capability_id,
-                model_id=model_id,
-                region="cn-beijing",
-                parameters={},
-                status=video_status if capability_id == "video" else ProbeStatus.AVAILABLE,
-                probed_at=datetime.now(UTC),
-                error_message=None,
-            ),
-        )
+    credential_service._probes._put_record(
+        account_id,
+        ProbeRecord(
+            probe_id=f"probe-video-{account_id}",
+            capability_id="video",
+            model_id=VIDEO_MODEL,
+            region="cn-beijing",
+            parameters={},
+            status=video_status,
+            probed_at=datetime.now(UTC),
+            error_message=None,
+        ),
+    )
 
 
 def _swap_wan_gateway(sqlite_app: Any) -> None:

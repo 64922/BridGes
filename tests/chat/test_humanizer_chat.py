@@ -7,13 +7,11 @@ SKILL 载荷走真实消息流程：started → humanizer 过程事件 → done�
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterError, AdapterResult, RateLimitError
@@ -23,8 +21,6 @@ from bridges.contracts.ai import (
     CapabilityStatus,
     RetryPolicy,
 )
-from bridges.credentials.probes import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 _CORPUS = (
     Path(__file__).resolve().parents[2]
@@ -179,25 +175,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _make_capability_ready(sqlite_app: Any, account_id: str) -> None:
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="chat",
-            model_id="qwen3.7-plus-2026-05-26",
-            region="cn-beijing",
-            parameters={},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-            error_message=None,
-        ),
-    )
-
-
 def _swap_gateways(sqlite_app: Any, structured: Any) -> None:
     gateway = _gateway_with(structured)
     sqlite_app.state.chat_service._gateway = gateway
@@ -241,7 +218,6 @@ def test_humanizer_message_flows_through_real_message_stream(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -279,7 +255,6 @@ def test_humanizer_process_events_carry_chinese_states(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -297,7 +272,6 @@ def test_retry_preserves_original_task_input(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(
         sqlite_app, _ProgrammableStructuredAdapter(error=RateLimitError("slow"))
     )
@@ -332,7 +306,6 @@ def test_unregistered_skill_rejected(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -355,7 +328,6 @@ def test_invalid_skill_payload_rejected(
     sqlite_app: Any, client: TestClient
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -382,8 +354,7 @@ def test_invalid_skill_payload_rejected(
 def test_humanizer_fact_lock_conflict_error_event(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
+    _register(client)
     violating = _good_output()
     violating["final_text"] = violating["final_text"].replace(
         "25 μmol·m⁻²·s⁻¹", "30 μmol·m⁻²·s⁻¹"
@@ -408,14 +379,12 @@ def test_humanizer_fact_lock_conflict_error_event(
 def test_second_account_cannot_see_humanizer_results(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account_a = _register(client, tag="1")
-    _make_capability_ready(sqlite_app, account_a["id"])
+    _register(client, tag="1")
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
     response, _ = _send_humanizer(client, conversation_id)
     assert response.status_code == 200
 
-    account_b = _register(client, tag="2")
-    _make_capability_ready(sqlite_app, account_b["id"])
+    _register(client, tag="2")
     other = client.get(f"/chat/conversations/{conversation_id}")
     assert other.status_code == 404

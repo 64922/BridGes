@@ -1,9 +1,9 @@
 """聊天 API 集成测试（Issue 11）。
 
-使用临时 sqlite 数据库构建应用；探测状态与凭据通过服务内部注入
-（真实探测需要网络与真实 Key，协议级替身验证流式边界是自动测试的
-正确形态）。覆盖：能力预检门、SSE 事件序列、停止、重试、账户隔离、
-错误分类与重启恢复。
+使用临时 sqlite 数据库构建应用；模型调用由 test 环境的确定性适配器
+驱动（Stub/可编程替身），不依赖账户凭据或探测状态（GQ-02：主对话
+链路不再检查账户 Key/探测快照，新账户无需任何个人 Qwen 配置即可
+发送）。覆盖：SSE 事件序列、停止、重试、账户隔离、错误分类与重启恢复。
 """
 
 from __future__ import annotations
@@ -11,23 +11,18 @@ from __future__ import annotations
 import json
 import threading
 import time
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.ai import ModelGateway
-from bridges.ai.adapters import AdapterError, RateLimitError
+from bridges.ai.adapters import AdapterError, RateLimitError, StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
-from bridges.ai.adapters import StreamChunk
 from bridges.api.main import create_app
 from bridges.config import get_settings
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
-from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 
 def _chat_capability() -> CapabilityRecord:
@@ -122,28 +117,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     )
     assert response.status_code == 201, response.text
     return response.json()["account"]
-
-
-def _make_capability_ready(
-    sqlite_app: Any, account_id: str, status: ProbeStatus = ProbeStatus.AVAILABLE
-) -> None:
-    """注入"已配置 Key + 指定探测状态"（真实探测需要网络与真实 Key）。"""
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-{account_id}",
-            capability_id="chat",
-            model_id="qwen3.7-plus-2026-05-26",
-            region="cn-beijing",
-            parameters={},
-            status=status,
-            probed_at=datetime.now(UTC),
-            error_message="测试原因。" if status == ProbeStatus.UNAVAILABLE else None,
-        ),
-    )
 
 
 def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
@@ -284,7 +257,6 @@ def test_second_account_cannot_switch_mode_or_read_mode_events(
     client: TestClient, sqlite_app: Any
 ) -> None:
     alice = _register(client, "1")
-    _make_capability_ready(sqlite_app, alice["id"])
     conversation_id = _create_conversation(client)
     client.post(
         f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
@@ -305,55 +277,34 @@ def test_second_account_cannot_switch_mode_or_read_mode_events(
 
 
 # ---------------------------------------------------------------------------
-# 能力预检门
+# GQ-02：新账户无需任何个人 Qwen 配置即可聊天
 # ---------------------------------------------------------------------------
 
 
-def test_send_without_key_returns_actionable_error_and_no_user_message(
+def test_new_account_without_any_key_can_send_and_receive_answer(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    _register(client)
+    """全新注册账户（无 Key、无密钥元数据、无探测记录）直接走通流式回答。"""
+    account = _register(client)
+    # 显式证明：该账户不存在任何 Key/探测记录（GQ-02 AC1）
+    assert not sqlite_app.state.credential_store.get(account["id"])
+    snapshot = sqlite_app.state.credential_service._probes.status_snapshot(
+        account["id"]
+    )
+    # 固定矩阵摘要全部为"未探测"（无任何真实探测记录）
+    assert all(p.status.value == "not_probed" for p in snapshot)
     conversation_id = _create_conversation(client)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={"content": "你好"},
     )
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert detail["error"] == "no_api_key"
-    assert "Qwen API Key" in detail["message"]
-    # 未插入任何用户消息：失败不重复占位
+    assert response.status_code == 200
+    events = _parse_sse(response.text)
+    assert [e[0] for e in events] == ["started", "delta", "done"]
+    done = events[-1][1]
+    assert done["message"]["status"] == "done"
     history = client.get(f"/chat/conversations/{conversation_id}").json()
-    assert history["messages"] == []
-
-
-def test_send_while_probing_returns_409(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"], ProbeStatus.PROBING)
-    conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "capability_probing"
-    assert "探测中" in response.json()["detail"]["message"]
-
-
-def test_send_unavailable_capability_returns_reason(
-    client: TestClient, sqlite_app: Any
-) -> None:
-    account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"], ProbeStatus.UNAVAILABLE)
-    conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
-    )
-    assert response.status_code == 409
-    detail = response.json()["detail"]
-    assert detail["error"] == "capability_unavailable"
-    assert "测试原因" in detail["message"]
+    assert [m["status"] for m in history["messages"]] == ["done", "done"]
 
 
 def test_chat_requires_authentication(client: TestClient) -> None:
@@ -372,7 +323,6 @@ def test_send_streams_started_delta_done_and_persists_history(
     client: TestClient, sqlite_app: Any
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     conversation_id = _create_conversation(client)
 
     response = client.post(
@@ -406,7 +356,6 @@ def test_send_multi_delta_streaming_via_programmable_adapter(
 ) -> None:
     """真实流式适配器形态：多个 delta 增量逐步呈现。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(
             [
@@ -430,7 +379,6 @@ def test_send_failure_streams_error_event_and_persists_actionable_message(
     client: TestClient, sqlite_app: Any
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(connect_error=RateLimitError("slow down"))
     )
@@ -458,7 +406,6 @@ def test_sse_always_terminates_when_message_finalized_before_stream(
 ) -> None:
     """消息在生成器启动前被停止：SSE 以诚实终态事件结束，绝不悬挂。"""
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(
             [StreamChunk(kind="delta", delta=f"块{i}") for i in range(20)],
@@ -513,7 +460,6 @@ def test_sse_always_terminates_when_message_finalized_before_stream(
 
 def test_stop_generation_via_api(client: TestClient, sqlite_app: Any) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(
             [StreamChunk(kind="delta", delta=f"块{i}") for i in range(30)],
@@ -561,7 +507,6 @@ def test_stop_generation_via_api(client: TestClient, sqlite_app: Any) -> None:
 
 def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(connect_error=RateLimitError("slow"))
     )
@@ -595,7 +540,6 @@ def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) 
 
 def test_conversation_not_found_is_404(client: TestClient, sqlite_app: Any) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     response = client.get("/chat/conversations/does-not-exist")
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "conversation_not_found"
@@ -614,7 +558,6 @@ def test_second_account_cannot_read_subscribe_retry_or_probe(
     client: TestClient, sqlite_app: Any
 ) -> None:
     alice = _register(client, "1")
-    _make_capability_ready(sqlite_app, alice["id"])
     conversation_id = _create_conversation(client)
     client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -622,9 +565,9 @@ def test_second_account_cannot_read_subscribe_retry_or_probe(
     )
 
     bob_client = TestClient(sqlite_app)
-    bob = _register(bob_client, "2")
-    # Bob 具备完整可用能力，隔离判定不受"未配置 Key"预检门干扰
-    _make_capability_ready(sqlite_app, bob["id"])
+    _register(bob_client, "2")
+    # 账户隔离与凭据无关（GQ-02）：Bob 同样无需任何 Qwen 配置，
+    # 共享全局凭据不得放宽隔离判定
     assert bob_client.get("/chat/conversations").json()["conversations"] == []
     assert bob_client.get(f"/chat/conversations/{conversation_id}").status_code == 404
     assert (
@@ -661,7 +604,8 @@ def test_second_account_cannot_read_subscribe_retry_or_probe(
 def test_restart_runtime_restores_same_conversation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """完整运行时重启：同一数据库文件重新打开后历史一致。"""
+    """GQ-02 纵向回归：全局确定性适配器 → 注册新账户 → 不创建账户 Key → 新建
+    对话 → 发送消息 → 收到完成事件 → 重启后恢复同一回答。"""
     monkeypatch.setenv(
         "BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}"
     )
@@ -671,14 +615,20 @@ def test_restart_runtime_restores_same_conversation(
     app1 = create_app()
     client1 = TestClient(app1)
     account = _register(client1, "7")
-    _make_capability_ready(app1, account["id"])
+    # 新账户不创建任何账户 Key/探测记录：test 环境全局确定性适配器
+    # 是唯一放行机制（GQ-02 AC7）
+    assert not app1.state.credential_store.get(account["id"])
     conversation_id = _create_conversation(client1)
-    client1.post(
+    sent = client1.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={"content": "重启前的问题"},
     )
+    assert sent.status_code == 200
+    events = _parse_sse(sent.text)
+    assert events[-1][0] == "done"
+    assert events[-1][1]["message"]["status"] == "done"
 
-    # 重启：同一环境重建应用
+    # 重启：同一环境重建应用（test 环境同样注册全局确定性适配器）
     get_settings.cache_clear()
     app2 = create_app()
     client2 = TestClient(app2)
@@ -721,7 +671,6 @@ def test_sse_carries_thinking_in_started_and_done(
     client: TestClient, sqlite_app: Any
 ) -> None:
     account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
     conversation_id = _create_conversation(client)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -751,8 +700,7 @@ def test_sse_carries_thinking_in_started_and_done(
 def test_error_event_keeps_thinking_and_duration(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = _register(client)
-    _make_capability_ready(sqlite_app, account["id"])
+    _register(client)
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(connect_error=RateLimitError("slow down"))
     )
@@ -777,8 +725,7 @@ def test_error_event_keeps_thinking_and_duration(
 def test_second_account_cannot_read_thinking_summary(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    alice = _register(client, "1")
-    _make_capability_ready(sqlite_app, alice["id"])
+    _register(client, "1")
     conversation_id = _create_conversation(client)
     client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -788,9 +735,7 @@ def test_second_account_cannot_read_thinking_summary(
     assistant_id = history["messages"][1]["message_id"]
 
     bob_client = TestClient(sqlite_app)
-    bob = _register(bob_client, "2")
-    # Bob 具备完整可用能力，隔离判定不受"未配置 Key"预检门干扰
-    _make_capability_ready(sqlite_app, bob["id"])
+    _register(bob_client, "2")
     # Bob 读取 Alice 的对话整体 404：模式、事件与思考摘要都不泄漏
     assert bob_client.get(f"/chat/conversations/{conversation_id}").status_code == 404
     assert (

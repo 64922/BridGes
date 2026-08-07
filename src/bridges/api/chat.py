@@ -1,9 +1,10 @@
 """聊天 API 路由（Issue 11 纵向切片）。
 
 对外提供对话的创建/列表/读取、消息发送（SSE 流式）、停止与重试。
-能力就绪性在发送前通过账户级探测快照把关：无 Key / 探测中 / 核心能力
-不可用分别返回可操作中文提示。流式事件只包含消息标识、增量正文与
-分类错误，绝不输出凭据、工作流节点 ID、调试字段或系统提示。
+主对话链路不再依赖账户凭据或账户探测快照（GQ-02）：请求直接进入
+已由启动硬门保证完成注册的全局模型网关；流式事件只包含消息标识、
+增量正文与分类错误，绝不输出凭据、工作流节点 ID、调试字段或系统提示。
+图片/视频载荷的能力门控在 GQ-04 前仍按账户探测快照执行。
 """
 
 from __future__ import annotations
@@ -54,7 +55,6 @@ from bridges.contracts.chat import (
     ChatStreamStartedData,
     ChatThinkingSummary,
 )
-from bridges.contracts.credentials import ProbeStatus
 from bridges.contracts.feedback import (
     AnswerFeedback,
     AnswerFeedbackRequest,
@@ -197,57 +197,6 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 
 def _handle_domain_error(exc: ChatDomainError) -> HTTPException:
     return _error(exc.status_code, exc.code, exc.message)
-
-
-def _ensure_chat_capability_ready(
-    subject: SubjectDep, credential_service: KeyCredentialService
-) -> None:
-    """发送前核对账户级核心对话能力探测快照（ADR-0005/0009）。
-
-    不要求近期重认证（那是密钥设置页的敏感操作门槛）；这里只读状态，
-    让聊天发送不被敏感设置页的 5 分钟窗口打断。
-    """
-    try:
-        projection = credential_service.get_projection(subject.account_id)
-    except Exception as exc:  # noqa: BLE001 - 凭据存储异常统一折叠为可操作提示
-        raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "credential_store_unavailable",
-            "凭据存储当前不可用，请稍后重试。",
-        ) from exc
-    if not projection.configured:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "no_api_key",
-            "尚未配置 Qwen API Key，请前往「设置」中的密钥页配置后再试。",
-        )
-    chat = next(
-        (
-            capability
-            for capability in projection.capabilities
-            if capability.capability_id == "chat"
-        ),
-        None,
-    )
-    if chat is None:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "capability_unavailable",
-            "核心对话能力信息缺失，请前往「设置」重新探测。",
-        )
-    if chat.status == ProbeStatus.PROBING:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "capability_probing",
-            "核心对话能力正在探测中，请稍候再试。",
-        )
-    if chat.status != ProbeStatus.AVAILABLE:
-        reason = chat.message or "未知原因"
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "capability_unavailable",
-            f"核心对话能力当前不可用：{reason}。请前往「设置」重新探测。",
-        )
 
 
 def _chat_run_context(account_id: str, conversation_id: str, run_id: str) -> RunContextEnvelope:
@@ -960,13 +909,13 @@ async def send_message(
     """发送用户消息并流式接收真实 Qwen 回答（SSE）。
 
     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-    失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。发送前可关闭
-    本轮全局知识库层（``use_knowledge_base=false``）：关闭后本轮检索
-    记录与引用均不包含知识库候选；也可关闭本轮画像使用
-    （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
-    说明均不含任何画像切片。
+    失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话不检查
+    账户凭据或探测快照（GQ-02）：新账户无需任何个人 Qwen 配置即可发送，
+    模型调用由已注册的全局模型网关执行。发送前可关闭本轮全局知识库层
+    （``use_knowledge_base=false``）：关闭后本轮检索记录与引用均不包含
+    知识库候选；也可关闭本轮画像使用（``use_profile=false``，Issue 27）：
+    关闭后模型请求、审计与上下文说明均不含任何画像切片。
     """
-    _ensure_chat_capability_ready(subject, credential_service)
     if body.image is not None:
         # 图片能力门控（与图片 API 路由共享同一实现，避免双份分叉）。
         from bridges.api.image import ensure_image_capability_ready
@@ -1175,16 +1124,15 @@ async def retry_message(
     conversation_id: str,
     message_id: str,
     service: ChatServiceDep,
-    credential_service: CredentialServiceDep,
     subject: SubjectDep,
     retrieval_service: RetrievalServiceDep,
 ) -> StreamingResponse:
     """重试失败的助手消息：创建新的助手尝试并流式生成。
 
     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域
-    沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。
+    沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。重试与
+    发送同源：不检查账户凭据或探测快照（GQ-02）。
     """
-    _ensure_chat_capability_ready(subject, credential_service)
     # Issue 31：图片任务消息不走消息级重试——任务卡内提供同输入重试
     # （POST /image-tasks/{id}/retry），避免创建重复任务。
     previous = service.message_projection(subject.account_id, message_id)
