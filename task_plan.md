@@ -57,4 +57,4 @@
 - [x] T4 测试夹具清理（conftest/kb_support/lp 等移除逐账户探测播种）→ verify: 五大测试目录全绿
 - [x] T5 新增多账户隔离回归（同一全局 Embedding 端口两账户互不可见）→ verify: 新测试绿
 - [x] T6 全量回归 + 安全披露 + ruff/mypy → verify: 2209 pytest 全绿，ruff/mypy 与基线一致
-- [ ] T7 双轴代码审查 + 提交 → verify: commit
+- [x] T7 双轴代码审查 + 提交 → verify: c724553（审查修复：embed 失败改关键词降级+恢复、检索侧可操作原因、合同描述与前端信号同步）

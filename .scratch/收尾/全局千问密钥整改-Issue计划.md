@@ -215,7 +215,7 @@ npm run test:e2e -- issue31-image-generation.spec.ts issue32-video-generation.sp
 
 ## GQ-05 — 让知识库向量化、摄取与检索只使用全局运行凭据
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交，c724553）  
 User stories: US-02、US-05
 
 ### What to build
