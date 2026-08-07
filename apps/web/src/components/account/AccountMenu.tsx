@@ -119,11 +119,6 @@ export function AccountMenu({ user, collapsed = false, onNavigate }: AccountMenu
             },
           },
           {
-            label: "密钥设置",
-            icon: "settings",
-            onSelect: () => go("/account/settings/keys"),
-          },
-          {
             label: "个人资料",
             icon: "profile",
             onSelect: () => go("/account/settings/profile"),

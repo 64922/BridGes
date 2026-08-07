@@ -237,8 +237,6 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
     await expect(menu).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "切换账号" })).toBeFocused();
     await page.keyboard.press("ArrowDown");
-    await expect(menu.getByRole("menuitem", { name: "密钥设置" })).toBeFocused();
-    await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem", { name: "个人资料" })).toBeFocused();
     await page.keyboard.press("ArrowDown");
     await expect(menu.getByRole("menuitem", { name: "退出登录" })).toBeFocused();
@@ -247,7 +245,7 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
     await expect(trigger).toBeFocused();
   });
 
-  test("账户菜单四项入口跳转到各自页面", async ({ page }) => {
+  test("账户菜单三项入口跳转到各自页面（GQ-06 无密钥入口）", async ({ page }) => {
     await page.goto("/templates/chat");
     const trigger = page.getByRole("button", { name: "账户菜单：示例账户" });
 
@@ -255,11 +253,6 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
     await page.getByRole("menuitem", { name: "个人资料" }).click();
     await expect(page).toHaveURL(/\/templates\/settings\?section=profile/);
     await expect(page.getByRole("heading", { name: "个人资料" })).toBeVisible();
-
-    await trigger.click();
-    await page.getByRole("menuitem", { name: "密钥设置" }).click();
-    await expect(page).toHaveURL(/\/templates\/settings\?section=key/);
-    await expect(page.getByRole("heading", { name: "密钥设置" })).toBeVisible();
 
     await trigger.click();
     await page.getByRole("menuitem", { name: "退出登录" }).click();
@@ -419,26 +412,6 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
     await page.goto("/templates/settings?section=profile");
     await expect(page.getByLabel("用户名")).toHaveValue("示例账户");
     await expect(page.getByLabel("QQ 邮箱")).toHaveValue("123456@qq.com");
-  });
-
-  test("密钥设置真实持久化 Qwen API 密钥，未配置时提示功能不可用", async ({ page }) => {
-    await page.goto("/templates/settings?section=key");
-    await expect(page.getByRole("heading", { name: "密钥设置" })).toBeVisible();
-    // 未配置密钥：功能不可用提示
-    await expect(page.getByText(/尚未配置密钥/)).toBeVisible();
-    // 空密钥校验并聚焦
-    await page.getByRole("button", { name: "保存密钥" }).click();
-    await expect(page.getByText("请输入 Qwen API 密钥。")).toBeVisible();
-    await expect(page.getByLabel("Qwen API 密钥")).toBeFocused();
-    // 保存后显示掩码并持久化
-    await page.getByLabel("Qwen API 密钥").fill("sk-test-123456");
-    await page.getByRole("button", { name: "保存密钥" }).click();
-    await expect(page.getByText(/已保存密钥（sk-••••3456）/)).toBeVisible();
-    await page.reload();
-    await expect(page.getByText(/已保存密钥（sk-••••3456）/)).toBeVisible();
-    // 清除后回到未配置提示
-    await page.getByRole("button", { name: "清除已保存的密钥" }).click();
-    await expect(page.getByText(/尚未配置密钥/)).toBeVisible();
   });
 
   test("设置模板密码对话框可编辑、校验并反馈成功", async ({ page }) => {

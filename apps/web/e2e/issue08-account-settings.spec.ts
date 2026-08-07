@@ -20,11 +20,12 @@ test.describe("Issue 08 — 账户上拉菜单", () => {
     await trigger.focus();
     await page.keyboard.press("Enter");
     const items = page.getByRole("menuitem");
-    await expect(items).toHaveText(["切换账号", "密钥设置", "个人资料", "退出登录"]);
+    // GQ-06：账户菜单严格为三项（移除密钥设置）。
+    await expect(items).toHaveText(["切换账号", "个人资料", "退出登录"]);
     await expect(items.nth(0)).toBeFocused();
 
     await page.keyboard.press("End");
-    await expect(items.nth(3)).toBeFocused();
+    await expect(items.nth(2)).toBeFocused();
     await page.keyboard.press("Home");
     await expect(items.nth(0)).toBeFocused();
     await page.keyboard.press("ArrowDown");
@@ -65,7 +66,6 @@ test.describe("Issue 08 — 个人资料", () => {
     const accountTrigger = page.getByRole("button", { name: /账户菜单：/ });
     await accountTrigger.focus();
     await page.keyboard.press("Enter");
-    await page.keyboard.press("ArrowDown");
     await page.keyboard.press("ArrowDown");
     await page.keyboard.press("Enter");
     await page.waitForURL("/account/settings/profile");
@@ -137,116 +137,7 @@ test.describe("Issue 08 — 个人资料", () => {
   });
 });
 
-test.describe("Issue 08 — 密钥保护与会话闭环", () => {
-  test("密钥页覆盖重新认证、成功与真实尚未配置状态", async ({ page }) => {
-    const creds = uniqueCredentials("i8-reauth");
-    await signUp(page, creds.username, creds.qqEmail, PASSWORD);
-
-    let keySettingsRequests = 0;
-    await page.route("**/api/auth/key-settings", async (route) => {
-      keySettingsRequests += 1;
-      if (keySettingsRequests === 1) {
-        await route.fulfill({
-          status: 403,
-          contentType: "application/json",
-          body: JSON.stringify({
-            detail: {
-              error: "reauth_required",
-              message: "此页面包含敏感设置，请重新输入当前账户密码。",
-              details: {},
-            },
-          }),
-        });
-      } else {
-        await route.continue();
-      }
-    });
-
-    await page.goto("/account/settings/keys");
-    await expect(page.getByText("需要重新确认身份")).toBeVisible();
-    await page.getByLabel("当前账户密码").fill(PASSWORD);
-    await page.getByRole("button", { name: "确认并继续" }).press("Enter");
-
-    await expect(page.getByText("身份确认成功，已安全读取当前账户的配置状态。")).toBeVisible();
-    await expect(page.getByTestId("key-status")).toHaveText(/尚未配置/);
-    // Issue 10：空态提供真实录入入口与固定能力矩阵（全部未探测，无 Stub 成功）。
-    await expect(page.getByLabel("百炼 API Key")).toBeVisible();
-    await expect(page.getByRole("button", { name: "保存并逐项探测" })).toBeVisible();
-    await expect(page.getByText("固定能力矩阵")).toBeVisible();
-    await expect(page.getByTestId("capability-chat")).toHaveText(/未探测/);
-    await expect(page.getByTestId("capability-video")).toHaveText(/未探测/);
-  });
-
-  test("密钥状态读取失败可重试恢复", async ({ page }) => {
-    const creds = uniqueCredentials("i8-key-error");
-    await signUp(page, creds.username, creds.qqEmail, PASSWORD);
-
-    let failed = false;
-    await page.route("**/api/auth/key-settings", async (route) => {
-      if (!failed) {
-        failed = true;
-        await route.fulfill({
-          status: 500,
-          contentType: "application/json",
-          body: JSON.stringify({
-            detail: { error: "server_error", message: "服务暂时不可用，请稍后重试。" },
-          }),
-        });
-      } else {
-        await route.continue();
-      }
-    });
-
-    await page.goto("/account/settings/keys");
-    await expect(page.getByText("密钥状态读取失败")).toBeVisible();
-    await page.getByRole("button", { name: "重新读取" }).click();
-    await expect(page.getByTestId("key-status")).toHaveText(/尚未配置/);
-  });
-
-  test("重新认证期间会话失效时立即隐藏受保护页面", async ({ page }) => {
-    const creds = uniqueCredentials("i8-expired");
-    await signUp(page, creds.username, creds.qqEmail, PASSWORD);
-    let sessionExpired = false;
-
-    await page.route("**/api/auth/session", async (route) => {
-      if (!sessionExpired) return route.continue();
-      await route.fulfill({
-        status: 401,
-        contentType: "application/json",
-        body: JSON.stringify({
-          detail: { error: "unauthenticated", message: "会话已失效。", details: {} },
-        }),
-      });
-    });
-    await page.route("**/api/auth/key-settings", (route) =>
-      route.fulfill({
-        status: 403,
-        contentType: "application/json",
-        body: JSON.stringify({
-          detail: { error: "reauth_required", message: "请重新认证。", details: {} },
-        }),
-      })
-    );
-    await page.route("**/api/auth/reauthenticate", async (route) => {
-      sessionExpired = true;
-      await route.fulfill({
-        status: 401,
-        contentType: "application/json",
-        body: JSON.stringify({
-          detail: { error: "unauthenticated", message: "会话已失效。", details: {} },
-        }),
-      });
-    });
-
-    await page.goto("/account/settings/keys");
-    await page.getByLabel("当前账户密码").fill(PASSWORD);
-    await page.getByRole("button", { name: "确认并继续" }).press("Enter");
-
-    await expect(page.getByText("需要重新登录").first()).toBeVisible();
-    await expect(page.getByText("需要重新确认身份")).toHaveCount(0);
-    await expect(page.getByLabel("当前账户密码")).toHaveCount(0);
-  });
-
+test.describe("Issue 08 — 受保护页面与会话闭环", () => {
   test("权限拒绝不会短暂渲染受保护子页面", async ({ page, context }) => {
     await context.addCookies([
       { name: "bridges_session", value: "guessed-session", url: "http://127.0.0.1:3000" },
@@ -280,7 +171,7 @@ test.describe("Issue 08 — 密钥保护与会话闭环", () => {
 });
 
 test.describe("Issue 08 — 桌面视觉回归", () => {
-  test("账户菜单、个人资料与密钥页在约定视口保持稳定", async ({ page, context }) => {
+  test("账户菜单与个人资料在约定视口保持稳定", async ({ page, context }) => {
     const fixedAccount = {
       id: "acct-visual-issue-08",
       username: "桥见知行",
@@ -317,29 +208,6 @@ test.describe("Issue 08 — 桌面视觉回归", () => {
         }),
       })
     );
-    await page.route("**/api/auth/key-settings", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          status: "unconfigured",
-          configured: false,
-          key_tail: null,
-          updated_at: null,
-          capabilities: [
-            { capability_id: "chat", display_name: "核心对话", model_id: "qwen3.7-plus-2026-05-26", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
-            { capability_id: "embedding", display_name: "知识库向量化", model_id: "text-embedding-v4", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
-            { capability_id: "asr", display_name: "语音转写", model_id: "qwen3-asr-flash", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
-            { capability_id: "tts", display_name: "语音朗读", model_id: "qwen3-tts-flash-2025-11-27", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
-            { capability_id: "image", display_name: "图片生成与编辑", model_id: "qwen-image-2.0-pro-2026-06-22", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
-            { capability_id: "video", display_name: "视频生成", model_id: "wan2.7-t2v-2026-06-12", status: "not_probed", message: "尚未探测。", can_retry: false, probed_at: null },
-          ],
-          message: "尚未配置百炼密钥。",
-          next_step: "录入百炼 Key 后，系统将用非用户数据逐项真实探测固定能力。",
-        }),
-      })
-    );
-
     // Issue 11：新聊天首页会拉取真实对话列表；视觉回归注入空列表保证确定性。
     await page.route("**/api/chat/conversations", (route) =>
       route.fulfill({
@@ -356,21 +224,24 @@ test.describe("Issue 08 — 桌面视觉回归", () => {
     ]) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
 
+      // 本机 Playwright+Next dev 环境下，HttpOnly cookie 在页面加载后会被
+      // 浏览器存储清除；每次导航前重新注入，保证服务端会话判定一致。
+      await context.addCookies([
+        { name: "bridges_session", value: "visual-session", url: "http://127.0.0.1:3000" },
+      ]);
+
       await page.goto("/");
       await page.getByRole("button", { name: /账户菜单：桥见知行/ }).click();
       await expect(page).toHaveScreenshot(`issue08-account-menu-${viewport.name}.png`, {
         animations: "disabled",
       });
 
+      await context.addCookies([
+        { name: "bridges_session", value: "visual-session", url: "http://127.0.0.1:3000" },
+      ]);
       await page.goto("/account/settings/profile");
       await expect(page.getByRole("heading", { name: "让每次相遇都认得是你" })).toBeVisible();
       await expect(page).toHaveScreenshot(`issue08-profile-${viewport.name}.png`, {
-        animations: "disabled",
-      });
-
-      await page.goto("/account/settings/keys");
-      await expect(page.getByTestId("key-status")).toBeVisible();
-      await expect(page).toHaveScreenshot(`issue08-keys-${viewport.name}.png`, {
         animations: "disabled",
       });
     }

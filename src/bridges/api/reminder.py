@@ -1,9 +1,9 @@
 """QQ SMTP 任务提醒 API 路由（Issue 33）。
 
 授权码保存/删除属于敏感设置：要求当前账户近期密码确认（复用
-``RecentAuthRequired`` 敏感门，与密钥设置同一合同）。任何响应、审计与
-日志都不包含授权码正文或邮件正文；收件人/发件人固定为当前账户 QQ
-邮箱，跨账户访问一律 404。
+``RecentAuthRequired`` 敏感门）。任何响应、审计与日志都不包含授权码
+正文或邮件正文；收件人/发件人固定为当前账户 QQ 邮箱，跨账户访问一律
+404。
 """
 
 from __future__ import annotations
@@ -13,8 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 
-from bridges.api.auth import SubjectDep
-from bridges.api.credentials import RecentAuthRequired
+from bridges.api.auth import RecentAuthRequired, SubjectDep
 from bridges.contracts.identity import AuthError
 from bridges.contracts.reminder import (
     ParsedReminderPreview,

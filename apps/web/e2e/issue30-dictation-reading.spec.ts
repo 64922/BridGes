@@ -113,43 +113,6 @@ function assistantMessage(
   };
 }
 
-/** 能力探测替身：asr/tts/chat 各自可配状态；返回固定矩阵投影。 */
-async function mockKeySettings(
-  page: Page,
-  options: { asr?: string; tts?: string; chat?: string } = {}
-): Promise<void> {
-  const capability = (id: string, displayName: string, model: string, status: string) => ({
-    capability_id: id,
-    display_name: displayName,
-    model_id: model,
-    status,
-    message: status === "unavailable" ? "测试原因：能力不可用。" : undefined,
-    can_retry: status === "unavailable" || status === "not_probed",
-  });
-  await page.route("**/api/auth/key-settings", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        status: "configured",
-        configured: true,
-        key_tail: "…abcd",
-        updated_at: NOW,
-        capabilities: [
-          capability("chat", "核心对话", "qwen3.7-plus-2026-05-26", options.chat ?? "available"),
-          capability("embedding", "知识库向量化", "text-embedding-v4", "available"),
-          capability("asr", "语音转写", "qwen3-asr-flash", options.asr ?? "available"),
-          capability("tts", "语音朗读", "qwen3-tts-flash-2025-11-27", options.tts ?? "available"),
-          capability("image", "图片生成与编辑", "qwen-image-2.0-pro-2026-06-22", "available"),
-          capability("video", "视频生成", "wan2.7-t2v-2026-06-12", "available"),
-        ],
-        message: "测试配置。",
-        next_step: "测试。",
-      }),
-    });
-  });
-}
-
 /**
  * 聊天替身：GET 对话历史 + POST 消息 SSE（started → delta → done）。
  * 发送后把新消息并入历史，供断言发送内容与刷新后的历史一致。
@@ -239,18 +202,15 @@ async function installMockChatApi(
   return { sentBodies: () => sentBodies };
 }
 
-/** 注册新账户并打开对话页（装好全部替身：能力探测与聊天历史）。 */
+/** 注册新账户并打开对话页（装好全部替身：聊天历史）。 */
 async function openMockConversation(
   page: Page,
   options: {
     initialMessages?: MockMessage[];
-    asr?: string;
-    tts?: string;
   } = {}
 ): Promise<{ sentBodies: () => Array<Record<string, unknown>> }> {
   const credentials = uniqueCredentials("sp30");
   await signUp(page, credentials.username, credentials.qqEmail, "correct-horse-30");
-  await mockKeySettings(page, { asr: options.asr, tts: options.tts });
   const chat = await installMockChatApi(page, options.initialMessages ?? []);
   await page.goto("/chat/mock-1");
   await expect(page.getByTestId("composer")).toBeVisible();
@@ -603,23 +563,23 @@ test("刷新后朗读状态保持，可重新请求播放", async ({ page }) => 
   await expect(page.getByRole("button", { name: "暂停朗读" })).toBeVisible();
 });
 
-test("语音能力探测不可用时入口仍可用（GQ-03 全局凭据语义）", async ({ page }) => {
-  // GQ-03：听写/朗读由全局运行凭据驱动，不再按账户探测禁用入口。
-  // 探测记录为 unavailable/probing 时入口仍可用，且不出现密钥页引导。
+test("语音入口始终可用且无密钥页引导（GQ-03/GQ-06 全局凭据语义）", async ({ page }) => {
+  // GQ-03：听写/朗读由全局运行凭据驱动，GQ-06 后账户探测合同已删除，
+  // 新账户无任何个人 Qwen 配置即可使用入口，页面不出现密钥页引导文案。
   const credentials = uniqueCredentials("sp30c");
   await signUp(page, credentials.username, credentials.qqEmail, "correct-horse-30");
-  await mockKeySettings(page, { asr: "unavailable", tts: "probing" });
   const chat = await installMockChatApi(page, [assistantMessage("a-1", "第一条回答。")]);
   void chat;
   await page.goto("/chat/mock-1");
   await expect(page.getByTestId("composer")).toBeVisible();
-  // 听写入口可用（不被探测状态禁用）。
+  // 听写入口可用。
   const mic = page.getByRole("button", { name: "开始听写" });
   await expect(mic).toBeEnabled();
   await expect(page.getByText("前往「设置」", { exact: false })).toHaveCount(0);
   // 朗读入口可用（消息操作栏不禁用）。
   const toolbar = page.getByRole("toolbar", { name: "消息操作" });
   await expect(toolbar.getByRole("button", { name: "朗读" })).toBeEnabled();
-  // 无密钥横幅：GQ-03 后不因探测状态拦截使用。
+  // 无密钥横幅、无探测状态文案。
   await expect(page.getByText("语音朗读能力正在探测中")).toHaveCount(0);
+  await expect(page.getByText(/密钥/)).toHaveCount(0);
 });

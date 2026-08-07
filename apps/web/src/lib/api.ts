@@ -13,8 +13,6 @@ export type AccountProfileUpdate = components["schemas"]["AccountProfileUpdate"]
 export type DeviceAccountProjection = components["schemas"]["DeviceAccountProjection"];
 export type DeviceAccountsResponse = components["schemas"]["DeviceAccountsResponse"];
 export type DeviceLogoutResponse = components["schemas"]["DeviceLogoutResponse"];
-export type KeySettingsProjection = components["schemas"]["KeySettingsProjection"];
-export type CapabilityProbeSummary = components["schemas"]["CapabilityProbeSummary"];
 export type ChatMessageProjection = components["schemas"]["ChatMessageProjection"];
 export type ChatAttachmentProjection = components["schemas"]["ChatAttachmentProjection"];
 export type ChatMessageRole = components["schemas"]["ChatMessageRole"];
@@ -408,65 +406,6 @@ export async function uploadAvatar(file: File): Promise<Account> {
     headers: { "Content-Type": file.type },
     credentials: "same-origin",
     body: file,
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function fetchKeySettings(): Promise<KeySettingsProjection> {
-  const res = await fetch(`${API_BASE}/auth/key-settings`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function saveKeySettings(key: string): Promise<KeySettingsProjection> {
-  const res = await fetch(`${API_BASE}/auth/key-settings`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ key }),
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function deleteKeySettings(): Promise<KeySettingsProjection> {
-  const res = await fetch(`${API_BASE}/auth/key-settings`, {
-    method: "DELETE",
-    credentials: "same-origin",
-  });
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function retryCapabilityProbe(
-  capabilityId: string
-): Promise<KeySettingsProjection> {
-  const res = await fetch(
-    `${API_BASE}/auth/key-settings/probes/${encodeURIComponent(capabilityId)}/retry`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) {
-    throw await parseApiError(res);
-  }
-  return res.json();
-}
-
-export async function probeAllCapabilities(): Promise<KeySettingsProjection> {
-  const res = await fetch(`${API_BASE}/auth/key-settings/probes`, {
-    method: "POST",
-    credentials: "same-origin",
   });
   if (!res.ok) {
     throw await parseApiError(res);

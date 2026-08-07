@@ -33,7 +33,7 @@ class ExportPreviewProjection(BaseModel):
     total_estimated_bytes: int = Field(description="预计导出总字节数。")
     secrets_omitted: bool = Field(
         default=True,
-        description="导出不包含百炼 Key、SMTP 授权码、会话令牌或运行密钥。",
+        description="导出不包含 SMTP 授权码、会话令牌或运行密钥。",
     )
 
 

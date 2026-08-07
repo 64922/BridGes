@@ -28,7 +28,6 @@ from bridges.ai import (
 from bridges.api import (
     auth,
     chat,
-    credentials,
     domain_packs,
     evaluation,
     expression,
@@ -368,7 +367,7 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
         )
     )
     # Issue 32: 文生视频（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外，
-    # 仍使用同一账户级百炼密钥）。固定绑定 wan2.7-t2v-2026-06-12，异步
+    # 使用全局百炼运行凭据）。固定绑定 wan2.7-t2v-2026-06-12，异步
     # 任务经后台执行器轮询，不注册备用模型——失败只重试同一绑定。
     registry.register(
         CapabilityRecord(
@@ -846,10 +845,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     app.router.add_event_handler("shutdown", _shutdown_mcp_servers)
 
-    # Issue 10: 账户级百炼凭据存储与固定能力探测。
-    # 源码环境使用操作系统凭据库（keyring，Windows 兜底 DPAPI）；容器环境
-    # 使用自动生成主密钥保护的加密凭据卷（数据目录 credentials/ 子目录）。
-    # 未配置数据库（内存模式，测试/E2E）时使用进程内替身，保证测试确定性。
+    # Issue 10 遗留：账户级百炼凭据存储（GQ-06 后无公开调用方，仅账户
+    # 删除清理使用，GQ-07 将整体清退）。源码环境使用操作系统凭据库
+    # （keyring，Windows 兜底 DPAPI）；容器环境使用自动生成主密钥保护的
+    # 加密凭据卷（数据目录 credentials/ 子目录）。未配置数据库（内存模式，
+    # 测试/E2E）时使用进程内替身，保证测试确定性。
     settings_at_credential = app.state.settings
     credential_store: CredentialStorePort = InMemoryCredentialStore()
     data_dir: Path | None = None
@@ -1225,10 +1225,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         )
 
     # Issue 37: 数据生命周期（导出/删除/备份/恢复）。导出只读业务表（不读
-    # 凭据/会话）；删除与恢复会清除账户级外部凭据（百炼 Key/SMTP 授权码，
-    # 恢复后需重新配置）；备份在受控一致性点打包数据库快照、对象与身份
-    # 账户数据，绝不包含凭据、会话令牌或运行密钥。全部敏感端点经
-    # RecentAuthRequired 敏感门；未配置数据库（内存模式）时服务为 None，
+    # 凭据/会话）；删除与恢复会清除账户级外部凭据（QQ SMTP 授权码，
+    # 恢复后需重新配置；账户 Qwen Key 清理由 GQ-07 清退）；备份在受控
+    # 一致性点打包数据库快照、对象与身份账户数据，绝不包含凭据、会话令牌
+    # 或运行密钥。全部敏感端点经 RecentAuthRequired 敏感门；未配置数据库
+    # （内存模式）时服务为 None，
     # 路由统一 503（与既有持久化服务一致）。
     bridges_database_for_lifecycle = getattr(app.state, "bridges_database", None)
     object_repository_for_lifecycle = getattr(app.state, "object_repository", None)
@@ -1575,7 +1576,6 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(knowledge_base.router)
     app.include_router(learning_projects.router)
     app.include_router(search.router)
-    app.include_router(credentials.router)
     app.include_router(domain_packs.router)
     app.include_router(projects.router)
     app.include_router(vault.router)
@@ -1633,7 +1633,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
 
     if settings is not None and settings.environment.lower() == "test":
         # Issue 41（AC3/AC10）：测试专用端点只在 test 环境注册，生产配置不
-        # 暴露任何 `/_test/` 路由（与 /_test/capabilities 同一门控）。
+        # 暴露任何 `/_test/` 路由。
         @app.get("/_test/recovery-token", response_model=dict[str, Any])
         async def test_recovery_token(qq_email: str) -> dict[str, Any]:
             """Test-only endpoint to retrieve a recovery token without email delivery.
@@ -1649,35 +1649,6 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             except IdentityError as exc:
                 return {"error": str(exc)}
             return {"token": token}
-
-    if settings is not None and settings.environment.lower() == "test":
-        # Issue 36 E2E：为当前会话账户标记核心对话能力就绪（假 Key + chat
-        # probe available）。仅在 test 环境注册；消息发送预检由此通过，让
-        # 桌面 E2E 走真实消息流验证 MCP 调用链路，不依赖真实百炼密钥。
-        @app.post("/_test/capabilities", response_model=dict[str, Any])
-        async def test_mark_capabilities_ready(subject: auth.SubjectDep) -> dict[str, Any]:
-            from datetime import UTC, datetime
-
-            from pydantic import SecretStr
-
-            from bridges.contracts.credentials import ProbeRecord, ProbeStatus
-
-            credential_service: KeyCredentialService = app.state.credential_service
-            credential_service._store.save(subject.account_id, SecretStr("e2e-test-key"))
-            credential_service._probes._put_record(
-                subject.account_id,
-                ProbeRecord(
-                    probe_id=f"probe-chat-e2e-{subject.account_id}",
-                    capability_id="chat",
-                    model_id="qwen3.7-plus-2026-05-26",
-                    region="cn-beijing",
-                    parameters={},
-                    status=ProbeStatus.AVAILABLE,
-                    probed_at=datetime.now(UTC),
-                    error_message=None,
-                ),
-            )
-            return {"ok": True, "account_id": subject.account_id}
 
     def _get_workflow_service(request: Request) -> WorkflowService:
         service: WorkflowService | None = getattr(request.app.state, "workflow_service", None)

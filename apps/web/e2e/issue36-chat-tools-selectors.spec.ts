@@ -14,7 +14,7 @@ import { signOut, signUp, uniqueCredentials } from "./helpers/auth";
  * 项目选择改变来源面板且可清除；切换账户不残留。
  *
  * 真实后端（sqlite）+ 真实 MCP 进程（echo/note，与 issue35 同一基建）；
- * 消息发送预检通过 `/_test/capabilities`（仅 test 环境注册）标记就绪。
+ * GQ-06 后测试环境以确定性适配器放行消息发送，不再依赖能力探测钩子。
  */
 
 const PASSWORD = "correct-horse-36";
@@ -28,11 +28,6 @@ const SIX_ENTRIES = [
   "选择学习项目",
   "选择已启用插件",
 ];
-
-async function markCapabilitiesReady(page: Page) {
-  const response = await page.request.post("/api/_test/capabilities");
-  expect(response.ok()).toBeTruthy();
-}
 
 async function installMcpViaApi(page: Page, yamlName: string) {
   const file = await import("node:fs").then((fs) =>
@@ -111,7 +106,6 @@ test("两种对话模式统一六入口顺序；建议卡恰好三张且键盘�
 test("插件选择器真实选择 → chip 持续显示 → MCP 真实调用成功 → 刷新恢复", async ({ page }) => {
   const credentials = uniqueCredentials("m36b");
   await signUp(page, credentials.username, credentials.qqEmail, PASSWORD);
-  await markCapabilitiesReady(page);
   await installMcpViaApi(page, "valid-echo.yaml");
   const conversationId = await createConversation(page);
   await page.goto(`/chat/${conversationId}`);
@@ -159,7 +153,6 @@ test("插件选择器真实选择 → chip 持续显示 → MCP 真实调用成�
 test("敏感操作挂起 → 确认执行；停用后立即从可用集合移除", async ({ page }) => {
   const credentials = uniqueCredentials("m36c");
   await signUp(page, credentials.username, credentials.qqEmail, PASSWORD);
-  await markCapabilitiesReady(page);
   await installMcpViaApi(page, "valid-note.yaml");
   const conversationId = await createConversation(page);
   await page.goto(`/chat/${conversationId}`);

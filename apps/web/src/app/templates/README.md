@@ -8,7 +8,7 @@
 
 - `middleware.ts` 在非开发环境把 `/templates` 统一重定向到 `/`，用户不可达；
 - 生产页面位于 `src/app/(app)/`、`src/app/(public)/` 与 `src/components/`（AppSidebar、
-  Composer、KeySettings 等），模板中的 ChatSidebar / use-template-state 是模板专用实现，
+  Composer 等），模板中的 ChatSidebar / use-template-state 是模板专用实现，
   不要在生产组件中导入；
 - 架构审查曾建议删除本目录（减少构建体积与导航噪声），但被 Issue 04 验收测试依赖
   否决：删除需要重写 527 行评分相关 E2E。保留即验收契约，勿随意改动模板行为。

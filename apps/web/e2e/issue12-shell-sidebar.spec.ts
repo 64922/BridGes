@@ -150,7 +150,7 @@ test.describe("Issue 12 — 收起与恢复", () => {
 });
 
 test.describe("Issue 12 — 账户菜单", () => {
-  test("底部账户菜单向上弹出，四项顺序固定", async ({ page }) => {
+  test("底部账户菜单向上弹出，三项顺序固定（GQ-06 无密钥入口）", async ({ page }) => {
     const creds = await freshAccount(page, "i12-menu");
     const trigger = page.getByRole("button", {
       name: new RegExp(`账户菜单：${creds.username}`),
@@ -158,7 +158,6 @@ test.describe("Issue 12 — 账户菜单", () => {
     await trigger.click();
     await expect(page.getByRole("menuitem")).toHaveText([
       "切换账号",
-      "密钥设置",
       "个人资料",
       "退出登录",
     ]);

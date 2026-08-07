@@ -116,7 +116,7 @@ export function DataPrivacy() {
           </h1>
           <p className={styles.lead}>
             导出、删除、备份与恢复你的本地数据。导出只包含当前账户的内容，
-            备份是整套本地数据的加密一致快照；百炼 Key、QQ SMTP 授权码、
+            备份是整套本地数据的加密一致快照；QQ SMTP 授权码、
             会话令牌与运行密钥永不进入导出或备份。
           </p>
         </header>
@@ -190,7 +190,7 @@ export function DataPrivacy() {
                   </tfoot>
                 </table>
                 <p className={styles.secretsNote}>
-                  导出不包含百炼 Key、QQ SMTP 授权码、会话令牌、运行密钥或
+                  导出不包含 QQ SMTP 授权码、会话令牌、运行密钥或
                   其他账户的数据；资产只含清单元数据，不含文件字节。
                 </p>
                 <div className={styles.actions}>
@@ -217,8 +217,8 @@ export function DataPrivacy() {
                 </h2>
                 <p className={styles.cardDescription}>
                   创建整套本地 BridGes 数据的加密一致备份，或在必要时恢复
-                  到备份时刻。备份不包含凭据与会话，恢复后外部凭据（百炼
-                  Key、QQ SMTP 授权码）需重新配置。
+                  到备份时刻。备份不包含凭据与会话，恢复后外部凭据（如
+                  QQ SMTP 授权码）需重新配置。
                 </p>
               </div>
               <Icon name="settings" size={28} aria-hidden />
@@ -298,7 +298,7 @@ export function DataPrivacy() {
               <li>撤销全部会话并停止进行中的回答与后台任务；</li>
               <li>一致删除对话、画像、项目、提醒、插件授权与资产记录；</li>
               <li>删除本地对象文件、索引、缓存与待执行提醒；</li>
-              <li>清除百炼 Key 与 QQ SMTP 授权码（外部服务凭据一并移除）。</li>
+              <li>清除 QQ SMTP 授权码（外部服务凭据一并移除）。</li>
             </ul>
             <div className={styles.actions}>
               <Button
@@ -559,7 +559,7 @@ function BackupDialog({ open, onClose, onSuccess }: BackupDialogProps) {
       open={open}
       onClose={onClose}
       title="创建本地备份"
-      description="备份包含数据库一致快照、账户隔离对象与身份账户数据，经口令派生密钥加密；不包含百炼 Key、SMTP 授权码、会话令牌或运行密钥。"
+      description="备份包含数据库一致快照、账户隔离对象与身份账户数据，经口令派生密钥加密；不包含 SMTP 授权码、会话令牌或运行密钥。"
     >
       <form onSubmit={(event) => void submit(event)} className={styles.dialogForm}>
         {error && <ErrorSummary title="备份创建失败" errors={[error]} />}

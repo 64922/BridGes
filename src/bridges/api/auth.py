@@ -7,7 +7,7 @@ local development can exercise the flow over plain HTTP.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Protocol
 
 from fastapi import APIRouter, Cookie, Depends, Header, HTTPException, Request, Response, status
 
@@ -249,6 +249,51 @@ async def require_subject(
 
 
 SubjectDep = Annotated[SubjectContext, Depends(require_subject)]
+
+
+class RecentAuthService(Protocol):
+    """敏感操作路由需要的近期认证判定（IdentityService 的窄接口）。"""
+
+    def requires_recent_auth(self, session_id: str) -> bool: ...
+
+
+def _get_recent_auth_service(request: Request) -> RecentAuthService:
+    service: RecentAuthService | None = getattr(
+        request.app.state, "identity_service", None
+    )
+    if service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "error": "identity_unavailable",
+                "message": "身份服务未启用，当前实例拒绝敏感设置操作。",
+            },
+        )
+    return service
+
+
+def _require_recent_auth_dependency(request: Request, subject: SubjectDep) -> None:
+    """FastAPI dependency：敏感路由声明即门控（近期密码确认，统一入口）。"""
+    try:
+        needs_reauthentication = _get_recent_auth_service(
+            request
+        ).requires_recent_auth(subject.session_id)
+    except IdentityError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"error": "unauthenticated", "message": str(exc)},
+        ) from exc
+    if needs_reauthentication:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "reauth_required",
+                "message": "此页面包含敏感设置，请重新输入当前账户密码。",
+            },
+        )
+
+
+RecentAuthRequired = Annotated[None, Depends(_require_recent_auth_dependency)]
 
 
 @router.post(

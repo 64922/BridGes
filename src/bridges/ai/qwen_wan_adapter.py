@@ -53,9 +53,8 @@ SUPPORTED_RESULT_MEDIA_TYPES = {
 class QwenWanAdapter(CapabilityAdapter):
     """固定视频模型（wan2.7-t2v-2026-06-12）的异步任务适配器。
 
-    Wan 是 ADR-0007 批准的模型矩阵唯一非 Qwen 系列例外：仍使用同一
-    账户级百炼密钥，遵守单类别单快照、用户不可更改与真实能力探测的
-    共同合同，只是模型系列不是 Qwen。
+    Wan 是 ADR-0007 批准的模型矩阵唯一非 Qwen 系列例外：使用全局百炼
+    运行凭据，遵守固定模型绑定与运行锁合同，只是模型系列不是 Qwen。
     """
 
     def __init__(

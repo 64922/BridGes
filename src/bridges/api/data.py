@@ -24,12 +24,12 @@ from fastapi import (
 )
 
 from bridges.api.auth import (
+    RecentAuthRequired,
     SubjectDep,
     _clear_device_cookie,
     _clear_session_cookie,
     _cookie_secure,
 )
-from bridges.api.credentials import RecentAuthRequired
 from bridges.chat.service import ChatService
 from bridges.contracts.identity import AuthError
 from bridges.contracts.lifecycle import (

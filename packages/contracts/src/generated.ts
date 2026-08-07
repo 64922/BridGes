@@ -1049,74 +1049,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/auth/key-settings": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Key Settings
-         * @description 返回当前账户密钥配置与固定能力探测状态（不含秘密正文）。
-         */
-        get: operations["get_key_settings_auth_key_settings_get"];
-        /**
-         * Save Key Settings
-         * @description 保存或替换当前账户百炼 Key，并触发固定能力真实探测。
-         */
-        put: operations["save_key_settings_auth_key_settings_put"];
-        post?: never;
-        /**
-         * Delete Key Settings
-         * @description 删除当前账户百炼 Key 并复位探测状态。
-         */
-        delete: operations["delete_key_settings_auth_key_settings_delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/key-settings/probes": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Probe All Capabilities
-         * @description 对固定能力矩阵重新执行全量真实探测。
-         */
-        post: operations["probe_all_capabilities_auth_key_settings_probes_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/auth/key-settings/probes/{capability_id}/retry": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Retry Capability Probe
-         * @description 对单项能力执行同模型重试（无备用模型、无隐藏降级）。
-         */
-        post: operations["retry_capability_probe_auth_key_settings_probes__capability_id__retry_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/domain-packs/workbench": {
         parameters: {
             query?: never;
@@ -6147,23 +6079,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/_test/capabilities": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Test Mark Capabilities Ready */
-        post: operations["test_mark_capabilities_ready__test_capabilities_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/_test/runs/{run_id}/advance": {
         parameters: {
             query?: never;
@@ -7195,45 +7110,6 @@ export interface components {
          * @enum {string}
          */
         CandidateStabilityState: "candidate" | "active" | "restricted" | "frozen" | "stale" | "deleted";
-        /**
-         * CapabilityProbeSummary
-         * @description 密钥设置页上单个能力的展示摘要。
-         */
-        CapabilityProbeSummary: {
-            /**
-             * Capability Id
-             * @description 能力标识。
-             */
-            capability_id: string;
-            /**
-             * Display Name
-             * @description 中文能力名。
-             */
-            display_name: string;
-            /**
-             * Model Id
-             * @description 固定模型快照，用户不可更换。
-             */
-            model_id: string;
-            /** @description 当前探测状态。 */
-            status: components["schemas"]["ProbeStatus"];
-            /**
-             * Message
-             * @description 中文状态说明；不可用时为原因。
-             */
-            message?: string | null;
-            /**
-             * Can Retry
-             * @description 是否提供同模型重试入口（失败或未探测时）。
-             * @default false
-             */
-            can_retry: boolean;
-            /**
-             * Probed At
-             * @description 最近一次探测完成时间。
-             */
-            probed_at?: string | null;
-        };
         /**
          * CapsuleIssueRequest
          * @description Request to issue a temporary task capsule for a vault object.
@@ -11980,7 +11856,7 @@ export interface components {
             total_estimated_bytes: number;
             /**
              * Secrets Omitted
-             * @description 导出不包含百炼 Key、SMTP 授权码、会话令牌或运行密钥。
+             * @description 导出不包含 SMTP 授权码、会话令牌或运行密钥。
              * @default true
              */
             secrets_omitted: boolean;
@@ -14153,65 +14029,6 @@ export interface components {
              */
             revoked_at?: string | null;
         };
-        /**
-         * KeySaveRequest
-         * @description 保存或替换当前账户百炼 Key 的请求。
-         *
-         *     请求体中的 Key 只在本请求内出现，服务端立即写入受保护凭据存储，
-         *     不落入数据库明文字段、日志、API 响应或浏览器存储。
-         */
-        KeySaveRequest: {
-            /**
-             * Key
-             * Format: password
-             * @description 百炼 API Key。
-             */
-            key: string;
-        };
-        /**
-         * KeySettingsProjection
-         * @description 受保护的模型密钥设置投影，不含任何秘密正文。
-         */
-        KeySettingsProjection: {
-            /** @description 当前配置状态。 */
-            status: components["schemas"]["KeySettingsStatus"];
-            /**
-             * Configured
-             * @description 当前账户是否已保存百炼 Key。
-             */
-            configured: boolean;
-            /**
-             * Key Tail
-             * @description 脱敏尾号（如 sk-…4F3a），绝不包含完整 Key。
-             */
-            key_tail?: string | null;
-            /**
-             * Updated At
-             * @description 最近一次保存或删除时间。
-             */
-            updated_at?: string | null;
-            /**
-             * Capabilities
-             * @description 固定能力矩阵的逐项探测状态。
-             */
-            capabilities?: components["schemas"]["CapabilityProbeSummary"][];
-            /**
-             * Message
-             * @description 人类可读的状态说明。
-             */
-            message: string;
-            /**
-             * Next Step
-             * @description 安全、可操作的建议。
-             */
-            next_step: string;
-        };
-        /**
-         * KeySettingsStatus
-         * @description 模型密钥配置状态。
-         * @enum {string}
-         */
-        KeySettingsStatus: "unconfigured" | "configured";
         /**
          * KeyboardAccessPath
          * @description 一个核心媒体任务的完整键盘操作路径。
@@ -17253,12 +17070,6 @@ export interface components {
              */
             action_relevance?: string | null;
         };
-        /**
-         * ProbeStatus
-         * @description 单项能力探测状态。
-         * @enum {string}
-         */
-        ProbeStatus: "not_probed" | "probing" | "available" | "unavailable";
         /**
          * ProfileAssertion
          * @description Stable, promoted profile entry that may enter a memory slice.
@@ -23838,8 +23649,8 @@ export interface components {
          * VideoRequestPayload
          * @description 文生视频请求（Issue 32）。
          *
-         *     只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与当前
-         *     账户百炼密钥（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），
+         *     只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与全局
+         *     百炼运行凭据（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），
          *     界面不提供模型选择。请求只携带提示词，不携带完整项目目录、画像
          *     或任何账户秘密。
          */
@@ -28082,311 +27893,6 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
-                };
-            };
-        };
-    };
-    get_key_settings_auth_key_settings_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeySettingsProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    save_key_settings_auth_key_settings_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["KeySaveRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeySettingsProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    delete_key_settings_auth_key_settings_delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeySettingsProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    probe_all_capabilities_auth_key_settings_probes_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeySettingsProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    retry_capability_probe_auth_key_settings_probes__capability_id__retry_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                capability_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["KeySettingsProjection"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
                 };
             };
         };
@@ -43142,39 +42648,6 @@ export interface operations {
             header?: never;
             path?: never;
             cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    test_mark_capabilities_ready__test_capabilities_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
         };
         requestBody?: never;
         responses: {

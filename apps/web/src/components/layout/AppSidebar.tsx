@@ -628,7 +628,7 @@ export function AppSidebar() {
         )}
       </section>
 
-      {/* 11. 底部账户菜单（Issue 08，固定四项） */}
+      {/* 11. 底部账户菜单（Issue 08，GQ-06 后固定三项） */}
       <div
         style={{
           marginTop: "auto",

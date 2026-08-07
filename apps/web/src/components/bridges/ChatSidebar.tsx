@@ -47,7 +47,7 @@ interface ChatSidebarProps {
  *
  * 自上而下：Logo 与折叠按钮、新聊天、搜索对话、功能模块
  * （本地知识库 / 学习项目 / 任务安排 / 插件 / 用户画像）、最近对话、
- * 底部账户菜单（切换账号 / 密钥设置 / 个人资料 / 退出登录）。
+ * 底部账户菜单（切换账号 / 个人资料 / 退出登录，GQ-06 无密钥入口）。
  * 折叠后为仅图标的窄轨，全部控件保持键盘可达；
  * Logo 点击 / 键盘激活进入新聊天（NAV-01）。
  */
@@ -339,7 +339,6 @@ export function ChatSidebar({
           }
           items={[
             { label: "切换账号", icon: "account", onSelect: () => router.push("/templates/login?from=switch") },
-            { label: "密钥设置", icon: "settings", onSelect: () => router.push("/templates/settings?section=key") },
             { label: "个人资料", icon: "profile", onSelect: () => router.push("/templates/settings?section=profile") },
             { label: "退出登录", icon: "close", danger: true, onSelect: () => router.push("/templates/login?from=logout") },
           ]}

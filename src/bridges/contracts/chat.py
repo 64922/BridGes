@@ -504,8 +504,8 @@ class ChatMessageCreateRequest(BaseModel):
 class VideoRequestPayload(BaseModel):
     """文生视频请求（Issue 32）。
 
-    只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与当前
-    账户百炼密钥（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），
+    只提供 ``prompt``：所有请求固定绑定 wan2.7-t2v-2026-06-12 与全局
+    百炼运行凭据（ADR-0007：Wan 是模型矩阵唯一非 Qwen 系列例外），
     界面不提供模型选择。请求只携带提示词，不携带完整项目目录、画像
     或任何账户秘密。
     """
