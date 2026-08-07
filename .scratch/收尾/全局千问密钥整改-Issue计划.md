@@ -337,7 +337,7 @@ rg -n "KeyCredentialService|CapabilityProbeService|/auth/key-settings|账户级�
 
 ## GQ-08 — 完成全载体文档、黄金路径与发布门验收
 
-Status: completed（实施 + 全量验证后提交，详见 .scratch/收尾/GQ-08-发布验收报告.md）  
+Status: completed（实施 + 双轴审查 + 全量验证后提交，2511f92；详见 .scratch/收尾/GQ-08-发布验收报告.md）  
 User stories: US-01、US-02、US-03、US-04、US-05
 
 ### What to build
