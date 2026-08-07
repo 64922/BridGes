@@ -139,7 +139,7 @@ async def check_descriptor(
         status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
         status.HTTP_409_CONFLICT: {"model": AuthError},
         status.HTTP_413_CONTENT_TOO_LARGE: {"model": AuthError},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": AuthError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": AuthError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": AuthError},
     },
 )
@@ -207,7 +207,7 @@ def disable_mcp(
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
         status.HTTP_404_NOT_FOUND: {"model": AuthError},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": AuthError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": AuthError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": AuthError},
     },
 )
@@ -267,7 +267,7 @@ def uninstall_mcp(
         status.HTTP_403_FORBIDDEN: {"model": AuthError},
         status.HTTP_404_NOT_FOUND: {"model": AuthError},
         status.HTTP_409_CONFLICT: {"model": AuthError},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": AuthError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": AuthError},
         status.HTTP_502_BAD_GATEWAY: {"model": AuthError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": AuthError},
     },

@@ -140,7 +140,7 @@ async def check_package(
         status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
         status.HTTP_409_CONFLICT: {"model": AuthError},
         status.HTTP_413_CONTENT_TOO_LARGE: {"model": AuthError},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": AuthError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": AuthError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": AuthError},
     },
 )
@@ -237,7 +237,7 @@ async def uninstall_plugin(
         status.HTTP_401_UNAUTHORIZED: {"model": AuthError},
         status.HTTP_409_CONFLICT: {"model": AuthError},
         status.HTTP_413_CONTENT_TOO_LARGE: {"model": AuthError},
-        status.HTTP_422_UNPROCESSABLE_ENTITY: {"model": AuthError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": AuthError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": AuthError},
     },
 )
