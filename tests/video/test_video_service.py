@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from bridges.ai import ModelGateway
-from bridges.ai.adapters import AdapterResult, TransientError
+from bridges.ai.adapters import AdapterResult, AuthError, RateLimitError, TransientError
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
@@ -478,6 +478,31 @@ def test_transient_submit_failure_auto_retries_same_input(tmp_path: Path) -> Non
     submits = [c for c in h.wan.calls if c.get("kind") == "submit"]
     assert len(submits) == 2
     assert submits[0]["prompt"] == submits[1]["prompt"] == "一条静谧的河"
+
+
+def test_submit_auth_error_maps_to_global_config_hint(tmp_path: Path) -> None:
+    """GQ-04：鉴权失败折叠为指向全局运行配置的中文提示，不输出供应商原文。"""
+    h = _VideoHarness(tmp_path)
+    h.wan.script = [{"error": AuthError("Qwen authentication/authorization failed.")}]
+    task = h.service.submit(h.account_id, h.conversation_id, h.message_id, "一条静谧的河")
+    h.service.process_pending()  # 提交 → AuthError → 稳定失败投影
+    failed = h.service.get_task(h.account_id, h.conversation_id, task.task_id)
+    assert failed.status == VideoTaskStatus.FAILED
+    assert failed.error_code == "auth_error"
+    assert "全局百炼配置" in failed.error_message
+    assert "authentication" not in failed.error_message
+
+
+def test_submit_rate_limit_maps_to_retry_hint(tmp_path: Path) -> None:
+    """GQ-04：限流折叠为中文稍后重试提示，错误码保持稳定。"""
+    h = _VideoHarness(tmp_path)
+    h.wan.script = [{"error": RateLimitError("Qwen rate limit (429).")}]
+    task = h.service.submit(h.account_id, h.conversation_id, h.message_id, "一条静谧的河")
+    h.service.process_pending()  # 提交 → RateLimitError → 稳定失败投影
+    failed = h.service.get_task(h.account_id, h.conversation_id, task.task_id)
+    assert failed.status == VideoTaskStatus.FAILED
+    assert failed.error_code == "rate_limit"
+    assert "限流" in failed.error_message
 
 
 def test_retry_only_failed_tasks(tmp_path: Path) -> None:

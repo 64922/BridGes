@@ -7,8 +7,9 @@ import { signUp, uniqueCredentials } from "./helpers/auth";
  *
  * 覆盖：对话框提交生成（真实消息流）→ 任务状态卡（排队/提交中/生成中/
  * 成功）→ 资产卡（真实视频字节/说明文字修改/下载）；刷新后从消息投影
- * 恢复；失败重试；取消（取消中 → 已取消）；能力不可用。全部 API 用
- * page.route 替身（状态机推进任务），页面渲染与交互为真实链路。
+ * 恢复；失败重试；取消（取消中 → 已取消）；入口可用性（GQ-04 全局
+ * 凭据语义，不再按账户探测禁用）。全部 API 用 page.route 替身（状态机
+ * 推进任务），页面渲染与交互为真实链路。
  */
 
 const NOW = "2026-08-05T08:00:00Z";
@@ -78,47 +79,11 @@ function assistantMessage(id: string, content: string, video: VideoTask | null =
   };
 }
 
-/** 能力探测替身：video 能力可配状态（其余固定 available）。 */
-async function mockKeySettings(page: Page, videoStatus = "available"): Promise<void> {
-  const capability = (id: string, displayName: string, model: string, status: string) => ({
-    capability_id: id,
-    display_name: displayName,
-    model_id: model,
-    status,
-    message: status === "unavailable" ? "测试原因：能力不可用。" : undefined,
-    can_retry: status === "unavailable" || status === "not_probed",
-  });
-  await page.route("**/api/auth/key-settings", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        status: "configured",
-        configured: true,
-        key_tail: "…abcd",
-        updated_at: NOW,
-        capabilities: [
-          capability("chat", "核心对话", "qwen3.7-plus-2026-05-26", "available"),
-          capability("embedding", "知识库向量化", "text-embedding-v4", "available"),
-          capability("asr", "语音转写", "qwen3-asr-flash", "available"),
-          capability("tts", "语音朗读", "qwen3-tts-flash-2025-11-27", "available"),
-          capability("image", "图片生成与编辑", "qwen-image-2.0-pro-2026-06-22", "available"),
-          capability("video", "视频生成", "wan2.7-t2v-2026-06-12", videoStatus),
-        ],
-        message: "测试配置。",
-        next_step: "测试。",
-      }),
-    });
-  });
-}
-
 interface MockVideoApiOptions {
   /** 轮询第几次返回终态（1 = 挂载后立即成功；2 = 等待一个轮询间隔）。 */
   succeedAfterPolls?: number;
   /** 任务最终失败（失败原因可重试）。 */
   failWith?: { code: string; message: string };
-  /** 发送视频载荷时服务端返回 409（能力门控拒绝，前端展示中文原因）。 */
-  rejectVideoUnavailable?: boolean;
 }
 
 /**
@@ -132,7 +97,7 @@ async function installMockVideoApi(
   initialMessages: MockMessage[] = [],
   options: MockVideoApiOptions = {}
 ): Promise<{ sentBodies: () => Array<Record<string, unknown>> }> {
-  const { succeedAfterPolls = 2, failWith, rejectVideoUnavailable = false } = options;
+  const { succeedAfterPolls = 2, failWith } = options;
   const state: {
     messages: MockMessage[];
     sent: number;
@@ -211,20 +176,6 @@ async function installMockVideoApi(
     }
     const body = request.postDataJSON() as Record<string, unknown>;
     sentBodies.push(body);
-    if (rejectVideoUnavailable) {
-      // 服务端能力门控：视频能力不可用时拒绝提交并说明原因。
-      await route.fulfill({
-        status: 409,
-        contentType: "application/json",
-        body: JSON.stringify({
-          detail: {
-            error: "capability_unavailable",
-            message: "视频生成能力当前不可用：测试原因：能力不可用。请前往「设置」重新探测。",
-          },
-        }),
-      });
-      return;
-    }
     state.sent += 1;
     const turn = state.sent;
     const video = body.video as { prompt: string } | undefined;
@@ -420,7 +371,6 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("生成流程：对话框提交 → 任务卡 → 资产卡 → 说明文字修改", async ({ page }) => {
-  await mockKeySettings(page);
   await installMockVideoApi(page, [], { succeedAfterPolls: 2 });
   await page.goto("/chat/mock-1");
 
@@ -450,7 +400,6 @@ test("生成流程：对话框提交 → 任务卡 → 资产卡 → 说明文�
 });
 
 test("刷新恢复：历史消息的任务投影直接渲染资产卡", async ({ page }) => {
-  await mockKeySettings(page);
   const succeededTask: VideoTask = {
     task_id: "task-hist",
     prompt: "一条静谧的河",
@@ -495,7 +444,6 @@ test("刷新恢复：历史消息的任务投影直接渲染资产卡", async ({
 });
 
 test("删除：确认对话框显示影响说明，确认后显示已删除", async ({ page }) => {
-  await mockKeySettings(page);
   const succeededTask: VideoTask = {
     task_id: "task-del",
     prompt: "一条静谧的河",
@@ -541,7 +489,6 @@ test("删除：确认对话框显示影响说明，确认后显示已删除", as
 });
 
 test("失败重试：任务卡显示原因，重试同输入重新入队", async ({ page }) => {
-  await mockKeySettings(page);
   await installMockVideoApi(page, [], {
     succeedAfterPolls: 2,
     failWith: { code: "cloud_failed", message: "云端视频生成失败" },
@@ -561,7 +508,6 @@ test("失败重试：任务卡显示原因，重试同输入重新入队", async
 });
 
 test("取消：运行中任务取消后经取消中收敛为已取消，不发布资产", async ({ page }) => {
-  await mockKeySettings(page);
   await installMockVideoApi(page, [], { succeedAfterPolls: 99 });
   await page.goto("/chat/mock-1");
 
@@ -577,16 +523,18 @@ test("取消：运行中任务取消后经取消中收敛为已取消，不发�
   await expect(page.getByTestId("video-asset-card")).not.toBeVisible();
 });
 
-test("能力不可用：菜单入口明确停用并说明原因", async ({ page }) => {
-  await mockKeySettings(page, "unavailable");
+test("视频能力入口始终可用（GQ-04 全局凭据语义）", async ({ page }) => {
+  // GQ-04：图片/视频由全局运行凭据驱动，不再按账户探测禁用入口，也不
+  // 再请求 /api/auth/key-settings——新账户无任何个人 Qwen 配置即可进入
+  // 视频生成对话框，页面不出现密钥页引导文案。
   await installMockVideoApi(page);
   await page.goto("/chat/mock-1");
 
-  // 视频能力不可用（探测快照）：菜单入口点击给出中文原因，不打开对话框。
   await page.getByRole("button", { name: "更多功能" }).click();
-  await page.getByRole("menuitem", { name: "视频生成" }).click();
-  await expect(page.getByTestId("tool-unavailable-notice")).toContainText(
-    "视频生成能力当前不可用"
-  );
-  await expect(page.getByRole("dialog", { name: "视频生成" })).not.toBeVisible();
+  const item = page.getByRole("menuitem", { name: "视频生成" });
+  await expect(item).toBeEnabled();
+  await item.click();
+  await expect(page.getByRole("dialog", { name: "视频生成" })).toBeVisible();
+  await expect(page.getByTestId("tool-unavailable-notice")).toHaveCount(0);
+  await expect(page.getByText("前往「设置」", { exact: false })).toHaveCount(0);
 });

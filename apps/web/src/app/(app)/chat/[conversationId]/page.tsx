@@ -20,7 +20,6 @@ import {
   ApiError,
   deleteChatMessageAttachment,
   downloadChatAttachment,
-  fetchKeySettings,
   getChatConversation,
   getLearningProject,
   isChatStreamEventOf,
@@ -31,7 +30,6 @@ import {
   stopChatMessage,
   streamChatMessage,
   switchChatMode,
-  type CapabilityProbeSummary,
   type ChatConversationProjection,
   type ChatAttachmentProjection,
   type ChatStreamEvent,
@@ -86,33 +84,10 @@ import {
 import styles from "@/components/bridges/chat/chat.module.css";
 
 /**
- * GQ-03：ASR/TTS 由全局运行凭据驱动，不再按账户探测禁用入口——新账户
- * 无需任何个人 Qwen 配置即可听写/朗读。image/video 门控保留至 GQ-04。
+ * GQ-03/GQ-04：媒体能力（听写/朗读/图片/视频）由全局运行凭据驱动，
+ * 不再按账户探测禁用入口——新账户无需任何个人 Qwen 配置即可使用。
  */
-const SPEECH_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
-
-/** Issue 31/32：把账户级探测快照折叠为 image/video 入口可用性（GQ-04 迁移前）。 */
-function speechAvailability(
-  capabilities: CapabilityProbeSummary[] | null | undefined,
-  capabilityId: string,
-  displayName: string
-): CapabilityAvailability {
-  const item = capabilities?.find((c) => c.capability_id === capabilityId);
-  if (!item) {
-    return {
-      available: false,
-      reason: `${displayName}能力尚未探测，请前往「设置」中的密钥页重新探测。`,
-    };
-  }
-  if (item.status === "available") return { available: true };
-  if (item.status === "probing") {
-    return { available: false, reason: `${displayName}能力正在探测中，请稍候再试。` };
-  }
-  return {
-    available: false,
-    reason: `${displayName}能力当前不可用：${item.message ?? "请前往「设置」重新探测。"}`,
-  };
-}
+const MEDIA_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
 
 interface ActiveRun {
   messageId: string;
@@ -196,12 +171,6 @@ export default function ChatConversationPage() {
   >([]);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
-  // Issue 31/32：账户级探测快照仅用于 image/video 入口门控（GQ-04
-  // 迁移前；GQ-03 后 asr/tts 已由全局运行凭据驱动，不再按探测禁用）
-  const [speechCapabilities, setSpeechCapabilities] = useState<
-    CapabilityProbeSummary[] | null
-  >(null);
-
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
     // 不闪 loading，避免遮蔽 error 态的思考摘要。
@@ -239,15 +208,7 @@ export default function ChatConversationPage() {
     void load();
   }, [load]);
 
-  // Issue 31/32：拉取一次账户级探测快照（image/video 入口门控，GQ-04
-  // 迁移前）；切换对话/离开页面/切换账户时安全停止朗读播放会话。
-  useEffect(() => {
-    setSpeechCapabilities(null);
-    void fetchKeySettings()
-      .then((projection) => setSpeechCapabilities(projection.capabilities ?? []))
-      .catch(() => setSpeechCapabilities([]));
-  }, [conversationId]);
-
+  // 切换对话/离开页面/切换账户时安全停止朗读播放会话。
   useEffect(() => () => readAloudSession.stop(), [conversationId]);
 
   // Issue 39 AC3：组件卸载（切换账户导致 AppShell 重挂载/离开页面）时
@@ -1082,7 +1043,7 @@ export default function ChatConversationPage() {
                 }
                 onRetryIngestion={retryIngestion}
                 conversationId={conversationId}
-                tts={SPEECH_ALWAYS_AVAILABLE}
+                tts={MEDIA_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
                 announcement={announcement}
                 onConfirmMcpCall={confirmMessageMcp}
@@ -1118,10 +1079,10 @@ export default function ChatConversationPage() {
                     onOpenHumanizer={() => setHumanizerOpen(true)}
                     onOpenCareer={() => setCareerOpen(true)}
                     onOpenImage={() => setImageOpen(true)}
-                    image={speechAvailability(speechCapabilities, "image", "图片生成与编辑")}
+                    image={MEDIA_ALWAYS_AVAILABLE}
                     onOpenVideo={() => setVideoOpen(true)}
-                    video={speechAvailability(speechCapabilities, "video", "视频生成")}
-                    asr={SPEECH_ALWAYS_AVAILABLE}
+                    video={MEDIA_ALWAYS_AVAILABLE}
+                    asr={MEDIA_ALWAYS_AVAILABLE}
                     pluginSelection={pluginSelection}
                     pluginNames={pluginNames}
                     onSelectPlugins={() => setPluginPickerOpen(true)}

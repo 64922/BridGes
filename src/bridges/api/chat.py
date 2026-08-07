@@ -64,7 +64,6 @@ from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.workflows import RunContextEnvelope
-from bridges.credentials.service import KeyCredentialService
 from bridges.ingestion.service import IngestionError, IngestionService
 from bridges.learning_projects import LearningProjectError, LearningProjectService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
@@ -105,24 +104,6 @@ def _get_attachment_service(request: Request) -> ChatAttachmentService:
 
 
 AttachmentServiceDep = Annotated[ChatAttachmentService, Depends(_get_attachment_service)]
-
-
-def _get_credential_service(request: Request) -> KeyCredentialService:
-    service: KeyCredentialService | None = getattr(
-        request.app.state, "credential_service", None
-    )
-    if service is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=ChatError(
-                error="credentials_unavailable",
-                message="凭据服务未启用，当前实例拒绝聊天读写。",
-            ).model_dump(),
-        )
-    return service
-
-
-CredentialServiceDep = Annotated[KeyCredentialService, Depends(_get_credential_service)]
 
 
 def _get_ingestion_service(request: Request) -> IngestionService:
@@ -903,29 +884,19 @@ async def send_message(
     conversation_id: str,
     body: ChatMessageCreateRequest,
     service: ChatServiceDep,
-    credential_service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> StreamingResponse:
     """发送用户消息并流式接收真实 Qwen 回答（SSE）。
 
     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-    失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话不检查
-    账户凭据或探测快照（GQ-02）：新账户无需任何个人 Qwen 配置即可发送，
-    模型调用由已注册的全局模型网关执行。发送前可关闭本轮全局知识库层
-    （``use_knowledge_base=false``）：关闭后本轮检索记录与引用均不包含
-    知识库候选；也可关闭本轮画像使用（``use_profile=false``，Issue 27）：
-    关闭后模型请求、审计与上下文说明均不含任何画像切片。
+    失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话与
+    图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）：新账户
+    无需任何个人 Qwen 配置即可发送，模型调用由已注册的全局模型网关
+    执行。发送前可关闭本轮全局知识库层（``use_knowledge_base=false``）：
+    关闭后本轮检索记录与引用均不包含知识库候选；也可关闭本轮画像使用
+    （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
+    说明均不含任何画像切片。
     """
-    if body.image is not None:
-        # 图片能力门控（与图片 API 路由共享同一实现，避免双份分叉）。
-        from bridges.api.image import ensure_image_capability_ready
-
-        ensure_image_capability_ready(subject, credential_service)
-    if body.video is not None:
-        # 视频能力门控（Wan 固定绑定，与视频 API 路由共享同一实现）。
-        from bridges.api.video import ensure_video_capability_ready
-
-        ensure_video_capability_ready(subject, credential_service)
     try:
         user_message, assistant_message = service.start_generation(
             subject.account_id,

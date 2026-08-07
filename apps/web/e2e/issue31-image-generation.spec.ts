@@ -73,47 +73,11 @@ function assistantMessage(id: string, content: string, image: ImageTask | null =
   };
 }
 
-/** 能力探测替身：image 能力可配状态（其余固定 available）。 */
-async function mockKeySettings(page: Page, imageStatus = "available"): Promise<void> {
-  const capability = (id: string, displayName: string, model: string, status: string) => ({
-    capability_id: id,
-    display_name: displayName,
-    model_id: model,
-    status,
-    message: status === "unavailable" ? "测试原因：能力不可用。" : undefined,
-    can_retry: status === "unavailable" || status === "not_probed",
-  });
-  await page.route("**/api/auth/key-settings", async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({
-        status: "configured",
-        configured: true,
-        key_tail: "…abcd",
-        updated_at: NOW,
-        capabilities: [
-          capability("chat", "核心对话", "qwen3.7-plus-2026-05-26", "available"),
-          capability("embedding", "知识库向量化", "text-embedding-v4", "available"),
-          capability("asr", "语音转写", "qwen3-asr-flash", "available"),
-          capability("tts", "语音朗读", "qwen3-tts-flash-2025-11-27", "available"),
-          capability("image", "图片生成与编辑", "qwen-image-2.0-pro-2026-06-22", imageStatus),
-          capability("video", "视频生成", "wan2.7-t2v-2026-06-12", "available"),
-        ],
-        message: "测试配置。",
-        next_step: "测试。",
-      }),
-    });
-  });
-}
-
 interface MockImageApiOptions {
   /** 轮询第几次返回终态（1 = 挂载后立即成功；2 = 等待一个轮询间隔）。 */
   succeedAfterPolls?: number;
   /** 任务最终失败（失败原因可重试）。 */
   failWith?: { code: string; message: string };
-  /** 发送图片载荷时服务端返回 409（能力门控拒绝，前端展示中文原因）。 */
-  rejectImageUnavailable?: boolean;
 }
 
 /**
@@ -126,7 +90,7 @@ async function installMockImageApi(
   initialMessages: MockMessage[] = [],
   options: MockImageApiOptions = {}
 ): Promise<{ sentBodies: () => Array<Record<string, unknown>> }> {
-  const { succeedAfterPolls = 2, failWith, rejectImageUnavailable = false } = options;
+  const { succeedAfterPolls = 2, failWith } = options;
   const version = (id: string, kind: string, prompt: string, created = NOW) => ({
     version_id: id,
     asset_id: "asset-1",
@@ -211,20 +175,6 @@ async function installMockImageApi(
     }
     const body = request.postDataJSON() as Record<string, unknown>;
     sentBodies.push(body);
-    if (rejectImageUnavailable) {
-      // 服务端能力门控：图片能力不可用时拒绝提交并说明原因。
-      await route.fulfill({
-        status: 409,
-        contentType: "application/json",
-        body: JSON.stringify({
-          detail: {
-            error: "capability_unavailable",
-            message: "图片生成与编辑能力当前不可用：测试原因：能力不可用。请前往「设置」重新探测。",
-          },
-        }),
-      });
-      return;
-    }
     state.sent += 1;
     const turn = state.sent;
     const image = body.image as { kind: string; prompt: string } | undefined;
@@ -406,7 +356,6 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("生成流程：对话框提交 → 任务卡 → 资产卡 → 替代文本修改", async ({ page }) => {
-  await mockKeySettings(page);
   await installMockImageApi(page, [], { succeedAfterPolls: 2 });
   await page.goto("/chat/mock-1");
 
@@ -430,7 +379,6 @@ test("生成流程：对话框提交 → 任务卡 → 资产卡 → 替代文�
 });
 
 test("刷新恢复：历史消息的任务投影直接渲染资产卡", async ({ page }) => {
-  await mockKeySettings(page);
   const succeededTask: ImageTask = {
     task_id: "task-hist",
     kind: "generate",
@@ -478,7 +426,6 @@ test("刷新恢复：历史消息的任务投影直接渲染资产卡", async ({
 });
 
 test("删除：确认对话框显示影响说明，确认后显示已删除", async ({ page }) => {
-  await mockKeySettings(page);
   const succeededTask: ImageTask = {
     task_id: "task-del",
     kind: "generate",
@@ -527,7 +474,6 @@ test("删除：确认对话框显示影响说明，确认后显示已删除", as
 });
 
 test("失败重试：任务卡显示原因，重试同输入重新入队", async ({ page }) => {
-  await mockKeySettings(page);
   await installMockImageApi(page, [], {
     succeedAfterPolls: 2,
     failWith: { code: "cloud_failed", message: "云端图片生成失败" },
@@ -547,7 +493,6 @@ test("失败重试：任务卡显示原因，重试同输入重新入队", async
 });
 
 test("取消：运行中任务取消后显示已取消，不发布资产", async ({ page }) => {
-  await mockKeySettings(page);
   await installMockImageApi(page, [], { succeedAfterPolls: 99 });
   await page.goto("/chat/mock-1");
 
@@ -561,16 +506,18 @@ test("取消：运行中任务取消后显示已取消，不发布资产", async
   await expect(page.getByTestId("image-asset-card")).not.toBeVisible();
 });
 
-test("能力不可用：菜单入口明确停用并说明原因", async ({ page }) => {
-  await mockKeySettings(page, "unavailable");
+test("图片能力入口始终可用（GQ-04 全局凭据语义）", async ({ page }) => {
+  // GQ-04：图片/视频由全局运行凭据驱动，不再按账户探测禁用入口，也不
+  // 再请求 /api/auth/key-settings——新账户无任何个人 Qwen 配置即可进入
+  // 图片生成对话框，页面不出现密钥页引导文案。
   await installMockImageApi(page);
   await page.goto("/chat/mock-1");
 
-  // 图片能力不可用（探测快照）：菜单入口点击给出中文原因，不打开对话框。
   await page.getByRole("button", { name: "更多功能" }).click();
-  await page.getByRole("menuitem", { name: "图片生成" }).click();
-  await expect(page.getByTestId("tool-unavailable-notice")).toContainText(
-    "图片生成与编辑能力当前不可用"
-  );
-  await expect(page.getByRole("dialog", { name: "图片生成与编辑" })).not.toBeVisible();
+  const item = page.getByRole("menuitem", { name: "图片生成" });
+  await expect(item).toBeEnabled();
+  await item.click();
+  await expect(page.getByRole("dialog", { name: "图片生成与编辑" })).toBeVisible();
+  await expect(page.getByTestId("tool-unavailable-notice")).toHaveCount(0);
+  await expect(page.getByText("前往「设置」", { exact: false })).toHaveCount(0);
 });

@@ -181,7 +181,7 @@ npm run test:e2e -- issue30-dictation-reading.spec.ts
 
 ## GQ-04 — 让图片与视频异步任务只使用全局运行凭据
 
-Status: ready-for-agent  
+Status: completed（实施 + 双轴审查 + 全量回归后提交）  
 User stories: US-02、US-05
 
 ### What to build

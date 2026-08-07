@@ -78,6 +78,32 @@ _ALT_TEXT_PROMPT_SUMMARY = 80
 #: 投影与前端据此隐藏重试入口。
 _PERMANENT_FAILURE_CODES = {"asset_deleted"}
 
+#: 稳定错误码 → 可操作中文提示（GQ-04：与主对话/语音同源，指向服务
+#: 运行配置或稍后重试；只收录图片链路实际可能产生的供应商错误分类，
+#: 未命中的错误码回退网关原始消息，与 chat/turn.py 的 user_facing_error
+#: 语义一致，不伪造分类）。
+_USER_FACING_ERRORS: dict[str, str] = {
+    "rate_limit": "请求过于频繁（已触发限流），请稍后重试。",
+    "transient": "连接中断或服务暂时不可用，请检查网络后重试。",
+    "region_error": "无法连接 Qwen 服务，请检查网络后重试。",
+    "auth_error": "Qwen API Key 无效或已失效，请检查启动服务的全局百炼配置与权限。",
+    "capability_not_verified": "图片能力未通过验证，请检查启动服务的全局百炼配置与权限。",
+}
+
+
+def _user_facing_error(
+    error_code: str | None, fallback_message: str | None, default_message: str
+) -> str:
+    """把网关错误码折叠为面向用户的中文说明。
+
+    ``fallback_message`` 是网关返回的原始消息（可能为供应商英文原文），
+    只在映射未命中时保留，保证分类错误仍给出可读中文。
+    """
+    mapped = _USER_FACING_ERRORS.get(error_code or "")
+    if mapped is not None:
+        return mapped
+    return fallback_message or default_message
+
 #: 云端任务取消端点（尽力而为；本地取消是权威，迟到结果由条件更新隔离）。
 _CLOUD_CANCEL_PATH = "/api/v1/tasks/{task_id}?action=cancel"
 
@@ -781,7 +807,9 @@ class ImageService:
         )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "submit_failed"
-            error_message = result.error_message or "图片任务提交失败，请重试。"
+            error_message = _user_facing_error(
+                error_code, result.error_message, "图片任务提交失败，请重试。"
+            )
             self._fail_task(
                 account_id,
                 task_id,
@@ -836,7 +864,9 @@ class ImageService:
         )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "poll_failed"
-            error_message = result.error_message or "图片任务查询失败，请重试。"
+            error_message = _user_facing_error(
+                error_code, result.error_message, "图片任务查询失败，请重试。"
+            )
             self._fail_task(
                 account_id,
                 task_id,
@@ -911,7 +941,9 @@ class ImageService:
         )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
             error_code = result.error_code or "download_failed"
-            error_message = result.error_message or "图片结果下载失败，请重试。"
+            error_message = _user_facing_error(
+                error_code, result.error_message, "图片结果下载失败，请重试。"
+            )
             self._fail_task(
                 account_id,
                 task_id,

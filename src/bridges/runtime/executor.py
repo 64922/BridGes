@@ -192,6 +192,12 @@ class BackgroundExecutor:
             return None
         try:
             cassette_store = None
+            # Issue 39 AC5 / GQ-04：cassette 录制禁令与 API 进程同一语义——
+            # production 强制禁止录制（私人提示或响应正文绝不落盘）。
+            record_mode = (
+                settings.qwen_record_cassettes
+                and settings.environment.lower() != "production"
+            )
             if settings.qwen_cassette_dir is not None:
                 cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
             client = QwenApiClient(
@@ -199,7 +205,7 @@ class BackgroundExecutor:
                 workspace_id=settings.qwen_workspace_id,
                 region=settings.qwen_region,
                 cassette_store=cassette_store,
-                record_mode=settings.qwen_record_cassettes,
+                record_mode=record_mode,
             )
             registry = CapabilityRegistry()
             registry.register(
@@ -272,6 +278,12 @@ class BackgroundExecutor:
             return None
         try:
             cassette_store = None
+            # Issue 39 AC5 / GQ-04：cassette 录制禁令与 API 进程同一语义——
+            # production 强制禁止录制（私人提示或响应正文绝不落盘）。
+            record_mode = (
+                settings.qwen_record_cassettes
+                and settings.environment.lower() != "production"
+            )
             if settings.qwen_cassette_dir is not None:
                 cassette_store = CassetteStore(Path(settings.qwen_cassette_dir))
             client = QwenApiClient(
@@ -279,11 +291,12 @@ class BackgroundExecutor:
                 workspace_id=settings.qwen_workspace_id,
                 region=settings.qwen_region,
                 cassette_store=cassette_store,
-                record_mode=settings.qwen_record_cassettes,
+                record_mode=record_mode,
             )
             registry = CapabilityRegistry()
             # Issue 32: Wan 是模型矩阵唯一非 Qwen 系列例外（ADR-0007），
-            # 仍使用同一账户级百炼密钥，遵守单类别单快照合同。
+            # 仍使用同一全局百炼运行凭据（GQ-01/GQ-04），遵守单类别单
+            # 快照合同。
             registry.register(
                 CapabilityRecord(
                     name="qwen_wan",

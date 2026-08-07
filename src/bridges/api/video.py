@@ -1,11 +1,13 @@
-"""文生视频 API 路由（Issue 32）。
+"""文生视频 API 路由（Issue 32，GQ-04 迁移）。
 
 提交路径与聊天发送合一（``ChatMessageCreateRequest.video`` 载荷走 SSE）；
 本路由只承载任务与资产的操作面：取消、同输入重试、任务查询、资产
 投影（可访问文字说明）、说明修改、视频字节流与带影响说明的删除。全部
 资源按账户+对话双重作用域校验，跨账户一律 404 不泄漏存在性；视频字节
 响应附加私有缓存头，杜绝缓存跨账户复用。能力门只接受「视频生成」固定
-绑定（wan2.7-t2v-2026-06-12，ADR-0007 Wan 例外），界面不提供模型选择。
+绑定（wan2.7-t2v-2026-06-12，ADR-0007 Wan 例外），界面不提供模型选择；
+任务操作面不检查账户凭据或探测快照（GQ-04），新账户无需任何个人
+Qwen 配置即可重试任务。
 """
 
 from __future__ import annotations
@@ -23,7 +25,6 @@ from bridges.contracts.video import (
     VideoError,
     VideoTaskProjection,
 )
-from bridges.credentials.service import KeyCredentialService
 from bridges.video.service import VideoService
 
 router = APIRouter(prefix="/chat", tags=["video"])
@@ -40,21 +41,7 @@ def _get_video_service(request: Request) -> VideoService:
     return cast(VideoService, service)
 
 
-def _get_credential_service(request: Request) -> KeyCredentialService:
-    service = getattr(request.app.state, "credential_service", None)
-    if service is None:
-        raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "credential_store_unavailable",
-            "凭据存储当前不可用，请稍后重试。",
-        )
-    return cast(KeyCredentialService, service)
-
-
 VideoServiceDep = Annotated[VideoService, Depends(_get_video_service)]
-CredentialServiceDep = Annotated[
-    KeyCredentialService, Depends(_get_credential_service)
-]
 
 
 def _error(status_code: int, code: str, message: str) -> HTTPException:
@@ -69,55 +56,6 @@ def _handle_video_error(exc: VideoError) -> HTTPException:
         status_code=exc.status_code,
         detail=ChatError(error=exc.code, message=exc.message).model_dump(),
     )
-
-
-def ensure_video_capability_ready(
-    subject: SubjectDep, credential_service: KeyCredentialService
-) -> None:
-    """任务提交/重试前核对账户级视频能力探测快照（与发送同一语义）。"""
-    from bridges.contracts.credentials import ProbeStatus
-
-    try:
-        projection = credential_service.get_projection(subject.account_id)
-    except Exception as exc:  # noqa: BLE001 - 凭据存储异常统一折叠
-        raise _error(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            "credential_store_unavailable",
-            "凭据存储当前不可用，请稍后重试。",
-        ) from exc
-    if not projection.configured:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "no_api_key",
-            "尚未配置 Qwen API Key，请前往「设置」中的密钥页配置后再试。",
-        )
-    video = next(
-        (
-            capability
-            for capability in projection.capabilities
-            if capability.capability_id == "video"
-        ),
-        None,
-    )
-    if video is None:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "capability_unavailable",
-            "视频能力信息缺失，请前往「设置」重新探测。",
-        )
-    if video.status == ProbeStatus.PROBING:
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "capability_probing",
-            "视频能力正在探测中，请稍候再试。",
-        )
-    if video.status != ProbeStatus.AVAILABLE:
-        reason = video.message or "未知原因"
-        raise _error(
-            status.HTTP_409_CONFLICT,
-            "capability_unavailable",
-            f"视频生成能力当前不可用：{reason}。请前往「设置」重新探测。",
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -191,14 +129,13 @@ def retry_video_task(
     conversation_id: str,
     task_id: str,
     service: VideoServiceDep,
-    credential_service: CredentialServiceDep,
     subject: SubjectDep,
 ) -> VideoTaskProjection:
     """重试失败任务：同输入（提示不变）重新入队，固定同一快照。
 
-    重试需要视频能力仍可用（能力不可用时入口明确拒绝并说明原因）。
+    不检查账户凭据或探测快照（GQ-04）：新账户无需任何个人 Qwen 配置
+    即可重试，云端调用由已注册的全局模型网关固定适配器执行。
     """
-    ensure_video_capability_ready(subject, credential_service)
     try:
         return service.retry(subject.account_id, conversation_id, task_id)
     except VideoError as exc:

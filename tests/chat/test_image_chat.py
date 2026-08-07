@@ -1,21 +1,21 @@
-"""图片生成与编辑聊天集成测试（Issue 31）。
+"""图片生成与编辑聊天集成测试（Issue 31，GQ-04 迁移）。
 
 图片载荷走真实消息流程：send 携带 image → SSE started → image(queued)
 → done（消息投影携带任务快照）；后台执行器处理轮完成后消息投影收敛
 为 succeeded（正文更新为完成摘要）；SKILL 与图片载荷互斥拒绝；图片
-消息不走消息级重试（任务卡内重试）；图片能力不可用时发送明确拒绝。
+消息不走消息级重试（任务卡内重试）。GQ-04 起全新账户无任何 Key/探测
+记录即可提交图片任务——测试不再注入逐账户假 Key/探测快照，由全局
+网关注入的可编程适配器驱动。
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterResult
@@ -25,8 +25,6 @@ from bridges.contracts.ai import (
     CapabilityStatus,
     RetryPolicy,
 )
-from bridges.credentials.probes import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 IMAGE_MODEL = "qwen-image-2.0-pro-2026-06-22"
 _IMAGE_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 64
@@ -135,32 +133,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _make_capabilities_ready(
-    sqlite_app: Any, account_id: str, image_status: ProbeStatus = ProbeStatus.AVAILABLE
-) -> None:
-    """注入图片能力探测快照（GQ-02 起聊天主链路不再检查 chat 探测）。
-
-    图片载荷门控在 GQ-04 前仍读取账户探测快照，故保留 image 记录；
-    聊天预检已删除，不再写入 chat 记录。
-    """
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-image-{account_id}",
-            capability_id="image",
-            model_id=IMAGE_MODEL,
-            region="cn-beijing",
-            parameters={},
-            status=image_status,
-            probed_at=datetime.now(UTC),
-            error_message=None,
-        ),
-    )
-
-
 def _swap_image_gateway(sqlite_app: Any) -> None:
     gateway = _image_gateway()
     sqlite_app.state.image_service._gateway = gateway
@@ -195,8 +167,12 @@ def _image_payload(prompt: str = "一座桥的素描") -> dict[str, Any]:
 def test_image_message_flows_through_real_stream_and_worker(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    """全新账户（无 Key、无探测记录）直接提交图片任务并走通全链路（GQ-04）。
+
+    测试环境无真实供应商：图片适配器由全局网关注入可编程替身；账户侧
+    不写任何假 Key/探测快照，证明入口不再被账户凭据门禁拦截。
+    """
+    _register(client)
     _swap_image_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
 
@@ -296,8 +272,7 @@ def test_image_message_flows_through_real_stream_and_worker(
 
 
 def test_image_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     conversation_id = _create_conversation(client)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -323,8 +298,7 @@ def test_image_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient)
 
 
 def test_image_edit_without_source_rejected(sqlite_app: Any, client: TestClient) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     conversation_id = _create_conversation(client)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -338,8 +312,7 @@ def test_image_edit_without_source_rejected(sqlite_app: Any, client: TestClient)
 
 
 def test_image_message_retry_rejected_via_card(sqlite_app: Any, client: TestClient) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     _swap_image_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
     response = client.post(
@@ -358,27 +331,10 @@ def test_image_message_retry_rejected_via_card(sqlite_app: Any, client: TestClie
     assert retry_response.json()["detail"]["error"] == "image_task_retry_via_card"
 
 
-def test_image_capability_unavailable_blocks_send(
-    sqlite_app: Any, client: TestClient
-) -> None:
-    account = _register(client)
-    _make_capabilities_ready(
-        sqlite_app, account["id"], image_status=ProbeStatus.UNAVAILABLE
-    )
-    conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "生成一张桥的素描", "image": _image_payload()},
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "capability_unavailable"
-
-
 def test_task_endpoints_are_account_scoped(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     _swap_image_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
     response = client.post(
@@ -391,8 +347,7 @@ def test_task_endpoints_are_account_scoped(
     task_id = image_event["task"]["task_id"]
 
     # 第二个账户无法读取/取消/重试第一个账户的任务。
-    other = _register(client, tag="2")
-    _make_capabilities_ready(sqlite_app, other["id"])
+    _register(client, tag="2")
     other_conversation = _create_conversation(client)
     for method, path in (
         ("get", f"/chat/conversations/{other_conversation}/image-tasks/{task_id}"),

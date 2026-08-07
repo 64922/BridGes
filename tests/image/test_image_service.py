@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 from bridges.ai import ModelGateway
-from bridges.ai.adapters import AdapterResult, TransientError
+from bridges.ai.adapters import AdapterResult, AuthError, RateLimitError, TransientError
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
@@ -579,6 +579,40 @@ def test_transient_submit_failure_is_retryable(tmp_path: Path) -> None:
     assert failed.status == ImageTaskStatus.FAILED
     assert failed.retryable is True
     assert failed.error_code == "transient"
+
+
+def test_submit_auth_error_maps_to_global_config_hint(tmp_path: Path) -> None:
+    """GQ-04：鉴权失败折叠为指向全局运行配置的中文提示，不输出供应商原文。"""
+    h = _ImageHarness(tmp_path)
+    h.image.script = [{"error": AuthError("Qwen authentication/authorization failed.")}]
+    task = h.service.submit_generation(
+        h.account_id, h.conversation_id, h.message_id, "一座桥的素描"
+    )
+    h.service.process_pending()  # 提交 → AuthError → 稳定失败投影
+    failed = h.service.get_task(h.account_id, h.conversation_id, task.task_id)
+    assert failed.status == ImageTaskStatus.FAILED
+    assert failed.error_code == "auth_error"
+    assert "全局百炼配置" in failed.error_message
+    assert "authentication" not in failed.error_message
+    # 消息投影同步同一中文原因。
+    projection = h.message_projection(h.message_id)
+    assert projection is not None
+    assert "全局百炼配置" in projection["error_message"]
+
+
+def test_submit_rate_limit_maps_to_retry_hint(tmp_path: Path) -> None:
+    """GQ-04：限流折叠为中文稍后重试提示，错误码保持稳定。"""
+    h = _ImageHarness(tmp_path)
+    h.image.script = [{"error": RateLimitError("Qwen rate limit (429).")}]
+    task = h.service.submit_generation(
+        h.account_id, h.conversation_id, h.message_id, "一座桥的素描"
+    )
+    h.service.process_pending()  # 提交 → RateLimitError → 稳定失败投影
+    failed = h.service.get_task(h.account_id, h.conversation_id, task.task_id)
+    assert failed.status == ImageTaskStatus.FAILED
+    assert failed.error_code == "rate_limit"
+    assert failed.retryable is True
+    assert "限流" in failed.error_message
 
 
 def test_retry_only_failed_tasks(tmp_path: Path) -> None:

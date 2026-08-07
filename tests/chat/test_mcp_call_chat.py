@@ -52,37 +52,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _make_image_ready(sqlite_app: Any, account_id: str) -> None:
-    """注入图片能力探测快照：图片载荷门控在 GQ-04 前仍读取探测记录。
-
-    聊天主链路已不检查探测（GQ-02），此夹具只服务于携带 image 载荷
-    的互斥校验测试，不放行普通聊天。
-    """
-    from datetime import UTC, datetime
-
-    from pydantic import SecretStr
-
-    from bridges.credentials.probes import ProbeRecord, ProbeStatus
-    from bridges.credentials.store import InMemoryCredentialStore
-
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-image-{account_id}",
-            capability_id="image",
-            model_id="qwen-image-2.0-pro-2026-06-22",
-            region="cn-beijing",
-            parameters={},
-            status=ProbeStatus.AVAILABLE,
-            probed_at=datetime.now(UTC),
-            error_message=None,
-        ),
-    )
-
-
 def _install_mcp(client: TestClient, yaml_text: str, filename: str) -> None:
     response = client.post(
         "/mcp/install",
@@ -293,9 +262,11 @@ def test_sensitive_pending_deny_flow(
 def test_mcp_call_conflicts_with_image_payload(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    """MCP 调用与图片载荷互斥：并发携带 422 拒绝，不静默丢弃。"""
-    account = _register(client)
-    _make_image_ready(sqlite_app, account["id"])
+    """MCP 调用与图片载荷互斥：并发携带 422 拒绝，不静默丢弃。
+
+    GQ-04 起图片载荷无账户凭据门禁，新账户直接可达互斥校验。
+    """
+    _register(client)
     _install_mcp(client, ECHO_YAML, "echo.yaml")
     conversation_id = _create_conversation(
         client, [{"kind": "mcp", "plugin_id": ECHO}]
@@ -314,7 +285,8 @@ def test_mcp_call_conflicts_with_image_payload(
         },
     )
     assert response.status_code == 422, response.text
-    assert "互斥" in response.json()["detail"]["message"] or "不能同时" in response.json()["detail"]["message"]
+    message = response.json()["detail"]["message"]
+    assert "互斥" in message or "不能同时" in message
 
 
 def test_cross_account_confirmation_404(

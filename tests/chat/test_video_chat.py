@@ -1,22 +1,21 @@
-"""文生视频聊天集成测试（Issue 32）。
+"""文生视频聊天集成测试（Issue 32，GQ-04 迁移）。
 
 video 载荷走真实消息流程：send 携带 video → SSE started → video(queued)
 → done（消息投影携带任务快照）；后台执行器处理轮完成后消息投影收敛为
 succeeded（正文更新为完成摘要）；SKILL 与视频载荷互斥拒绝；视频消息不
-走消息级重试（任务卡内重试）；视频能力不可用时发送明确拒绝；任务/资产/
-字节端点跨账户 404。
+走消息级重试（任务卡内重试）；任务/资产/字节端点跨账户 404。GQ-04 起
+全新账户无任何 Key/探测记录即可提交视频任务——测试不再注入逐账户假
+Key/探测快照，由全局网关注入的可编程适配器驱动。
 """
 
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
 
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterResult
@@ -26,8 +25,6 @@ from bridges.contracts.ai import (
     CapabilityStatus,
     RetryPolicy,
 )
-from bridges.credentials.probes import ProbeRecord, ProbeStatus
-from bridges.credentials.store import InMemoryCredentialStore
 
 VIDEO_MODEL = "wan2.7-t2v-2026-06-12"
 _VIDEO_BYTES = b"\x00\x00\x00\x18ftypmp42" + b"\x00" * 64
@@ -136,32 +133,6 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
     return response.json()["account"]
 
 
-def _make_capabilities_ready(
-    sqlite_app: Any, account_id: str, video_status: ProbeStatus = ProbeStatus.AVAILABLE
-) -> None:
-    """注入视频能力探测快照（GQ-02 起聊天主链路不再检查 chat 探测）。
-
-    视频载荷门控在 GQ-04 前仍读取账户探测快照，故保留 video 记录；
-    聊天预检已删除，不再写入 chat 记录。
-    """
-    credential_service = sqlite_app.state.credential_service
-    credential_service._store = InMemoryCredentialStore()
-    credential_service._store.save(account_id, SecretStr("sk-test-dummy"))
-    credential_service._probes._put_record(
-        account_id,
-        ProbeRecord(
-            probe_id=f"probe-video-{account_id}",
-            capability_id="video",
-            model_id=VIDEO_MODEL,
-            region="cn-beijing",
-            parameters={},
-            status=video_status,
-            probed_at=datetime.now(UTC),
-            error_message=None,
-        ),
-    )
-
-
 def _swap_wan_gateway(sqlite_app: Any) -> None:
     gateway = _wan_gateway()
     sqlite_app.state.video_service._gateway = gateway
@@ -196,8 +167,12 @@ def _video_payload(prompt: str = "一条静谧的河") -> dict[str, Any]:
 def test_video_message_flows_through_real_stream_and_worker(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    """全新账户（无 Key、无探测记录）直接提交视频任务并走通全链路（GQ-04）。
+
+    测试环境无真实供应商：视频适配器由全局网关注入可编程替身；账户侧
+    不写任何假 Key/探测快照，证明入口不再被账户凭据门禁拦截。
+    """
+    _register(client)
     _swap_wan_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
 
@@ -280,8 +255,7 @@ def test_video_message_flows_through_real_stream_and_worker(
 
 
 def test_video_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     conversation_id = _create_conversation(client)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
@@ -307,8 +281,7 @@ def test_video_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient)
 
 
 def test_video_message_retry_rejected_via_card(sqlite_app: Any, client: TestClient) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     _swap_wan_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
     response = client.post(
@@ -326,26 +299,8 @@ def test_video_message_retry_rejected_via_card(sqlite_app: Any, client: TestClie
     assert retry_response.json()["detail"]["error"] == "video_task_retry_via_card"
 
 
-def test_video_capability_unavailable_blocks_send(
-    sqlite_app: Any, client: TestClient
-) -> None:
-    account = _register(client)
-    _make_capabilities_ready(
-        sqlite_app, account["id"], video_status=ProbeStatus.UNAVAILABLE
-    )
-    conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "生成一条河的视频", "video": _video_payload()},
-    )
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "capability_unavailable"
-    assert "视频生成能力当前不可用" in response.json()["detail"]["message"]
-
-
 def test_task_endpoints_are_account_scoped(sqlite_app: Any, client: TestClient) -> None:
-    account = _register(client)
-    _make_capabilities_ready(sqlite_app, account["id"])
+    _register(client)
     _swap_wan_gateway(sqlite_app)
     conversation_id = _create_conversation(client)
     response = client.post(
@@ -368,8 +323,7 @@ def test_task_endpoints_are_account_scoped(sqlite_app: Any, client: TestClient) 
     asset_id = assistant["video"]["asset_id"]
     assert asset_id is not None
 
-    other = _register(client, tag="2")
-    _make_capabilities_ready(sqlite_app, other["id"])
+    _register(client, tag="2")
     other_conversation = _create_conversation(client)
     for method, path in (
         ("get", f"/chat/conversations/{other_conversation}/video-tasks/{task_id}"),
