@@ -19,7 +19,7 @@ from enum import StrEnum
 from typing import Any
 
 from bridges.ai.model_gateway import ModelGateway
-from bridges.chat.attachments import ChatAttachmentService
+from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.humanizer import (
     FactLockCheckResult,
@@ -324,20 +324,21 @@ class HumanizerService:
         if contract.source_text and contract.source_text.strip():
             source_parts.append(contract.source_text.strip())
             label_parts.append("粘贴文本")
+        # Issue 04：任何契约引用的附件解析失败都指名文件并给出支持格式，
+        # 保留附件供重试，绝不静默改用另一材料（粘贴文本不顶替失败附件）。
         for attachment_id in contract.attachment_ids:
             parsed = self._parse_attachment(account_id, conversation_id, attachment_id)
-            if parsed is not None:
-                source_parts.append(parsed.text)
-                label_parts.append(parsed.title)
-                references.append(
-                    HumanizerReference(
-                        reference_id=f"ref-{secrets.token_urlsafe(8)}",
-                        label=parsed.title,
-                        source_type="attachment",
-                        detail=f"文件：{parsed.title}",
-                        preserved=True,
-                    )
+            source_parts.append(parsed.text)
+            label_parts.append(parsed.title)
+            references.append(
+                HumanizerReference(
+                    reference_id=f"ref-{secrets.token_urlsafe(8)}",
+                    label=parsed.title,
+                    source_type="attachment",
+                    detail=f"文件：{parsed.title}",
+                    preserved=True,
                 )
+            )
         if not source_parts:
             raise HumanizerError(
                 "empty_source",
@@ -355,24 +356,37 @@ class HumanizerService:
 
     def _parse_attachment(
         self, account_id: str, conversation_id: str, attachment_id: str
-    ) -> ParsedDocument | None:
-        """读取当前账户附件并解析为文本；不可解析返回 None。"""
+    ) -> ParsedDocument:
+        """读取当前账户附件并解析为文本（Issue 04 失败指名文件，不静默跳过）。"""
         if self._attachments is None:
-            return None
+            raise HumanizerError(
+                "attachments_unavailable",
+                "附件服务未启用，请稍后重试。",
+                retryable=True,
+            )
         try:
             record, content = self._attachments.download(
                 account_id, conversation_id, attachment_id
             )
-        except Exception:  # noqa: BLE001 - 附件不可读按无原文处理（可重试）
-            return None
+        except ChatAttachmentError as exc:
+            raise HumanizerError(
+                "attachment_unreadable",
+                f"附件（{attachment_id}）读取失败，请重新选择文件后重试。",
+                retryable=True,
+            ) from exc
         try:
             return parse_document(
                 content,
                 record.original_filename,
                 record.media_type or "application/octet-stream",
             )
-        except ParseError:
-            return None
+        except ParseError as exc:
+            raise HumanizerError(
+                "attachment_parse_failed",
+                f"无法解析文件「{record.original_filename}」：仅支持 PDF、"
+                "DOCX、TXT、Markdown 与常见图片。请重试或更换文件。",
+                retryable=True,
+            ) from exc
 
     def _citations_from(self, retrieval_round: Any | None) -> list[HumanizerReference]:
         if retrieval_round is None:

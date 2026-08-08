@@ -236,6 +236,44 @@ class ChatAttachmentService:
         )
         return [self._row_to_record(row) for row in rows]
 
+    def list_unbound(
+        self, account_id: str, conversation_id: str
+    ) -> list[ChatAttachmentRecord]:
+        """返回会话内「已上传未绑定」附件（Issue 04 草稿恢复）。
+
+        用户关页重开后据此把未发送附件重新显示为待绑定状态；跨账户或
+        不存在返回空集（不泄漏存在性）。
+        """
+        rows = self._attachments.unbound_rows_for_conversation(
+            account_id, conversation_id
+        )
+        return [self._row_to_record(row) for row in rows]
+
+    def sweep_unbound(self, older_than: datetime) -> int:
+        """清理超过安全期限仍未绑定的上传附件（Issue 04 孤儿规则）。
+
+        只处理 ``status='uploaded'`` 且 ``message_id IS NULL`` 的行——
+        已绑定对象绝不误删；删除绑定行后把对象标记待清理，由对象仓库
+        兜底回收。返回清理条数；跨账户扫描由执行器定时调用。
+        """
+        rows = self._attachments.unbound_older_than(older_than.isoformat())
+        removed = 0
+        with self._database.transaction():
+            for row in rows:
+                account_id = str(row["account_id"])
+                conversation_id = str(row["conversation_id"])
+                object_id = str(row["object_id"])
+                self._attachments.delete_one(
+                    account_id, conversation_id, object_id, message_id=None
+                )
+                self._objects.mark_pending_cleanup(
+                    account_id, object_id, updated_at=datetime.now(UTC).isoformat()
+                )
+                removed += 1
+        if removed:
+            self._objects.run_pending_cleanups()
+        return removed
+
     def validate_unbound(
         self, account_id: str, conversation_id: str, object_ids: list[str]
     ) -> None:

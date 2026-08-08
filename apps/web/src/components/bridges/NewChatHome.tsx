@@ -105,6 +105,7 @@ export function NewChatHome() {
     content: string;
     attachmentIds?: string[];
     conversationId?: string;
+    useKnowledgeBase?: boolean;
     useProfile?: boolean;
     skillId?: string;
     skillInput?: HumanizerSkillInput;
@@ -127,7 +128,9 @@ export function NewChatHome() {
         project_id: learningProject?.project_id,
         plugin_selection: pluginSelection,
         attachment_ids: options.attachmentIds ?? [],
-        use_knowledge_base: true,
+        // Issue 04：人味化改写默认关闭知识库（只有用户显式勾选才开启）；
+        // 普通消息沿用既有默认开启语义。
+        use_knowledge_base: options.useKnowledgeBase ?? true,
         use_profile: options.useProfile ?? true,
         ...(options.skillId !== undefined ? { skill_id: options.skillId } : {}),
         ...(options.skillInput !== undefined ? { skill_input: options.skillInput } : {}),
@@ -196,10 +199,17 @@ export function NewChatHome() {
   /** Issue 28：首页提交人味化任务（SKILL 载荷随首轮落库，可重试）。 */
   const handleHumanizerSubmit = async (
     content: string,
-    skillInput: HumanizerSkillInput
+    skillInput: HumanizerSkillInput,
+    attachmentIds: string[],
+    useKnowledgeBase: boolean
   ): Promise<boolean> => {
+    // Issue 04：附件 ID 与知识库开关随首轮请求一并提交——附件绑定到
+    // 首条消息（不再被丢弃），改写默认只检索当前消息附件。
     return submitFirstTurn({
       content,
+      attachmentIds,
+      conversationId: preparedConversationRef.current,
+      useKnowledgeBase,
       skillId: skillInput.skill_id,
       skillInput,
     });
@@ -288,7 +298,7 @@ export function NewChatHome() {
         open={humanizerOpen}
         onClose={() => setHumanizerOpen(false)}
         ensureConversation={ensureConversation}
-        onSubmit={(content, skillInput) => handleHumanizerSubmit(content, skillInput)}
+        onSubmit={handleHumanizerSubmit}
       />
       <CareerPlanningDialog
         open={careerOpen}

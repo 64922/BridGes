@@ -108,6 +108,14 @@ class Settings(BaseSettings):
     # Issue 41：生产配置不再提供 qwen_force_stub 开关——任何环境都不允许
     # 把 StubQwenAdapter 注册到真实模型能力上伪装成功（AC3）。
 
+    # Issue 04: 已上传未绑定附件的安全期限（小时）。超过期限且未绑定消息
+    # 的孤儿由后台执行器定期清理；窗口内用户可经会话页恢复草稿附件。
+    unbound_attachment_ttl_hours: float = Field(
+        default=24 * 7,
+        validation_alias=_env_aliases("UNBOUND_ATTACHMENT_TTL_HOURS"),
+        description="已上传未绑定附件的清理期限（小时），默认 7 天。",
+    )
+
     # Issue 33: QQ SMTP 任务提醒的邮件端点（默认 QQ 邮箱官方服务器；测试与
     # E2E 通过环境变量指向本地假邮件服务器）。授权码按账户加密保存，配置
     # 项不包含任何秘密。

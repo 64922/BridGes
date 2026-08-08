@@ -111,6 +111,34 @@ class AttachmentRepository:
         ).fetchall()
         return {str(row["object_id"]) for row in rows}
 
+    def unbound_rows_for_conversation(
+        self, account_id: str, conversation_id: str
+    ) -> list[sqlite3.Row]:
+        """返回会话内「已上传未绑定」附件行（草稿恢复：用户关页重开后
+        可重新显示并随下一条消息绑定；跨账户返回空集）。"""
+        rows = self._database.scoped(account_id).execute(
+            _ATTACHMENT_SELECT
+            + " WHERE a.account_id = ? AND a.conversation_id = ?"
+            " AND a.message_id IS NULL AND a.status = 'uploaded'"
+            " AND o.status = 'active' ORDER BY a.created_at",
+            (account_id, conversation_id),
+        ).fetchall()
+        return list(rows)
+
+    def unbound_older_than(self, cutoff_iso: str) -> list[sqlite3.Row]:
+        """返回超过安全期限仍未绑定的上传行（跨账户扫描，后台清理用）。
+
+        只命中 ``message_id IS NULL`` 且 ``status = 'uploaded'`` 的行——
+        已绑定对象绝不进入清理范围；调用方负责删除绑定行与对象回收。
+        """
+        rows = self._database.connection.execute(
+            "SELECT account_id, conversation_id, object_id FROM chat_attachments"
+            " WHERE message_id IS NULL AND status = 'uploaded' AND updated_at < ?"
+            " ORDER BY updated_at",
+            (cutoff_iso,),
+        ).fetchall()
+        return list(rows)
+
     def object_ids_for_message(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> list[str]:

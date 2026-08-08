@@ -118,3 +118,17 @@
 - [x] T5 取消 2 秒回收：stop_event 穿透 process client，取消期间终止当前请求 → verify: 取消耗时断言
 - [x] T6 诊断日志：阶段/退出码/耗时/重启次数可见，不含查询正文/摘要/环境秘密；最小环境白名单（代理 + Windows 必需）→ verify: 环境契约单测 + 日志内容检查
 - [x] T7 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest + 相关 e2e 通过
+
+## 收尾 Issue 04：统一附件管线并保证附件与消息原子绑定（2026-08-08）
+
+来源：`.scratch/收尾/issues/04-atomic-attachment-binding.md`（ready-for-agent，Blocked by 01/03 已完）。
+分支：`04-atomic-attachment-binding`（基于 main 904c1d1，不动主线；worktree try5-04）。
+
+- [x] T1 反馈环先红：两个必红 E2E（首页人味化改写上传真实 DOCX 断言消息投影恰绑定该附件 + 知识库预置「巴巴博一.jpg」断言默认关闭知识库/不展示为原文）+ 事务故障注入（绑定前 INSERT 失败 / 绑定后 COMMIT 失败 → 消息与绑定同提交同回滚）→ verify: 还原修复后 2 红、修复后 2 绿；3 条故障注入测试绿
+- [x] T2 服务端统一提交契约：`_validate_skill_attachment_consistency`（技能合同附件集合必须等于消息绑定集合，不一致 422 可理解错误绝不回退知识库）；humanizer 附件解析失败指名文件与支持格式（attachment_parse_failed/attachment_unreadable），粘贴文本不顶替失败附件 → verify: test_issue04_attachment_contract + humanizer 3 条新测试
+- [x] T3 未绑定草稿恢复与孤儿清理：GET `/chat/conversations/{id}/attachments` 未绑定列表（跨账户/跨会话空集）；`sweep_unbound` 按 `unbound_attachment_ttl_hours`（默认 168h）清理过期孤儿、已绑定绝不误删；executor 每轮执行 → verify: 列表/清理规则测试 + worker 手动验证
+- [x] T4 数据库约束：schema v32 触发器（status='bound' 必须携带 message_id）→ verify: 触发拒绝写入测试
+- [x] T5 前端统一：NewChatHome 不再丢弃 attachmentIds（随首轮请求提交 + conversationId 指向预建会话 + useKnowledgeBase 透传）；HumanizerDialog 增加知识库显式开关（改写默认关）+ 文件大小展示；Chat 页人味化透传 KB 开关；Composer 上传中禁用发送按钮 + chip 显示大小 + 挂载时从服务端恢复未发送草稿 → verify: typecheck/lint 干净
+- [x] T6 E2E 拓扑补 worker：playwright webServer 增加 e2e_worker.py（独立健康端口 8027，摄取/清理真实执行）；issue28 附件 mock 补 GET 分支；Composer 恢复逻辑数组守卫 → verify: issue04 4 绿 + issue28 6 绿 + issue03 7 绿 + closeout-smoke 2 绿 + 11/13/14/15/29/30/36 批量回归（issue14 首页一条为 issue03 合入后遗留既有失败，main 上复现，与本分支无关）
+- [x] T7 双轴代码审查修复：删除 send 内不可达 hasUploading 分支；formatFileType/formatSize 收拢到 lib/format.ts 共用（Composer/HumanizerDialog 同源）；恢复去重只在 updater 内做一次；v32 触发器 RAISE 改中文；E2E 收紧 KB 种子仅 ready + 上传中禁用/类型大小/草稿恢复断言；补绑定 UPDATE 语句故障注入测试；openapi.json + generated.ts 重新生成（含新 GET 路由；SmtpAttemptState 移除系基线 openapi 本就与 904c1d1 源码脱钩的同步修正）；test_schema_v10 v9 骨架补 chat_attachments 表（v32 触发器引用） → verify: 单文件全绿 + issue04 4/4 E2E 绿
+- [ ] T8 全量回归 + 提交 → verify: 全量 pytest（2 条既有失败：arxiv 模块缺失为 worktree 环境伪影（主仓库通过）、邮件 10 秒投递为 issue10 必红）+ ruff/tsc/lint 干净

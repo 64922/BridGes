@@ -300,6 +300,16 @@ async function installMockChatApi(
   };
 
   await page.route("**/api/chat/conversations/mock-1/attachments", async (route) => {
+    // Issue 04：同一路径承载「列表未绑定附件（GET）」与「上传（POST）」；
+    // 替身只模拟上传，列表返回空（本 spec 不覆盖草稿恢复）。
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: "[]",
+      });
+      return;
+    }
     // 文件改写路径：真实上传替身（返回与后端一致的投影形状）
     await route.fulfill({
       status: 201,

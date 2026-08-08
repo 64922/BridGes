@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 31
+SCHEMA_VERSION = 32
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1519,6 +1519,27 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_conversations_account_idempotency
             ON conversations(account_id, idempotency_key)
+        """,
+    ],
+    # Issue 04：附件绑定一致性数据库约束——status='bound' 必须携带
+    # message_id。事务语义由仓库层保障（消息与绑定同事务提交/回滚），
+    # 这里作为最后防线，杜绝任何「绑定成功但消息缺失」的中间态写入。
+    32: [
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_attachments_bound_has_message_insert
+        BEFORE INSERT ON chat_attachments
+        FOR EACH ROW WHEN NEW.status = 'bound' AND NEW.message_id IS NULL
+        BEGIN
+            SELECT RAISE(ABORT, 'bound 状态必须携带 message_id');
+        END
+        """,
+        """
+        CREATE TRIGGER IF NOT EXISTS trg_attachments_bound_has_message_update
+        BEFORE UPDATE ON chat_attachments
+        FOR EACH ROW WHEN NEW.status = 'bound' AND NEW.message_id IS NULL
+        BEGIN
+            SELECT RAISE(ABORT, 'bound 状态必须携带 message_id');
+        END
         """,
     ],
 }

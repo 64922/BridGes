@@ -547,6 +547,31 @@ def get_conversation(
     return projection
 
 
+@router.get(
+    "/conversations/{conversation_id}/attachments",
+    response_model=list[ChatAttachmentProjection],
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def list_unbound_attachments(
+    conversation_id: str,
+    service: AttachmentServiceDep,
+    subject: SubjectDep,
+) -> list[ChatAttachmentProjection]:
+    """列出会话内「已上传未绑定」附件（Issue 04 草稿恢复）。
+
+    用户关页重开后据此把未发送附件恢复为待绑定状态；跨账户或不存在
+    返回空集，不泄漏存在性。已绑定消息的附件经消息投影读取。
+    """
+    return [
+        record.projection()
+        for record in service.list_unbound(subject.account_id, conversation_id)
+    ]
+
+
 @router.post(
     "/conversations/{conversation_id}/attachments",
     responses={

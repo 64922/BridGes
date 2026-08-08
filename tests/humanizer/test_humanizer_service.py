@@ -7,12 +7,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import AdapterError, AdapterResult, RateLimitError
+from bridges.chat.attachments import ChatAttachmentError
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -378,3 +380,85 @@ def test_added_citation_without_evidence_is_unverified() -> None:
     assert unverified
     assert result.status == HumanizerResultStatus.NEEDS_HUMAN
     assert any("引用" in item.item for item in result.output.fact_check)
+
+
+# ---------------------------------------------------------------------------
+# Issue 04：附件解析失败指名文件与支持格式，不静默改用另一材料
+# ---------------------------------------------------------------------------
+
+class _FakeAttachmentService:
+    """可控附件服务：download 返回指定文件名/内容或抛附件错误。"""
+
+    def __init__(
+        self,
+        *,
+        filename: str = "损坏文件.xyz",
+        content: bytes = b"\x00\x01 not a document",
+        media_type: str = "application/pdf",
+        error: Exception | None = None,
+    ) -> None:
+        self._filename = filename
+        self._content = content
+        self._media_type = media_type
+        self._error = error
+
+    def download(
+        self, account_id: str, conversation_id: str, object_id: str
+    ) -> tuple[Any, bytes]:
+        if self._error is not None:
+            raise self._error
+        record = SimpleNamespace(
+            original_filename=self._filename, media_type=self._media_type
+        )
+        return record, self._content
+
+
+def _rewrite_with_attachment(*, source: str = "") -> HumanizerSkillInput:
+    return HumanizerSkillInput(
+        skill_id="bridges-humanizer",
+        contract=HumanizerTaskContract(
+            path=HumanizerPath.REWRITE,
+            genre=Genre.POPULAR_SCIENCE,
+            source_text=source or None,
+            attachment_ids=["obj-broken"],
+        ),
+    )
+
+
+def test_attachment_parse_failure_names_file_and_formats() -> None:
+    """解析失败：指名具体文件与支持格式，保留附件供重试，可重试。"""
+    service = _make_service(
+        _ProgrammableStructuredAdapter(output=_good_output())
+    )
+    service._attachments = _FakeAttachmentService()  # noqa: SLF001 - 测试直连
+    _, result = _run(service, _rewrite_with_attachment())
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "attachment_parse_failed"
+    assert "损坏文件.xyz" in (result.error_message or "")
+    assert "PDF" in (result.error_message or "") and "DOCX" in (result.error_message or "")
+    assert result.process_state == HumanizerProcessState.RECOVERY  # retryable
+
+
+def test_attachment_parse_failure_does_not_fall_back_to_pasted_text() -> None:
+    """粘贴文本存在也不顶替失败附件：仍指名失败文件，绝不自动改用另一材料。"""
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    service._attachments = _FakeAttachmentService()  # noqa: SLF001 - 测试直连
+    _, result = _run(
+        service, _rewrite_with_attachment(source="可用的粘贴文本。")
+    )
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "attachment_parse_failed"
+
+
+def test_attachment_read_failure_is_retryable_and_names_attachment() -> None:
+    """附件读取失败：可重试错误，不把失败折叠成「没有原文」。"""
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    service._attachments = _FakeAttachmentService(  # noqa: SLF001 - 测试直连
+        error=ChatAttachmentError(
+            "attachment_not_found", "附件不存在或没有访问权限。", 404
+        )
+    )
+    _, result = _run(service, _rewrite_with_attachment())
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "attachment_unreadable"
+    assert result.process_state == HumanizerProcessState.RECOVERY

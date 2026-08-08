@@ -674,6 +674,9 @@ class ChatService:
         attachment_ids = self._validate_attachments(
             account_id, conversation_id, attachment_ids
         )
+        # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致——
+        # 不一致直接返回可理解错误，绝不静默回退（如用知识库材料冒充原文）。
+        self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
 
         mode = ChatMode(record.mode)
         (
@@ -722,6 +725,30 @@ class ChatService:
             self._project_message(user_message),
             self._project_message(assistant_message, run_view),
         )
+
+    def _validate_skill_attachment_consistency(
+        self,
+        skill_payload: dict[str, Any] | None,
+        attachment_ids: list[str],
+    ) -> None:
+        """Issue 04：技能任务契约引用的附件必须与消息绑定集合一致。
+
+        前端把附件 ID 同时放在请求顶层（绑定）与任务契约（技能读取），
+        两者必须逐一对齐；不一致说明提交链路丢字段（历史缺陷：首页
+        包装回调丢弃 ``attachmentIds``），直接返回可理解错误而非静默
+        继续——绝不出现「消息投影无附件但任务读取了文件」或反之。
+        """
+        if skill_payload is None:
+            return
+        contract_ids = list(
+            (skill_payload.get("contract") or {}).get("attachment_ids") or []
+        )
+        if set(contract_ids) != set(attachment_ids):
+            raise ChatDomainError(
+                "attachment_contract_mismatch",
+                "任务引用的附件与消息附加的附件不一致，请重新选择文件后重试。",
+                422,
+            )
 
     def _validate_turn_payloads(
         self,
@@ -978,6 +1005,8 @@ class ChatService:
         attachment_ids = self._validate_attachments(
             account_id, conversation_id, attachment_ids
         )
+        # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致。
+        self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
         title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
         target_conversation_id = conversation_id or secrets.token_urlsafe(16)
         (

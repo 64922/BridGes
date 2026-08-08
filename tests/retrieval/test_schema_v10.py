@@ -78,6 +78,21 @@ def _build_v9_database(path: Path) -> None:
             " created_at TEXT NOT NULL,"
             " updated_at TEXT NOT NULL)"
         )
+        # v5 迁移建立的聊天附件表：真实 v9 库必然存在（Issue 04 迁移 32
+        # 的 bound 约束触发器引用它），骨架须复刻以免升级路径缺表。
+        connection.execute(
+            "CREATE TABLE chat_attachments ("
+            " object_id TEXT PRIMARY KEY,"
+            " account_id TEXT NOT NULL,"
+            " conversation_id TEXT NOT NULL,"
+            " message_id TEXT,"
+            " upload_id TEXT NOT NULL UNIQUE,"
+            " media_type TEXT NOT NULL,"
+            " status TEXT NOT NULL DEFAULT 'uploaded'"
+            "   CHECK (status IN ('uploaded', 'bound')),"
+            " created_at TEXT NOT NULL,"
+            " updated_at TEXT NOT NULL)"
+        )
         connection.execute(
             "INSERT INTO conversations"
             " (conversation_id, account_id, title, mode, created_at, updated_at)"

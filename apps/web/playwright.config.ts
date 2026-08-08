@@ -79,6 +79,21 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
+      // Issue 04：真实后台执行器（与生产 BridGes start 拓扑一致：api +
+      // worker + web）。摄取/检索披露依赖文档入索引，E2E 必须真实处理
+      // 而非 mock 摄取终态。Playwright 对相同 URL 的条目视为已存在而
+      // 跳过启动，因此 worker 经 e2e_worker.py 暴露独立健康端点 8027。
+      command: `"${PYTHON}" ../../scripts/e2e_worker.py`,
+      url: "http://127.0.0.1:8027/health",
+      reuseExistingServer: !process.env.CI,
+      timeout: 30_000,
+      env: {
+        BRIDGES_DATABASE_URL: `sqlite:///${path.join(E2E_DATA_DIR, "bridges.db").replace(/\\/g, "/")}`,
+        BRIDGES_SECRET_KEY: "e2e-chat-test-secret-key",
+        BRIDGES_ENVIRONMENT: "test",
+      },
+    },
+    {
       command: "npm run dev",
       url: BASE_URL,
       reuseExistingServer: !process.env.CI,
