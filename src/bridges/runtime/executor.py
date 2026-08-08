@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import threading
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -33,6 +34,7 @@ from bridges.ai import (
     QwenWanAdapter,
 )
 from bridges.ai.fixed_models import IMAGE_MODEL_ID, VIDEO_MODEL_ID
+from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.repository import ConversationRepository
 from bridges.config import Settings
 from bridges.contracts.ai import (
@@ -78,6 +80,7 @@ class BackgroundExecutor:
         self._image: ImageService | None = None
         self._video: VideoService | None = None
         self._deletion: DeletionService | None = None
+        self._attachment_cleanup: ChatAttachmentService | None = None
         self._idle_reason: str | None = None
 
     def _ensure_repository(self) -> BridgesObjectRepository | None:
@@ -364,6 +367,17 @@ class BackgroundExecutor:
             return None
         return self._deletion
 
+    def _ensure_attachment_cleanup(self) -> ChatAttachmentService | None:
+        """惰性建立聊天附件服务（Issue 04 孤儿附件清理用）。"""
+        if self._attachment_cleanup is not None or self._idle_reason is not None:
+            return self._attachment_cleanup
+        repository = self._ensure_repository()
+        if repository is None:
+            return None
+        assert self._database is not None
+        self._attachment_cleanup = ChatAttachmentService(self._database, repository)
+        return self._attachment_cleanup
+
     def run_tick(self) -> str:
         """执行一轮后台任务并返回中文摘要；可重试错误只记录不退出。"""
         repository = self._ensure_repository()
@@ -403,6 +417,19 @@ class BackgroundExecutor:
         summaries.append(
             f"worker: 清理完成 {cleaned} 个待清理对象，移除 {orphans} 个孤立文件。"
         )
+        # Issue 04：超过安全期限仍未绑定的上传附件按孤儿清理（用户可在
+        # 期限窗口内经会话页恢复草稿；已绑定对象绝不进入清理范围）。
+        attachment_cleanup = self._ensure_attachment_cleanup()
+        if attachment_cleanup is not None:
+            try:
+                swept = attachment_cleanup.sweep_unbound(
+                    datetime.now(UTC)
+                    - timedelta(hours=self._settings.unbound_attachment_ttl_hours)
+                )
+                if swept:
+                    summaries.append(f"worker: 清理 {swept} 个过期未绑定附件。")
+            except Exception as exc:  # noqa: BLE001 - 清理失败记录但不退出循环
+                summaries.append(f"worker: 附件清理出错：{exc}")
         return " ".join(summaries)
 
     def run_loop(

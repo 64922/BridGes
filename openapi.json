@@ -1962,6 +1962,97 @@
       }
     },
     "/chat/conversations/{conversation_id}/attachments": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Unbound Attachments",
+        "description": "列出会话内「已上传未绑定」附件（Issue 04 草稿恢复）。\n\n用户关页重开后据此把未发送附件恢复为待绑定状态；跨账户或不存在\n返回空集，不泄漏存在性。已绑定消息的附件经消息投影读取。",
+        "operationId": "list_unbound_attachments_chat_conversations__conversation_id__attachments_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ChatAttachmentProjection"
+                  },
+                  "title": "Response List Unbound Attachments Chat Conversations  Conversation Id  Attachments Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
       "post": {
         "tags": [
           "chat"

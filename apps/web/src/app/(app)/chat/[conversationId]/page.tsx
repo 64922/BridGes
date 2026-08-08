@@ -701,12 +701,15 @@ export default function ChatConversationPage() {
     async (
       content: string,
       skillInput: HumanizerSkillInput,
-      attachmentIds: string[]
+      attachmentIds: string[],
+      useKnowledgeBase: boolean
     ): Promise<boolean> => {
       return sendMessage(
         content,
         attachmentIds,
-        true,
+        // Issue 04：改写默认只检索当前消息附件；知识库仅当用户显式
+        // 勾选时开启。画像开关沿用既有默认。
+        useKnowledgeBase,
         true,
         skillInput.skill_id,
         skillInput

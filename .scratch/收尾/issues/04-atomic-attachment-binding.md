@@ -1,6 +1,6 @@
 # 04 统一新旧会话附件管线并保证附件与消息原子绑定
 
-Status: ready-for-agent
+Status: completed
 Priority: P0
 Type: defect / data-integrity
 Blocked by: 01, 03
@@ -63,3 +63,14 @@ Blocks: 07, 08, 11
 ## Comments
 
 - 2026-08-08：数据库确认目标 DOCX 是“上传成功但从未绑定”，不是用户未选择文件。
+- 2026-08-08：完成（分支 04-atomic-attachment-binding，4ab640c，基于 main 904c1d1）。
+  反馈环：两个必红 E2E（首页人味化改写真实 DOCX 断言消息投影恰绑定 + 知识库
+  预置「巴巴博一.jpg」断言默认关闭知识库）+ 事务故障注入（绑定前/绑定语句/
+  COMMIT 失败同提交同回滚）。实施：技能合同附件一致性 422 拒绝（绝不回退
+  知识库）、humanizer 解析失败指名文件与支持格式、未绑定列表 API 草稿恢复、
+  sweep_unbound 孤儿清理（TTL 默认 7 天，已绑定不误删）、v32 触发器约束、
+  前端统一（attachmentIds 不再丢弃、改写默认 KB 关、上传中禁发、关页重开恢复）。
+  验证：全量 2247 pytest 通过（2 条既有失败：arxiv 模块缺失为 worktree 环境
+  伪影（主仓库通过）、邮件 10 秒投递为 issue10 必红）+ issue04 4/4、issue28 6/6、
+  issue03 7/7、closeout 2/2 E2E 绿 + 批量 42/43（issue14 首页一条为 issue03
+  合入后遗留既有失败，main 上复现）。

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { LearningProjectPickerDialog } from "@/components/learning-projects/LearningProjectPickerDialog";
+import { formatFileType, formatSize } from "@/lib/format";
 import {
   CAREER_TOOL_LABEL,
   CHAT_TOOL_INTENTS,
@@ -15,6 +16,7 @@ import {
 import {
   cancelChatAttachment,
   cancelChatAttachmentUpload,
+  listUnboundAttachments,
   transcribeDictation,
   uploadChatAttachment,
 } from "@/lib/api";
@@ -32,6 +34,8 @@ interface ComposerAttachment {
   status: "local" | "uploading" | "uploaded" | "error" | "cancelled";
   progress: number;
   error?: string;
+  /** 文件大小（恢复的未发送草稿用服务端投影补全；实时上传用 file.size）。 */
+  size?: number;
 }
 
 interface ComposerProps {
@@ -159,9 +163,12 @@ export function Composer({
     (item) => item.status === "uploaded" && item.objectId
   );
   const hasUploading = attachments.some((item) => item.status === "uploading");
+  // Issue 04：上传未完成时发送按钮明确禁用（不能静默发送空附件）——
+  // 提示文案由状态栏给出，用户可等待完成或移除附件。
   const canSend =
     (text.trim().length > 0 || uploadedAttachments.length > 0) &&
-    dictationPhase === "idle";
+    dictationPhase === "idle" &&
+    !hasUploading;
   // 真实对话上下文（模板设计基线不渲染来源层面板）
   const isRealChat = conversationId !== undefined || ensureConversation !== undefined;
 
@@ -295,11 +302,9 @@ export function Composer({
   };
 
   const send = async () => {
+    // canSend 已包含 !hasUploading：上传中按钮禁用且 Enter 发送同门，见
+    // 下方键处理；这里不再重复拦截（Issue 04 移除不可达分支）。
     if (!canSend || generating) return;
-    if (hasUploading) {
-      setToolNotice("附件仍在上传，请等待完成或先取消上传。");
-      return;
-    }
     const ids = uploadedAttachments.flatMap((item) => (item.objectId ? [item.objectId] : []));
     try {
       const accepted = await onSend(
@@ -577,6 +582,43 @@ export function Composer({
     [conversationId]
   );
 
+  // Issue 04：关页重开后恢复未发送草稿——从服务端读取本会话「已上传
+  // 未绑定」附件并显示为待绑定状态（浏览器 sessionStorage 不承担事实
+  // 源）。恢复失败静默：附件仍在服务端，可再次打开恢复；非数组响应
+  // （协议替身等）按空列表处理，不中断输入。
+  useEffect(() => {
+    if (!conversationId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const unbound = await listUnboundAttachments(conversationId);
+        if (cancelled || !Array.isArray(unbound) || unbound.length === 0) return;
+        const restored = unbound.map((item) => ({
+          id: newId("attachment"),
+          file: new File([], item.original_filename, { type: item.media_type }),
+          filename: item.original_filename,
+          uploadId: `restore-${item.object_id}`,
+          objectId: item.object_id,
+          status: "uploaded" as const,
+          progress: 100,
+          size: item.content_length,
+        }));
+        if (cancelled) return;
+        // 去重只在 updater 内做一次：以提交时的最新附件状态为准
+        // （获取期间用户可能已重新上传同一文件）。
+        setAttachments((current) => {
+          const known = new Set(current.map((item) => item.objectId));
+          return [...current, ...restored.filter((item) => !known.has(item.objectId))];
+        });
+      } catch {
+        // 恢复失败静默（协议替身可能拦截并返回非预期形状）。
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversationId]);
+
   const iconButtonStyle: React.CSSProperties = {
     display: "inline-flex",
     alignItems: "center",
@@ -637,7 +679,7 @@ export function Composer({
                   {item.filename}
                 </span>
                 <span role={item.status === "error" ? "alert" : "status"} style={{ fontSize: "var(--text-xs)" }}>
-                  {attachmentStatus(item)}
+                  {formatFileType(item.file.type, item.filename)} · {formatSize(item.size ?? item.file.size)} · {attachmentStatus(item)}
                 </span>
               </span>
               {item.status === "uploading" && (

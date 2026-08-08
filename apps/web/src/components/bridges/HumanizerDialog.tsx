@@ -7,6 +7,7 @@ import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { uploadChatAttachment } from "@/lib/api";
 import type { HumanizerSkillInput, HumanizerTaskContract } from "@/lib/api";
+import { formatFileType, formatSize } from "@/lib/format";
 
 /** 四类体裁（与 SKILL 体裁合同一一对应，不共用泛化模板）。 */
 export const HUMANIZER_GENRES: readonly { value: string; label: string; hint: string }[] = [
@@ -23,11 +24,14 @@ interface HumanizerDialogProps {
   conversationId?: string;
   /** 新聊天页的延迟建会话钩子（选择文件时预建空对话）。 */
   ensureConversation?: () => Promise<string | undefined>;
-  /** 提交：宿主执行真实发送（真实消息流，不伪造结果）；返回是否成功。 */
+  /** 提交：宿主执行真实发送（真实消息流，不伪造结果）；返回是否成功。
+   *  ``useKnowledgeBase`` 为改写路径的显式知识库开关（默认关闭，只有
+   *  用户明确勾选才补充检索全局知识库）。 */
   onSubmit: (
     content: string,
     skillInput: HumanizerSkillInput,
-    attachmentIds: string[]
+    attachmentIds: string[],
+    useKnowledgeBase: boolean
   ) => Promise<boolean>;
 }
 
@@ -74,6 +78,9 @@ export function HumanizerDialog({
   const [channel, setChannel] = useState("");
   const [lengthTarget, setLengthTarget] = useState("");
   const [constraints, setConstraints] = useState("");
+  // Issue 04：改写路径默认只检索当前消息附件；只有用户明确开启知识库
+  // 时才允许补充全局知识库，且补充材料不得被当作「原文」。
+  const [useKnowledgeBase, setUseKnowledgeBase] = useState(false);
   const [files, setFiles] = useState<PickedFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
@@ -227,7 +234,12 @@ export function HumanizerDialog({
     setSubmitting(true);
     setFormError("");
     try {
-      const accepted = await onSubmit(buildContent(input), input, input.contract.attachment_ids ?? []);
+      const accepted = await onSubmit(
+        buildContent(input),
+        input,
+        input.contract.attachment_ids ?? [],
+        useKnowledgeBase
+      );
       if (accepted === false) {
         setSubmitting(false);
         return;
@@ -335,6 +347,25 @@ export function HumanizerDialog({
                 <Icon name="uploadFile" size={16} aria-hidden />
                 选择文件
               </Button>
+              {path === "rewrite" && (
+                <label
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "var(--space-2)",
+                    fontSize: "var(--text-sm)",
+                    color: "var(--color-text-secondary)",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    data-testid="humanizer-kb-toggle"
+                    checked={useKnowledgeBase}
+                    onChange={(event) => setUseKnowledgeBase(event.target.checked)}
+                  />
+                  补充检索全局知识库（可选；只以所选文件为改写原文，知识库材料仅作补充）
+                </label>
+              )}
               {files.length > 0 && (
                 <ul
                   role="list"
@@ -345,7 +376,8 @@ export function HumanizerDialog({
                     <li key={item.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)" }}>
                       <Icon name="documentPage" size={16} aria-hidden />
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.filename}</span>
-                      <span style={{ color: "var(--color-text-secondary)" }}>
+                      <span style={{ color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
+                        {formatFileType(item.file.type, item.filename)} · {formatSize(item.file.size)} ·{" "}
                         {item.status === "uploading"
                           ? `上传中 ${item.progress}%`
                           : item.status === "error"

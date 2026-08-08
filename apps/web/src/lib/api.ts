@@ -1074,6 +1074,20 @@ export function uploadChatAttachment(
   );
 }
 
+/** Issue 04：列出会话内「已上传未绑定」附件（关页重开后恢复草稿）。 */
+export async function listUnboundAttachments(
+  conversationId: string
+): Promise<ChatAttachmentProjection[]> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments`,
+    { credentials: "include" }
+  );
+  if (!res.ok) {
+    throw new ApiError("读取未发送附件失败，请稍后重试。", res.status);
+  }
+  return (await res.json()) as ChatAttachmentProjection[];
+}
+
 export async function cancelChatAttachment(
   conversationId: string,
   objectId: string
