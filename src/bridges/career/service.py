@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bridges.ai.model_gateway import ModelGateway
+from bridges.chat.budget import RunBudget
 from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.career import (
     CareerAssumption,
@@ -68,6 +69,10 @@ _PERMISSION_ERROR_CODES = frozenset(
 #: 六类条目类别的证据状态标签（与 review 模块一致，供投影构造）。
 _CATEGORY_KEYS = ("facts", "assumptions", "options", "risks", "path", "suggestions")
 
+#: 可修复的模型调用失败码（格式类）：JSON 解析失败等属于模型输出
+#: 质量问题，带修复指令重调一次有意义；鉴权/区域/限流等能力问题不修复。
+_REPAIRABLE_CALL_CODES = frozenset({"structured_output_parse_failed"})
+
 
 class CareerError(Exception):
     """生涯规划编排的可预期失败（由服务映射为五态过程卡与可恢复错误）。"""
@@ -113,8 +118,13 @@ class CareerPlannerService:
         retrieval_round: Any | None = None,
         web_search_projection: Any | None = None,
         arxiv_search_projection: Any | None = None,
+        budget: RunBudget | None = None,
     ) -> Iterator[CareerRunEvent]:
-        """执行一次生涯规划：yield 过程事件，最后 yield 结果事件。"""
+        """执行一次生涯规划：yield 过程事件，最后 yield 结果事件。
+
+        ``budget``（Issue 06 阶段预算）：传入时结构化输出的有界修复在
+        剩余预算内进行，预算不足直接失败（不无限重试）。
+        """
         progress: list[str] = []
         now = datetime.now(UTC)
 
@@ -174,6 +184,7 @@ class CareerPlannerService:
                 mode,
                 evidence,
                 run_context,
+                budget=budget,
             )
             progress.append("生成六类规划结果")
 
@@ -443,6 +454,7 @@ class CareerPlannerService:
         mode: str,
         evidence: list[CareerEvidenceSource],
         run_context: Any,
+        budget: RunBudget | None = None,
     ) -> CareerPlanningOutputContract:
         intent_text = intent.strip()
         if not intent_text:
@@ -452,6 +464,48 @@ class CareerPlannerService:
             )
         system_prompt = _build_system_prompt(mode, evidence)
         user_prompt = _build_user_prompt(intent_text, evidence)
+        output, failure = self._invoke_structured(
+            run_context, system_prompt, user_prompt
+        )
+        if failure is None:
+            return output
+        # 一次有界修复（Issue 09 实施步骤 3）：结构化输出非法/格式错误时
+        # 只带修复指令重调一次；剩余预算不足承担第二次调用时在总预算内
+        # 失败，绝不做无限重试、不把 transport 断开映射成领域失败。
+        if budget is not None and not budget.can_retry():
+            raise CareerError(
+                "career_output_invalid",
+                "规划结果未通过结构校验，且剩余预算不足，无法修复；"
+                "请重试（输入已保留）。",
+                retryable=True,
+            )
+        output, failure = self._invoke_structured(
+            run_context,
+            system_prompt,
+            _build_repair_user_prompt(user_prompt, output, failure),
+        )
+        if failure is not None:
+            raise CareerError(
+                "career_output_invalid",
+                "规划结果连续未通过结构校验；请修改问题表述后重试（输入已保留）。",
+                retryable=True,
+            )
+        return output
+
+    def _invoke_structured(
+        self,
+        run_context: Any,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> tuple[CareerPlanningOutputContract, str | None]:
+        """调用固定结构化模型，返回 (输出, 可修复失败原因)。
+
+        - 成功/DEGRADED：宽容解析，结构非法时 ``failure`` 非空；
+        - 格式类失败（如 JSON 解析失败，``structured_output_parse_failed``）：
+          作为可修复失败返回（第二次调用带修复指令）；
+        - 其余能力类失败（鉴权/区域/限流等）：按现有分类直接抛
+          ``CareerError``，不做修复（能力问题修复无意义）。
+        """
         payload = {
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -467,16 +521,25 @@ class CareerPlannerService:
             run_context,
             payload,
         )
-        if call_result.status not in (
+        if call_result.status in (
             ModelCallStatus.SUCCESS,
             ModelCallStatus.DEGRADED,
         ):
-            raise CareerError(
-                call_result.error_code or "career_generation_failed",
-                call_result.error_message or "生涯规划生成失败，请重试（输入已保留）。",
-                retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
+            output = self._coerce_output(call_result.output or {})
+            if _output_is_invalid(output):
+                return output, "输出未通过结构校验"
+            return output, None
+        if call_result.error_code in _REPAIRABLE_CALL_CODES:
+            return (
+                self._coerce_output(call_result.output or {}),
+                call_result.error_message
+                or "模型输出不是合法 JSON，无法解析。",
             )
-        return self._coerce_output(call_result.output or {})
+        raise CareerError(
+            call_result.error_code or "career_generation_failed",
+            call_result.error_message or "生涯规划生成失败，请重试（输入已保留）。",
+            retryable=call_result.status == ModelCallStatus.RETRYABLE_FAIL,
+        )
 
     def _coerce_output(self, raw: dict[str, Any]) -> CareerPlanningOutputContract:
         """把模型输出收窄为输出合同；结构异常按缺项处理并交复核判定。"""
@@ -569,6 +632,48 @@ def _has_material_evidence(evidence: list[CareerEvidenceSource]) -> bool:
     """是否有画像/学习记录/检索/联网等材料证据（用户陈述不算材料）。"""
     return any(
         source.kind != CareerEvidenceKind.USER_STATEMENT for source in evidence
+    )
+
+
+def _output_is_invalid(output: CareerPlanningOutputContract) -> bool:
+    """结构校验：正文/边界声明缺失或六类结果全空视为非法（可修复）。
+
+    与复核的完整性门同一语义，但提前到模型调用层作为「有界修复」的
+    触发条件：只有结构层面不可交付才重调一次；单类条目缺失仍由宽容
+    解析与复核处理，不扩大修复范围。
+    """
+    if not output.final_text.strip():
+        return True
+    if not output.boundary_statement.strip():
+        return True
+    return not any(getattr(output, key) for key in _CATEGORY_KEYS)
+
+
+def _build_repair_user_prompt(
+    user_prompt: str,
+    output: CareerPlanningOutputContract | None,
+    failure: str,
+) -> str:
+    """构造一次修复的提示词：原问题 + 上次输出/错误 + 确定性失败原因。"""
+    if output is None:
+        # 格式类失败（JSON 解析失败等）：无上次输出可附，只给原因
+        reasons = [failure or "输出不是合法 JSON"]
+    else:
+        reasons = []
+        if not output.final_text.strip():
+            reasons.append("缺少自然中文正文（final_text）")
+        if not output.boundary_statement.strip():
+            reasons.append("缺少保证边界声明（boundary_statement）")
+        if not any(getattr(output, key) for key in _CATEGORY_KEYS):
+            reasons.append(
+                "六类结果（facts/assumptions/options/risks/path/suggestions）全为空"
+            )
+        if not reasons:
+            reasons.append(failure or "输出未通过结构校验")
+    return (
+        f"{user_prompt}\n\n【修复要求】上一次输出未通过结构校验："
+        f"{'、'.join(reasons)}。请严格按照输出要求重新输出完整 JSON，"
+        "不要重复上次的错误，不要输出 JSON 之外的任何内容。"
     )
 
 
@@ -783,6 +888,32 @@ _EVIDENCE_KIND_CN: dict[str, str] = {
 }
 
 
+def _external_evidence_note(evidence: list[CareerEvidenceSource]) -> str:
+    """外部证据缺失提示（Issue 09 实施步骤 4）：不伪造事实、交付骨架。
+
+    本轮没有联网/论文/本地材料等外部证据时，明确要求模型不编造外部
+    事实：涉及行业趋势、岗位要求、资格等内容的表述必须作为假设并给出
+    核查方式，或在 open_questions 中列为待核实项。
+    """
+    has_external = any(
+        source.kind
+        in (
+            CareerEvidenceKind.WEB_SEARCH,
+            CareerEvidenceKind.ARXIV,
+            CareerEvidenceKind.RETRIEVAL,
+        )
+        for source in evidence
+    )
+    if has_external:
+        return ""
+    return (
+        "【外部证据缺失】本轮没有联网/论文/本地材料证据：涉及行业趋势、"
+        "岗位要求、资格等会变化的外部事实不得写入 facts，必须作为假设并"
+        "给出核查方式，或在 open_questions 中标为待核实项；规划骨架只"
+        "基于用户自述与授权画像/学习记录。"
+    )
+
+
 def _evidence_lines(evidence: list[CareerEvidenceSource]) -> str:
     """证据合同清单：只可引用清单内材料，并带核查时间。"""
     lines: list[str] = []
@@ -829,6 +960,13 @@ def _build_system_prompt(mode: str, evidence: list[CareerEvidenceSource]) -> str
 
 【证据合同（只可引用清单内材料，不得虚构）】
 {_evidence_lines(evidence)}
+
+{_external_evidence_note(evidence)}
+
+【可执行性要求】至少一条近期学习建议（suggestions）是未来 7 天可
+执行的具体行动（如选课、投递实习、约谈导师、做一次调研），并给出
+验证方式；成长路径（path）按时间先后排列，最后一步给出可检查的
+里程碑（明确目标与时间点）。
 
 【输出要求】严格输出 JSON，不得输出 JSON 之外的任何内容：
 {{"final_text": 自然中文正文, "facts": [{{"content", "evidence_refs", "note"}}],

@@ -7480,9 +7480,10 @@ export interface components {
         };
         /**
          * CareerPlanningProcessState
-         * @description 生涯规划过程卡状态（与 humanizer 五态一致，另加 done）。
+         * @description 生涯规划过程卡状态（与 humanizer 五态一致，另加 done/clarify）。
          *
          *     - ``loading``：进行中；
+         *     - ``clarify``：信息不足，先问一个关键澄清问题（Issue 09 intake）；
          *     - ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；
          *     - ``error``：不可重试错误；
          *     - ``permission``：凭据/能力未就绪；
@@ -7490,7 +7491,7 @@ export interface components {
          *     - ``done``：完成。
          * @enum {string}
          */
-        CareerPlanningProcessState: "loading" | "empty" | "error" | "permission" | "recovery" | "done";
+        CareerPlanningProcessState: "loading" | "clarify" | "empty" | "error" | "permission" | "recovery" | "done";
         /**
          * CareerPlanningProjection
          * @description 一条助手消息的生涯规划结果投影（按账户隔离持久化）。
@@ -7528,6 +7529,11 @@ export interface components {
             verified_at: string;
             /** @description 交付的六类输出合同；失败/阻断时为 None。 */
             output?: components["schemas"]["CareerPlanningOutputContract"] | null;
+            /**
+             * Clarification
+             * @description 信息不足时的关键澄清问题（Issue 09 intake；非空时消息正文即为该问题，不交付六类规划）。
+             */
+            clarification?: string | null;
             /**
              * Evidence Sources
              * @description 本轮使用的全部证据（含核查时间）。

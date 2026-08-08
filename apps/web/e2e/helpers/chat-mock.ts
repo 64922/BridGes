@@ -9,23 +9,32 @@ import type { Page } from "@playwright/test";
  * 助手消息 id），本模块注册 events 回放路由。
  */
 
-/** 注册 events 回放路由：按消息 id 回放已存 SSE 正文（运行终态后结束）。
+/** 事件流来源：静态 SSE 正文 Map，或按消息 id 动态构造回放正文。 */
+export type EventStreamSource =
+  | Map<string, string>
+  | ((messageId: string) => string);
+
+/** 注册 events 回放路由：按消息 id 回放已存 SSE 事件流（运行终态后结束）。
  *  注意：Playwright glob 匹配包含 query string，pattern 尾部加 ``**``
  *  才能命中 ``?cursor=N`` 的订阅请求。 */
 export function installRunEventsRoutes(
   page: Page,
-  streams: Map<string, string>,
+  streams: EventStreamSource,
   conversationId = "mock-1"
 ): void {
   void page.route(
     `**/api/chat/conversations/${conversationId}/messages/*/events**`,
     async (route) => {
       const messageId = route.request().url().split("/messages/")[1].split("/")[0];
+      const body =
+        typeof streams === "function"
+          ? streams(messageId)
+          : (streams.get(messageId) ?? "");
       await route.fulfill({
         status: 200,
         contentType: "text/event-stream",
         headers: { "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
-        body: streams.get(messageId) ?? "",
+        body,
       });
     }
   );
