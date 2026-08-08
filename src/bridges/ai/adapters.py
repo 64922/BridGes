@@ -17,6 +17,7 @@ from bridges.contracts.chat import (
     ChatStreamHumanizerData,
     ChatStreamImageData,
     ChatStreamMcpData,
+    ChatStreamStageData,
     ChatStreamVideoData,
 )
 from bridges.contracts.workflows import RunContextEnvelope
@@ -176,6 +177,7 @@ class StreamEvent:
     error_message: str | None = None
     lock: ModelRunLock | None = None
     usage: dict[str, Any] | None = field(default=None, repr=False)
+    stage: ChatStreamStageData | None = field(default=None, repr=False)
     humanizer: ChatStreamHumanizerData | None = field(default=None, repr=False)
     career: ChatStreamCareerData | None = field(default=None, repr=False)
     image: ChatStreamImageData | None = field(default=None, repr=False)

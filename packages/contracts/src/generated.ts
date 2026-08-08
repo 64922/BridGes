@@ -8362,6 +8362,11 @@ export interface components {
             /** @description 运行状态。 */
             status: components["schemas"]["ChatRunStatus"];
             /**
+             * Stage
+             * @description 运行当前阶段（Issue 06 统一阶段枚举）。
+             */
+            stage?: string | null;
+            /**
              * Cursor
              * @description 已持久化的最后事件游标；从下一游标恢复订阅。
              */
@@ -8541,14 +8546,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video" | "mcp_call";
+        ChatStreamEventKind: "started" | "stage" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video" | "mcp_call";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -8658,6 +8663,46 @@ export interface components {
              * @description 本轮产生的画像通知。
              */
             notifications?: components["schemas"]["ProfileNotification"][];
+        };
+        /**
+         * ChatStreamStageData
+         * @description stage 事件载荷：统一阶段转换（Issue 06 阶段埋点）。
+         *
+         *     只携带阶段枚举、状态与脱敏耗时，绝不携带消息/文档/搜索正文；前端
+         *     据此渲染真实阶段（检索/生成/检查/收尾），替代笼统"思考中"。
+         */
+        ChatStreamStageData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "stage";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /**
+             * Stage
+             * @description 统一阶段枚举值（queued/local_retrieval/…）。
+             */
+            stage: string;
+            /**
+             * Status
+             * @description 阶段状态：active 进入；done 正常完成；timeout/failed/skipped 降级。
+             * @enum {string}
+             */
+            status: "active" | "done" | "timeout" | "failed" | "skipped";
+            /**
+             * Duration Ms
+             * @description 阶段耗时（毫秒，done 起携带）。
+             */
+            duration_ms?: number | null;
+            /**
+             * First Token Ms
+             * @description 模型首可见块耗时（毫秒，仅 model_generation 阶段）。
+             */
+            first_token_ms?: number | null;
         };
         /**
          * ChatStreamStartedData

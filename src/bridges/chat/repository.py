@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import math
 import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -117,6 +118,15 @@ def _parse_iso(value: str) -> datetime:
 
 def _iso(now: datetime) -> str:
     return now.isoformat()
+
+
+def _percentile(values: list[int], percentile: float) -> int | None:
+    """按最近秩计算分位数（空序列返回 None；性能摘要专用）。"""
+    if not values:
+        return None
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, int(math.ceil(percentile / 100 * len(ordered))) - 1))
+    return ordered[index]
 
 
 class ConversationRepository:
@@ -1507,6 +1517,92 @@ class ConversationRepository:
                 ),
             )
             return cursor.rowcount
+
+    def performance_summary(
+        self, account_id: str, since: datetime | None = None
+    ) -> dict[str, Any]:
+        """本地性能摘要（Issue 06 T6）：p50/p95、超时率、阶段占比、重试。
+
+        全部脱敏：只聚合 ID/毫秒/状态/类别，绝不返回消息、文档、搜索
+        结果或密钥正文；不建立任何遥测外传，摘要仅供本地性能观测与
+        防代码回归断言（本地确定性适配器 p95 首 token ≤ 2s、终态 ≤ 5s）。
+        """
+        since_sql = " AND created_at >= ?" if since is not None else ""
+        params: list[Any] = [account_id]
+        if since is not None:
+            params.append(_iso(since))
+        rows = self._db.scoped(account_id).execute(
+            "SELECT status, error_code, duration_ms, attempt_count"
+            " FROM generation_runs WHERE account_id = ?"
+            " AND status IN ('done', 'failed', 'stopped')" + since_sql,
+            params,
+        ).fetchall()
+        durations = [
+            int(row["duration_ms"]) for row in rows if row["duration_ms"] is not None
+        ]
+        timeout_count = sum(
+            1
+            for row in rows
+            if row["error_code"] is not None and "timeout" in str(row["error_code"])
+        )
+        retry_count = sum(
+            max(0, int(row["attempt_count"] or 1) - 1) for row in rows
+        )
+        stage_params: list[Any] = [account_id]
+        if since is not None:
+            stage_params.append(_iso(since))
+        stage_rows = self._db.scoped(account_id).execute(
+            "SELECT payload FROM generation_events"
+            " WHERE account_id = ? AND kind = 'stage'" + since_sql,
+            stage_params,
+        ).fetchall()
+        stage_totals: dict[str, dict[str, Any]] = {}
+        first_tokens: list[int] = []
+        for row in stage_rows:
+            payload = _json_loads_any(row["payload"]) or {}
+            stage = str(payload.get("stage", ""))
+            if not stage:
+                continue
+            entry = stage_totals.setdefault(stage, {"duration_ms": 0, "count": 0})
+            # 只统计结束事件（active 不计入次数；阶段占比按耗时聚合）
+            if payload.get("status") == "done":
+                entry["count"] += 1
+            duration = payload.get("duration_ms")
+            if isinstance(duration, int):
+                entry["duration_ms"] += duration
+            first_token = payload.get("first_token_ms")
+            if isinstance(first_token, int):
+                first_tokens.append(first_token)
+        total_stage_ms = sum(
+            entry["duration_ms"] for entry in stage_totals.values()
+        )
+        return {
+            "run_count": len(rows),
+            "duration_ms": {
+                "p50": _percentile(durations, 50),
+                "p95": _percentile(durations, 95),
+            },
+            "first_token_ms": {
+                "p50": _percentile(first_tokens, 50),
+                "p95": _percentile(first_tokens, 95),
+            },
+            "timeout_rate": (
+                round(timeout_count / len(rows), 4) if rows else 0.0
+            ),
+            "retry_count": retry_count,
+            "stage_share": {
+                stage: {
+                    "duration_ms": entry["duration_ms"],
+                    "count": entry["count"],
+                    "share": (
+                        round(entry["duration_ms"] / total_stage_ms, 4)
+                        if total_stage_ms
+                        else 0.0
+                    ),
+                }
+                for stage, entry in sorted(stage_totals.items())
+            },
+        }
 
     def expire_overdue_runs(
         self, max_attempts: int, now: datetime

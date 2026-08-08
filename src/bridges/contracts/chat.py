@@ -563,6 +563,9 @@ class ChatRunView(BaseModel):
 
     run_id: str = Field(description="持久化运行标识。")
     status: ChatRunStatus = Field(description="运行状态。")
+    stage: str | None = Field(
+        default=None, description="运行当前阶段（Issue 06 统一阶段枚举）。"
+    )
     cursor: int = Field(description="已持久化的最后事件游标；从下一游标恢复订阅。")
     attempt_count: int = Field(default=0, description="领取执行次数（租约恢复递增）。")
     created_at: datetime = Field(description="运行创建时间。")
@@ -587,6 +590,7 @@ class ChatStreamEventKind(StrEnum):
     """SSE 流事件类型（Issue 11/14 起稳定的事件名）。"""
 
     STARTED = "started"
+    STAGE = "stage"
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
@@ -626,6 +630,25 @@ class ChatStreamDeltaData(BaseModel):
     kind: Literal["delta"] = "delta"
     message_id: str = Field(description="助手消息标识。")
     delta: str = Field(description="增量正文片段。")
+
+
+class ChatStreamStageData(BaseModel):
+    """stage 事件载荷：统一阶段转换（Issue 06 阶段埋点）。
+
+    只携带阶段枚举、状态与脱敏耗时，绝不携带消息/文档/搜索正文；前端
+    据此渲染真实阶段（检索/生成/检查/收尾），替代笼统"思考中"。
+    """
+
+    kind: Literal["stage"] = "stage"
+    message_id: str = Field(description="助手消息标识。")
+    stage: str = Field(description="统一阶段枚举值（queued/local_retrieval/…）。")
+    status: Literal["active", "done", "timeout", "failed", "skipped"] = Field(
+        description="阶段状态：active 进入；done 正常完成；timeout/failed/skipped 降级。"
+    )
+    duration_ms: int | None = Field(default=None, description="阶段耗时（毫秒，done 起携带）。")
+    first_token_ms: int | None = Field(
+        default=None, description="模型首可见块耗时（毫秒，仅 model_generation 阶段）。"
+    )
 
 
 class ChatStreamErrorDetail(BaseModel):
@@ -767,6 +790,7 @@ class ChatStreamEvent(BaseModel):
     event: ChatStreamEventKind = Field(description="事件名（SSE 帧头）。")
     data: Annotated[
         ChatStreamStartedData
+        | ChatStreamStageData
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData

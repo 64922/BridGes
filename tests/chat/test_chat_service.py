@@ -241,7 +241,7 @@ def test_stream_done_persists_content_duration_and_run_lock(
             "alice", created.conversation_id, assistant.message_id, _context()
         )
     )
-    assert [e.kind for e in events] == ["delta", "delta", "done"]
+    assert [e.kind for e in events if e.kind != "stage"] == ["delta", "delta", "done"]
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None
     assert final.status == ChatMessageStatus.DONE
@@ -277,7 +277,7 @@ def test_stream_error_persists_actionable_chinese_message(service: ChatService) 
             "alice", created.conversation_id, assistant.message_id, _context()
         )
     )
-    assert [e.kind for e in events] == ["delta", "error"]
+    assert [e.kind for e in events if e.kind != "stage"] == ["delta", "error"]
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None
     assert final.status == ChatMessageStatus.ERROR
@@ -430,8 +430,10 @@ def test_generator_close_finalizes_interrupted(service: ChatService) -> None:
     gen = service.stream_generation(
         "alice", created.conversation_id, assistant.message_id, _context()
     )
-    next(gen)
-    next(gen)
+    # Issue 06：阶段事件先于正文；消费到首个 delta（已接收正文）再断开
+    for event in gen:
+        if event.kind == "delta":
+            break
     gen.close()  # 模拟客户端断开
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None

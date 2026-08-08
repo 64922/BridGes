@@ -1464,11 +1464,23 @@ class ChatService:
         """按账户读取运行记录（订阅端点判断终态；跨账户返回 None）。"""
         return self._repo.get_generation_run(account_id, run_id)
 
+    def performance_summary(
+        self, account_id: str, since: datetime | None = None
+    ) -> dict[str, Any]:
+        """本地性能摘要（Issue 06 T6）：p50/p95、超时率、阶段占比、重试。
+
+        只聚合脱敏指标（毫秒/状态/类别），绝不返回用户内容；不建立任何
+        遥测外传。用于本地性能观测与防代码回归（本地确定性适配器 p95
+        首 token ≤ 2s、终态 ≤ 5s）。
+        """
+        return self._repo.performance_summary(account_id, since=since)
+
     def _run_view(self, run: GenerationRunRecord, account_id: str) -> ChatRunView:
         """由运行记录构造外部视图；游标取已持久化的最后事件 seq。"""
         return ChatRunView(
             run_id=run.run_id,
             status=ChatRunStatus(run.status),
+            stage=run.stage,
             cursor=self._repo.last_generation_event_seq(account_id, run.run_id),
             attempt_count=run.attempt_count,
             created_at=run.created_at,

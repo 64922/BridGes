@@ -372,7 +372,7 @@ def test_new_account_without_any_key_can_send_and_receive_answer(
     events = _subscribe_all(
         client, conversation_id, created["assistant_message"]["message_id"]
     )
-    assert [e[0] for e in events] == ["started", "delta", "done"]
+    assert [e[0] for e in events if e[0] != "stage"] == ["started", "delta", "done"]
     done = events[-1][1]
     assert done["message"]["status"] == "done"
     history = client.get(f"/chat/conversations/{conversation_id}").json()
@@ -404,14 +404,17 @@ def test_send_streams_started_delta_done_and_persists_history(
     _drive_executor(sqlite_app)
 
     events = _subscribe_all(client, conversation_id, message_id)
-    assert [e[0] for e in events] == ["started", "delta", "done"]
-    started = events[0][1]
+    # Issue 06：阶段事件与 started/delta/done 同一事件流；断言只看
+    # 内容事件（stage 为独立阶段埋点，不参与正文序列）。
+    content_events = [e for e in events if e[0] != "stage"]
+    assert [e[0] for e in content_events] == ["started", "delta", "done"]
+    started = content_events[0][1]
     assert started["conversation_id"] == conversation_id
     assert started["attempt_number"] == 1
     assert started["message_id"] == message_id
-    assert events[1][1]["message_id"] == message_id
-    assert events[1][1]["delta"]  # 替身回答有正文
-    done = events[2][1]
+    assert content_events[1][1]["message_id"] == message_id
+    assert content_events[1][1]["delta"]  # 替身回答有正文
+    done = content_events[2][1]
     assert done["message"]["status"] == "done"
     assert done["message"]["run_lock_id"]
     assert done["message"]["model_id"] == "qwen3.7-plus-2026-05-26"
@@ -441,7 +444,8 @@ def test_send_multi_delta_streaming_via_programmable_adapter(
     created = _send(client, conversation_id, "你好")
     _drive_executor(sqlite_app)
     events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
-    assert [e[0] for e in events] == ["started", "delta", "delta", "delta", "done"]
+    content_kinds = [e[0] for e in events if e[0] != "stage"]
+    assert content_kinds == ["started", "delta", "delta", "delta", "done"]
     assert "".join(e[1]["delta"] for e in events if e[0] == "delta") == "第一第二第三"
 
 
@@ -456,8 +460,9 @@ def test_send_failure_streams_error_event_and_persists_actionable_message(
     created = _send(client, conversation_id, "你好")
     _drive_executor(sqlite_app)
     events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
-    assert [e[0] for e in events] == ["started", "error"]
-    error = events[1][1]["error"]
+    content_events = [e for e in events if e[0] != "stage"]
+    assert [e[0] for e in content_events] == ["started", "error"]
+    error = content_events[1][1]["error"]
     assert error["code"] == "rate_limit"
     assert "限流" in error["message"]
     assert error["retryable"] is True
@@ -480,7 +485,7 @@ def test_subscribe_after_run_terminal_replays_all_events_and_ends(
     _drive_executor(sqlite_app)
     # 从任意游标订阅都能拿到剩余事件并结束（这里从 0 全量回放）
     events = _subscribe_all(client, conversation_id, message_id, cursor=0)
-    assert [e[0] for e in events] == ["started", "delta", "done"]
+    assert [e[0] for e in events if e[0] != "stage"] == ["started", "delta", "done"]
     # 从最后游标订阅：立即空流结束
     with client.stream(
         "GET",
@@ -580,7 +585,7 @@ def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) 
     events = _subscribe_all(
         client, conversation_id, retried["assistant_message"]["message_id"]
     )
-    assert [e[0] for e in events] == ["started", "delta", "done"]
+    assert [e[0] for e in events if e[0] != "stage"] == ["started", "delta", "done"]
 
     history = client.get(f"/chat/conversations/{conversation_id}").json()
     assistants = [m for m in history["messages"] if m["role"] == "assistant"]

@@ -105,3 +105,17 @@
 - [x] T6 e2e 协议替身适配 14 个文件（POST 返回 run + events 回放）+ 共享 helper → verify: issue11/14/21 等冒烟通过
 - [x] T7 反馈环测试（真实 HTTP+SQLite+可控慢模型：发送→切会话→断开→重连→单一 done 运行；刷新不重复；双执行器竞争；worker 失联恢复+收尸）→ verify: 4 条反馈环测试通过
 - [x] T8 全量回归 + 双轴代码审查 + 提交 → verify: 全量 2200 pytest + e2e 265 通过（审查修复：收尸补发终态事件/消息收敛、generation_worker_lost 登记可重试、停止 thinking 语义、死代码清理、重复收敛）
+
+## 收尾 Issue 06：端到端时延预算、阶段埋点和有界降级（2026-08-08）
+
+来源：`.scratch/收尾/issues/06-latency-budgets-observability.md`（ready-for-agent，Blocked by 01/02 均已完）。
+分支：`06-latency-budgets-observability`（基于 c3682480，独立 worktree，不动主线）。
+
+- [x] T1 统一阶段时钟与预算控制器模块（阶段枚举 queued/local_retrieval/public_search/model_generation/quality_check/repair/finalizing、总预算 120s、外部调用 timeout 集中配置、剩余预算重试门、脱敏指标）→ verify: 单元测试覆盖阶段转换与预算耗尽
+- [x] T2 回合编排接线：阶段事件发射 + 预算重试 → verify: 阶段顺序断言 + 重试预算边界测试
+- [x] T3 独立公开搜索并行执行（companion/study/humanizer/career 四路径）→ verify: 并行墙钟断言 + 顺序确定性断言
+- [x] T4 前端阶段展示与首事件时效（创建即"排队中"，阶段行真实文案）→ verify: e2e 2 条断言阶段文案与终态接管
+- [x] T5 超预算有界降级终态（草稿带警告交付/失败 budget_exceeded 可重试；注入 30s 慢搜索 8s 墙钟降级不等待）→ verify: 反馈环测试
+- [x] T6 本地性能摘要 p50/p95/超时率/阶段占比/重试次数（防回归：本地适配器 p95 首 token ≤2s、终态 ≤5s；无遥测外传、日志无用户内容）→ verify: 摘要单测 + 脱敏扫描
+- [x] T7 可控时钟反馈环测试（快速/慢/超时/预算耗尽四态）→ verify: 反馈环测试 7 条全绿
+- [ ] T8 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest + e2e 通过（审查修复：exit 幂等/首 token 精确/技能路径完整阶段/摘要 count 语义/on_stage 死代码清理/ADR-0025）

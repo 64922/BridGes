@@ -32095,6 +32095,18 @@
             "$ref": "#/components/schemas/ChatRunStatus",
             "description": "运行状态。"
           },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage",
+            "description": "运行当前阶段（Issue 06 统一阶段枚举）。"
+          },
           "cursor": {
             "type": "integer",
             "title": "Cursor",
@@ -32382,6 +32394,9 @@
                 "$ref": "#/components/schemas/ChatStreamStartedData"
               },
               {
+                "$ref": "#/components/schemas/ChatStreamStageData"
+              },
+              {
                 "$ref": "#/components/schemas/ChatStreamDeltaData"
               },
               {
@@ -32422,6 +32437,7 @@
                 "image": "#/components/schemas/ChatStreamImageData",
                 "mcp_call": "#/components/schemas/ChatStreamMcpData",
                 "profile": "#/components/schemas/ChatStreamProfileData",
+                "stage": "#/components/schemas/ChatStreamStageData",
                 "started": "#/components/schemas/ChatStreamStartedData",
                 "video": "#/components/schemas/ChatStreamVideoData"
               }
@@ -32440,6 +32456,7 @@
         "type": "string",
         "enum": [
           "started",
+          "stage",
           "delta",
           "error",
           "done",
@@ -32591,6 +32608,70 @@
         ],
         "title": "ChatStreamProfileData",
         "description": "profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。\n\n通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条\n自动写入通知携带一键撤回入口。"
+      },
+      "ChatStreamStageData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "stage",
+            "title": "Kind",
+            "default": "stage"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "统一阶段枚举值（queued/local_retrieval/…）。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "done",
+              "timeout",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "description": "阶段状态：active 进入；done 正常完成；timeout/failed/skipped 降级。"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "阶段耗时（毫秒，done 起携带）。"
+          },
+          "first_token_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Token Ms",
+            "description": "模型首可见块耗时（毫秒，仅 model_generation 阶段）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "stage",
+          "status"
+        ],
+        "title": "ChatStreamStageData",
+        "description": "stage 事件载荷：统一阶段转换（Issue 06 阶段埋点）。\n\n只携带阶段枚举、状态与脱敏耗时，绝不携带消息/文档/搜索正文；前端\n据此渲染真实阶段（检索/生成/检查/收尾），替代笼统\"思考中\"。"
       },
       "ChatStreamStartedData": {
         "properties": {
