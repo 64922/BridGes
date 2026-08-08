@@ -1,6 +1,6 @@
 # 08 重构学习模式为有状态、循序渐进的对话式教学循环
 
-Status: ready-for-human
+Status: completed
 Priority: P0
 Type: product-defect / domain-model
 Blocked by: 02, 03, 04, 05, 06

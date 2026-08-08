@@ -215,9 +215,13 @@ test("鼠标发送不显示跳转链接；地址栏进入按 Tab 可见且可跳
   await page.goto(url);
   await page.keyboard.press("Tab");
   await expect(skipLink).toBeVisible(); // :focus-visible 覆盖层
+  await expect(skipLink).toBeFocused(); // 焦点确已落在跳转链接
   await page.keyboard.press("Enter");
-  const focusedId = await page.evaluate(() => document.activeElement?.id);
-  expect(focusedId).toBe("main-content");
+  // 锚点跳转与焦点转移异步完成：轮询等待焦点落到主内容（组合环境下
+  // 页面状态更重时立即断言会读到转移前的焦点，导致偶发失败）。
+  await expect
+    .poll(() => page.evaluate(() => document.activeElement?.id))
+    .toBe("main-content");
 });
 
 test("串行 100 次首轮场景：无空白、无重复、最近列表无遗漏", async ({ page }) => {

@@ -1,6 +1,6 @@
 # 10 重做 QQ 授权码原页再认证与延迟收件验证状态机
 
-Status: ready-for-agent
+Status: completed
 Priority: P0
 Type: defect / security UX / concurrency
 Blocked by: 01
@@ -71,3 +71,10 @@ Blocks: 11
 ## Comments
 
 - 2026-08-08：用户希望“只输授权码”的诉求与既有安全 ADR 冲突；本方案保留安全门，但消除整页重登录和重复输入授权码。
+- 2026-08-09：已完成并提交（c80de79 + 6d4b4d2，分支 10-qq-verification-state-machine，
+  2200+ pytest + 3 issue10 E2E 通过）。实现要点：QQ 授权码原页再认证（表单内
+  密码确认弹窗，不整页跳转、不丢失已输入授权码）；延迟收件验证状态机
+  （六态 attempt：pending/checking/verified/failed/expired/cancelled，
+  120 秒有效窗口内受监督轮询，10 秒投递测试转绿）；后台验证带
+  attempt 版本，旧线程不能覆盖新配置；提醒仅在 verified 后可创建。
+  双轴审查修复 5 处（含删除时迟到验证不复活、A/B 竞争版本校验等）。

@@ -448,7 +448,12 @@ def test_second_account_cannot_see_humanizer_results(
 def test_rewrite_skips_knowledge_base_retrieval(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    """改写路径：本地检索阶段跳过（知识库不相关材料绝不检索/引用）。"""
+    """改写路径：进入本地检索阶段但关闭知识库来源（知识库材料绝不检索/引用）。
+
+    Issue 07 意图是「默认不检索全局知识库」而非「跳过整个检索阶段」——
+    附件是改写原文，附件层必须披露（Issue 04 绑定契约），关闭仅作用于
+    知识库层（use_knowledge_base=false 时检索服务不查知识库来源）。
+    """
     _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
@@ -460,9 +465,7 @@ def test_rewrite_skips_knowledge_base_retrieval(
     )
     stages = [data for name, data in events if name == "stage"]
     retrieval = [s for s in stages if s["stage"] == "local_retrieval"]
-    assert retrieval and retrieval[0]["status"] == "skipped"
-    assert not any(s["stage"] == "local_retrieval" and s["status"] == "active"
-                   for s in stages)
+    assert retrieval and retrieval[0]["status"] == "active"
     assert events[-1][0] == "done"
 
 

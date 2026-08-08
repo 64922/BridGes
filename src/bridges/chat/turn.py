@@ -75,7 +75,6 @@ from bridges.contracts.chat import (
     VideoRequestPayload,
 )
 from bridges.contracts.humanizer import (
-    HumanizerPath,
     HumanizerResultStatus,
     HumanizerSkillInput,
 )
@@ -2637,15 +2636,11 @@ class TurnOrchestrator:
         # Issue 07：改写路径只以用户粘贴/附件为原文，默认不检索全局知识库
         # （知识库中不相关图片等材料绝不进入证据合同）；用户显式开启「补充
         # 检索全局知识库」时检索轮次进入改写证据合同（仅作补充，不替代原文）。
-        # 生成路径保持既有检索行为。
-        rewrite_path = skill_input.contract.path == HumanizerPath.REWRITE
-        if rewrite_path and not use_knowledge_base:
-            # 未进入阶段 → exit 记为 skipped（与预算文档语义一致）
-            budget.exit(RunStage.LOCAL_RETRIEVAL)
-            yield self._stage_event(
-                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
-            )
-        elif budget.enter(RunStage.LOCAL_RETRIEVAL):
+        # 生成路径保持既有检索行为。注意：改写默认关闭知识库由调用方传
+        # use_knowledge_base=False（retrieval 层只关知识库来源），检索轮次
+        # 本身仍须存在——附件层披露是 Issue 04 的绑定契约，跳过整个阶段会
+        # 使消息投影丢失检索披露（retrieval=null）。
+        if budget.enter(RunStage.LOCAL_RETRIEVAL):
             yield self._stage_event(
                 assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
             )
@@ -2655,6 +2650,8 @@ class TurnOrchestrator:
                 assistant_message_id,
                 until_user_message_id or (owner.message_id if owner is not None else None),
                 round_query,
+                # 改写路径默认不检索全局知识库（issue 07 意图）由调用方
+                # 传值保证（改写默认 false、显式开启才 true），此处原样传递。
                 use_knowledge_base=use_knowledge_base,
                 thinking=thinking,
                 stop_event=stop_event,

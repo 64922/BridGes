@@ -1,6 +1,7 @@
 # BridGes 严重问题收尾执行图
 
-Status: ready-for-agent
+Status: completed（11 个 issue 全部完成；跨功能验收报告见
+[closeout-acceptance-report.md](closeout-acceptance-report.md)）
 
 ## 目标
 
@@ -103,3 +104,8 @@ flowchart TD
 ## Comments
 
 - 2026-08-08：依据用户截图、代码、只读数据库状态和本地回归测试建立初版执行图。
+- 2026-08-09（完成）：issue 11 收口 —— 收尾自动化套件（`scripts/closeout_acceptance.sh`）
+  Windows 串行连续 3 轮全部通过（每轮 141 pytest + 29 e2e）；新增 50 次随机会话
+  切换/刷新压力测试（`tests/closeout/test_closeout_stress_switch.py`）；发现并修复
+  两处组合缺陷（issue07 改写路径跳过检索破坏 issue04 附件披露契约、issue03
+  skip-link 组合环境时序 flaky）；仓库级 + 产物级秘密扫描 0 命中；验收报告产出。
