@@ -269,21 +269,40 @@ class _ImapHandler(socketserver.StreamRequestHandler):
                 self._tagged(tag, "OK", "SELECT completed")
             elif upper.startswith("SEARCH"):
                 args = _unquote_args(rest[len("SEARCH"):].strip())
+                # 支持 HEADER Message-ID <值>（主键搜索）与 SUBJECT <令牌>（回退）
                 token = None
+                message_id = None
                 for index, part in enumerate(args):
                     if part.upper() == "SUBJECT" and index + 1 < len(args):
                         token = args[index + 1]
+                    elif (
+                        part.upper() == "HEADER"
+                        and index + 2 < len(args)
+                        and args[index + 1].upper() == "MESSAGE-ID"
+                    ):
+                        message_id = args[index + 2]
                 matches: list[int] = []
-                if token is not None and email_addr is not None:
+                if email_addr is not None:
                     with MAILBOX_LOCK:
-                        matches = [
-                            index + 1
-                            for index, message in enumerate(MAILBOX)
-                            if email_addr in message["recipients"]
-                            and token in str(message.get("subject", ""))
-                        ]
+                        if message_id is not None:
+                            matches = [
+                                index + 1
+                                for index, message in enumerate(MAILBOX)
+                                if email_addr in message["recipients"]
+                                and message.get("message_id") == message_id
+                            ]
+                        elif token is not None:
+                            matches = [
+                                index + 1
+                                for index, message in enumerate(MAILBOX)
+                                if email_addr in message["recipients"]
+                                and token in str(message.get("subject", ""))
+                            ]
                 self._send(f"* SEARCH {' '.join(str(i) for i in matches)}")
                 self._tagged(tag, "OK", "SEARCH completed")
+            elif upper.startswith("NOOP"):
+                # 验证轮询的保活命令（issue 10：同一 IMAP 会话 + NOOP）
+                self._tagged(tag, "OK", "NOOP completed")
             elif upper.startswith("LOGOUT"):
                 self._send("* BYE fake-imap logging out")
                 self._tagged(tag, "OK", "LOGOUT completed")

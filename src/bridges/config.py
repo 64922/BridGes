@@ -128,6 +128,15 @@ class Settings(BaseSettings):
         validation_alias=_env_aliases("IMAP_PLAIN"),
         description="明文 IMAP（仅本地假邮件服务器测试用，生产保持 SSL）。",
     )
+    # Issue 10: 自发自收验证的收件确认窗口（秒）与受监督轮询间隔（秒）。
+    # 窗口覆盖正常投递延迟（默认 120 秒，超时终态 receipt_timeout）；
+    # 轮询间隔是窗口内的有界退避粒度（同一 IMAP 会话 + NOOP 保活）。
+    smtp_verify_window_seconds: float = Field(
+        default=120.0, validation_alias=_env_aliases("SMTP_VERIFY_WINDOW_SECONDS")
+    )
+    smtp_verify_tick_seconds: float = Field(
+        default=2.0, validation_alias=_env_aliases("SMTP_VERIFY_TICK_SECONDS")
+    )
 
     _SECRET_FIELDS: frozenset[str] = frozenset(
         {"secret_key", "database_url", "redis_url", "object_storage_url", "qwen_api_key"}

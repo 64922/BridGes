@@ -1,14 +1,15 @@
-"""收尾邮件边界 smoke（issue 01 AC6 + 反馈环 smoke 3）。
+"""收尾邮件边界 smoke（issue 01 AC6 + 反馈环 smoke 3 + issue 10）。
 
 真实链路：真实 API 子进程 + 真实假邮件服务子进程（SMTP/IMAP 均走真实
-套接字协议）→ 注册账户 → 保存授权码（触发后台自发自收验证线程）→ 轮询
-SMTP 状态直到收敛。三种投递边界：
+套接字协议）→ 注册账户 → 保存授权码（触发受监督验证 attempt 状态机）
+→ 轮询 SMTP 状态直到收敛。三种投递边界：
 
 1. 0 秒：立即投递 → 最终 ``verified``（绿，fixture 能力验证）；
-2. 10 秒：SMTP 秒收、IMAP 晚到 → 现状必红（收件轮询约 6-8 秒即写失败；
-   修复属于 issue 10 延迟收件验证状态机，本测试失败 trace 保留给 issue 10）；
-3. 超时：命中丢弃令牌 → 邮件永不入箱 → 最终 ``failed``（绿，fixture
-   能力验证）。
+2. 10 秒：SMTP 秒收、IMAP 晚到 → issue 10 修复前必红（旧实现收件
+   轮询约 6-8 秒即写失败）；修复后 attempt 状态机在默认 120 秒窗口内
+   持续有界退避，晚到邮件到达后最终收敛 ``verified``；
+3. 超时：命中丢弃令牌 → 邮件永不入箱 → 窗口（测试注入 10 秒）到期
+   终态 ``receipt_timeout``。
 """
 
 from __future__ import annotations
@@ -38,10 +39,10 @@ def _save_and_poll(
             return projection
         if status == "failed":
             raise AssertionError(
-                "验证提前失败："
+                "验证在收件窗口内提前失败："
                 f"{projection.get('error_code')} {projection.get('error_message')}"
-                "（当前实现收件轮询约 6-8 秒即写失败；"
-                "issue 10 需扩展窗口并在晚到邮件到达后最终收敛为 verified）"
+                "（issue 10 状态机应在窗口内持续有界退避，"
+                "晚到邮件到达后最终收敛为 verified）"
             )
         time.sleep(_POLL_INTERVAL_SECONDS)
     raise AssertionError(
@@ -72,10 +73,16 @@ def test_mail_verification_converges_to_verified_after_10_second_delivery(
 def test_dropped_mail_times_out_to_failed(
     api_server, unique_data_dir, fake_mail_server
 ) -> None:
-    """命中丢弃令牌：邮件永不入箱，验证最终 failed（超时边界能力验证）。"""
+    """命中丢弃令牌：邮件永不入箱，窗口到期终态 receipt_timeout。
+
+    注入 10 秒收件窗口：测试在 40 秒轮询期限内必然看到 failed；
+    issue 10 默认窗口为 120 秒（覆盖正常投递延迟）。
+    """
     mail = fake_mail_server(drop_subject_tokens=("BridGes 验证邮件",))
-    api = api_server(unique_data_dir, mail=mail)
+    api = api_server(
+        unique_data_dir, mail=mail, smtp_verify_window_seconds=10.0
+    )
     client = api.register_account()
     projection = _save_and_poll(api, client, expect_failed=True)
     assert projection.get("status") == "failed"
-    assert projection.get("error_code") in {"verification_failed", "smtp_transient"}
+    assert projection.get("error_code") == "receipt_timeout"

@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 29
+SCHEMA_VERSION = 30
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1476,6 +1476,37 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         # 存量 streaming 遗留消息（无后台运行）：由读取路径的陈旧收敛
         # 兜底（保持既有 stream_interrupted 语义），不再回填运行。
+    ],
+    # Issue 10：QQ 验证 attempt 持久化状态机。smtp_verification_attempts
+    # 保存每次自发自收验证的唯一 attempt（不含授权码正文）：阶段
+    # smtp_connecting/mail_sent/waiting_receipt/verified/failed/superseded、
+    # 收件截止时间、更新时间与错误码；验证令牌（随机 hex，非秘密）用于
+    # 重启后按 Message-ID/主题恢复轮询。reminder_settings.smtp_attempt_id
+    # 指向当前 attempt：只有当前 attempt 可以提交账户 SMTP 终态，旧
+    # attempt 的迟到成功/失败一律标 superseded 并丢弃（更换/删除授权码
+    # 立即 supersede 旧 attempt）。
+    30: [
+        """
+        CREATE TABLE IF NOT EXISTS smtp_verification_attempts (
+            attempt_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            state TEXT NOT NULL,
+            message_token TEXT NOT NULL,
+            deadline_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            error_code TEXT,
+            error_message TEXT,
+            session_id TEXT
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_smtp_attempts_account_state
+            ON smtp_verification_attempts(account_id, state)
+        """,
+        """
+        ALTER TABLE reminder_settings ADD COLUMN smtp_attempt_id TEXT
+        """,
     ],
 }
 

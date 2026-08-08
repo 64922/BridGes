@@ -52894,6 +52894,14 @@
             "title": "Verified At",
             "description": "自发自收验证通过时间。"
           },
+          "attempt_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmtpAttemptState"
+              }
+            ],
+            "description": "当前验证 attempt 的阶段（验证进行中时存在；终态为 None）。"
+          },
           "error_code": {
             "anyOf": [
               {
@@ -52918,6 +52926,11 @@
             "title": "Error Message",
             "description": "可操作的中文原因与重新验证路径。"
           },
+          "attempt_deadline_at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "收件确认截止时间（UTC）；等待收件时存在。"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -52938,7 +52951,7 @@
           "qq_email"
         ],
         "title": "SmtpSettingsProjection",
-        "description": "账户 SMTP 配置投影；绝不包含授权码正文。\n\n``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往\n同一邮箱；页面展示此字段并禁止修改收件人。"
+        "description": "账户 SMTP 配置投影；绝不包含授权码正文。\n\n``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往\n同一邮箱；页面展示此字段并禁止修改收件人。验证进行中时\n``attempt_state``/``attempt_deadline_at`` 提供细粒度进度与收件\n截止时间，页面据此持续轮询；attempt 终态后这两个字段为 None。"
       },
       "SmtpStatus": {
         "type": "string",
@@ -52949,7 +52962,7 @@
           "failed"
         ],
         "title": "SmtpStatus",
-        "description": "账户 SMTP 授权码的验证状态。\n\n- ``unconfigured``：尚未保存授权码；\n- ``verifying``：授权码已保存，自发自收验证进行中；\n- ``verified``：自发自收验证通过，可以启用邮件提醒；\n- ``failed``：验证失败或授权失效，error_code/error_message\n  说明原因并提供重新验证路径。"
+        "description": "账户 SMTP 授权码的验证状态。\n\n- ``unconfigured``：尚未保存授权码；\n- ``verifying``：授权码已保存，自发自收验证进行中（细粒度进度\n  见 ``SmtpSettingsProjection.attempt_state``）；\n- ``verified``：自发自收验证通过，可以启用邮件提醒；\n- ``failed``：验证失败或授权失效，error_code/error_message\n  说明原因并提供重新验证路径。"
       },
       "Source": {
         "properties": {
@@ -57676,6 +57689,19 @@
         ],
         "title": "ArtifactTrustStatus",
         "description": "Lifecycle status of the scientific artifact produced by a run."
+      },
+      "SmtpAttemptState": {
+        "type": "string",
+        "enum": [
+          "smtp_connecting",
+          "mail_sent",
+          "waiting_receipt",
+          "verified",
+          "failed",
+          "superseded"
+        ],
+        "title": "SmtpAttemptState",
+        "description": "验证 attempt 的阶段状态机（Issue 10）。\n\n- ``smtp_connecting``：attempt 已创建，尚未完成 SMTP 发送；\n- ``mail_sent``：SMTP 已接受测试邮件，收件确认计时开始；\n- ``waiting_receipt``：正在有界退避轮询 IMAP 收件；\n- ``verified``：自发自收验证通过（终态，且账户 SMTP 终态已提交）；\n- ``failed``：验证失败（终态，error_code 说明原因）；\n- ``superseded``：已被新 attempt 取代或凭据已删除（终态，\n  迟到结果不得再提交账户 SMTP 状态）。\n\n只有当前 attempt（``reminder_settings.smtp_attempt_id`` 指向的）\n可以提交账户 SMTP 终态；旧 attempt 的迟到成功/失败一律失效。"
       }
     }
   }

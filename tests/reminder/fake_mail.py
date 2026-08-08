@@ -77,6 +77,17 @@ class FakeMailbox:
                 if email in message.recipients and token in message.subject
             ]
 
+    def find_by_message_id(self, email: str, message_id: str) -> list[StoredMessage]:
+        """按 Message-ID 头查找（验证轮询的主键搜索，issue 10）。"""
+        with self._lock:
+            return [
+                message
+                for message in self.messages
+                if email in message.recipients
+                and message.message_id is not None
+                and message_id == message.message_id
+            ]
+
 
 def _decode_header_value(value: str) -> str:
     """解码 RFC 2047 编码的邮件头值（如 ``=?utf-8?b?...?=``）。"""
@@ -269,16 +280,32 @@ class _ImapHandler(socketserver.StreamRequestHandler):
                 self._tagged(tag, "OK", "SELECT completed")
             elif upper.startswith("SEARCH"):
                 args = _unquote_args(rest[len("SEARCH"):].strip())
+                # 支持 HEADER Message-ID <值>（主键搜索）与 SUBJECT <令牌>（回退）
                 token = None
+                message_id = None
                 for index, part in enumerate(args):
                     if part.upper() == "SUBJECT" and index + 1 < len(args):
                         token = args[index + 1]
+                    elif (
+                        part.upper() == "HEADER"
+                        and index + 2 < len(args)
+                        and args[index + 1].upper() == "MESSAGE-ID"
+                    ):
+                        message_id = args[index + 2]
                 matches = []
-                if token is not None and email is not None:
-                    found = mailbox.find_by_subject(email, token)
+                if email is not None:
+                    if message_id is not None:
+                        found = mailbox.find_by_message_id(email, message_id)
+                    elif token is not None:
+                        found = mailbox.find_by_subject(email, token)
+                    else:
+                        found = []
                     matches = list(range(1, len(found) + 1))
                 self._send(f"* SEARCH {' '.join(str(i) for i in matches)}")
                 self._tagged(tag, "OK", "SEARCH completed")
+            elif upper.startswith("NOOP"):
+                # 验证轮询的保活命令（issue 10：同一 IMAP 会话 + NOOP）
+                self._tagged(tag, "OK", "NOOP completed")
             elif upper.startswith("LOGOUT"):
                 self._send("* BYE fake-imap logging out")
                 self._tagged(tag, "OK", "LOGOUT completed")
