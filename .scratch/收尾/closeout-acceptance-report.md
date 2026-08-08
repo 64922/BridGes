@@ -7,7 +7,7 @@
 
 | 项 | 值 |
 |---|---|
-| 代码版本（提交） | `c149fe8`（main，前置 issue 01-10 全部合入）+ 本 issue 分支 `11-closeout-release-acceptance`（验收报告与两处组合缺陷修复，提交号见文末） |
+| 代码版本（提交） | `c149fe8`（main，前置 issue 01-10 全部合入）+ 本 issue 分支 `11-closeout-release-acceptance`（验收与组合缺陷修复提交：`a74ef24`，审查修复后最终提交见 git log `main..11-closeout-release-acceptance`） |
 | 系统 | Windows 11 Pro 10.0.26200 |
 | Python | 3.11.15（仓库 `.venv`） |
 | pytest | 9.1.1 |
@@ -104,10 +104,12 @@
 
 - 仓库级：`tests/security/test_secret_scan.py` —— **通过**（1 passed，三轮套件
   各轮复跑）；扫描器只输出匹配位置（文件+行号+类型），不回显秘密正文
-- 产物级（本 issue 新增扫描，高置信度模式 + 固定正文标记，只报位置）：
-  对 `.tmp/closeout-rounds/`（三轮日志 × 6）、`test-results/`（失败产物）、
-  `apps/web/test-results/`（e2e 失败产物）与 `closeout-acceptance-report.md`
-  本身扫描 → **0 命中**（无 sk-/AKIA/LTAI/PEM/凭据赋值，无消息正文/附件正文）
+- 产物级（本 issue 新增扫描器 `scripts/artifact_secret_scan.py`，高置信度
+  模式 + 固定正文标记，只报位置）：对 `.tmp/closeout-rounds/`（三轮日志
+  × 6）、`test-results/`（失败产物）、`apps/web/test-results/`（e2e 失败
+  产物）与 `closeout-acceptance-report.md` 本身扫描 → **0 命中**（无
+  sk-/AKIA/LTAI/PEM/凭据赋值，无消息正文/附件正文）；命令：
+  `.venv/Scripts/python.exe scripts/artifact_secret_scan.py`
 - 截图与 trace：Playwright 合成 PNG/zip 无用户元数据；e2e 失败时 error-context
   经 conftest `sanitize` 脱敏（固定测试秘密以 `<secret-key>` 等占位替换）
 - 结果：**通过**（验收标准第 9 条 ✅）
@@ -152,10 +154,17 @@
 **发布结论：** 前置 issue 01-10 全部完成且有测试提交；收尾自动化套件
 Windows 串行连续 3 次全部通过（141 pytest + 29 e2e × 3，无残留进程/端口/
 数据锁）；100 次首轮与 50 次切换/刷新压力达标；附件注入、预算终态、
-三技能路径与 QQ 延迟邮件验证均绿；秘密扫描（仓库级 + 产物级）0 命中。
-套件建设中发现并修复 2 处组合缺陷（issue07 改写检索跳过破坏 issue04 披露
-契约；issue03 skip-link 组合环境时序 flaky），均已在三轮中复验。**建议
-判定：通过，可发布**（遗留的人工复核与线上 smoke 不阻塞）。
+三技能路径与 QQ 延迟邮件验证均绿；秘密扫描（仓库级 + 产物级，扫描器
+`scripts/artifact_secret_scan.py` 可复现）0 命中。套件建设中发现并修复
+2 处组合缺陷（issue07 改写检索跳过破坏 issue04 披露契约；issue03
+skip-link 组合环境时序 flaky），均已在三轮中复验。**建议判定：自动化
+验收通过**；发布结论需在按第 7 节完成桌面人工复核与线上 smoke 后定稿
+（自动化覆盖与人工脚本一一对应，预期一致）。
+
+已知边界（非本 issue 引入，如实记录）：会话归属学习项目时，改写路径的
+项目文件层仍参与检索（use_knowledge_base 只关全局知识库层）—— 与
+issue04/07 时期行为一致，属既有语义；如需"改写只用当前附件"严格化
+（项目层也关闭），应另立 issue。
 
 ## 10. 修复后全量回归
 

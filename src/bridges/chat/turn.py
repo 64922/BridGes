@@ -2636,10 +2636,10 @@ class TurnOrchestrator:
         # Issue 07：改写路径只以用户粘贴/附件为原文，默认不检索全局知识库
         # （知识库中不相关图片等材料绝不进入证据合同）；用户显式开启「补充
         # 检索全局知识库」时检索轮次进入改写证据合同（仅作补充，不替代原文）。
-        # 生成路径保持既有检索行为。注意：改写默认关闭知识库由调用方传
-        # use_knowledge_base=False（retrieval 层只关知识库来源），检索轮次
-        # 本身仍须存在——附件层披露是 Issue 04 的绑定契约，跳过整个阶段会
-        # 使消息投影丢失检索披露（retrieval=null）。
+        # 注意：改写默认关闭知识库由调用方传 use_knowledge_base=False
+        # （retrieval 层只关知识库来源），检索轮次本身仍须存在——附件层
+        # 披露是 Issue 04 的绑定契约，跳过整个阶段会使消息投影丢失检索
+        # 披露（retrieval=null）。
         if budget.enter(RunStage.LOCAL_RETRIEVAL):
             yield self._stage_event(
                 assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"

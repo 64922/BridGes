@@ -134,7 +134,7 @@ def test_50_random_switch_refresh_during_generation_no_stream_interrupted(
             gates[0].set()
             _wait_streaming(client, conversation_id)
 
-            # 生成期间随机 1-3 次切换/刷新，每次操作后运行仍为 streaming
+            # 生成期间随机 1-3 次切换/刷新，每次操作后原运行仍为 streaming
             for _ in range(rng.randint(1, 3)):
                 switch_ops += 1
                 if rng.random() < 0.5:
@@ -145,10 +145,11 @@ def test_50_random_switch_refresh_during_generation_no_stream_interrupted(
                     ).status_code == 200
                 else:
                     # 刷新：重新 GET 原会话投影（模拟页面重开）
-                    assistant = _assistant(client, conversation_id)
-                    assert assistant["status"] == "streaming", (
-                        f"轮次 {round_no} 刷新时运行不得中断"
-                    )
+                    pass
+                assistant = _assistant(client, conversation_id)
+                assert assistant["status"] == "streaming", (
+                    f"轮次 {round_no} 第 {switch_ops} 次操作后运行不得中断"
+                )
 
             # 放行末闸门：运行收敛为单一 done
             gates[1].set()

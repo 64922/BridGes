@@ -1,7 +1,9 @@
 # BridGes 严重问题收尾执行图
 
-Status: completed（11 个 issue 全部完成；跨功能验收报告见
-[closeout-acceptance-report.md](closeout-acceptance-report.md)）
+Status: completed
+
+11 个 issue 全部完成；跨功能验收报告见
+[closeout-acceptance-report.md](closeout-acceptance-report.md)。
 
 ## 目标
 

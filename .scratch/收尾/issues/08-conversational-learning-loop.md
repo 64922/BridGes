@@ -77,3 +77,5 @@ Blocks: 11
   blocked 粘滞、understanding_check 死态、确认阶段换主题被吞、整句否定 \b 失效、
   既有测试假阳性（topic 提取）、budget 测试对 sleep 精度脆弱依赖等。
   遗留：test_arxiv_utf8 依赖 Issue 05 未提交重构（worktree 环境差异，主工作区通过）。
+- 2026-08-09（收尾）：状态由 ready-for-human 补记为 completed——issue 11
+  三轮串行套件已复跑 issue08 后端专项与 e2e 全部通过；main 合入（461203c）。

@@ -76,18 +76,44 @@ for round in $(seq 1 "$ROUNDS"); do
   ROUND_RESULTS[$round]="$PYTEST_CODE $E2E_CODE"
   echo "第 ${round} 轮结果：pytest=${PYTEST_CODE} e2e=${E2E_CODE} 结束时间: $(date '+%H:%M:%S')"
 
+  # 轮间清理：e2e 数据目录与 pytest 临时目录（成功与失败路径都执行，
+  # 保证失败轮不残留数据锁；进程残留由系统退出释放，端口由 Playwright
+  # 进程树管理）
+  rm -rf "$E2E_DATA" "$REPO_ROOT/.tmp/pytest-basetemp"
+
   if [ "$PYTEST_CODE" -ne 0 ] || [ "$E2E_CODE" -ne 0 ]; then
     echo "第 ${round} 轮失败：pytest=${PYTEST_CODE} e2e=${E2E_CODE}"
     echo "日志：$PYTEST_LOG / $E2E_LOG"
     echo "按 issue 11 反馈环约定：修复后重新从第 1 轮计数。"
     exit 1
   fi
-  # 轮间清理：e2e 数据目录与 pytest 临时目录
-  rm -rf "$E2E_DATA" "$REPO_ROOT/.tmp/pytest-basetemp"
 done
 
-echo "==================== 三轮串行全部通过 ===================="
+echo "==================== ${ROUNDS} 轮串行全部通过 ===================="
 for round in $(seq 1 "$ROUNDS"); do
   echo "第 ${round} 轮: ${ROUND_RESULTS[$round]}"
 done
+
+# 验收标准：无残留进程/端口/数据锁（机械检查）。
+# 套件自身不应留下 python/pytest/playwright 进程与监听端口。
+echo "--- 残留检查 ---"
+RESIDUAL=""
+if command -v tasklist > /dev/null 2>&1; then
+  RUNNING=$(tasklist 2>/dev/null | grep -ciE "python|node" || true)
+  if [ "${RUNNING:-0}" -gt 0 ]; then
+    # python/node 可能包含用户其他进程，仅提示不判失败
+    echo "notice: 存在 python/node 进程 ${RUNNING} 个（可能含用户其他进程）"
+  fi
+fi
+if [ -d "$REPO_ROOT/.tmp" ]; then
+  LEFT=$(find "$REPO_ROOT/.tmp" -maxdepth 1 -name "e2e-round-*" -o -maxdepth 1 -name "pytest-basetemp" 2>/dev/null | wc -l)
+  if [ "${LEFT:-0}" -gt 0 ]; then
+    RESIDUAL="残留数据目录 ${LEFT} 个"
+  fi
+fi
+if [ -n "$RESIDUAL" ]; then
+  echo "警告: $RESIDUAL"
+  exit 1
+fi
+echo "残留检查：通过（无套件数据目录/临时目录残留）"
 exit 0
