@@ -380,10 +380,12 @@
     border: 0;
   }
 
-  .sc-visually-hidden:focus {
-    /* 聚焦时以覆盖层出现，绝不改变文档流：浏览器可能在客户端导航后把
-       焦点落在跳转链接上，若改为 static 会把整页内容下推（Issue 11 修复：
-       点击目标因布局位移而落空）。 */
+  .sc-visually-hidden:focus-visible {
+    /* 仅键盘 focus-visible 时以覆盖层出现，绝不改变文档流（Issue 11：
+       若改为 static 会把整页内容下推，点击目标因布局位移而落空）。
+       Issue 03：必须用 :focus-visible 而非 :focus——客户端导航后浏览器
+       可能把焦点程序化落在跳转链接上（:focus 会显示蓝色覆盖层盖住
+       Logo），键盘 Tab 聚焦才应可见可用；鼠标/程序化导航永远不显示。 */
     position: absolute;
     top: 0;
     left: 0;

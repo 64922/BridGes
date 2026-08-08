@@ -103,6 +103,71 @@ async function installMockChatApi(page: Page, options: { createDelayMs?: number 
     });
   });
 
+  // Issue 03：首页发送改走「原子首轮」命令——mock 按同一契约返回完整
+  // 投影（会话 + 首轮消息 + run），前端收到响应后导航到 /chat/mock-1。
+  await page.route("**/api/chat/first-turn", async (route) => {
+    if (route.request().method() !== "POST") return;
+    if (options.createDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, options.createDelayMs));
+    }
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    const userMessage = {
+      message_id: "u-1",
+      conversation_id: "mock-1",
+      role: "user",
+      attempt_number: 1,
+      status: "done",
+      content: body.content,
+      error_code: null,
+      error_message: null,
+      duration_ms: null,
+      model_id: null,
+      run_lock_id: null,
+      created_at: NOW,
+      updated_at: NOW,
+    };
+    const assistantMessage = {
+      ...userMessage,
+      message_id: "a-1",
+      role: "assistant",
+      content: "",
+      status: "streaming",
+      // Issue 03：与真实服务端一致——streaming 助手消息携带活跃运行
+      // 视图，会话页重开后据此从游标恢复订阅（resume 语义）
+      active_run: {
+        run_id: "run-a-1",
+        status: "streaming",
+        cursor: 1,
+        attempt_count: 0,
+        created_at: NOW,
+        updated_at: NOW,
+      },
+    };
+    state.messages.push(userMessage, assistantMessage);
+    const done = body.content !== "不要结束";
+    if (done) {
+      assistantMessage.content = "这是替身生成的回答。";
+      assistantMessage.status = "done";
+      delete assistantMessage.active_run;
+    }
+    eventStreams.set(
+      assistantMessage.message_id,
+      sseStream("a-1", "u-1", "这是替身生成的回答。", done)
+    );
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        conversation: history(),
+        run_id: `run-${assistantMessage.message_id}`,
+        cursor: 1,
+        user_message: userMessage,
+        assistant_message: assistantMessage,
+        idempotent_replay: false,
+      }),
+    });
+  });
+
   await page.route("**/api/chat/conversations/mock-1", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(history()) });
   });
@@ -410,17 +475,13 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     );
     expect(overflowAfterPaste).toBeLessThanOrEqual(1);
 
-    // 创建对话失败（替身 503）：错误横幅真实可操作，停留在空白态
-    await page.route("**/api/chat/conversations", async (route) => {
-      if (route.request().method() === "POST") {
-        await route.fulfill({
-          status: 503,
-          contentType: "application/json",
-          body: JSON.stringify({ detail: { error: "chat_store_unavailable", message: "对话存储暂不可用，请稍后重试。" } }),
-        });
-        return;
-      }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ conversations: [] }) });
+    // 首轮命令失败（替身 503）：错误横幅真实可操作，停留在空白态
+    await page.route("**/api/chat/first-turn", async (route) => {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: { error: "chat_store_unavailable", message: "对话存储暂不可用，请稍后重试。" } }),
+      });
     });
     await page.getByTestId("composer").getByRole("button", { name: "发送消息" }).click();
     await expect(page.getByTestId("main-content").getByRole("alert")).toContainText("对话存储暂不可用");
@@ -435,8 +496,8 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await composer.getByLabel("输入消息").fill("你好");
     await composer.getByRole("button", { name: "发送消息" }).click();
 
-    // loading：创建对话期间有中文状态提示，且不会出现第二个发送入口
-    await expect(page.getByText("正在创建对话…")).toBeVisible();
+    // loading：首轮命令期间有中文状态提示，且不会出现第二个发送入口
+    await expect(page.getByText("正在创建对话并发送…")).toBeVisible();
     await expect(composer.getByRole("button", { name: "发送消息" })).toHaveCount(0);
     await page.waitForURL(/\/chat\/mock-1/);
     await expect(page.getByRole("list", { name: "对话消息" })).toContainText("你好");

@@ -24,6 +24,8 @@ export type ChatStopResponse = components["schemas"]["ChatStopResponse"];
 export type ChatStreamEvent = components["schemas"]["ChatStreamEvent"];
 export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
 export type ChatRunStartedResponse = components["schemas"]["ChatRunStartedResponse"];
+export type ChatFirstTurnRequest = components["schemas"]["ChatFirstTurnRequest"];
+export type ChatFirstTurnResponse = components["schemas"]["ChatFirstTurnResponse"];
 export type ChatRunView = components["schemas"]["ChatRunView"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
@@ -1199,6 +1201,30 @@ export async function createChatRun(
       // Issue 36：对选中 MCP 插件的调用载荷（调用对话框走真实消息流程）
       ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
     }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 原子创建新会话首轮（Issue 03）。
+ *
+ * 首页发送第一条消息或调用任一功能时使用：服务端在同一事务内创建会话、
+ * 用户消息、助手占位与 queued 运行，返回完整投影。客户端收到成功响应后
+ * 再导航，``sessionStorage`` 不再承担业务真相。``idempotencyKey`` 抵御
+ * 双击与网络重放（同键并发只产生一份数据）；``conversationId`` 可选指定
+ * 已预建的空会话（附件上传路径先建会话再发送），缺省在事务内新建。
+ * 同键重放返回 200 与既有数据（``idempotent_replay`` 为 true），调用方
+ * 无须区分即可导航到同一会话。
+ */
+export async function startFirstTurn(
+  body: ChatFirstTurnRequest
+): Promise<ChatFirstTurnResponse> {
+  const res = await fetch(`${API_BASE}/chat/first-turn`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify(body),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
