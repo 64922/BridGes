@@ -31,7 +31,13 @@ class ArxivSearchPlan:
 
 
 class ArxivClient(Protocol):
-    def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]: ...
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        stop_event: Event | None = None,
+    ) -> list[ArxivPaper]: ...
 
 
 class ArxivQueryPlanner:
@@ -152,36 +158,35 @@ class ArxivSearchService:
         if not plan.should_search:
             return None
         if stop_event is not None and stop_event.is_set():
-            result = ArxivSearchProjection(
-                status=ArxivSearchStatus.CANCELLED,
-                trigger_reason=plan.reason,
-                query_summary=plan.query,
-                error_message="已取消本轮论文搜索。",
-            )
+            result = self._cancelled_projection(plan)
             self._audit(account_id, plan, result)
             return result
         try:
-            papers = self._client.search(plan.query, max_results=5)
+            papers = self._client.search(plan.query, max_results=5, stop_event=stop_event)
         except ArxivMcpError as exc:
-            result = ArxivSearchProjection(
-                status=ArxivSearchStatus.PERMISSION if exc.permission else ArxivSearchStatus.ERROR,
-                trigger_reason=plan.reason,
-                query_summary=plan.query,
-                searched_at=datetime.now(UTC),
-                error_code=exc.code,
-                error_message=exc.message,
-                can_retry=True,
-            )
+            if exc.code == "arxiv_cancelled":
+                # 搜索期间用户取消：投影为 cancelled，而不是折叠成启动失败
+                result = self._cancelled_projection(
+                    plan, with_timestamp=True, error_code=exc.code, error_message=exc.message
+                )
+            else:
+                result = ArxivSearchProjection(
+                    status=(
+                        ArxivSearchStatus.PERMISSION
+                        if exc.permission
+                        else ArxivSearchStatus.ERROR
+                    ),
+                    trigger_reason=plan.reason,
+                    query_summary=plan.query,
+                    searched_at=datetime.now(UTC),
+                    error_code=exc.code,
+                    error_message=exc.message,
+                    can_retry=True,
+                )
             self._audit(account_id, plan, result)
             return result
         if stop_event is not None and stop_event.is_set():
-            result = ArxivSearchProjection(
-                status=ArxivSearchStatus.CANCELLED,
-                trigger_reason=plan.reason,
-                query_summary=plan.query,
-                searched_at=datetime.now(UTC),
-                error_message="已取消本轮论文搜索。",
-            )
+            result = self._cancelled_projection(plan, with_timestamp=True)
             self._audit(account_id, plan, result)
             return result
         projection = [
@@ -201,6 +206,24 @@ class ArxivSearchService:
         )
         self._audit(account_id, plan, result)
         return result
+
+    @staticmethod
+    def _cancelled_projection(
+        plan: ArxivSearchPlan,
+        *,
+        with_timestamp: bool = False,
+        error_code: str | None = None,
+        error_message: str = "已取消本轮论文搜索。",
+    ) -> ArxivSearchProjection:
+        """构造取消投影（入口预检/搜索期间/后置检查三处共用）。"""
+        return ArxivSearchProjection(
+            status=ArxivSearchStatus.CANCELLED,
+            trigger_reason=plan.reason,
+            query_summary=plan.query,
+            searched_at=datetime.now(UTC) if with_timestamp else None,
+            error_code=error_code,
+            error_message=error_message,
+        )
 
     def _audit(self, account_id: str, plan: ArxivSearchPlan, result: ArxivSearchProjection) -> None:
         if self._observability is None:
@@ -222,6 +245,7 @@ class ArxivSearchService:
                 "query_length": len(plan.query),
                 "result_count": len(result.papers),
                 "status": result.status.value,
+                "error_code": result.error_code,
             },
         )
 

@@ -1,79 +1,393 @@
-"""arXiv MCP 的受限 worker 进程适配器。"""
+"""arXiv MCP 的受限 worker 进程适配器（issue 05：UTF-8 协议与可靠启动）。
+
+协议显式、双向、固定为 UTF-8：父进程管道以 ``encoding="utf-8"`` 打开，
+子进程环境受控设置 ``PYTHONIOENCODING/PYTHONUTF8``，worker 启动时再
+显式 reconfigure 标准流——三处叠加后不依赖系统代码页（Windows 默认
+GBK/CP936）。worker 启动先完成 ``ready`` 握手，父进程才接受响应；握手
+与单次响应都设截止时间，超时/退出/协议损坏各自映射为稳定错误码，避免
+把一切故障统一压成 ``arxiv_startup``。
+
+可靠性：worker 首次异常退出时关闭旧句柄并安全重启一次，仍失败才返回
+终态（``max_restarts`` 上限，无无限循环）；搜索期间 ``stop_event`` 置位
+会在截止时间内终止当前请求并投影为取消。stderr 改为有上限的诊断采集
+（防管道阻塞），只保留退出码、阶段与脱敏摘要，不记录查询或论文摘要。
+"""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
+import queue
+import re
 import subprocess
 import sys
+import threading
+import time
+from collections import deque
 from contextlib import suppress
 from datetime import datetime
 from typing import Any
 
 from bridges.arxiv_mcp.client import ArxivMcpError
 from bridges.arxiv_mcp.contracts import ArxivPaper
+from bridges.arxiv_mcp.worker import HANDSHAKE_VERSION
+
+logger = logging.getLogger("bridges.arxiv_mcp.process")
+
+#: 子进程环境白名单：只继承代理与 Windows 启动必需变量，其余一律不传
+#: （不继承模型 Key、SMTP 码等秘密；代理经明确白名单传入以满足 arXiv
+#: 网络访问需求）。
+_ENV_WHITELIST = (
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "TEMP",
+    "TMP",
+    "COMPUTERNAME",
+)
+
+#: worker 经 ok:false 载荷上报的稳定错误码（协议可信任，原样透传）。
+_KNOWN_WORKER_CODES = frozenset(
+    {"arxiv_timeout", "arxiv_offline", "arxiv_rate_limit", "arxiv_permission", "arxiv_request"}
+)
+
+#: 握手默认截止时间（秒）。
+DEFAULT_HANDSHAKE_TIMEOUT = 5.0
+#: 单次响应默认截止时间（秒）：长于 worker 侧网络超时（10s），仅兜底
+#: worker 挂死等异常情况。
+DEFAULT_RESPONSE_TIMEOUT = 30.0
+#: 默认安全重启上限：首次崩溃后最多重启一次，仍失败才返回终态。
+DEFAULT_MAX_RESTARTS = 1
+
+_SANITIZE_PATTERNS = (
+    (re.compile(r"sk-[A-Za-z0-9_\-]{16,}"), "<api-key>"),
+    (re.compile(r"(session|device)_token=[A-Za-z0-9_\-]{20,}"), r"\1_token=<token>"),
+    (re.compile(r"Bearer [A-Za-z0-9._\-]{20,}"), "Bearer <token>"),
+)
+
+
+def _sanitize(text: str) -> str:
+    """诊断采集的脱敏摘要：API Key、Cookie 与 Bearer 令牌不进入日志。"""
+    for pattern, placeholder in _SANITIZE_PATTERNS:
+        text = pattern.sub(placeholder, text)
+    return text
+
+
+class _ProcessWaitError(Exception):
+    """父进程侧等待故障（握手超时/启动即退/响应超时/中途退出）。
+
+    与 worker 载荷上报的错误分开：此类故障意味着当前 worker 不可信，
+    值得关闭句柄后安全重启一次；载荷错误（网络超时/权限等）说明 worker
+    存活，按错误码直接透传。
+    """
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(message)
 
 
 class ArxivMcpProcessClient:
-    """通过 JSONL 与固定模块 worker 通信，避免 MCP 继承应用权限。"""
+    """通过 UTF-8 JSONL 与固定模块 worker 通信，避免 MCP 继承应用权限。"""
 
     def __init__(
         self,
         *,
         python_executable: str | None = None,
         extra_env: dict[str, str] | None = None,
+        handshake_timeout: float = DEFAULT_HANDSHAKE_TIMEOUT,
+        response_timeout: float = DEFAULT_RESPONSE_TIMEOUT,
+        max_restarts: int = DEFAULT_MAX_RESTARTS,
     ) -> None:
         self._python_executable = python_executable or sys.executable
         # 测试注入边界：收尾 smoke 用它在 worker 侧替换确定性 arXiv 客户端
         # （PYTHONPATH 前缀并入，shadow 模块先于真实包解析）。生产默认 None，
         # 行为与既有最小环境完全一致。
         self._extra_env = extra_env or {}
+        self._handshake_timeout = handshake_timeout
+        self._response_timeout = response_timeout
+        self._max_restarts = max_restarts
         self._process: subprocess.Popen[str] | None = None
+        #: 当前进程是否已完成 ready 握手（spawn 时重置）。
+        self._ready = False
+        #: 当前进程的标准输出行队列（reader 线程投递，EOF 投 None 哨兵）。
+        self._lines: queue.Queue[str | None] = queue.Queue()
+        #: 有上限的 stderr 诊断采集（脱敏后供日志使用）。
+        self._stderr_tail = ""
+        #: 本次搜索内的重启次数（每次 search 重置，上限 max_restarts）。
+        self._restarts = 0
+        #: 当前协议阶段（handshake/search），供诊断日志区分失败发生阶段。
+        self._stage = "handshake"
 
-    def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]:
-        process = self._ensure_process()
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        stop_event: threading.Event | None = None,
+    ) -> list[ArxivPaper]:
+        """执行一次搜索：握手 → 请求 → 单次响应，失败后最多重启一次。"""
+        self._restarts = 0
+        for _ in range(self._max_restarts + 1):
+            process = self._ensure_process()
+            started = time.monotonic()
+            try:
+                self._stage = "handshake"
+                self._ensure_handshake(process, stop_event=stop_event)
+                self._stage = "search"
+                self._send_request(process, query, max_results)
+                line = self._wait_line(
+                    process,
+                    stop_event=stop_event,
+                    timeout=self._response_timeout,
+                    stage="search",
+                )
+                papers = self._decode_response(line)
+                logger.info(
+                    "arxiv worker 响应完成 pid=%s elapsed=%.2fs papers=%d",
+                    process.pid,
+                    time.monotonic() - started,
+                    len(papers),
+                )
+                return papers
+            except _ProcessWaitError as exc:
+                if self._restarts >= self._max_restarts:
+                    self._log_terminal_failure(process, exc, started)
+                    raise ArxivMcpError(exc.code, exc.message) from exc
+                self._restarts += 1
+                logger.warning(
+                    "arxiv worker 等待失败 pid=%s stage=%s code=%s elapsed=%.2fs"
+                    " restarts=%d stderr=%s",
+                    process.pid,
+                    self._stage,
+                    exc.code,
+                    time.monotonic() - started,
+                    self._restarts,
+                    self._stderr_tail[-512:] or "（无）",
+                )
+        # 循环内所有路径均 return/raise；此处仅为类型收窄，理论不可达。
+        raise ArxivMcpError("arxiv_internal", "arXiv 搜索服务异常，请重试。")
+
+    def close(self) -> None:
+        """关闭受限 worker：终止进程、关闭管道，避免遗留子进程与句柄。"""
+        self._close_process(self._process)
+
+    # ------------------------------------------------------------------
+    # 协议步骤
+    # ------------------------------------------------------------------
+
+    def _ensure_process(self) -> subprocess.Popen[str]:
+        process = self._process
+        if process is not None and process.poll() is None:
+            return process
+        try:
+            process = subprocess.Popen(
+                [self._python_executable, "-m", "bridges.arxiv_mcp.worker"],
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                env=self._child_env(),
+            )
+        except OSError as exc:
+            raise ArxivMcpError("arxiv_startup", "arXiv 搜索服务启动失败，请重试。") from exc
+        self._process = process
+        self._ready = False
+        self._lines = queue.Queue()
+        self._stderr_tail = ""
+        self._start_stdout_reader(process, self._lines)
+        self._start_stderr_drainer(process)
+        logger.info(
+            "arxiv worker 已启动 pid=%s restarts=%d", process.pid, self._restarts
+        )
+        return process
+
+    def _ensure_handshake(
+        self, process: subprocess.Popen[str], *, stop_event: threading.Event | None
+    ) -> None:
+        """等待 worker 的 ready 握手行并校验协议版本（只在首个请求前执行）。"""
+        if self._ready:
+            return
+        line = self._wait_line(
+            process,
+            stop_event=stop_event,
+            timeout=self._handshake_timeout,
+            stage="handshake",
+        )
+        try:
+            payload = json.loads(line)
+        except json.JSONDecodeError as exc:
+            self._close_process(process)
+            raise _ProcessWaitError(
+                "arxiv_handshake", "arXiv 搜索服务启动失败，请重试。"
+            ) from exc
+        if (
+            not isinstance(payload, dict)
+            or payload.get("type") != "ready"
+            or payload.get("version") != HANDSHAKE_VERSION
+        ):
+            self._close_process(process)
+            raise _ProcessWaitError(
+                "arxiv_handshake", "arXiv 搜索服务协议握手失败，请重试。"
+            )
+        self._ready = True
+        logger.info("arxiv worker 握手完成 pid=%s", process.pid)
+
+    def _send_request(
+        self, process: subprocess.Popen[str], query: str, max_results: int
+    ) -> None:
         if process.stdin is None or process.stdout is None:
-            raise ArxivMcpError("arxiv_startup", "arXiv 搜索服务启动失败，请重试。")
+            raise _ProcessWaitError(
+                "arxiv_worker_exit", "arXiv 搜索服务进程已退出，请重试。"
+            )
         request = json.dumps(
             {"query": query, "max_results": max_results}, ensure_ascii=False
         )
         try:
             process.stdin.write(request + "\n")
             process.stdin.flush()
-            line = process.stdout.readline()
         except (OSError, ValueError) as exc:
-            self.close()
-            raise ArxivMcpError("arxiv_startup", "arXiv 搜索服务启动失败，请重试。") from exc
-        if not line:
-            self.close()
-            raise ArxivMcpError("arxiv_startup", "arXiv 搜索服务启动失败，请重试。")
+            raise _ProcessWaitError(
+                "arxiv_worker_exit", "arXiv 搜索服务进程已退出，请重试。"
+            ) from exc
+
+    def _wait_line(
+        self,
+        process: subprocess.Popen[str],
+        *,
+        stop_event: threading.Event | None,
+        timeout: float,
+        stage: str,
+    ) -> str:
+        """按截止时间等待一行协议输出；取消/超时/EOF 各自映射稳定错误。"""
+        deadline = time.monotonic() + timeout
+        lines = self._lines
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                self._close_process(process)
+                raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                self._close_process(process)
+                if stage == "handshake":
+                    raise _ProcessWaitError(
+                        "arxiv_handshake", "arXiv 搜索服务启动超时，请重试。"
+                    )
+                raise _ProcessWaitError("arxiv_timeout", "arXiv 搜索超时，请重试。")
+            try:
+                line = lines.get(timeout=min(0.05, remaining))
+            except queue.Empty:
+                continue
+            if line is None:
+                # EOF：worker 在握手前或请求处理中途退出
+                self._close_process(process)
+                if stage == "handshake":
+                    if self._module_missing():
+                        # 验收：worker 模块不存在是独立稳定错误码，
+                        # 不与握手超时（arxiv_handshake）混淆。
+                        raise _ProcessWaitError(
+                            "arxiv_startup", "arXiv 搜索服务启动失败，请重试。"
+                        )
+                    raise _ProcessWaitError(
+                        "arxiv_handshake", "arXiv 搜索服务启动失败，请重试。"
+                    )
+                raise _ProcessWaitError(
+                    "arxiv_worker_exit", "arXiv 搜索服务进程已退出，请重试。"
+                )
+            return line
+
+    def _decode_response(self, line: str) -> list[ArxivPaper]:
+        """解析 worker 的响应行：非法 JSON / 损坏载荷 / 载荷错误分别分类。"""
         try:
             payload = json.loads(line)
         except json.JSONDecodeError as exc:
-            raise ArxivMcpError("arxiv_parse", "arXiv worker 返回内容损坏，请重试。") from exc
-        if not isinstance(payload, dict) or payload.get("ok") is not True:
-            code = payload.get("code") if isinstance(payload, dict) else None
-            message = payload.get("message") if isinstance(payload, dict) else None
-            raise ArxivMcpError(
-                str(code or "arxiv_startup"),
-                str(message or "arXiv 搜索服务启动失败，请重试。"),
-                permission=code == "arxiv_permission",
-            )
+            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。") from exc
+        if not isinstance(payload, dict):
+            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。")
+        if payload.get("ok") is not True:
+            code = payload.get("code")
+            message = payload.get("message")
+            if code in _KNOWN_WORKER_CODES:
+                raise ArxivMcpError(
+                    str(code),
+                    str(message or "arXiv 搜索未完成，请重试。"),
+                    permission=code == "arxiv_permission",
+                )
+            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。")
         raw_papers = payload.get("papers")
         if not isinstance(raw_papers, list):
-            raise ArxivMcpError("arxiv_parse", "arXiv worker 返回内容损坏，请重试。")
+            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。")
         try:
             return [_paper_from_payload(item) for item in raw_papers]
         except (KeyError, TypeError, ValueError) as exc:
-            raise ArxivMcpError("arxiv_parse", "arXiv worker 返回内容损坏，请重试。") from exc
+            raise ArxivMcpError("arxiv_parse", "arXiv 返回内容损坏，无法解析，请重试。") from exc
 
-    def close(self) -> None:
-        process = self._process
-        self._process = None
+    # ------------------------------------------------------------------
+    # 进程生命周期
+    # ------------------------------------------------------------------
+
+    def _start_stdout_reader(
+        self, process: subprocess.Popen[str], lines: queue.Queue[str | None]
+    ) -> None:
+        """后台线程按行读取标准输出；EOF 或管道异常时投 None 哨兵。"""
+
+        def _reader() -> None:
+            stream = process.stdout
+            if stream is None:
+                lines.put(None)
+                return
+            try:
+                for line in stream:
+                    lines.put(line)
+            except (OSError, ValueError):
+                pass
+            finally:
+                lines.put(None)
+
+        threading.Thread(
+            target=_reader, daemon=True, name="arxiv-worker-reader"
+        ).start()
+
+    def _start_stderr_drainer(self, process: subprocess.Popen[str]) -> None:
+        """有上限的 stderr 诊断采集：持续排空防止管道阻塞，只留脱敏尾。
+
+        逐行增量发布到 ``_stderr_tail``：超时/挂死路径在进程终止后立刻
+        写诊断日志，也能拿到已采集的脱敏尾部，而不是等 drainer 收尾。
+        """
+
+        def _drain() -> None:
+            stream = process.stderr
+            if stream is None:
+                return
+            tail: deque[str] = deque(maxlen=64)
+            try:
+                for line in stream:
+                    tail.append(_sanitize(line))
+                    self._stderr_tail = "".join(tail)
+            except (OSError, ValueError):
+                pass
+            self._stderr_tail = "".join(tail)
+
+        threading.Thread(
+            target=_drain, daemon=True, name="arxiv-worker-stderr"
+        ).start()
+
+    def _close_process(self, process: subprocess.Popen[str] | None) -> None:
+        """关闭旧句柄并终止进程（超时强制结束），后续搜索重新 spawn。"""
         if process is None:
             return
+        if self._process is process:
+            self._process = None
+            self._ready = False
         if process.stdin is not None:
-            with suppress(OSError):
+            with suppress(OSError, ValueError):
                 process.stdin.close()
         if process.poll() is None:
             process.terminate()
@@ -81,35 +395,58 @@ class ArxivMcpProcessClient:
                 process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 process.kill()
+                process.wait(timeout=2)  # kill 后回收退出码，避免僵尸残留
 
-    def _ensure_process(self) -> subprocess.Popen[str]:
-        if self._process is not None and self._process.poll() is None:
-            return self._process
-        # 只传入导入内置包所需的 PYTHONPATH，不继承账户 Key、SMTP 码或其余环境。
-        clean_env: dict[str, str] = {}
+    def _log_terminal_failure(
+        self,
+        process: subprocess.Popen[str] | None,
+        exc: _ProcessWaitError,
+        started: float,
+    ) -> None:
+        """终态失败的脱敏诊断：退出码、阶段、耗时、重启次数，无查询正文。"""
+        exit_code = process.returncode if process is not None else None
+        logger.warning(
+            "arxiv worker 终态失败 pid=%s code=%s exit_code=%s stage=%s elapsed=%.2fs"
+            " restarts=%d stderr=%s",
+            process.pid if process is not None else None,
+            exc.code,
+            exit_code,
+            self._stage,
+            time.monotonic() - started,
+            self._restarts,
+            self._stderr_tail[-512:] or "（无）",
+        )
+
+    # ------------------------------------------------------------------
+    # 子进程环境
+    # ------------------------------------------------------------------
+
+    def _module_missing(self) -> bool:
+        """按脱敏 stderr 摘要判断启动即退是否因 worker 模块缺失。"""
+        return (
+            "ModuleNotFoundError" in self._stderr_tail
+            or "ImportError" in self._stderr_tail
+        )
+
+    def _child_env(self) -> dict[str, str]:
+        """最小环境：PYTHONPATH + 受控 UTF-8 模式 + 白名单变量。"""
+        env: dict[str, str] = {
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        }
         if "PYTHONPATH" in self._extra_env:
-            clean_env["PYTHONPATH"] = (
-                self._extra_env["PYTHONPATH"]
-                + os.pathsep
-                + os.pathsep.join(sys.path)
+            env["PYTHONPATH"] = (
+                self._extra_env["PYTHONPATH"] + os.pathsep + os.pathsep.join(sys.path)
             )
         else:
-            clean_env["PYTHONPATH"] = os.pathsep.join(sys.path)
-        clean_env.update(
+            env["PYTHONPATH"] = os.pathsep.join(sys.path)
+        for key in _ENV_WHITELIST:
+            if key in os.environ:
+                env[key] = os.environ[key]
+        env.update(
             {key: value for key, value in self._extra_env.items() if key != "PYTHONPATH"}
         )
-        try:
-            self._process = subprocess.Popen(
-                [self._python_executable, "-m", "bridges.arxiv_mcp.worker"],
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                env=clean_env,
-            )
-        except OSError as exc:
-            raise ArxivMcpError("arxiv_startup", "arXiv 搜索服务启动失败，请重试。") from exc
-        return self._process
+        return env
 
 
 def _paper_from_payload(payload: Any) -> ArxivPaper:

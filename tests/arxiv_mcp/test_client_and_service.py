@@ -124,7 +124,13 @@ class _FakeArxivClient:
         self.queries: list[str] = []
         self.papers = papers if papers is not None else [_paper()]
 
-    def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]:
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        stop_event: Event | None = None,
+    ) -> list[ArxivPaper]:
         self.queries.append(query)
         return self.papers[:max_results]
 
@@ -153,7 +159,13 @@ def test_service_exposes_empty_permission_cancelled_and_recovery_states() -> Non
     assert empty.can_retry is True
 
     class _PermissionClient:
-        def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]:
+        def search(
+            self,
+            query: str,
+            *,
+            max_results: int = 5,
+            stop_event: Event | None = None,
+        ) -> list[ArxivPaper]:
             raise ArxivMcpError("arxiv_permission", "arXiv 网络权限未通过。", permission=True)
 
     denied = ArxivSearchService(client=_PermissionClient()).search(
@@ -174,6 +186,30 @@ def test_service_exposes_empty_permission_cancelled_and_recovery_states() -> Non
         ArxivSearchPlan(True, "公开主题", "用户明确要求搜索论文"), recovery=True
     )
     assert recovery.status == ArxivSearchStatus.RECOVERY
+
+
+def test_service_projects_mid_search_cancel_as_cancelled_not_startup() -> None:
+    """Issue 05：搜索期间取消必须投影为 cancelled，而不是折叠成启动失败。"""
+
+    class _CancelClient:
+        def search(
+            self,
+            query: str,
+            *,
+            max_results: int = 5,
+            stop_event: Event | None = None,
+        ) -> list[ArxivPaper]:
+            raise ArxivMcpError("arxiv_cancelled", "已取消本轮论文搜索。")
+
+    projection = ArxivSearchService(client=_CancelClient()).search(
+        "acct-1", ArxivSearchPlan(True, "公开主题", "用户明确要求搜索论文")
+    )
+
+    assert projection is not None
+    assert projection.status == ArxivSearchStatus.CANCELLED
+    assert projection.error_code == "arxiv_cancelled"
+    assert projection.error_message == "已取消本轮论文搜索。"
+    assert projection.can_retry is False
 
 
 @pytest.mark.skipif(

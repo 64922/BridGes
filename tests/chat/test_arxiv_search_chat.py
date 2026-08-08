@@ -62,7 +62,13 @@ class _FakeArxivClient:
         self.papers = papers if papers is not None else [_paper()]
         self.queries: list[str] = []
 
-    def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]:
+    def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+        stop_event: Any | None = None,
+    ) -> list[ArxivPaper]:
         self.queries.append(query)
         return self.papers[:max_results]
 

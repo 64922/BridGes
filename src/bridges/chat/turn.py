@@ -227,6 +227,11 @@ _ERROR_MESSAGES: dict[str, str] = {
     "arxiv_parse": "arXiv 返回内容损坏，无法解析，请重试。",
     "arxiv_request": "arXiv 搜索请求未完成，请重试。",
     "arxiv_startup": "arXiv 搜索服务启动失败，请重试。",
+    # Issue 05：worker 启动握手与中途退出的独立错误分类。
+    "arxiv_handshake": "arXiv 搜索服务启动失败，请重试。",
+    "arxiv_worker_exit": "arXiv 搜索服务进程已退出，请重试。",
+    "arxiv_internal": "arXiv 搜索服务异常，请重试。",
+    "arxiv_cancelled": "已取消本轮论文搜索。",
     "arxiv_no_results": "没有找到匹配的 arXiv 论文，请调整领域或约束后重试。",
     "arxiv_citation_invalid": "论文回答缺少可核实的 arXiv 引用，请重试。",
     # Issue 28：bridges-humanizer SKILL 编排错误（中文可操作提示）。
@@ -269,6 +274,10 @@ _RETRYABLE_CODES = frozenset(
         "arxiv_parse",
         "arxiv_request",
         "arxiv_startup",
+        # Issue 05：握手/中途退出/异常均为可重试故障（取消除外）。
+        "arxiv_handshake",
+        "arxiv_worker_exit",
+        "arxiv_internal",
         "arxiv_no_results",
         "arxiv_citation_invalid",
         # Issue 28：人味化任务可重试错误（原任务输入保留）。
@@ -1394,12 +1403,14 @@ class TurnOrchestrator:
                             account_id, arxiv_plan, stop_event=stop_event
                         )
                     except Exception:  # noqa: BLE001 - 教学门对外统一呈现失败状态
+                        # Issue 05：意外异常不再折叠成启动失败，投影为独立的
+                        # 内部错误码（常规失败已由服务层分类为稳定错误码）。
                         arxiv_search_projection = ArxivSearchProjection(
                             status=ArxivSearchStatus.ERROR,
                             trigger_reason=arxiv_plan.reason,
                             query_summary=arxiv_plan.query,
-                            error_code="arxiv_startup",
-                            error_message="arXiv 搜索服务启动失败，请重试。",
+                            error_code="arxiv_internal",
+                            error_message="arXiv 搜索服务异常，请重试。",
                             can_retry=True,
                         )
                     if arxiv_search_projection is not None:

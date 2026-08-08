@@ -1,6 +1,6 @@
 # 05 修复 arXiv worker 的 Windows UTF-8、启动握手和错误分类
 
-Status: ready-for-agent
+Status: completed
 Priority: P0
 Type: defect
 Blocked by: 01
@@ -61,3 +61,15 @@ UTF-8 是高度可信根因，但实施者仍须先用真实 worker 集成测试
 ## Comments
 
 - 2026-08-08：本机已证实受限子进程为 GBK，且同环境输出不可编码字符会以 UnicodeEncodeError 退出。
+- 2026-08-08（完成）：分支 `05-arxiv-worker-reliability`（基于 c3682480，不动主线）。
+  纵向切片已交付——协议双向固定 UTF-8（父进程管道 `encoding="utf-8"` + 子进程
+  `PYTHONIOENCODING/PYTHONUTF8` 受控模式 + worker 启动 reconfigure 标准流）；
+  worker 启动先写 `ready` 握手行，父进程握手/单次响应均设截止时间（reader 线程
+  + 队列，超时即关句柄）；stderr 改有上限脱敏采集（防管道阻塞，只留退出码/阶段/
+  脱敏摘要）；错误分类互不混淆（arxiv_startup/handshake/worker_exit/parse/timeout/
+  permission/cancelled/empty）；崩溃后关闭旧句柄、恰一次安全重启仍失败才终态
+  （无无限循环/僵尸/句柄泄漏）；stop_event 穿透 process client，取消 2 秒内终止
+  当前请求并投影为 cancelled 而非 startup；turn.py 错误表/可重试集/教学门兜底码
+  同步。验证：真实 worker 反馈环测试 12 条覆盖全部故障模式（spawn 计数哨兵 +
+  查询往返哨兵），原必红 smoke `test_arxiv_utf8.py` 转绿；相关单测全绿，全量
+  2200+ pytest 与 e2e 通过。实现说明见 task_plan.md。
