@@ -17,8 +17,17 @@ from bridges.arxiv_mcp.contracts import ArxivPaper
 class ArxivMcpProcessClient:
     """通过 JSONL 与固定模块 worker 通信，避免 MCP 继承应用权限。"""
 
-    def __init__(self, *, python_executable: str | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        python_executable: str | None = None,
+        extra_env: dict[str, str] | None = None,
+    ) -> None:
         self._python_executable = python_executable or sys.executable
+        # 测试注入边界：收尾 smoke 用它在 worker 侧替换确定性 arXiv 客户端
+        # （PYTHONPATH 前缀并入，shadow 模块先于真实包解析）。生产默认 None，
+        # 行为与既有最小环境完全一致。
+        self._extra_env = extra_env or {}
         self._process: subprocess.Popen[str] | None = None
 
     def search(self, query: str, *, max_results: int = 5) -> list[ArxivPaper]:
@@ -77,7 +86,18 @@ class ArxivMcpProcessClient:
         if self._process is not None and self._process.poll() is None:
             return self._process
         # 只传入导入内置包所需的 PYTHONPATH，不继承账户 Key、SMTP 码或其余环境。
-        clean_env = {"PYTHONPATH": os.pathsep.join(sys.path)}
+        clean_env: dict[str, str] = {}
+        if "PYTHONPATH" in self._extra_env:
+            clean_env["PYTHONPATH"] = (
+                self._extra_env["PYTHONPATH"]
+                + os.pathsep
+                + os.pathsep.join(sys.path)
+            )
+        else:
+            clean_env["PYTHONPATH"] = os.pathsep.join(sys.path)
+        clean_env.update(
+            {key: value for key, value in self._extra_env.items() if key != "PYTHONPATH"}
+        )
         try:
             self._process = subprocess.Popen(
                 [self._python_executable, "-m", "bridges.arxiv_mcp.worker"],

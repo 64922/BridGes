@@ -3,15 +3,41 @@
 目标：每个测试从同一确定性环境开始，不受用户环境变量、仓库 ``.env`` 或
 前一个测试残留状态的影响。所有覆盖通过 ``monkeypatch`` 应用，测试结束后
 自动恢复，因此测试内部自己的环境变量修改不受干扰。
+
+Issue 01（收尾）：同时把 pytest 临时根目录收拢到仓库内受控目录，不再依赖
+系统 ``AppData\\Local\\Temp\\pytest-of-*`` 的 ACL。
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
+from _pytest.tmpdir import TempPathFactory
 
 from bridges.config import get_settings
+
+#: 仓库内受控 pytest 临时根目录（每次运行由 pytest 清空重建，不累积）。
+_PYTEST_BASETEMP = Path(__file__).resolve().parents[1] / ".tmp" / "pytest-basetemp"
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    """把 ``tmp_path``/``tmp_path_factory`` 的基目录改为仓库内受控目录。
+
+    tmpdir 内置插件的 ``pytest_configure`` 已按系统临时目录建好 factory；
+    本 conftest 的钩子在其后执行，这里重建 factory 并指到仓库
+    ``.tmp/pytest-basetemp``——含 ``tmp_path`` 的用例在系统 Temp 无权限时
+    也能直接运行（收尾 issue 01 AC4）。用户显式传入 ``--basetemp`` 时
+    保持用户选择，不做覆盖。
+
+    注意：``config._tmp_path_factory`` 与 ``TempPathFactory.from_config``
+    是 pytest 内部构造（非公开 API），pytest 大版本升级时需回归验证
+    tmp_path 落位（本实现对 pytest 8/9 有效）。
+    """
+    if config.option.basetemp is None:
+        config.option.basetemp = str(_PYTEST_BASETEMP)
+        config._tmp_path_factory = TempPathFactory.from_config(config, _ispytest=True)
 
 # 显式覆盖的运行时配置。任何来自用户 shell 环境或仓库 ``.env`` 的同名值
 # 都会被这些确定性值压过，保证测试不读取真实凭据、不录制真实网络调用、

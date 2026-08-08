@@ -1,8 +1,31 @@
 import { defineConfig, devices } from "@playwright/test";
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
 
 const PORT = process.env.PORT || "3000";
 const API_PORT = process.env.API_PORT || "8000";
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+
+// 仓库根目录（playwright.config.ts 位于 apps/web 下）
+const REPO_ROOT = path.resolve(__dirname, "../..");
+
+// 统一测试运行时定位（收尾 issue 01 步骤 1）：显式使用仓库虚拟环境里的
+// Python，不依赖 PATH 上的 Anaconda/系统 Python。可用 BRIDGES_PYTHON 覆盖。
+function resolveVenvPython(): string {
+  if (process.env.BRIDGES_PYTHON) return process.env.BRIDGES_PYTHON;
+  const candidate =
+    os.platform() === "win32"
+      ? path.join(REPO_ROOT, ".venv", "Scripts", "python.exe")
+      : path.join(REPO_ROOT, ".venv", "bin", "python");
+  return candidate;
+}
+const PYTHON = resolveVenvPython();
+
+// E2E 数据目录：绝对路径 + 启动前显式创建父目录（不要求人工预建
+// .e2e-data；唯一绝对 SQLite 路径避免相对工作目录解析差异）。
+const E2E_DATA_DIR = path.resolve(REPO_ROOT, "apps/web/.e2e-data");
+fs.mkdirSync(E2E_DATA_DIR, { recursive: true });
 
 export default defineConfig({
   testDir: "./e2e",
@@ -26,7 +49,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: `python -m bridges.cli.main api --port ${API_PORT}`,
+      command: `"${PYTHON}" -m bridges.cli.main api --port ${API_PORT}`,
       url: `http://127.0.0.1:${API_PORT}/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,
@@ -34,7 +57,7 @@ export default defineConfig({
       // 临时数据目录与测试密钥（仓库 .gitignore 已排除 .e2e-data）。
       // Issue 33：SMTP/IMAP 指向本地假邮件服务器（scripts/e2e_mail_server.py）。
       env: {
-        BRIDGES_DATABASE_URL: `sqlite:///./.e2e-data/bridges.db`,
+        BRIDGES_DATABASE_URL: `sqlite:///${path.join(E2E_DATA_DIR, "bridges.db").replace(/\\/g, "/")}`,
         BRIDGES_SECRET_KEY: "e2e-chat-test-secret-key",
         BRIDGES_ENVIRONMENT: "test",
         BRIDGES_SMTP_HOST: "127.0.0.1",
@@ -47,7 +70,7 @@ export default defineConfig({
     },
     {
       // Issue 33：本地假 SMTP+IMAP 服务器（自发自收验证与真实投递落点）。
-      command: "python ../../scripts/e2e_mail_server.py",
+      command: `"${PYTHON}" ../../scripts/e2e_mail_server.py`,
       url: "http://127.0.0.1:8026/health",
       reuseExistingServer: !process.env.CI,
       timeout: 30_000,

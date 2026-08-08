@@ -3,7 +3,10 @@
 在单个进程内提供：
 
 - 明文 SMTP 服务器（127.0.0.1:SMTP_PORT，默认 8025）：支持
-  EHLO/AUTH PLAIN/MAIL/RCPT/DATA/QUIT，接受的邮件进入共享内存邮箱；
+  EHLO/AUTH PLAIN/MAIL/RCPT/DATA/QUIT，接受的邮件进入共享内存邮箱
+  （``--deliver-delay-seconds`` 模拟「SMTP 秒收、IMAP 晚到」的晚到邮件：
+  立即回 250 OK，延迟后再入箱；``--drop-subject-tokens`` 使命中主题的
+  邮件永不入箱，模拟验证超时）；
 - 明文 IMAP 服务器（127.0.0.1:IMAP_PORT，默认 8143）：支持
   CAPABILITY/LOGIN/SELECT/SEARCH/LOGOUT，从同一共享邮箱检索主题令牌
   （自发自收验证的收件确认）；
@@ -24,12 +27,18 @@ import http.server
 import re
 import socketserver
 import threading
+import time
 from email.header import decode_header
 
 MAILBOX: list[dict[str, object]] = []
 MAILBOX_LOCK = threading.RLock()
 # 测试固定授权码（含 test 标记，秘密扫描白名单；仅本地 E2E 使用）
 AUTH_CODES = {"e2etestauthcode33"}
+
+#: 投递延迟（秒）与丢弃令牌：由命令行参数设置，用于模拟晚到邮件与
+#: 验证超时（收尾 smoke 的 0 秒/10 秒/超时三种投递边界）。
+DELIVER_DELAY_SECONDS = 0.0
+DROP_SUBJECT_TOKENS: set[str] = set()
 
 _LINE_RE = re.compile(r"^([^\s:]+)(?:\s+(.*))?$")
 
@@ -66,16 +75,49 @@ class _SmtpHandler(socketserver.StreamRequestHandler):
                     parsed = email.message_from_string(raw_message)
                     subject = _decode_header_value(parsed.get("Subject", "") or "")
                     message_id = parsed.get("Message-ID")
-                    with MAILBOX_LOCK:
-                        MAILBOX.append(
-                            {
-                                "sender": mail_from or "",
-                                "recipients": list(rcpt_to),
-                                "subject": subject,
-                                "message_id": message_id,
-                            }
+                    # 快照当前会话参数（值绑定，避免异步入箱读取循环内变量）
+                    sender = mail_from or ""
+                    recipients = list(rcpt_to)
+                    delivered_subject = subject
+                    delivered_message_id = message_id
+
+                    def _deliver(
+                        sender_: str,
+                        recipients_: list[str],
+                        subject_: str,
+                        message_id_: str | None,
+                    ) -> None:
+                        if DELIVER_DELAY_SECONDS > 0:
+                            time.sleep(DELIVER_DELAY_SECONDS)
+                        drop = any(
+                            token in subject_ for token in DROP_SUBJECT_TOKENS
                         )
-                    self._send("250 OK queued")
+                        if not drop:
+                            with MAILBOX_LOCK:
+                                MAILBOX.append(
+                                    {
+                                        "sender": sender_,
+                                        "recipients": recipients_,
+                                        "subject": subject_,
+                                        "message_id": message_id_,
+                                    }
+                                )
+
+                    if DELIVER_DELAY_SECONDS > 0:
+                        # 晚到语义：SMTP 立即回 250 OK（投递被接受），入箱按
+                        # 延迟在独立线程完成——会话（含后续 QUIT）不因延迟
+                        # 阻塞，验证侧收件轮询决定成败。
+                        self._send("250 OK queued")
+                        threading.Thread(
+                            target=_deliver,
+                            args=(sender, recipients, delivered_subject, delivered_message_id),
+                            daemon=True,
+                        ).start()
+                    else:
+                        # 立即投递：与历史行为完全一致（先入箱再回 250 OK），
+                        # 保证 SMTP 客户端返回时邮件已在箱中（无竞态）。
+                        _deliver(sender, recipients, delivered_subject, delivered_message_id)
+                        self._send("250 OK queued")
                 else:
                     data_buffer.append(raw.decode("utf-8", errors="replace"))
                 continue
@@ -280,11 +322,29 @@ class _HealthHandler(http.server.BaseHTTPRequestHandler):
 
 
 def main() -> int:
+    global DELIVER_DELAY_SECONDS, DROP_SUBJECT_TOKENS
     parser = argparse.ArgumentParser(description="本地假邮件服务器（E2E）")
     parser.add_argument("--smtp-port", type=int, default=8025)
     parser.add_argument("--imap-port", type=int, default=8143)
     parser.add_argument("--http-port", type=int, default=8026)
+    parser.add_argument(
+        "--deliver-delay-seconds",
+        type=float,
+        default=0.0,
+        help="模拟 SMTP 投递延迟（秒）；0 表示立即投递。",
+    )
+    parser.add_argument(
+        "--drop-subject-tokens",
+        default="",
+        help="逗号分隔的主题令牌；命中则邮件不进入邮箱（模拟验证超时）。",
+    )
     args = parser.parse_args()
+    DELIVER_DELAY_SECONDS = args.deliver_delay_seconds
+    DROP_SUBJECT_TOKENS = {
+        token.strip()
+        for token in args.drop_subject_tokens.split(",")
+        if token.strip()
+    }
 
     smtp = _SmtpServer(("127.0.0.1", args.smtp_port), _SmtpHandler)
     imap = _ImapServer(("127.0.0.1", args.imap_port), _ImapHandler)
@@ -298,7 +358,8 @@ def main() -> int:
         thread.start()
     print(
         f"fake mail server: smtp=127.0.0.1:{args.smtp_port} "
-        f"imap=127.0.0.1:{args.imap_port} health=127.0.0.1:{args.http_port}",
+        f"imap=127.0.0.1:{args.imap_port} health=127.0.0.1:{args.http_port} "
+        f"delay={DELIVER_DELAY_SECONDS}s drop={sorted(DROP_SUBJECT_TOKENS)}",
         flush=True,
     )
     try:

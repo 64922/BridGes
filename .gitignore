@@ -21,6 +21,9 @@ test-results/
 
 # E2E 本地数据目录（Issue 11：聊天 e2e 需要 sqlite 持久化）
 apps/web/.e2e-data/
+
+# 收尾 smoke 受控临时根目录（pytest basetemp 与 e2e 每运行唯一数据目录）
+.tmp/
 .env
 .env.local
 
