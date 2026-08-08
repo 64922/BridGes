@@ -16,6 +16,7 @@ interface ChatThreadProps {
   onRetry?: (messageId: string) => void;
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;
+  onTeachingBeginnerStart?: (messageId: string) => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
   /** 附件摄取重试（Issue 17）：调用重试 API 并刷新对话 */
@@ -46,6 +47,7 @@ export function ChatThread({
   onRetry,
   onStop,
   onTeachingSkip,
+  onTeachingBeginnerStart,
   onDownloadAttachment,
   onDeleteAttachment,
   onRetryIngestion,
@@ -79,6 +81,7 @@ export function ChatThread({
           onRetry={onRetry}
           onStop={onStop}
           onTeachingSkip={onTeachingSkip}
+          onTeachingBeginnerStart={onTeachingBeginnerStart}
           onDownloadAttachment={onDownloadAttachment}
           onDeleteAttachment={onDeleteAttachment}
           onRetryIngestion={onRetryIngestion}

@@ -186,7 +186,8 @@ def test_answer_evidence_is_traceable_but_never_claims_mastery() -> None:
     assert record.evaluation_basis
     assert record.requires_confirmation is True
     assert record.mastery_claim_allowed is False
-    assert "已掌握" not in record.knowledge_state_reason
+    # 说明性文案明确「不能直接标记已掌握」（否定句），不构成掌握宣称。
+    assert "不能直接标记已掌握" in record.knowledge_state_reason
 
 
 def test_uncertain_answer_that_repeats_topic_is_not_marked_correct() -> None:

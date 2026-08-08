@@ -21,6 +21,35 @@ class TeachingCardStatus(StrEnum):
     RECOVERY = "recovery"
 
 
+class TeachingStage(StrEnum):
+    """会话中持久化的教学状态机阶段（Issue 08）。
+
+    - ``mission_setup``：确认学习目标、用途与已有水平，不生成正式教学回答；
+    - ``micro_lesson``：基于合格来源一次讲一个概念（解释、例子、边界）；
+    - ``understanding_check``：本轮理解检查题等待作答；
+    - ``adaptation``：依据回答证据选择补讲、换例子、迁移或下一概念；
+    - ``blocked``：来源受阻时保留 mission 与恢复动作，不回退成无关回答。
+    """
+
+    MISSION_SETUP = "mission_setup"
+    MICRO_LESSON = "micro_lesson"
+    UNDERSTANDING_CHECK = "understanding_check"
+    ADAPTATION = "adaptation"
+    BLOCKED = "blocked"
+
+
+class TeachingIntent(StrEnum):
+    """用户消息的意图分类（Issue 08：不用单一关键词正则决定全部行为）。"""
+
+    ESTABLISH_MISSION = "establish_mission"
+    MODIFY_MISSION = "modify_mission"
+    FACT_QUESTION = "fact_question"
+    ANSWER = "answer"
+    FOLLOW_UP = "follow_up"
+    SKIP = "skip"
+    SWITCH_MODE = "switch_mode"
+
+
 class TeachingEvidenceStatus(StrEnum):
     """教学正式回答使用的证据裁决。"""
 
@@ -121,10 +150,45 @@ class TeachingAnswerEvidence(BaseModel):
     )
 
 
+class TeachingMission(BaseModel):
+    """会话中持久化的教学任务：目标、当前概念、水平假设、进度与下一步。
+
+    随 ``TeachingTurnProjection.mission`` 落库，刷新/切换会话后恢复同一
+    教学进度；mission 未确认（stage 为 mission_setup）时不生成正式教学
+    回答，因此不受事实证据门约束。
+    """
+
+    mission_id: str = Field(description="稳定任务标识。")
+    stage: TeachingStage = Field(description="当前教学阶段。")
+    goal: str = Field(description="规范学习目标（例如“学习 Transformer 的工作原理”）。")
+    user_intent: str = Field(description="用户原始表述摘要（不直接当检索查询）。")
+    current_concept: str | None = Field(
+        default=None, description="本轮正在教学的概念（micro_lesson 起有值）。"
+    )
+    level_assumption: str = Field(description="水平假设：初学者/已有基础。")
+    level_basis: str = Field(description="水平假设的依据（用户声明或默认）。")
+    taught_concepts: list[str] = Field(
+        default_factory=list, description="已完成讲解的概念清单（进度）。"
+    )
+    difficulty_streak: int = Field(
+        default=0, description="连续未通过/跳过检查的轮次数；达到阈值自动缩小概念或换例子。"
+    )
+    next_action: str = Field(description="下一步动作的用户可见说明。")
+    blocked_reason: str | None = Field(
+        default=None, description="来源受阻原因（stage 为 blocked 时有值）。"
+    )
+    recovery_steps: list[str] = Field(
+        default_factory=list, description="受阻时给用户的恢复动作。"
+    )
+
+
 class TeachingTurnProjection(BaseModel):
     """统一聊天流中的一轮教学编排投影。"""
 
     status: TeachingCardStatus = Field(description="教学卡片状态。")
+    mission: TeachingMission | None = Field(
+        default=None, description="会话中持久化的教学任务；普通陪伴/未确认时为 None。"
+    )
     goal: str = Field(description="本轮确认或推导的学习目标。")
     level_assumption: str = Field(description="当前水平假设及其可修正性。")
     steps: list[str] = Field(description="本轮教学步骤。")

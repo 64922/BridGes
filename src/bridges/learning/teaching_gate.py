@@ -1,4 +1,12 @@
-"""学习模式证据门与聊天教学轮次编排。"""
+"""学习模式证据门与聊天教学轮次编排（Issue 08：有状态对话式教学循环）。
+
+状态机：``mission_setup``（确认目标/用途/已有水平，不过证据门）→
+``micro_lesson``（基于合格来源一次讲一个概念）→ ``understanding_check``
+（每轮最多一道低负担问题）→ ``adaptation``（依据回答证据选择补讲、换
+例子或下一概念）；来源受阻时进入 ``blocked`` 保留 mission 与恢复动作。
+mission 随 ``TeachingTurnProjection.mission`` 在会话中持久化，刷新/离开
+后继续同一教学进度。
+"""
 
 from __future__ import annotations
 
@@ -16,21 +24,62 @@ from bridges.contracts.teaching import (
     TeachingEvidenceSource,
     TeachingEvidenceSourceType,
     TeachingEvidenceStatus,
+    TeachingIntent,
     TeachingKnowledgeState,
+    TeachingMission,
     TeachingQuiz,
     TeachingSearchSource,
+    TeachingStage,
     TeachingTurnProjection,
 )
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 
 _PAPER_QUERY = re.compile(r"arxiv|论文|文献|期刊|研究综述", re.IGNORECASE)
 _PUBLIC_QUERY = re.compile(r"最新|公开|网页|新闻|现状|政策|规范|官方|事实", re.IGNORECASE)
-_SKIP_ANSWER = re.compile(r"^(跳过|跳过这题|先跳过|不答|暂时不答|skip)\s*[。.!！]?$", re.I)
-_UNCERTAIN_ANSWER = re.compile(r"不懂|不知道|不会|不清楚|没学会|不明白|不理解|不会做")
+_SKIP_ANSWER = re.compile(
+    r"^(?:跳过|跳过这题|跳过这道理解检查(?:，|,)?.*|先跳过|不答|暂时不答|skip)\s*[。.!！]?$",
+    re.I,
+)
+#: 整句立场即否定（"我不懂 X"/"我完全不懂"）：直接清空关键点匹配，判 incorrect。
+#: 不使用 \b（CJK 字符都是 \w，词边界对中文无效）。
+_STRONG_UNKNOWN = re.compile(
+    r"^(?:我就是|我(?:完全|一点也|根本|实在)?|完全|一点也|根本|实在)?"
+    r"(?:不懂|不知道|不会|没学会|不明白|不理解|不清楚)",
+    re.I,
+)
+#: 句中自认缺口（"其他细节我还不清楚"）：覆盖关键点时打折为 partial。
+_UNCERTAIN_ANSWER = re.compile(r"不清楚|不知道|没学会|不明白|不理解|不确定|还没弄懂|不太会|还不会")
 _FOLLOW_UP = re.compile(
     r"(?:为什么|为何|怎么|如何|能不能|可不可以|请再解释|再讲|举例|什么意思|"
     r"哪里|继续讲|追问)"
 )
+#: 学习意图（建立目标）动词；无 mission 时的教学对话默认进入目标确认。
+_LEARNING_INTENT = re.compile(
+    r"^(?:请|帮我)?(?:我想|我想要|想|要|教我|教教|讲讲|学|学习|了解|认识|入门|弄懂|搞清楚)\s*[:：]?\s*\S+",
+    re.I,
+)
+#: 主题提取的主/次动词词表（与 _LEARNING_INTENT/_MODIFY_MISSION 共用语义）。
+_TOPIC_VERB_PREFIX = re.compile(
+    r"^(?:请|帮我)?(?:我想要|我想|想要|想|要|教我|教教|讲讲|解释一下|介绍一下|解释|"
+    r"换个主题|换|改成|重新学|重新)?"
+    r"(?:学习|学一下|学|了解|认识|入门|弄懂|搞清楚)?\s*",
+    re.I,
+)
+#: mission 确认阶段的「按初学者开始」一键动作。
+_BEGINNER_START = re.compile(
+    r"^(?:按|就以|就按)?(?:初学者|零基础|新手)(?:开始|起步|来吧|水平|处理)?\s*[。.!！]?$",
+    re.I,
+)
+#: 修改学习目标（有 mission 时换主题）。
+_MODIFY_MISSION = re.compile(
+    r"^(?:换|改|换个|改成|重新|重学|不想学|不学|退出)\s*.*(?:主题|目标|概念|学|学习)?|"
+    r"^(?:我想|想要|想)(?:学|学习|了解|认识)\s*\S+",
+    re.I,
+)
+#: 已有基础声明的识别（确认阶段回答/作答中的水平信息）。
+_KNOWN_LEVEL = re.compile(r"学过|知道|了解|会|熟悉|用过|接触过|懂|明白", re.I)
+#: 切换模式的显式表达。
+_SWITCH_MODE = re.compile(r"切回日常|切换模式|回到日常|日常陪伴|不要教学|退出学习", re.I)
 
 
 def _now() -> datetime:
@@ -69,7 +118,9 @@ def _local_sources(retrieval: RetrievalRoundProjection | None) -> list[TeachingE
             ),
             accessed_at=retrieval.created_at,
         )
+        # Issue 08：图片没有可用 OCR/文本证据时不能成为教学引用。
         for citation in retrieval.citations
+        if not citation.media_type.startswith("image/")
     ]
 
 
@@ -144,6 +195,11 @@ class TeachingEvidenceGateService:
         local = _local_sources(retrieval)
         local_status = retrieval.sufficiency if retrieval is not None else None
         local_stale = _local_is_stale(retrieval)
+        # Issue 08：本地命中全部是没有文本证据的图片时，视为无本地命中，
+        # 强制公开补充——图片不能支撑教学断言。
+        if retrieval is not None and retrieval.citations and not local:
+            local_status = RetrievalSufficiency.NO_HITS
+            local_stale = False
         required = self.required_search(query, None if local_stale else local_status)
         external = _external_sources(required, web_search, arxiv_search)
 
@@ -317,6 +373,168 @@ class TeachingTurnService:
             query, local_status
         )
 
+    # ------------------------------------------------------------------
+    # Issue 08：意图分类与有状态教学循环
+    # ------------------------------------------------------------------
+
+    def classify_intent(
+        self, text: str, mission: TeachingMission | None
+    ) -> TeachingIntent:
+        """分类用户消息意图，不用单一关键词正则决定全部教学行为。"""
+        stripped = text.strip()
+        if _SWITCH_MODE.search(stripped):
+            return TeachingIntent.SWITCH_MODE
+        if mission is None:
+            if _LEARNING_INTENT.search(stripped):
+                return TeachingIntent.ESTABLISH_MISSION
+            return TeachingIntent.FACT_QUESTION
+        if mission.stage == TeachingStage.MISSION_SETUP:
+            # 确认阶段：换主题应重新确认目标，而不是被当作原主题的确认。
+            if _MODIFY_MISSION.search(stripped):
+                return TeachingIntent.MODIFY_MISSION
+            # 按初学者开始或回答澄清问题都是确认输入。
+            return TeachingIntent.ANSWER
+        if _SKIP_ANSWER.fullmatch(stripped):
+            return TeachingIntent.SKIP
+        if _MODIFY_MISSION.search(stripped):
+            return TeachingIntent.MODIFY_MISSION
+        if _is_follow_up(stripped):
+            return TeachingIntent.FOLLOW_UP
+        return TeachingIntent.ANSWER
+
+    def mission_setup(
+        self, query: str, *, previous_mission: TeachingMission | None = None
+    ) -> TeachingTurnProjection:
+        """建立或修改目标：确认目标/用途/已有水平，不过证据门、不检索。"""
+        topic = self._topic(query)
+        goal = f"学习“{topic}”并理解其核心机制"
+        if previous_mission is not None and previous_mission.stage != TeachingStage.MISSION_SETUP:
+            goal = f"把目标调整为：学习“{topic}”并理解其核心机制"
+        mission = TeachingMission(
+            mission_id=previous_mission.mission_id if previous_mission is not None else _new_id("mission"),
+            stage=TeachingStage.MISSION_SETUP,
+            goal=goal,
+            user_intent=query,
+            current_concept=None,
+            level_assumption="暂按初学者处理；你的回答会调整深度与例子。",
+            level_basis="尚未确认，默认按初学者开始。",
+            taught_concepts=(
+                previous_mission.taught_concepts if previous_mission is not None else []
+            ),
+            next_action="回答一个澄清问题，或直接选择按初学者开始。",
+        )
+        gate = TeachingEvidenceGate(
+            status=TeachingEvidenceStatus.SUFFICIENT,
+            reason="目标确认阶段不生成正式教学回答，无需通过事实证据门。",
+            required_search=TeachingSearchSource.NONE,
+            search_status=None,
+            gap=None,
+            recovery_steps=[],
+            checked_at=_now(),
+        )
+        return TeachingTurnProjection(
+            status=TeachingCardStatus.READY,
+            mission=mission,
+            goal=goal,
+            level_assumption=mission.level_assumption,
+            steps=["确认学习目标", "确认你的已有水平", "开始第一个概念"],
+            check_method="本轮只问一个关键问题；也可以直接按初学者开始。",
+            evidence_gate=gate,
+            quiz=None,
+            evidence=[],
+            next_prompt=(
+                f"你之前接触过“{topic}”吗？"
+                "可以简单回答，也可以直接说“按初学者开始”。"
+            ),
+            gap_response=None,
+            can_answer_reliably=False,
+            can_cancel=True,
+            can_retry=False,
+            can_skip=True,
+            can_follow_up=True,
+            can_switch_mode=True,
+        )
+
+    def confirm_mission(self, text: str, mission: TeachingMission) -> TeachingMission:
+        """确认阶段输入：解析水平假设，确定首概念，推进到 micro_lesson。"""
+        # 否定（"不知道/没学过"）优先于关键词（"知道"）——"我不知道" 不算已有基础。
+        has_level = bool(_KNOWN_LEVEL.search(text)) and not _STRONG_UNKNOWN.search(text)
+        if _BEGINNER_START.fullmatch(text.strip()) or not has_level:
+            level_assumption = "初学者"
+            level_basis = "用户选择按初学者开始（或未声明已有基础）。"
+        else:
+            level_assumption = "已有基础"
+            level_basis = "用户声明接触过该主题；讲解会更快并预留迁移练习。"
+        topic = self._topic(mission.user_intent)
+        return mission.model_copy(
+            update={
+                "stage": TeachingStage.MICRO_LESSON,
+                "current_concept": topic,
+                "level_assumption": level_assumption,
+                "level_basis": level_basis,
+                "next_action": f"讲解“{topic}”并做一次理解检查。",
+            }
+        )
+
+    @staticmethod
+    def micro_lesson_query(mission: TeachingMission) -> str:
+        """micro_lesson 的检索查询：规范主题 + 本轮概念，不用整句意图。"""
+        return mission.current_concept or mission.goal
+
+    def blocked_mission(
+        self, mission: TeachingMission, gate: TeachingEvidenceGate
+    ) -> TeachingMission:
+        """来源受阻时保留 mission，标记 blocked 并给出恢复动作。"""
+        return mission.model_copy(
+            update={
+                "stage": TeachingStage.BLOCKED,
+                "blocked_reason": gate.reason,
+                "recovery_steps": list(gate.recovery_steps),
+                "next_action": "当前来源不足；重试、上传材料或更换主题后继续同一进度。",
+            }
+        )
+
+    def after_answer(
+        self, mission: TeachingMission, answer: TeachingAnswerEvidence | None
+    ) -> TeachingMission:
+        """依据本轮作答证据推进阶段（adaptation），不因一次回答宣称掌握。"""
+        if answer is None:
+            return mission
+        if answer.evaluated_state == AnswerEvaluatedState.CORRECT.value:
+            next_action = "补充一个迁移情境，再检查能否应用。"
+            streak = 0
+        elif answer.evaluated_state == AnswerEvaluatedState.PARTIAL.value:
+            next_action = "用更小的例子补齐缺口，再问一个更聚焦的问题。"
+            streak = mission.difficulty_streak
+        elif answer.evaluated_state == AnswerEvaluatedState.NEEDS_REVIEW.value:
+            next_action = "跳过本题；可追问、换例子或继续下一概念。"
+            streak = mission.difficulty_streak
+        else:
+            # 连续困难：达到阈值时自动缩小概念或换例子。
+            streak = mission.difficulty_streak + 1
+            next_action = (
+                "连续几次遇到困难，先换一个更小的概念或例子，再进行一次新的理解检查。"
+                if streak >= 2
+                else "先回到更小的概念或例子，再进行一次新的理解检查。"
+            )
+        return mission.model_copy(
+            update={
+                "stage": TeachingStage.ADAPTATION,
+                "difficulty_streak": streak,
+                "next_action": next_action,
+            }
+        )
+
+    def record_taught_concept(
+        self, mission: TeachingMission, concept: str
+    ) -> TeachingMission:
+        """把已完成讲解的概念记入进度（当前概念推进时）。"""
+        if concept in mission.taught_concepts:
+            return mission
+        return mission.model_copy(
+            update={"taught_concepts": [*mission.taught_concepts, concept]}
+        )
+
     def initial(self, query: str, *, recovery: bool = False) -> TeachingTurnProjection:
         topic = self._topic(query)
         gate = TeachingEvidenceGate(
@@ -347,6 +565,8 @@ class TeachingTurnService:
         previous_turn: TeachingTurnProjection | None = None,
         answer_text: str | None = None,
         answer_message_id: str | None = None,
+        mission: TeachingMission | None = None,
+        intent: TeachingIntent | None = None,
     ) -> TeachingTurnProjection:
         gate = self._gate.assess(query, retrieval, web_search, arxiv_search)
         answer = None
@@ -355,6 +575,12 @@ class TeachingTurnService:
             previous_turn is not None
             and previous_turn.quiz is not None
             and answer_text is not None
+            and intent
+            not in {
+                TeachingIntent.FOLLOW_UP,
+                TeachingIntent.FACT_QUESTION,
+                TeachingIntent.SWITCH_MODE,
+            }
             and not _is_follow_up(answer_text)
         ):
             answer = self.evaluate_answer(
@@ -363,7 +589,7 @@ class TeachingTurnService:
                 answer_message_id or "unknown-message",
             )
             evidence.append(answer)
-        return self._turn(
+        turn = self._turn(
             status=self._status_for(gate),
             topic=self._topic(query),
             query=query,
@@ -371,6 +597,39 @@ class TeachingTurnService:
             previous_evidence=evidence,
             answer=answer,
         )
+        if mission is None:
+            return turn
+        # 来源受阻时保留 mission 并明确受阻（不回退成无关回答）；
+        # 重试成功后从 blocked 恢复教学（不永久卡在受阻状态）。
+        if not turn.can_answer_reliably:
+            mission = self.blocked_mission(mission, gate)
+        elif mission.stage == TeachingStage.BLOCKED:
+            mission = mission.model_copy(
+                update={
+                    "stage": TeachingStage.MICRO_LESSON,
+                    "blocked_reason": None,
+                    "recovery_steps": [],
+                    "next_action": f"讲解“{mission.current_concept or mission.goal}”并做一次理解检查。",
+                }
+            )
+        if answer is not None and turn.can_answer_reliably:
+            mission = self.after_answer(mission, answer)
+            if answer.evaluated_state == AnswerEvaluatedState.CORRECT.value:
+                mission = self.record_taught_concept(mission, mission.current_concept or mission.goal)
+        # 出题（quiz 非空）即进入理解检查阶段；作答/跳过由 after_answer 推进。
+        if (
+            turn.quiz is not None
+            and turn.can_answer_reliably
+            and mission.stage
+            in {TeachingStage.MICRO_LESSON, TeachingStage.BLOCKED}
+        ):
+            mission = mission.model_copy(
+                update={
+                    "stage": TeachingStage.UNDERSTANDING_CHECK,
+                    "next_action": "回答这道理解检查题，或跳过、追问。",
+                }
+            )
+        return turn.model_copy(update={"mission": mission})
 
     def evaluate_answer(
         self,
@@ -393,9 +652,14 @@ class TeachingTurnService:
                 for term in quiz.expected_focus
                 if term and term.lower() in normalized.lower()
             ]
-            if _UNCERTAIN_ANSWER.search(normalized):
-                matched = []
             ratio = len(matched) / len(quiz.expected_focus) if quiz.expected_focus else 0
+            if _STRONG_UNKNOWN.search(normalized):
+                # 整句立场即否定：即使提到主题词也不能判正确。
+                matched = []
+                ratio = 0
+            elif _UNCERTAIN_ANSWER.search(normalized):
+                # 覆盖关键点但自认缺口：最多到 partial，不宣称掌握。
+                ratio *= 0.5
             if ratio >= 0.6:
                 state = AnswerEvaluatedState.CORRECT
                 basis = f"回答覆盖关键点：{'、'.join(matched)}。"
@@ -520,7 +784,9 @@ class TeachingTurnService:
 
     @staticmethod
     def _topic(query: str) -> str:
-        cleaned = re.sub(r"^(请|帮我|我想|想要|教我|讲讲|解释一下)\s*", "", query.strip())
+        """从用户表述提取规范主题（主/次动词一次组合匹配，避免残留）。"""
+        cleaned = _TOPIC_VERB_PREFIX.sub("", query.strip())
+        cleaned = cleaned.split("：", 1)[0].split(":", 1)[0]
         return cleaned.rstrip("。！？?!")[:40] or "当前概念"
 
 

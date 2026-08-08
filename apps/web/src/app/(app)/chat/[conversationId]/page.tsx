@@ -859,6 +859,11 @@ export default function ChatConversationPage() {
     void sendMessage("跳过这道理解检查，我想继续学习。", [], true);
   }, [sendMessage]);
 
+  // Issue 08：目标确认阶段一键按初学者开始（发送固定确认指令）。
+  const beginnerStartTeaching = useCallback(() => {
+    void sendMessage("按初学者开始", [], true);
+  }, [sendMessage]);
+
   const deleteAttachment = useCallback(
     async (messageId: string, attachment: ChatAttachmentProjection) => {
       try {
@@ -1102,6 +1107,7 @@ export default function ChatConversationPage() {
                 onRetry={(messageId) => void retry(messageId)}
                 onStop={() => void stop()}
                 onTeachingSkip={() => skipTeachingQuestion()}
+                onTeachingBeginnerStart={() => beginnerStartTeaching()}
                 onDownloadAttachment={(attachment) => void downloadAttachment(attachment)}
                 onDeleteAttachment={(messageId, attachment) =>
                   void deleteAttachment(messageId, attachment)

@@ -58,3 +58,6 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# Issue 08：worktree 开发时保证 tests 解析本工作树的 src，而不是
+# editable 安装指向的其他工作树（主工作区行为不受影响）。
+pythonpath = ["src"]

@@ -129,6 +129,7 @@ interface MessageListProps {
   onRetry?: (id: string) => void;
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;
+  onTeachingBeginnerStart?: (messageId: string) => void;
   onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
   onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
   /** 附件摄取重试（Issue 17）：页面处理器调用重试 API 并刷新对话 */
@@ -553,6 +554,7 @@ export function MessageList({
   conversationId,
   onStop,
   onTeachingSkip,
+  onTeachingBeginnerStart,
   tts,
   onRefreshMessages,
   onConfirmMcpCall,
@@ -695,6 +697,7 @@ export function MessageList({
                     teaching={message.teaching}
                     onSkip={() => onTeachingSkip?.(message.id)}
                     onRetry={() => onRetry?.(message.id)}
+                    onBeginnerStart={() => onTeachingBeginnerStart?.(message.id)}
                   />
                 )}
 

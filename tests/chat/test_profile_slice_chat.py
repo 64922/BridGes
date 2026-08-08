@@ -109,6 +109,12 @@ class _PermissiveTeachingService:
     def initial(self, query: str, *, recovery: bool = False) -> Any:
         return self._ready_projection()
 
+    def classify_intent(self, text: str, mission: Any) -> Any:
+        # Issue 08：放行桩不建立 mission，事实提问直接走 prepare。
+        from bridges.contracts.teaching import TeachingIntent
+
+        return TeachingIntent.FACT_QUESTION
+
     def prepare(self, query: str, **kwargs: object) -> Any:
         return self._ready_projection()
 

@@ -7,7 +7,17 @@ interface TeachingCardProps {
   teaching: TeachingTurnProjection;
   onSkip?: () => void;
   onRetry?: () => void;
+  onBeginnerStart?: () => void;
 }
+
+// Issue 08：教学状态机阶段的中文呈现。
+const stageLabel: Record<string, string> = {
+  mission_setup: "确认目标",
+  micro_lesson: "讲解概念",
+  understanding_check: "理解检查",
+  adaptation: "按回答调整",
+  blocked: "来源受阻",
+};
 
 const statusLabel: Record<string, string> = {
   loading: "正在检查证据",
@@ -54,10 +64,13 @@ function statusTone(status: string): string {
   return "var(--color-status-error)";
 }
 
-export function TeachingCard({ teaching, onSkip, onRetry }: TeachingCardProps) {
+export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: TeachingCardProps) {
   const gate = teaching.evidence_gate;
   const sources = [...(gate.local_sources ?? []), ...(gate.external_sources ?? [])];
   const isBusy = teaching.status === "loading" || teaching.status === "recovery";
+  const mission = teaching.mission;
+  const isMissionSetup = mission?.stage === "mission_setup";
+  const isBlocked = mission?.stage === "blocked";
 
   return (
     <section
@@ -89,24 +102,50 @@ export function TeachingCard({ teaching, onSkip, onRetry }: TeachingCardProps) {
         </div>
       </div>
 
-      <dl style={{ display: "grid", gap: "var(--space-2)", margin: "var(--space-4) 0 0", fontSize: "var(--text-sm)" }}>
-        <div>
-          <dt style={{ fontWeight: 600 }}>当前水平假设</dt>
-          <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>{teaching.level_assumption}</dd>
-        </div>
-        <div>
-          <dt style={{ fontWeight: 600 }}>本轮步骤</dt>
-          <dd style={{ margin: 0 }}>
-            <ol style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
-              {teaching.steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
-            </ol>
-          </dd>
-        </div>
-        <div>
-          <dt style={{ fontWeight: 600 }}>理解检查</dt>
-          <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>{teaching.check_method}</dd>
-        </div>
-      </dl>
+      {mission && (
+        <dl style={{ display: "grid", gap: "var(--space-2)", margin: "var(--space-4) 0 0", fontSize: "var(--text-sm)" }}>
+          <div>
+            <dt style={{ fontWeight: 600 }}>教学进度</dt>
+            <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+              {stageLabel[mission.stage] ?? mission.stage}
+              {mission.current_concept ? ` · 当前概念：${mission.current_concept}` : ""}
+            </dd>
+          </div>
+          {mission.taught_concepts && mission.taught_concepts.length > 0 && (
+            <div>
+              <dt style={{ fontWeight: 600 }}>已讲概念</dt>
+              <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>
+                {mission.taught_concepts.join("、")}
+              </dd>
+            </div>
+          )}
+          <div>
+            <dt style={{ fontWeight: 600 }}>下一步</dt>
+            <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>{mission.next_action}</dd>
+          </div>
+        </dl>
+      )}
+
+      {!mission && (
+        <dl style={{ display: "grid", gap: "var(--space-2)", margin: "var(--space-4) 0 0", fontSize: "var(--text-sm)" }}>
+          <div>
+            <dt style={{ fontWeight: 600 }}>当前水平假设</dt>
+            <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>{teaching.level_assumption}</dd>
+          </div>
+          <div>
+            <dt style={{ fontWeight: 600 }}>本轮步骤</dt>
+            <dd style={{ margin: 0 }}>
+              <ol style={{ margin: 0, paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
+                {teaching.steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
+              </ol>
+            </dd>
+          </div>
+          <div>
+            <dt style={{ fontWeight: 600 }}>理解检查</dt>
+            <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>{teaching.check_method}</dd>
+          </div>
+        </dl>
+      )}
 
       <div
         style={{
@@ -163,6 +202,15 @@ export function TeachingCard({ teaching, onSkip, onRetry }: TeachingCardProps) {
         )}
       </div>
 
+      {isBlocked && mission?.recovery_steps && mission.recovery_steps.length > 0 && (
+        <div style={{ marginTop: "var(--space-3)", fontSize: "var(--text-sm)" }}>
+          <strong>恢复动作</strong>
+          <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
+            {mission.recovery_steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
+          </ul>
+        </div>
+      )}
+
       {teaching.quiz && teaching.can_answer_reliably && (
         <div style={{ marginTop: "var(--space-4)" }}>
           <p style={{ margin: 0, fontWeight: 600 }}>理解检查题</p>
@@ -195,6 +243,11 @@ export function TeachingCard({ teaching, onSkip, onRetry }: TeachingCardProps) {
 
       <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center", flexWrap: "wrap", marginTop: "var(--space-4)" }}>
         <span style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>{teaching.next_prompt}</span>
+        {isMissionSetup && onBeginnerStart && (
+          <button type="button" onClick={onBeginnerStart} style={{ ...buttonStyle, borderColor: "var(--color-accent-primary)", color: "var(--color-accent-primary)" }}>
+            按初学者开始
+          </button>
+        )}
         {teaching.can_retry && onRetry && (
           <button type="button" onClick={onRetry} style={buttonStyle}>
             重试证据检查

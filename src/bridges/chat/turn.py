@@ -93,7 +93,12 @@ from bridges.contracts.retrieval import (
     RetrievalRoundProjection,
     RetrievalSourceLayer,
 )
-from bridges.contracts.teaching import TeachingCardStatus, TeachingTurnProjection
+from bridges.contracts.teaching import (
+    TeachingCardStatus,
+    TeachingIntent,
+    TeachingStage,
+    TeachingTurnProjection,
+)
 from bridges.contracts.video import VideoError, VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
@@ -1436,9 +1441,68 @@ class TurnOrchestrator:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
+                # 用户原文用于作答评价与 mission 更新；检索查询可能被替换
+                # 为规范概念（见下），两者必须分离。
+                user_input = round_query
                 previous_turn = previous_teaching_turn(
                     messages, owner.message_id if owner else None
                 )
+                # Issue 08：先分类意图，再按教学状态机分派；不检索整句意图。
+                mission = (
+                    previous_turn.mission if previous_turn is not None else None
+                )
+                intent = self._teaching.classify_intent(round_query, mission)
+
+                # 建立/修改目标：只确认目标与水平，不过证据门、不调模型。
+                if intent in {
+                    TeachingIntent.ESTABLISH_MISSION,
+                    TeachingIntent.MODIFY_MISSION,
+                }:
+                    teaching_projection = self._teaching.mission_setup(
+                        round_query, previous_mission=mission
+                    )
+                    self._repo.update_message_teaching(
+                        account_id,
+                        assistant_message_id,
+                        teaching_projection.model_dump(mode="json"),
+                        datetime.now(UTC),
+                    )
+                    mission_content = (
+                        f"好的，我们一起来学：{teaching_projection.goal}。"
+                        f"{teaching_projection.next_prompt}"
+                    )
+                    self._repo.update_message_content(
+                        account_id, assistant_message_id, mission_content, datetime.now(UTC)
+                    )
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=done_thinking(thinking),
+                        teaching=teaching_projection.model_dump(mode="json"),
+                    )
+                    yield StreamEvent(kind="delta", delta=mission_content)
+                    yield StreamEvent(kind="done")
+                    return
+
+                # mission 确认：解析水平假设与首概念，检索查询用规范主题。
+                if mission is not None and mission.stage == TeachingStage.MISSION_SETUP:
+                    mission = self._teaching.confirm_mission(round_query, mission)
+                    round_query = self._teaching.micro_lesson_query(mission)
+                elif mission is not None:
+                    # Issue 08：作答/追问/跳过等轮次的检索与公开搜索都用
+                    # 当前概念，不拿短答复或整句意图搜索。
+                    round_query = self._teaching.micro_lesson_query(mission)
+
+                # Issue 06：教学轮次受总时延预算约束（run 级共享 budget）。
                 if budget.enter(RunStage.LOCAL_RETRIEVAL):
                     yield self._stage_event(
                         assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
@@ -1472,6 +1536,9 @@ class TurnOrchestrator:
                     )
 
                 required_search = self._teaching.required_search(round_query, retrieval_round)
+                # 超预算跳过搜索时仍保持投影变量可引用（None 表示未执行）。
+                web_search_projection: WebSearchProjection | None = None
+                arxiv_search_projection: ArxivSearchProjection | None = None
 
                 arxiv_plan = None
                 search_plan = None
@@ -1657,8 +1724,13 @@ class TurnOrchestrator:
                     web_search=web_search_projection,
                     arxiv_search=arxiv_search_projection,
                     previous_turn=previous_turn,
-                    answer_text=round_query if previous_turn is not None else None,
+                    answer_text=user_input
+                    if previous_turn is not None
+                    and intent in {TeachingIntent.ANSWER, TeachingIntent.SKIP}
+                    else None,
                     answer_message_id=owner.message_id if owner is not None else None,
+                    mission=mission,
+                    intent=intent,
                 )
                 self._repo.update_message_teaching(
                     account_id,
@@ -1669,6 +1741,22 @@ class TurnOrchestrator:
                 thinking = teaching_thinking(thinking, teaching_projection)
 
                 # 证据门仍未通过时用明确缺口结束本轮，不让模型记忆冒充来源。
+                # Issue 06：教学轮次超预算时不再进入模型生成，用明确说明
+                # 交付并保留 mission（进度不丢失，可重试继续）。
+                if budget.expired() and teaching_projection.can_answer_reliably:
+                    teaching_projection = teaching_projection.model_copy(
+                        update={
+                            "status": TeachingCardStatus.RECOVERY,
+                            "can_answer_reliably": False,
+                            "gap_response": (
+                                "本轮教学受时延预算限制未完成生成；"
+                                "教学进度已保留，重试可继续。"
+                            ),
+                            "next_prompt": "重试可继续同一教学进度。",
+                        }
+                    )
+                    thinking = budget_warning_thinking(thinking)
+
                 if not teaching_projection.can_answer_reliably:
                     safe_response = teaching_projection.gap_response or (
                         "这轮的依据还不够，我先不把不确定内容说成可靠结论。"

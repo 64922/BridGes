@@ -55549,6 +55549,102 @@
         "title": "TeachingKnowledgeState",
         "description": "单轮作答形成的、仍需确认的知识状态候选。"
       },
+      "TeachingMission": {
+        "properties": {
+          "mission_id": {
+            "type": "string",
+            "title": "Mission Id",
+            "description": "稳定任务标识。"
+          },
+          "stage": {
+            "$ref": "#/components/schemas/TeachingStage",
+            "description": "当前教学阶段。"
+          },
+          "goal": {
+            "type": "string",
+            "title": "Goal",
+            "description": "规范学习目标（例如“学习 Transformer 的工作原理”）。"
+          },
+          "user_intent": {
+            "type": "string",
+            "title": "User Intent",
+            "description": "用户原始表述摘要（不直接当检索查询）。"
+          },
+          "current_concept": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current Concept",
+            "description": "本轮正在教学的概念（micro_lesson 起有值）。"
+          },
+          "level_assumption": {
+            "type": "string",
+            "title": "Level Assumption",
+            "description": "水平假设：初学者/已有基础。"
+          },
+          "level_basis": {
+            "type": "string",
+            "title": "Level Basis",
+            "description": "水平假设的依据（用户声明或默认）。"
+          },
+          "taught_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Taught Concepts",
+            "description": "已完成讲解的概念清单（进度）。"
+          },
+          "difficulty_streak": {
+            "type": "integer",
+            "title": "Difficulty Streak",
+            "description": "连续未通过/跳过检查的轮次数；达到阈值自动缩小概念或换例子。",
+            "default": 0
+          },
+          "next_action": {
+            "type": "string",
+            "title": "Next Action",
+            "description": "下一步动作的用户可见说明。"
+          },
+          "blocked_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Blocked Reason",
+            "description": "来源受阻原因（stage 为 blocked 时有值）。"
+          },
+          "recovery_steps": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Recovery Steps",
+            "description": "受阻时给用户的恢复动作。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "mission_id",
+          "stage",
+          "goal",
+          "user_intent",
+          "level_assumption",
+          "level_basis",
+          "next_action"
+        ],
+        "title": "TeachingMission",
+        "description": "会话中持久化的教学任务：目标、当前概念、水平假设、进度与下一步。\n\n随 ``TeachingTurnProjection.mission`` 落库，刷新/切换会话后恢复同一\n教学进度；mission 未确认（stage 为 mission_setup）时不生成正式教学\n回答，因此不受事实证据门约束。"
+      },
       "TeachingPlan": {
         "properties": {
           "plan_id": {
@@ -55785,11 +55881,34 @@
         "title": "TeachingSearchSource",
         "description": "证据门需要补充的公开来源。"
       },
+      "TeachingStage": {
+        "type": "string",
+        "enum": [
+          "mission_setup",
+          "micro_lesson",
+          "understanding_check",
+          "adaptation",
+          "blocked"
+        ],
+        "title": "TeachingStage",
+        "description": "会话中持久化的教学状态机阶段（Issue 08）。\n\n- ``mission_setup``：确认学习目标、用途与已有水平，不生成正式教学回答；\n- ``micro_lesson``：基于合格来源一次讲一个概念（解释、例子、边界）；\n- ``understanding_check``：本轮理解检查题等待作答；\n- ``adaptation``：依据回答证据选择补讲、换例子、迁移或下一概念；\n- ``blocked``：来源受阻时保留 mission 与恢复动作，不回退成无关回答。"
+      },
       "TeachingTurnProjection": {
         "properties": {
           "status": {
             "$ref": "#/components/schemas/TeachingCardStatus",
             "description": "教学卡片状态。"
+          },
+          "mission": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingMission"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "会话中持久化的教学任务；普通陪伴/未确认时为 None。"
           },
           "goal": {
             "type": "string",

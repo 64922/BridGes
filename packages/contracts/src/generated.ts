@@ -22935,6 +22935,74 @@ export interface components {
          */
         TeachingKnowledgeState: "unknown" | "emerging_candidate" | "supported_candidate";
         /**
+         * TeachingMission
+         * @description 会话中持久化的教学任务：目标、当前概念、水平假设、进度与下一步。
+         *
+         *     随 ``TeachingTurnProjection.mission`` 落库，刷新/切换会话后恢复同一
+         *     教学进度；mission 未确认（stage 为 mission_setup）时不生成正式教学
+         *     回答，因此不受事实证据门约束。
+         */
+        TeachingMission: {
+            /**
+             * Mission Id
+             * @description 稳定任务标识。
+             */
+            mission_id: string;
+            /** @description 当前教学阶段。 */
+            stage: components["schemas"]["TeachingStage"];
+            /**
+             * Goal
+             * @description 规范学习目标（例如“学习 Transformer 的工作原理”）。
+             */
+            goal: string;
+            /**
+             * User Intent
+             * @description 用户原始表述摘要（不直接当检索查询）。
+             */
+            user_intent: string;
+            /**
+             * Current Concept
+             * @description 本轮正在教学的概念（micro_lesson 起有值）。
+             */
+            current_concept?: string | null;
+            /**
+             * Level Assumption
+             * @description 水平假设：初学者/已有基础。
+             */
+            level_assumption: string;
+            /**
+             * Level Basis
+             * @description 水平假设的依据（用户声明或默认）。
+             */
+            level_basis: string;
+            /**
+             * Taught Concepts
+             * @description 已完成讲解的概念清单（进度）。
+             */
+            taught_concepts?: string[];
+            /**
+             * Difficulty Streak
+             * @description 连续未通过/跳过检查的轮次数；达到阈值自动缩小概念或换例子。
+             * @default 0
+             */
+            difficulty_streak: number;
+            /**
+             * Next Action
+             * @description 下一步动作的用户可见说明。
+             */
+            next_action: string;
+            /**
+             * Blocked Reason
+             * @description 来源受阻原因（stage 为 blocked 时有值）。
+             */
+            blocked_reason?: string | null;
+            /**
+             * Recovery Steps
+             * @description 受阻时给用户的恢复动作。
+             */
+            recovery_steps?: string[];
+        };
+        /**
          * TeachingPlan
          * @description A minimal teaching plan derived from a mission and its knowledge states.
          *
@@ -23092,12 +23160,26 @@ export interface components {
          */
         TeachingSearchSource: "none" | "duckduckgo" | "arxiv" | "both";
         /**
+         * TeachingStage
+         * @description 会话中持久化的教学状态机阶段（Issue 08）。
+         *
+         *     - ``mission_setup``：确认学习目标、用途与已有水平，不生成正式教学回答；
+         *     - ``micro_lesson``：基于合格来源一次讲一个概念（解释、例子、边界）；
+         *     - ``understanding_check``：本轮理解检查题等待作答；
+         *     - ``adaptation``：依据回答证据选择补讲、换例子、迁移或下一概念；
+         *     - ``blocked``：来源受阻时保留 mission 与恢复动作，不回退成无关回答。
+         * @enum {string}
+         */
+        TeachingStage: "mission_setup" | "micro_lesson" | "understanding_check" | "adaptation" | "blocked";
+        /**
          * TeachingTurnProjection
          * @description 统一聊天流中的一轮教学编排投影。
          */
         TeachingTurnProjection: {
             /** @description 教学卡片状态。 */
             status: components["schemas"]["TeachingCardStatus"];
+            /** @description 会话中持久化的教学任务；普通陪伴/未确认时为 None。 */
+            mission?: components["schemas"]["TeachingMission"] | null;
             /**
              * Goal
              * @description 本轮确认或推导的学习目标。
