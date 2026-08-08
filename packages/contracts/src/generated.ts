@@ -13179,7 +13179,8 @@ export interface components {
          * @description 人味化输出合同：缺一不标记完成。
          *
          *     五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、
-         *     open_questions 字段存在且可空列表已说明）才视为完成。
+         *     open_questions 字段存在且可空列表已说明）才视为完成；软门状态
+         *     （quality_status）与来源附件（source_attachment_ids）随输出持久化。
          */
         HumanizerOutputContract: {
             /**
@@ -13202,6 +13203,16 @@ export interface components {
              * @description 尚未解决的问题（可空但必须存在）。
              */
             open_questions?: string[];
+            /**
+             * @description 软门质量状态：风格指标未完全通过时为 warn（正文照常交付）。
+             * @default ok
+             */
+            quality_status: components["schemas"]["HumanizerQualityStatus"];
+            /**
+             * Source Attachment Ids
+             * @description 改写路径实际解析成功的当前消息附件（与消息绑定一致）。
+             */
+            source_attachment_ids?: string[];
         };
         /**
          * HumanizerPath
@@ -13218,6 +13229,15 @@ export interface components {
          * @enum {string}
          */
         HumanizerProcessState: "loading" | "empty" | "error" | "permission" | "recovery" | "done";
+        /**
+         * HumanizerQualityStatus
+         * @description 软门质量状态：风格类指标（句式/节奏/体裁/重复/口吻）的交付口径。
+         *
+         *     OK 表示软门全部通过；WARN 表示存在未完全满足项，正文仍照常交付并
+         *     附具体警告（硬门才有权阻止交付最终稿）。
+         * @enum {string}
+         */
+        HumanizerQualityStatus: "ok" | "warn";
         /**
          * HumanizerReference
          * @description 人味化结果保持的引用条目（经本地/联网证据合同呈现）。
@@ -13298,6 +13318,17 @@ export interface components {
              * @description 体裁规则复核结果的中文摘要。
              */
             genre_check?: string[];
+            /**
+             * Quality Warnings
+             * @description 软门未完全满足项的中文警告（交付正文时附；硬门冲突不在此列）。
+             */
+            quality_warnings?: string[];
+            /**
+             * Repair Attempts
+             * @description 软门定向修复次数（最多 1 次，受总预算约束）。
+             * @default 0
+             */
+            repair_attempts: number;
             /**
              * @description 过程卡当前状态。
              * @default loading

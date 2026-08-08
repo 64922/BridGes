@@ -69,6 +69,7 @@ from bridges.contracts.chat import (
     VideoRequestPayload,
 )
 from bridges.contracts.humanizer import (
+    HumanizerPath,
     HumanizerResultStatus,
     HumanizerSkillInput,
 )
@@ -258,21 +259,11 @@ _ERROR_MESSAGES: dict[str, str] = {
     "arxiv_cancelled": "已取消本轮论文搜索。",
     "arxiv_no_results": "没有找到匹配的 arXiv 论文，请调整领域或约束后重试。",
     "arxiv_citation_invalid": "论文回答缺少可核实的 arXiv 引用，请重试。",
-    # Issue 28：bridges-humanizer SKILL 编排错误（中文可操作提示）。
-    "empty_source": "没有可改写的原文：请粘贴文本或选择当前账户文件。",
-    "empty_topic": "缺少主题：请填写要生成的文章主题。",
+    # Issue 07：humanizer 独有错误码不在此映射——其错误消息由编排服务
+    # 构造（含冲突项与恢复方式的中文可操作说明），命中映射会吞掉详情；
+    # 未命中时 executor 以服务消息为兜底（错误文案仍不泄漏内部 prompt）。
     "skill_unavailable": "SKILL 能力暂不可用，请稍后重试。",
-    "skill_version_conflict": "SKILL 版本固定，不支持自定义版本，请重新发起任务。",
-    "humanizer_generation_failed": "人味化生成失败，请重试（输入已保留）。",
-    "humanizer_failed": "人味化任务执行异常，请重试（输入已保留）。",
     "budget_exceeded": "本次生成超过时延预算，已停止继续执行；请重试（输入已保留）。",
-    "empty_output": "生成结果缺少最终文本，请重试。",
-    "output_contract_incomplete": "输出合同不完整，请重试（输入已保留）。",
-    "genre_check_failed": "体裁规则复核未通过，请调整任务后重试。",
-    "fact_lock_conflict": (
-        "事实锁冲突，已停止交付：请核对原文中的数值、单位、公式与"
-        "限定条件后重试。"
-    ),
 }
 
 #: 用户点击重试后有望成功的错误码（限流/瞬时故障/断流/内部错误）。
@@ -310,7 +301,6 @@ _RETRYABLE_CODES = frozenset(
         "humanizer_failed",
         "empty_output",
         "output_contract_incomplete",
-        "genre_check_failed",
         # Issue 06：超预算终止可重试（重试创建新运行，预算重新开始）。
         "budget_exceeded",
     }
@@ -2533,7 +2523,18 @@ class TurnOrchestrator:
         messages = self._repo.list_messages(account_id, conversation_id)
         owner = owner_user_message(messages, assistant_message_id)
         round_query = owner.content if owner is not None else ""
-        if budget.enter(RunStage.LOCAL_RETRIEVAL):
+        # Issue 07：改写路径只以用户粘贴/附件为原文，默认不检索全局知识库
+        # （知识库中不相关图片等材料绝不进入证据合同）；用户显式开启「补充
+        # 检索全局知识库」时检索轮次进入改写证据合同（仅作补充，不替代原文）。
+        # 生成路径保持既有检索行为。
+        rewrite_path = skill_input.contract.path == HumanizerPath.REWRITE
+        if rewrite_path and not use_knowledge_base:
+            # 未进入阶段 → exit 记为 skipped（与预算文档语义一致）
+            budget.exit(RunStage.LOCAL_RETRIEVAL)
+            yield self._stage_event(
+                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
+            )
+        elif budget.enter(RunStage.LOCAL_RETRIEVAL):
             yield self._stage_event(
                 assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
             )
@@ -2709,6 +2710,7 @@ class TurnOrchestrator:
                 retrieval_round=retrieval_round,
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
+                budget=budget,
             ):
                 if budget.expired():
                     # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
@@ -2769,6 +2771,17 @@ class TurnOrchestrator:
                             progress_steps=run_event.progress_steps,
                         ),
                     )
+                    continue
+                if run_event.kind == "draft":
+                    # Issue 07：模型产出正文后立即持久化草稿——刷新/切会话
+                    # 后仍可见；随后的软门修复与复核只更新状态，不删草稿。
+                    if run_event.draft_text:
+                        self._repo.update_message_content(
+                            account_id,
+                            assistant_message_id,
+                            run_event.draft_text,
+                            datetime.now(UTC),
+                        )
                     continue
                 result = run_event.result
                 if result is None:

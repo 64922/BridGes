@@ -25,6 +25,7 @@ from bridges.contracts.expression import Genre
 from bridges.contracts.humanizer import (
     HumanizerPath,
     HumanizerProcessState,
+    HumanizerQualityStatus,
     HumanizerResultStatus,
     HumanizerSkillInput,
     HumanizerTaskContract,
@@ -77,15 +78,22 @@ def _structured_capability() -> CapabilityRecord:
 
 
 class _ProgrammableStructuredAdapter:
-    """可编程结构化适配器：返回预置 JSON 输出或抛供应商错误。"""
+    """可编程结构化适配器：返回预置 JSON 输出或抛供应商错误。
+
+    ``sequence``（Issue 07）按调用次数依次返回输出或抛错误（末项复用），
+    用于软门「初始产出 → 至多一次修复」的调用序列断言。
+    """
 
     def __init__(
         self,
         output: dict[str, Any] | None = None,
         error: AdapterError | None = None,
+        sequence: list[Any] | None = None,
     ) -> None:
         self._output = output
         self._error = error
+        self._sequence = list(sequence or [])
+        self.calls = 0
 
     def call(
         self,
@@ -93,6 +101,12 @@ class _ProgrammableStructuredAdapter:
         run_context: Any,
         payload: dict[str, Any],
     ) -> AdapterResult:
+        self.calls += 1
+        if self._sequence:
+            item = self._sequence[min(self.calls - 1, len(self._sequence) - 1)]
+            if isinstance(item, AdapterError):
+                raise item
+            return AdapterResult(actual_model_id=capability.model_id, output=item)
         if self._error is not None:
             raise self._error
         return AdapterResult(
@@ -162,7 +176,12 @@ def _good_output(final_text: str = _COMPLIANT_FINAL) -> dict[str, Any]:
     }
 
 
-def _run(service: HumanizerService, skill_input: HumanizerSkillInput) -> tuple[list[Any], Any]:
+def _run(
+    service: HumanizerService,
+    skill_input: HumanizerSkillInput,
+    *,
+    budget: Any = None,
+) -> tuple[list[Any], Any]:
     events = list(
         service.run_task(
             "acc-test",
@@ -170,6 +189,7 @@ def _run(service: HumanizerService, skill_input: HumanizerSkillInput) -> tuple[l
             "msg-test",
             skill_input,
             _run_context(),
+            budget=budget,
         )
     )
     result = next(e.result for e in events if e.kind == "result")
@@ -223,14 +243,22 @@ def test_output_contract_incomplete_rejected() -> None:
     assert "修改细节" in (result.error_message or "")
 
 
-def test_genre_check_failure_rejected() -> None:
-    # 保持全部事实锁但缺失类比/边界/行动相关性的科普文案 → 体裁复核不通过
+def test_genre_check_failure_delivers_text_with_warnings() -> None:
+    # Issue 07：软门（体裁等风格指标）失败不扣留正文——交付当前最佳
+    # 正文并附未完全满足项；重新生成是可选项而非唯一出口。
     bad_genre = _good_output(_COMPLIANT_FINAL.split("你可以把光合作用比作")[0].rstrip("。"))
     service = _make_service(_ProgrammableStructuredAdapter(output=bad_genre))
-    _, result = _run(service, _rewrite_input())
-    assert result.status == HumanizerResultStatus.ERROR
-    assert result.error_code == "genre_check_failed"
-    assert "科普文案" in (result.error_message or "")
+    events, result = _run(service, _rewrite_input())
+    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
+    assert result.output is not None
+    assert result.output.final_text == bad_genre["final_text"]
+    assert result.output.quality_status == HumanizerQualityStatus.WARN
+    assert result.quality_warnings  # 具体未满足项
+    assert any("类比" in warning for warning in result.quality_warnings)
+    assert result.repair_attempts == 0  # 未传预算 → 预算内未执行修复
+    # 草稿事件：模型产出正文后立即下发
+    drafts = [e.draft_text for e in events if e.kind == "draft"]
+    assert drafts and drafts[-1] == bad_genre["final_text"]
 
 
 def test_empty_source_is_empty_state() -> None:
@@ -462,3 +490,172 @@ def test_attachment_read_failure_is_retryable_and_names_attachment() -> None:
     assert result.status == HumanizerResultStatus.ERROR
     assert result.error_code == "attachment_unreadable"
     assert result.process_state == HumanizerProcessState.RECOVERY
+
+
+# ---------------------------------------------------------------------------
+# Issue 07：两级质量门——软门（体裁等风格）至多一次有预算修复，仍不过交付
+# 正文与具体警告；硬门（事实锁冲突）才阻止标记最终稿并附恢复方式。
+# ---------------------------------------------------------------------------
+
+def _bad_genre_output() -> dict[str, Any]:
+    """保持全部事实锁但缺失类比/边界/行动相关性的科普文案（体裁软门不过）。"""
+    return _good_output(_COMPLIANT_FINAL.split("你可以把光合作用比作")[0].rstrip("。"))
+
+
+def _budget(total_ms: int = 120_000) -> Any:
+    from bridges.chat.budget import RunBudget
+
+    return RunBudget("run-test", total_ms=total_ms)
+
+
+def test_soft_gate_repairs_once_and_succeeds() -> None:
+    """软门失败且预算允许：至多一次定向修复；修复后通过 → 正常终态。"""
+    good = _good_output()
+    adapter = _ProgrammableStructuredAdapter(sequence=[_bad_genre_output(), good])
+    _, result = _run(service := _make_service(adapter), _rewrite_input(), budget=_budget())
+    assert result.status == HumanizerResultStatus.DONE
+    assert result.output is not None
+    assert result.output.final_text == good["final_text"]
+    assert result.output.quality_status == HumanizerQualityStatus.OK
+    assert result.repair_attempts == 1
+    assert adapter.calls == 2  # 初始产出 + 一次修复，绝无第二次循环
+
+
+def test_soft_gate_repair_failure_delivers_original_draft() -> None:
+    """修复调用失败（供应商错误）：交付原草稿 + 具体警告，不升级硬门。"""
+    from bridges.ai.adapters import RateLimitError
+
+    bad = _bad_genre_output()
+    adapter = _ProgrammableStructuredAdapter(
+        sequence=[bad, RateLimitError("slow")]
+    )
+    _, result = _run(service := _make_service(adapter), _rewrite_input(), budget=_budget())
+    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
+    assert result.output is not None
+    assert result.output.final_text == bad["final_text"]  # 原草稿未被清空
+    assert result.output.quality_status == HumanizerQualityStatus.WARN
+    assert result.repair_attempts == 1
+    assert result.quality_warnings
+
+
+def test_soft_gate_repairs_at_most_once() -> None:
+    """修复后仍不过：不循环重生成，交付正文 + 未完全满足项。"""
+    bad = _bad_genre_output()
+    adapter = _ProgrammableStructuredAdapter(sequence=[bad, bad])
+    _, result = _run(service := _make_service(adapter), _rewrite_input(), budget=_budget())
+    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
+    assert result.output is not None
+    assert result.output.final_text == bad["final_text"]
+    assert result.repair_attempts == 1
+    assert adapter.calls == 2  # 恰好一次修复，无第三次调用
+    assert any("类比" in warning for warning in result.quality_warnings)
+
+
+def test_soft_gate_skips_repair_when_budget_exhausted() -> None:
+    """预算耗尽（issue 06 总预算约束）：不修复，交付正文并说明预算内未修复。"""
+    bad = _bad_genre_output()
+    adapter = _ProgrammableStructuredAdapter(sequence=[bad])
+    _, result = _run(service := _make_service(adapter), _rewrite_input(), budget=_budget(0))
+    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
+    assert result.output is not None
+    assert result.repair_attempts == 0
+    assert adapter.calls == 1  # 预算不足绝不发起修复调用
+    assert any("预算" in warning for warning in result.quality_warnings)
+
+
+def test_draft_event_carries_final_text_before_result() -> None:
+    """草稿事件：模型产出正文后立即下发（复核/修复前），正文永不清空。"""
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    events, result = _run(service, _rewrite_input())
+    drafts = [e for e in events if e.kind == "draft"]
+    assert drafts
+    assert drafts[-1].draft_text == _COMPLIANT_FINAL
+    result_index = next(i for i, e in enumerate(events) if e.kind == "result")
+    assert all(i < result_index for i, e in enumerate(events) if e.kind == "draft")
+
+
+def test_rewrite_records_source_attachment_ids() -> None:
+    """改写解析成功的附件 ID 随输出持久化，与消息绑定一致。"""
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    service._attachments = _FakeAttachmentService(  # noqa: SLF001 - 测试直连
+        filename="原文.txt",
+        content="光合作用指的是植物把光能转化为化学能的过程。研究显示，在"
+        "光照充足的条件下，水稻叶片的净光合速率约为 25 μmol·m⁻²·s⁻¹；"
+        "当温度超过 35°C 时，速率会显著下降（Zhang et al., 2021）。"
+        "你可以把光合作用比作植物的充电过程，但比喻到此为止。".encode(),
+        media_type="text/plain",
+    )
+    skill_input = HumanizerSkillInput(
+        skill_id="bridges-humanizer",
+        contract=HumanizerTaskContract(
+            path=HumanizerPath.REWRITE,
+            genre=Genre.POPULAR_SCIENCE,
+            attachment_ids=["obj-docx-1"],
+        ),
+    )
+    _, result = _run(service, skill_input)
+    assert result.output is not None
+    assert result.output.source_attachment_ids == ["obj-docx-1"]
+    # 原文进入引用清单（界面列出原文来源）
+    assert any(ref.source_type == "attachment" for ref in result.references)
+    assert any("文件：" in (ref.detail or "") for ref in result.references)
+
+
+def test_rewrite_default_ignores_retrieval_without_round() -> None:
+    """默认路径（未显式开启补充检索）：不产生任何知识库检索引用。"""
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    events = list(
+        service.run_task(
+            "acc-test",
+            "conv-test",
+            "msg-test",
+            _rewrite_input(),
+            _run_context(),
+            retrieval_round=None,
+        )
+    )
+    result = next(e.result for e in events if e.kind == "result")
+    assert not any(ref.source_type == "retrieval" for ref in result.references)
+
+
+def test_rewrite_explicit_retrieval_round_adds_citations() -> None:
+    """显式开启补充检索（retrieval_round 非空）：检索引用仅作补充进入
+    证据合同，绝不替代原文（改写原文仍来自用户材料）。"""
+    citation = SimpleNamespace(
+        page_number=3,
+        section_title="插图",
+        filename="补充材料.pdf",
+        snippet="显式开启后的知识库补充材料",
+    )
+    retrieval_round = SimpleNamespace(citations=[citation])
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    events = list(
+        service.run_task(
+            "acc-test",
+            "conv-test",
+            "msg-test",
+            _rewrite_input(),
+            _run_context(),
+            retrieval_round=retrieval_round,
+        )
+    )
+    result = next(e.result for e in events if e.kind == "result")
+    assert any(ref.source_type == "retrieval" for ref in result.references)
+    assert any("补充材料.pdf" in (ref.label or "") for ref in result.references)
+
+
+def test_fact_lock_conflict_message_includes_recovery_path() -> None:
+    """硬门：阻止标记最终稿，错误投影含冲突字段与可操作恢复方式。"""
+    violating = _good_output(_COMPLIANT_FINAL.replace("25 μmol·m⁻²·s⁻¹", "30 μmol·m⁻²·s⁻¹"))
+    service = _make_service(_ProgrammableStructuredAdapter(output=violating))
+    events, result = _run(service, _rewrite_input(), budget=_budget())
+    assert result.status == HumanizerResultStatus.ERROR
+    assert result.error_code == "fact_lock_conflict"
+    assert result.output is None  # 硬门：不交付违规版本（允许无 final text）
+    assert result.fact_lock_check is not None
+    assert result.fact_lock_check.blocking_conflicts
+    assert "恢复方式" in (result.error_message or "")
+    assert "重试" in (result.error_message or "")
+    # 硬门不执行软门修复：修复只在无硬门冲突时触发
+    drafts = [e.draft_text for e in events if e.kind == "draft"]
+    assert drafts  # 草稿仍在（不删除），但结果卡明确停止交付

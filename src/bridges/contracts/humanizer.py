@@ -75,6 +75,17 @@ class HumanizerResultStatus(StrEnum):
     ERROR = "error"
 
 
+class HumanizerQualityStatus(StrEnum):
+    """软门质量状态：风格类指标（句式/节奏/体裁/重复/口吻）的交付口径。
+
+    OK 表示软门全部通过；WARN 表示存在未完全满足项，正文仍照常交付并
+    附具体警告（硬门才有权阻止交付最终稿）。
+    """
+
+    OK = "ok"
+    WARN = "warn"
+
+
 class HumanizerTaskContract(BaseModel):
     """一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。
 
@@ -193,7 +204,8 @@ class HumanizerOutputContract(BaseModel):
     """人味化输出合同：缺一不标记完成。
 
     五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、
-    open_questions 字段存在且可空列表已说明）才视为完成。
+    open_questions 字段存在且可空列表已说明）才视为完成；软门状态
+    （quality_status）与来源附件（source_attachment_ids）随输出持久化。
     """
 
     final_text: str = Field(description="最终文本。")
@@ -205,6 +217,14 @@ class HumanizerOutputContract(BaseModel):
     )
     open_questions: list[str] = Field(
         default_factory=list, description="尚未解决的问题（可空但必须存在）。"
+    )
+    quality_status: HumanizerQualityStatus = Field(
+        default=HumanizerQualityStatus.OK,
+        description="软门质量状态：风格指标未完全通过时为 warn（正文照常交付）。",
+    )
+    source_attachment_ids: list[str] = Field(
+        default_factory=list,
+        description="改写路径实际解析成功的当前消息附件（与消息绑定一致）。",
     )
 
     def completeness_gaps(self) -> list[str]:
@@ -259,6 +279,13 @@ class HumanizerResultProjection(BaseModel):
     )
     genre_check: list[str] = Field(
         default_factory=list, description="体裁规则复核结果的中文摘要。"
+    )
+    quality_warnings: list[str] = Field(
+        default_factory=list,
+        description="软门未完全满足项的中文警告（交付正文时附；硬门冲突不在此列）。",
+    )
+    repair_attempts: int = Field(
+        default=0, description="软门定向修复次数（最多 1 次，受总预算约束）。"
     )
     process_state: HumanizerProcessState = Field(
         default=HumanizerProcessState.LOADING, description="过程卡当前状态。"
@@ -316,6 +343,7 @@ __all__ = [
     "FactLockSeverity",
     "HumanizerProcessState",
     "HumanizerResultStatus",
+    "HumanizerQualityStatus",
     "HumanizerTaskContract",
     "HumanizerSkillInput",
     "FactLockEntry",

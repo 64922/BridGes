@@ -23,11 +23,16 @@ export function HumanizerResultCard({
 }) {
   const [expanded, setExpanded] = useState(false);
 
+  // Issue 07：软门未完全满足时正文照常交付——状态标签明确「已交付」，
+  // 未满足项以警告列表呈现，重新生成是可选操作而非唯一出口。
+  const softWarned = result.output?.quality_status === "warn";
   const statusLabel =
     result.status === "done"
       ? "人味化完成"
       : result.status === "needs_human"
-        ? "需人工确认"
+        ? softWarned
+          ? "已交付（含未完全满足项）"
+          : "需人工确认"
         : "任务未完成";
   const statusColor =
     result.status === "done"
@@ -111,6 +116,40 @@ export function HumanizerResultCard({
 
       {expanded && (
         <div>
+          {/* 软门未完全满足项（Issue 07：正文照常交付并附具体警告） */}
+          {(result.quality_warnings?.length ?? 0) > 0 && (
+            <div style={sectionStyle}>
+              <p style={labelStyle}>未完全满足项（正文已照常交付）</p>
+              <ul
+                role="list"
+                data-testid="humanizer-quality-warnings"
+                style={{
+                  margin: "var(--space-1) 0 0",
+                  paddingLeft: "1.25rem",
+                  display: "grid",
+                  gap: "var(--space-1)",
+                  color: "var(--color-status-warning)",
+                  fontSize: "var(--text-sm)",
+                }}
+              >
+                {result.quality_warnings!.map((warning, index) => (
+                  <li key={`${warning}-${index}`}>{warning}</li>
+                ))}
+              </ul>
+              {result.repair_attempts != null && result.repair_attempts > 0 && (
+                <p
+                  style={{
+                    margin: "var(--space-1) 0 0",
+                    color: "var(--color-text-secondary)",
+                    fontSize: "var(--text-xs)",
+                  }}
+                >
+                  已按体裁规则定向修正 {result.repair_attempts} 次后交付（受总预算约束，至多一次）。
+                </p>
+              )}
+            </div>
+          )}
+
           {/* 事实锁比较摘要 */}
           {result.fact_lock_check && (
             <div style={sectionStyle}>

@@ -20,6 +20,7 @@ from typing import Any
 
 from bridges.ai.model_gateway import ModelGateway
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
+from bridges.chat.budget import RESULT_FAILED, RunBudget, RunStage
 from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.humanizer import (
     FactLockCheckResult,
@@ -32,6 +33,7 @@ from bridges.contracts.humanizer import (
     HumanizerOutputContract,
     HumanizerPath,
     HumanizerProcessState,
+    HumanizerQualityStatus,
     HumanizerReference,
     HumanizerResultProjection,
     HumanizerResultStatus,
@@ -118,12 +120,15 @@ class HumanizerRunKind(StrEnum):
     """编排事件类别。"""
 
     PROCESS = "process"
+    #: 草稿事件：模型产出正文后立即下发（复核/修复前），聊天服务收到
+    #: 即持久化消息正文——刷新/切会话后可见草稿，软检查不删除草稿。
+    DRAFT = "draft"
     RESULT = "result"
 
 
 @dataclass
 class HumanizerRunEvent:
-    """编排向聊天服务产出的事件（过程事件或最终结果）。"""
+    """编排向聊天服务产出的事件（过程事件、草稿或最终结果）。"""
 
     kind: HumanizerRunKind
     state: HumanizerProcessState | None = None
@@ -131,7 +136,19 @@ class HumanizerRunEvent:
     detail: str | None = None
     retryable: bool = False
     progress_steps: list[str] = field(default_factory=list)
+    #: 草稿事件携带的正文（终态前的最新可交付文本）。
+    draft_text: str | None = None
     result: HumanizerResultProjection | None = None
+
+
+@dataclass
+class _ReviewCheckpoint:
+    """一次确定性复核的结果（终态判定前的不变中间态）。"""
+
+    output: HumanizerOutputContract
+    fact_lock_check: FactLockCheckResult
+    genre_check: GenreCheckResult
+    references: list[HumanizerReference]
 
 
 class HumanizerService:
@@ -179,8 +196,15 @@ class HumanizerService:
         retrieval_round: Any | None = None,
         web_search_projection: Any | None = None,
         arxiv_search_projection: Any | None = None,
+        budget: RunBudget | None = None,
     ) -> Iterator[HumanizerRunEvent]:
-        """执行一条人味化任务：yield 过程事件，最后 yield 结果事件。"""
+        """执行一条人味化任务：yield 过程事件，最后 yield 结果事件。
+
+        Issue 07：模型产出正文后立即 yield 草稿事件（聊天服务持久化
+        消息正文，软检查只更新状态不删草稿）；体裁等软门至多触发一次
+        有预算的定向修复，仍未完全通过时交付当前最佳正文与具体警告；
+        事实锁等硬门才阻止把文本标为最终稿（投影附冲突项与恢复方式）。
+        """
         skill_version = self.resolve_skill(skill_input)
         contract = skill_input.contract
         progress: list[str] = []
@@ -204,9 +228,11 @@ class HumanizerService:
         try:
             # 步骤 1：解析任务契约与来源（改写路径）
             yield process(HumanizerProcessState.LOADING, "正在解析任务契约…")
-            source_text, source_label, references = self._resolve_source(
-                account_id, conversation_id, contract, retrieval_round,
-                web_search_projection, arxiv_search_projection,
+            source_text, source_label, references, source_attachment_ids = (
+                self._resolve_source(
+                    account_id, conversation_id, contract, retrieval_round,
+                    web_search_projection, arxiv_search_projection,
+                )
             )
             progress.append("解析任务契约")
 
@@ -245,19 +271,53 @@ class HumanizerService:
             )
             progress.append("按体裁规则生成")
 
-            # 步骤 4：确定性复核
-            yield process(HumanizerProcessState.LOADING, "正在复核事实锁与体裁规则…")
+            # 步骤 3.5：模型产出正文后立即下发草稿事件——聊天服务据此
+            # 持久化消息正文；随后的软检查/修复/复核不删除草稿（Issue 07）。
             output = self._coerce_output(result.output or {})
-            final_result = self._review(
+            output = output.model_copy(
+                update={"source_attachment_ids": list(source_attachment_ids)}
+            )
+            yield HumanizerRunEvent(
+                kind=HumanizerRunKind.DRAFT,
+                draft_text=output.final_text.strip(),
+                progress_steps=list(progress),
+            )
+
+            # 步骤 4：确定性复核——硬门（事实锁冲突）停止交付；软门
+            # （体裁等风格指标）至多一次有预算的定向修复，仍不过则交付
+            # 当前最佳正文与具体警告（Issue 07 两级质量门）。
+            yield process(HumanizerProcessState.LOADING, "正在复核事实锁与体裁规则…")
+            checkpoint = self._review_checks(
+                contract, output, source_text, fact_lock_source, references
+            )
+            repair_attempts = 0
+            if (
+                checkpoint.genre_check
+                and not checkpoint.genre_check.passed
+                and not checkpoint.fact_lock_check.blocking_conflicts
+            ):
+                repair_attempts, checkpoint = self._repair_once(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    skill_input,
+                    skill_version,
+                    source_text,
+                    source_label,
+                    locks,
+                    run_context,
+                    checkpoint,
+                    budget,
+                    fact_lock_source,
+                )
+            final_result = self._finalize_result(
                 account_id,
                 conversation_id,
                 assistant_message_id,
                 skill_input,
                 skill_version,
-                output,
-                source_text,
-                fact_lock_source,
-                references,
+                checkpoint,
+                repair_attempts,
             )
             progress.append("确定性复核")
             final_result.process_steps = progress
@@ -308,8 +368,14 @@ class HumanizerService:
         retrieval_round: Any | None,
         web_search_projection: Any | None,
         arxiv_search_projection: Any | None,
-    ) -> tuple[str, str, list[HumanizerReference]]:
-        """改写路径解析原文（粘贴或附件），并组装证据合同引用清单。"""
+    ) -> tuple[str, str, list[HumanizerReference], list[str]]:
+        """改写路径解析原文（粘贴或附件），并组装证据合同引用清单。
+
+        Issue 07：改写原文只来自用户粘贴/附件，默认不引用知识库检索
+        候选（知识库中不相关图片等材料绝不进入改写证据合同）；解析成功
+        的附件 ID 随输出持久化（``source_attachment_ids``），与消息绑定
+        一致，供界面核对原文文件名。
+        """
         references: list[HumanizerReference] = []
         if contract.path == HumanizerPath.GENERATE:
             topic = (contract.topic or "").strip()
@@ -317,10 +383,11 @@ class HumanizerService:
                 raise HumanizerError(
                     "empty_topic", "缺少主题：请填写要生成的文章主题。", retryable=True
                 )
-            return topic, "主题", references
+            return topic, "主题", references, []
 
         source_parts: list[str] = []
         label_parts: list[str] = []
+        source_attachment_ids: list[str] = []
         if contract.source_text and contract.source_text.strip():
             source_parts.append(contract.source_text.strip())
             label_parts.append("粘贴文本")
@@ -330,6 +397,7 @@ class HumanizerService:
             parsed = self._parse_attachment(account_id, conversation_id, attachment_id)
             source_parts.append(parsed.text)
             label_parts.append(parsed.title)
+            source_attachment_ids.append(attachment_id)
             references.append(
                 HumanizerReference(
                     reference_id=f"ref-{secrets.token_urlsafe(8)}",
@@ -345,14 +413,22 @@ class HumanizerService:
                 "没有可改写的原文：请粘贴文本或选择当前账户文件。",
                 retryable=True,
             )
-        # 证据合同：检索/联网来源进入引用清单（模型只可引用清单内材料）
+        # 证据合同：改写默认不引用知识库检索候选（原文即用户材料）；
+        # 仅在显式开启补充检索（retrieval_round 非空）时，检索轮次引用
+        # 才进入改写证据合同——知识库材料仅作补充，绝不替代原文。
+        # 联网/arXiv 仅在明确触发时进入引用清单（模型只可引用清单内材料）。
         for citation in self._citations_from(retrieval_round):
             references.append(citation)
         for item in self._citations_from_web(web_search_projection):
             references.append(item)
         for item in self._citations_from_arxiv(arxiv_search_projection):
             references.append(item)
-        return "\n\n".join(source_parts), "、".join(label_parts) or "原文", references
+        return (
+            "\n\n".join(source_parts),
+            "、".join(label_parts) or "原文",
+            references,
+            source_attachment_ids,
+        )
 
     def _parse_attachment(
         self, account_id: str, conversation_id: str, attachment_id: str
@@ -389,6 +465,12 @@ class HumanizerService:
             ) from exc
 
     def _citations_from(self, retrieval_round: Any | None) -> list[HumanizerReference]:
+        """知识库检索轮次的引用条目（改写路径仅在显式开启补充检索时消费）。
+
+        Issue 07：默认路径不检索、不展示、不引用知识库材料（改写原文只
+        来自用户材料）；用户显式开启「补充检索全局知识库」时检索轮次
+        才作为证据合同引用进入改写——知识库材料仅作补充，绝不替代原文。
+        """
         if retrieval_round is None:
             return []
         refs: list[HumanizerReference] = []
@@ -466,12 +548,22 @@ class HumanizerService:
         locks: list[Any],
         references: list[HumanizerReference],
         run_context: Any,
+        repair_instructions: list[str] | None = None,
     ) -> Any:
         contract = skill_input.contract
         genre_set = genre_rule_set(contract.genre)
         system_prompt = self._build_system_prompt(
             skill_version, contract, genre_set, locks, source_label, references
         )
+        if repair_instructions:
+            # 软门定向修复（Issue 07）：只针对未满足的风格规则修正正文，
+            # 不改变任务边界、事实锁与证据合同，不泄漏内部复核细节。
+            system_prompt += (
+                "\n\n【本轮定向修正】上一版正文未完全满足以下体裁规则"
+                "（事实锁与引用关系必须保持）：\n"
+                + "\n".join(f"- {rule}" for rule in repair_instructions)
+                + "\n请只修正正文中对应部分后，重新输出完整 JSON。"
+            )
         user_prompt = self._build_user_prompt(contract, source_text)
         payload = {
             "messages": [
@@ -615,19 +707,19 @@ class HumanizerService:
             open_questions=open_questions,
         )
 
-    def _review(
+    def _review_checks(
         self,
-        account_id: str,
-        conversation_id: str,
-        assistant_message_id: str,
-        skill_input: HumanizerSkillInput,
-        skill_version: str,
+        contract: HumanizerTaskContract,
         output: HumanizerOutputContract,
         source_text: str,
         fact_lock_source: str,
         references: list[HumanizerReference],
-    ) -> HumanizerResultProjection:
-        contract = skill_input.contract
+    ) -> _ReviewCheckpoint:
+        """确定性复核（不含终态判定）：事实锁/硬约束、体裁、引用与合同完整性。
+
+        Issue 07：软门（体裁等风格指标）只生成复核结果，不在此清空正文；
+        硬门（事实锁冲突）由调用方在终态判定中停止交付。
+        """
         final_text = output.final_text.strip()
         if not final_text:
             raise HumanizerError(
@@ -648,9 +740,8 @@ class HumanizerService:
                 source_label="硬约束 vs 生成结果",
             )
 
-        # 体裁规则复核
+        # 体裁规则复核（软门）
         genre_check = check_genre(final_text, contract.genre)
-        genre_summary = genre_check.summary()
 
         # 引用保持检查：原文引用必须仍出现；新引用必须来自证据合同
         references = self._check_citation_preservation(
@@ -691,6 +782,127 @@ class HumanizerService:
                 "输出合同不完整：" + "；".join(gaps) + "。",
                 retryable=True,
             )
+        return _ReviewCheckpoint(
+            output=output,
+            fact_lock_check=fact_lock_check,
+            genre_check=genre_check,
+            references=references,
+        )
+
+    def _repair_once(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        skill_input: HumanizerSkillInput,
+        skill_version: str,
+        source_text: str,
+        source_label: str,
+        locks: list[Any],
+        run_context: Any,
+        checkpoint: _ReviewCheckpoint,
+        budget: RunBudget | None,
+        fact_lock_source: str,
+    ) -> tuple[int, _ReviewCheckpoint]:
+        """软门定向修复：至多一次、受总预算约束；失败则交付原草稿。
+
+        只针对未满足的体裁规则做一次有预算的修复调用；预算不足、修复
+        调用失败或修复稿复核失败时返回 ``(0 或 1, 原 checkpoint)``——
+        正文与警告照常交付，绝不循环重生成（Issue 07）。
+        """
+        failed_rules = [
+            f.label for f in checkpoint.genre_check.findings if not f.passed
+        ]
+        if not failed_rules:
+            return 0, checkpoint
+        if budget is None or not budget.can_retry():
+            return 0, checkpoint
+        entered = budget.enter(RunStage.REPAIR)
+        try:
+            repair_result = self._invoke_model(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                skill_input,
+                skill_version,
+                source_text,
+                source_label,
+                locks,
+                checkpoint.references,
+                run_context,
+                repair_instructions=failed_rules,
+            )
+            if entered:
+                budget.exit(
+                    RunStage.REPAIR,
+                    category="qwen_structured_output",
+                    count=1,
+                )
+        except HumanizerError:
+            if entered:
+                budget.exit(RunStage.REPAIR, result=RESULT_FAILED, count=1)
+            return 1, checkpoint
+        try:
+            repaired = self._coerce_output(repair_result.output or {})
+            if not repaired.final_text.strip():
+                return 1, checkpoint
+            repaired = repaired.model_copy(
+                update={
+                    "source_attachment_ids": list(checkpoint.output.source_attachment_ids)
+                }
+            )
+            return 1, self._review_checks(
+                skill_input.contract,
+                repaired,
+                source_text,
+                fact_lock_source,
+                checkpoint.references,
+            )
+        except (HumanizerError, TypeError, ValueError):
+            # 修复稿不可解析/合同不完整/复核失败：交付原草稿与具体警告
+            return 1, checkpoint
+
+    def _finalize_result(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        skill_input: HumanizerSkillInput,
+        skill_version: str,
+        checkpoint: _ReviewCheckpoint,
+        repair_attempts: int,
+    ) -> HumanizerResultProjection:
+        """终态判定与结果投影：硬门停止交付；软门交付正文与具体警告。
+
+        Issue 07：任何成功/软失败结果都包含正文；只有硬门（事实锁冲突
+        等）或无正文的模型错误可以没有 final text。硬门投影附冲突项与
+        可操作的恢复方式，不泄漏内部 prompt。
+        """
+        contract = skill_input.contract
+        fact_lock_check = checkpoint.fact_lock_check
+        genre_check = checkpoint.genre_check
+        genre_summary = genre_check.summary()
+        output = checkpoint.output
+        references = checkpoint.references
+        final_text = output.final_text.strip()
+
+        # 软门：体裁风格未完全通过 → 正文照常交付并附未完全满足项
+        quality_warnings: list[str] = []
+        soft_failed = not genre_check.passed and final_text
+        if soft_failed:
+            quality_warnings = [
+                f"体裁规则「{finding.label}」未完全满足：{finding.detail}"
+                for finding in genre_check.findings
+                if not finding.passed
+            ]
+            if repair_attempts == 0:
+                quality_warnings.append(
+                    "本轮预算内未执行定向修复（剩余预算不足或修复不可用），"
+                    "正文按当前最佳稿交付。"
+                )
+            output = output.model_copy(
+                update={"quality_status": HumanizerQualityStatus.WARN}
+            )
 
         # 终态判定
         status = HumanizerResultStatus.DONE
@@ -698,23 +910,21 @@ class HumanizerService:
         error_code: str | None = None
         error_message: str | None = None
         if fact_lock_check.blocking_conflicts:
+            # 硬门：事实锁冲突 → 阻止把错误版本标记为最终稿（不交付违规
+            # 正文）；投影附冲突项与恢复方式，保留输入供重试。
             status = HumanizerResultStatus.ERROR
             state = HumanizerProcessState.ERROR
             error_code = "fact_lock_conflict"
             error_message = (
                 "事实锁冲突，已停止交付："
                 + "；".join(fact_lock_check.blocking_conflicts[:3])
-                + "。可调整任务后重试。"
+                + "。恢复方式：在原文中修正上述冲突字段后重试"
+                "（任务输入与附件已保留）。"
             )
-        elif not genre_check.passed:
-            status = HumanizerResultStatus.ERROR
-            state = HumanizerProcessState.ERROR
-            error_code = "genre_check_failed"
-            error_message = (
-                f"体裁规则复核未通过（{genre_rule_set(contract.genre).display_name}）："
-                + "；".join(genre_summary)
-                + "。请重试。"
-            )
+        elif soft_failed:
+            # 软门未完全通过：交付正文 + 警告（重新生成是可选操作，不是唯一出口）
+            status = HumanizerResultStatus.NEEDS_HUMAN
+            state = HumanizerProcessState.DONE
         elif fact_lock_check.needs_human or any(
             not ref.preserved for ref in references
         ):
@@ -738,6 +948,8 @@ class HumanizerService:
             fact_lock_check=fact_lock_check,
             references=references,
             genre_check=genre_summary,
+            quality_warnings=quality_warnings,
+            repair_attempts=repair_attempts,
             process_state=state,
             error_code=error_code,
             error_message=error_message,

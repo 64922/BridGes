@@ -78,15 +78,22 @@ def _structured_capability() -> CapabilityRecord:
 
 
 class _ProgrammableStructuredAdapter:
-    """可编程结构化适配器（人味化编排使用）。"""
+    """可编程结构化适配器（人味化编排使用）。
+
+    ``sequence``（Issue 07）按调用次数依次返回输出或抛错误（末项复用），
+    用于「初始产出 → 至多一次软门修复」的调用序列。
+    """
 
     def __init__(
         self,
         output: dict[str, Any] | None = None,
         error: AdapterError | None = None,
+        sequence: list[Any] | None = None,
     ) -> None:
         self._output = output
         self._error = error
+        self._sequence = list(sequence or [])
+        self.calls = 0
 
     def call(
         self,
@@ -94,6 +101,12 @@ class _ProgrammableStructuredAdapter:
         run_context: Any,
         payload: dict[str, Any],
     ) -> AdapterResult:
+        self.calls += 1
+        if self._sequence:
+            item = self._sequence[min(self.calls - 1, len(self._sequence) - 1)]
+            if isinstance(item, AdapterError):
+                raise item
+            return AdapterResult(actual_model_id=capability.model_id, output=item)
         if self._error is not None:
             raise self._error
         return AdapterResult(
@@ -203,14 +216,21 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
-def _send_humanizer(client: TestClient, conversation_id: str) -> dict[str, Any]:
-    """Issue 02：发送 SKILL 消息 → 创建响应（运行已入队，无 SSE 流）。"""
+def _send_humanizer(
+    client: TestClient, conversation_id: str, *, use_knowledge_base: bool = False
+) -> dict[str, Any]:
+    """Issue 02：发送 SKILL 消息 → 创建响应（运行已入队，无 SSE 流）。
+
+    Issue 07：改写默认关闭全局知识库（与前端对话框默认一致）；显式开启
+    时检索轮次进入改写证据合同（仅作补充，不替代原文）。
+    """
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={
             "content": "文章人味化：改写光合作用科普段落",
             "skill_id": _SKILL_PAYLOAD["skill_id"],
             "skill_input": _SKILL_PAYLOAD,
+            "use_knowledge_base": use_knowledge_base,
         },
     )
     assert response.status_code == 200, response.text
@@ -418,3 +438,128 @@ def test_second_account_cannot_see_humanizer_results(
         ).status_code
         == 404
     )
+
+
+# ---------------------------------------------------------------------------
+# Issue 07：改写默认不检索知识库；草稿持久化（硬门失败也保留正文）；
+# 软门交付正文 + 具体警告（至多一次修复）。
+# ---------------------------------------------------------------------------
+
+def test_rewrite_skips_knowledge_base_retrieval(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """改写路径：本地检索阶段跳过（知识库不相关材料绝不检索/引用）。"""
+    _register(client)
+    _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
+    conversation_id = _create_conversation(client)
+
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    stages = [data for name, data in events if name == "stage"]
+    retrieval = [s for s in stages if s["stage"] == "local_retrieval"]
+    assert retrieval and retrieval[0]["status"] == "skipped"
+    assert not any(s["stage"] == "local_retrieval" and s["status"] == "active"
+                   for s in stages)
+    assert events[-1][0] == "done"
+
+
+def test_hard_gate_conflict_keeps_draft_content(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """硬门冲突：阻止标记最终稿（error 事件 + 冲突说明），草稿仍保留。
+
+    验收：切换会话/刷新后可见草稿、阶段与结果；硬门说明冲突与恢复方式。
+    """
+    _register(client)
+    violating = _good_output()
+    violating["final_text"] = violating["final_text"].replace(
+        "25 μmol·m⁻²·s⁻¹", "30 μmol·m⁻²·s⁻¹"
+    )
+    _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=violating))
+    conversation_id = _create_conversation(client)
+
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "error"
+    error_data = events[-1][1]
+    assert error_data["error"]["code"] == "fact_lock_conflict"
+    assert "恢复方式" in error_data["error"]["message"]
+
+    # 草稿持久化：消息正文保留模型产出（未标记最终稿，由结果卡说明冲突）
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assistant = history["messages"][1]
+    assert assistant["status"] == "error"
+    assert assistant["content"] == violating["final_text"]
+    humanizer = assistant["humanizer"]
+    assert humanizer["status"] == "error"
+    assert humanizer["error_code"] == "fact_lock_conflict"
+    assert humanizer["fact_lock_check"]["blocking_conflicts"]
+
+
+def test_soft_gate_delivers_text_with_warnings(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """软门失败且修复后仍不过：交付正文 + 未完全满足项，不扣留正文。"""
+    _register(client)
+    bad = _good_output()
+    # 只删除类比/边界/行动相关性句（保持全部事实锁 → 只触发软门）
+    bad["final_text"] = bad["final_text"].replace(
+        "你可以把光合作用比作植物的充电过程，但比喻到此为止，真正的机制"
+        "是叶绿素吸收光子；对你说来，这意味着理解温室栽培需要先了解这些"
+        "条件。",
+        "",
+    )
+    _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(sequence=[bad, bad]))
+    conversation_id = _create_conversation(client)
+
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "done"
+    done_data = events[-1][1]
+    message = done_data["message"]
+    assert message["status"] == "done"
+    humanizer = message["humanizer"]
+    assert humanizer["status"] == "needs_human"
+    assert humanizer["output"]["final_text"] == bad["final_text"]
+    assert humanizer["output"]["quality_status"] == "warn"
+    assert humanizer["quality_warnings"]
+    assert humanizer["repair_attempts"] == 1  # 恰好一次修复，不循环
+    assert message["content"] == bad["final_text"]  # 正文照常交付
+
+
+def test_rewrite_explicit_knowledge_base_runs_retrieval(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """改写 + 显式开启补充检索：本地检索阶段执行（默认关闭仍跳过）。"""
+    _register(client)
+    _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": "文章人味化：改写光合作用科普段落",
+            "skill_id": _SKILL_PAYLOAD["skill_id"],
+            "skill_input": _SKILL_PAYLOAD,
+            "use_knowledge_base": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    stages = [data for name, data in events if name == "stage"]
+    retrieval = [s for s in stages if s["stage"] == "local_retrieval"]
+    assert retrieval and retrieval[0]["status"] in ("active", "done")
+    assert events[-1][0] == "done"
