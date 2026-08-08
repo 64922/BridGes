@@ -9,7 +9,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -20,13 +19,13 @@ from bridges.ai import CapabilityRegistry, ModelGateway
 from bridges.ai.adapters import StreamChunk
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.selections import ChatSelectionsService
-from bridges.contracts.chat import ChatPluginSelectionItem
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
     CapabilityStatus,
     RetryPolicy,
 )
+from bridges.contracts.chat import ChatPluginSelectionItem
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.mcp.service import McpService
 from bridges.plugins.service import PluginService
@@ -34,7 +33,6 @@ from bridges.skills.registry import create_builtin_registry
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.object_store import EncryptedFileObjectStore
 from bridges.storage.repository import BridgesObjectRepository
-
 from tests.mcp.fixtures import ECHO_YAML, NOTE_YAML
 
 HUMANIZER = "bridges-humanizer"

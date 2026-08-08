@@ -181,7 +181,16 @@ def test_video_message_flows_through_real_stream_and_worker(
         json={"content": "生成一条河的视频", "video": _video_payload()},
     )
     assert response.status_code == 200, response.text
-    events = _parse_sse(response.text)
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events.extend(_parse_sse("\n".join(stream.iter_lines())))
     names = [name for name, _ in events]
     assert "started" in names
     assert "video" in names
@@ -288,7 +297,17 @@ def test_video_message_retry_rejected_via_card(sqlite_app: Any, client: TestClie
         f"/chat/conversations/{conversation_id}/messages",
         json={"content": "生成一条河的视频", "video": _video_payload()},
     )
-    events = _parse_sse(response.text)
+    assert response.status_code == 200, response.text
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events.extend(_parse_sse("\n".join(stream.iter_lines())))
     done_event = next(data for name, data in events if name == "done")
     assistant_message_id = done_event["message"]["message_id"]
 
@@ -307,9 +326,17 @@ def test_task_endpoints_are_account_scoped(sqlite_app: Any, client: TestClient) 
         f"/chat/conversations/{conversation_id}/messages",
         json={"content": "生成一条河的视频", "video": _video_payload()},
     )
-    video_event = next(
-        data for name, data in _parse_sse(response.text) if name == "video"
-    )
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events.extend(_parse_sse("\n".join(stream.iter_lines())))
+    video_event = next(data for name, data in events if name == "video")
     task_id = video_event["task"]["task_id"]
 
     # 完成生成后拿到资产标识（注册第二账户前，会话仍属账户 1）。

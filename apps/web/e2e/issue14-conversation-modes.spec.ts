@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 14 — 交付对话双模式与可折叠思考摘要。
@@ -147,6 +148,8 @@ async function installMockChatApi(
     modeEvents: [],
     messages: [],
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const history = () => ({
     conversation_id: "mock-1",
@@ -243,13 +246,26 @@ async function installMockChatApi(
         updated_at: NOW,
       }
     );
+    eventStreams.set(
+      assistantMessageId,
+      sseBody({ fail, hang, userMessageId, assistantMessageId })
+    );
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      headers: { "Cache-Control": "no-cache", "X-Accel-Buffering": "no" },
-      body: sseBody({ fail, hang, userMessageId, assistantMessageId }),
+      contentType: "application/json",
+      body: JSON.stringify(
+        runCreated(
+          `run-${assistantMessageId}`,
+          1,
+          state.messages[state.messages.length - 2],
+          state.messages[state.messages.length - 1]
+        )
+      ),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
 
   // 停止：把最新助手消息收敛为 stopped（与真实服务端一致）
   await page.route("**/api/chat/conversations/mock-1/messages/*/stop", async (route) => {

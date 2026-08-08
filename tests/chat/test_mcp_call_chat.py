@@ -89,12 +89,14 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
 
 
 def _send_mcp_call(
+    sqlite_app: Any,
     client: TestClient,
     conversation_id: str,
     mcp_id: str,
     tool: str,
     input_data: dict[str, Any],
 ) -> list[tuple[str, dict[str, Any]]]:
+    """Issue 02：发送 MCP 调用消息 → 驱动执行器 → 订阅运行事件。"""
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={
@@ -108,7 +110,19 @@ def _send_mcp_call(
         },
     )
     assert response.status_code == 200, response.text
-    return _parse_sse(response.text)
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        body = "\n".join(stream.iter_lines())
+    events.extend(_parse_sse(body))
+    return events
 
 
 def test_selected_mcp_call_succeeds(sqlite_app: Any, client: TestClient) -> None:
@@ -119,7 +133,7 @@ def test_selected_mcp_call_succeeds(sqlite_app: Any, client: TestClient) -> None
         client, [{"kind": "mcp", "plugin_id": ECHO}]
     )
     events = _send_mcp_call(
-        client, conversation_id, ECHO, "echo", {"question": "你好"}
+        sqlite_app, client, conversation_id, ECHO, "echo", {"question": "你好"}
     )
     names = [name for name, _ in events]
     assert "started" in names
@@ -148,7 +162,7 @@ def test_unselected_mcp_call_rejected(sqlite_app: Any, client: TestClient) -> No
     _install_mcp(client, ECHO_YAML, "echo.yaml")
     conversation_id = _create_conversation(client)
     events = _send_mcp_call(
-        client, conversation_id, ECHO, "echo", {"question": "你好"}
+        sqlite_app, client, conversation_id, ECHO, "echo", {"question": "你好"}
     )
     error_event = next(
         (data for name, data in events if name == "error"), None
@@ -181,7 +195,7 @@ def test_sensitive_pending_approve_flow(
     )
     target_path = write_dir / "note.txt"
     events = _send_mcp_call(
-        client,
+        sqlite_app, client,
         conversation_id,
         NOTE,
         "note",
@@ -236,7 +250,7 @@ def test_sensitive_pending_deny_flow(
     )
     deny_path = write_dir / "deny.txt"
     events = _send_mcp_call(
-        client,
+        sqlite_app, client,
         conversation_id,
         NOTE,
         "note",
@@ -305,7 +319,7 @@ def test_cross_account_confirmation_404(
         client, [{"kind": "mcp", "plugin_id": NOTE}]
     )
     events = _send_mcp_call(
-        client,
+        sqlite_app, client,
         conversation_id,
         NOTE,
         "note",

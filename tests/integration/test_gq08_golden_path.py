@@ -212,7 +212,15 @@ def test_fresh_install_golden_path_all_capabilities_zero_key_config(
         json={"content": "你好，介绍一下你自己"},
     )
     assert sent.status_code == 200, sent.text
-    events = _parse_sse(sent.text)
+    sent_created = sent.json()
+    sqlite_app.state.generation_executor.run_tick()
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{sent_created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events = _parse_sse("\n".join(stream.iter_lines()))
     done = next((data for name, data in events if name == "done"), None)
     assert done is not None and done["message"]["status"] == "done"
     assert done["message"]["content"]
@@ -258,7 +266,15 @@ def test_fresh_install_golden_path_all_capabilities_zero_key_config(
         json={"content": "量子纠缠", "use_knowledge_base": True},
     )
     assert searched.status_code == 200, searched.text
-    search_events = _parse_sse(searched.text)
+    searched_created = searched.json()
+    sqlite_app.state.generation_executor.run_tick()
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{searched_created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        search_events = _parse_sse("\n".join(stream.iter_lines()))
     search_done = next(
         (data for name, data in search_events if name == "done"), None
     )
@@ -311,7 +327,15 @@ def test_fresh_install_golden_path_all_capabilities_zero_key_config(
         json={"content": "生成一张桥梁插图", "image": {"kind": "generate", "prompt": "一座桥梁"}},
     )
     assert image_sent.status_code == 200, image_sent.text
-    image_events = _parse_sse(image_sent.text)
+    image_created = image_sent.json()
+    sqlite_app.state.generation_executor.run_tick()
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{image_created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        image_events = _parse_sse("\n".join(stream.iter_lines()))
     image_event = next((data for name, data in image_events if name == "image"), None)
     assert image_event is not None
     image_task_id = image_event["task"]["task_id"]
@@ -340,7 +364,15 @@ def test_fresh_install_golden_path_all_capabilities_zero_key_config(
         json={"content": "生成一段海浪视频", "video": {"prompt": "海浪拍岸"}},
     )
     assert video_sent.status_code == 200, video_sent.text
-    video_events = _parse_sse(video_sent.text)
+    video_created = video_sent.json()
+    sqlite_app.state.generation_executor.run_tick()
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{video_created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        video_events = _parse_sse("\n".join(stream.iter_lines()))
     video_event = next((data for name, data in video_events if name == "video"), None)
     assert video_event is not None
     video_task_id = video_event["task"]["task_id"]

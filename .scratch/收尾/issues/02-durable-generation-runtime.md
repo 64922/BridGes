@@ -1,6 +1,6 @@
 # 02 将回复生成从页面/SSE 生命周期迁移到持久化后台运行
 
-Status: ready-for-agent
+Status: completed
 Priority: P0
 Type: architecture-enabling defect
 Blocked by: 01
@@ -60,3 +60,9 @@ Blocks: 03, 06, 07, 08, 09, 11
 ## Comments
 
 - 2026-08-08：代码和数据库共同确认页面卸载/SSE 耦合是问题 5、7、8 的共因。
+- 2026-08-08（完成）：纵向切片已交付——generation_runs/generation_events 持久化、
+  GenerationRunExecutor 后台执行器（租约领取/崩溃恢复/收尸）、POST 创建运行 + GET
+  events 游标订阅、页面卸载不再停止生成、重开从游标恢复；反馈环测试 4 条（断开/
+  切会话/刷新/竞争/失联），后端 2200 pytest + e2e 265 通过；问题 5/7/8 的
+  stream_interrupted 共因已消除（普通聊天/人味化/生涯规划/学习模式均不再因路由
+  切换写 stream_interrupted）。实现说明见 commit 消息与 task_plan.md。

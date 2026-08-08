@@ -254,26 +254,31 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
 
 def _send_career(
     client: TestClient, conversation_id: str, *, use_profile: bool = True
-) -> tuple[int, str]:
+) -> dict[str, Any]:
+    """Issue 02：发送生涯规划消息 → 创建响应（运行已入队，无 SSE 流）。"""
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={"content": _CAREER_INTENT, "use_profile": use_profile},
     )
-    return response.status_code, response.text
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def test_career_message_flows_through_real_message_stream(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """六类输出经真实消息流交付：started → career 过程事件 → done 投影。"""
-    account = _register(client)
+    _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
 
-    status, text = _send_career(client, conversation_id)
-    assert status == 200, text
-    events = _parse_sse(text)
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     names = [name for name, _ in events]
     assert names[0] == "started"
     assert "career" in names  # 过程卡事件（loading 步骤）
@@ -305,14 +310,22 @@ def test_career_message_flows_through_real_message_stream(
 
 
 def test_career_process_events_carry_chinese_states(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
-    _, text = _send_career(client, conversation_id)
-    career_events = [data for name, data in _parse_sse(text) if name == "career"]
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    career_events = [
+        data
+        for name, data in generation_helpers["subscribe"](
+            client, conversation_id, created["assistant_message"]["message_id"]
+        )
+        if name == "career"
+    ]
     assert career_events
     first = career_events[0]
     assert first["state"] == "loading"
@@ -321,13 +334,15 @@ def test_career_process_events_carry_chinese_states(
 
 
 def test_career_persists_and_restores_for_same_account_only(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """刷新/退出重登后同一账户可恢复规划结果；其他账户不可读。"""
     account_a = _register(client, tag="1")
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
-    _, _ = _send_career(client, conversation_id)
+    _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
 
     # 刷新（重新 GET 历史）：同一账户可恢复完整规划投影
     history = client.get(f"/chat/conversations/{conversation_id}").json()
@@ -357,10 +372,11 @@ def test_career_persists_and_restores_for_same_account_only(
 
 
 def test_career_uses_minimal_authorized_profile_slice(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """只使用当前账户授权的最小画像切片；敏感记录绝不进入模型请求。"""
-    account = _register(client)
+    _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
@@ -374,8 +390,11 @@ def test_career_uses_minimal_authorized_profile_slice(
         sensitivity="sensitive",
     )
 
-    _, text = _send_career(client, conversation_id)
-    done_data = _parse_sse(text)[-1][1]
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    done_data = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )[-1][1]
     message = done_data["message"]
     # 披露：READY 态且只含 1 条授权切片（敏感记录被排除）
     context_note = message["context_note"]
@@ -394,17 +413,21 @@ def test_career_uses_minimal_authorized_profile_slice(
 
 
 def test_career_with_profile_disabled_uses_nothing(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """发送前关闭画像：请求、披露与规划投影均不含画像内容。"""
-    account = _register(client)
+    _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
     _seed_assertion(client, "interest_preference", "喜欢数据分析与可视化。")
 
-    _, text = _send_career(client, conversation_id, use_profile=False)
-    done_data = _parse_sse(text)[-1][1]
+    created = _send_career(client, conversation_id, use_profile=False)
+    generation_helpers["drive"](sqlite_app)
+    done_data = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )[-1][1]
     message = done_data["message"]
     context_note = message["context_note"]
     assert context_note["state"] == "off"
@@ -417,22 +440,27 @@ def test_career_with_profile_disabled_uses_nothing(
 
 
 def test_career_without_profile_has_empty_disclosure(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """启用画像但无相关记录：合法空态（empty 披露，回答照常）。"""
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
-    _, text = _send_career(client, conversation_id)
-    done_data = _parse_sse(text)[-1][1]
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    done_data = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )[-1][1]
     message = done_data["message"]
     assert message["context_note"]["state"] == "empty"
     assert message["career_planning"]["status"] == "done"
 
 
 def test_career_learning_records_enter_evidence(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     account = _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
@@ -440,8 +468,11 @@ def test_career_learning_records_enter_evidence(
     _seed_learning_mission(sqlite_app, account["id"])
     conversation_id = _create_conversation(client)
 
-    _, text = _send_career(client, conversation_id)
-    done_data = _parse_sse(text)[-1][1]
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    done_data = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )[-1][1]
     career = done_data["message"]["career_planning"]
     learning = [
         source for source in career["evidence_sources"]
@@ -452,15 +483,19 @@ def test_career_learning_records_enter_evidence(
 
 
 def test_career_model_failure_is_recoverable_and_retry_keeps_input(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
-    account = _register(client)
+    _register(client)
     failing = _ProgrammableStructuredAdapter(error=RateLimitError("slow"))
     _swap_gateways(sqlite_app, failing)
     conversation_id = _create_conversation(client)
 
-    _, text = _send_career(client, conversation_id)
-    events = _parse_sse(text)
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     assert events[-1][0] == "error"
     error_data = events[-1][1]
     assert error_data["error"]["retryable"] is True
@@ -480,7 +515,11 @@ def test_career_model_failure_is_recoverable_and_retry_keeps_input(
         json={},
     )
     assert retry.status_code == 200, retry.text
-    retry_events = _parse_sse(retry.text)
+    retried = retry.json()
+    generation_helpers["drive"](sqlite_app)
+    retry_events = generation_helpers["subscribe"](
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
     assert retry_events[-1][0] == "done"
     retry_message = retry_events[-1][1]["message"]
     assert retry_message["attempt_number"] == 2
@@ -489,17 +528,21 @@ def test_career_model_failure_is_recoverable_and_retry_keeps_input(
 
 
 def test_career_boundary_violation_blocks_delivery(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """承诺词（就业/薪酬/录取保证）触发阻断：不交付规划正文。"""
-    account = _register(client)
+    _register(client)
     violating = _good_output()
     violating["final_text"] = "选这条路，包就业。"
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=violating))
     conversation_id = _create_conversation(client)
 
-    _, text = _send_career(client, conversation_id)
-    events = _parse_sse(text)
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     assert events[-1][0] == "error"
     error_data = events[-1][1]
     assert error_data["error"]["code"] == "career_boundary_violation"
@@ -514,14 +557,19 @@ def test_career_boundary_violation_blocks_delivery(
 
 
 def test_career_item_feedback_is_idempotent_and_scoped(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """逐项反馈：定位到具体条目（career_item_ref），幂等，不串号。"""
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
-    _, text = _send_career(client, conversation_id)
-    message_id = _parse_sse(text)[-1][1]["message"]["message_id"]
+    created = _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    message_id = events[-1][1]["message"]["message_id"]
 
     feedback = {
         "kind": "answer_inappropriate",
@@ -543,16 +591,17 @@ def test_career_item_feedback_is_idempotent_and_scoped(
     assert first.json()["career_item_ref"] == "fact:1"
 
     # 反馈按账户隔离：另一账户看不到任何反馈内容（空列表，不泄漏存在性）
-    account_b = _register(client, tag="2")
+    _register(client, tag="2")
     other = client.get(f"/chat/conversations/{conversation_id}/feedback")
     assert other.status_code == 200
     assert other.json() == []
 
 
 def test_career_item_ref_requires_career_message(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -577,13 +626,15 @@ def test_career_item_ref_requires_career_message(
 
 
 def test_career_audit_does_not_leak_body(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """CAREER_PLANNING_GENERATED 审计只记条目数/证据数/画像引用，不含正文。"""
     account = _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
-    _, _ = _send_career(client, conversation_id)
+    _send_career(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
 
     from bridges.contracts.observability import AuditAction
 
@@ -600,7 +651,8 @@ def test_career_audit_does_not_leak_body(
 
 
 def test_second_account_planning_is_isolated_from_first(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
 ) -> None:
     """两个账户执行相同问题：只受各自授权画像影响，缓存/引用不串号。"""
     _register(client)
@@ -608,7 +660,8 @@ def test_second_account_planning_is_isolated_from_first(
     _swap_gateways(sqlite_app, adapter_a)
     conversation_a = _create_conversation(client)
     _seed_assertion(client, "interest_preference", "账户 A 明确偏好金融行业。")
-    _, _ = _send_career(client, conversation_a)
+    _send_career(client, conversation_a)
+    generation_helpers["drive"](sqlite_app)
     assert "金融行业" in json.dumps(adapter_a.requests[0], ensure_ascii=False)
 
     # 账户 B 无任何画像：同一问题其请求不含账户 A 的画像内容
@@ -616,7 +669,8 @@ def test_second_account_planning_is_isolated_from_first(
     adapter_b = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter_b)
     conversation_b = _create_conversation(client)
-    _, _ = _send_career(client, conversation_b)
+    _send_career(client, conversation_b)
+    generation_helpers["drive"](sqlite_app)
     assert adapter_b.requests
     payload_b = json.dumps(adapter_b.requests[0], ensure_ascii=False)
     assert "金融行业" not in payload_b

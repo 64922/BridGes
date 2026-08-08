@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 28 — 交付原创净室 bridges-humanizer SKILL。
@@ -121,6 +122,8 @@ async function installMockChatApi(
     sent: number;
     messageId: string;
   } = { messages: [], sent: 0, messageId: "a-1" };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const history = () => ({
     conversation_id: "mock-1",
@@ -323,22 +326,43 @@ async function installMockChatApi(
   await page.route("**/api/chat/conversations/mock-1/messages", async (route) => {
     if (route.request().method() !== "POST") return;
     const body = JSON.parse(route.request().postData() ?? "{}");
+    const stream = streamFor(body);
+    eventStreams.set(state.messageId, stream);
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: streamFor(body),
+      contentType: "application/json",
+      body: JSON.stringify(
+        runCreated(
+          `run-${state.messageId}`,
+          1,
+          state.messages[state.messages.length - 2],
+          state.messages[state.messages.length - 1]
+        )
+      ),
     });
   });
 
   await page.route("**/api/chat/conversations/mock-1/messages/*/retry", async (route) => {
     if (route.request().method() !== "POST") return;
     const body = { content: "重试", skill_input: state.messages.find((m) => m.role === "user")?.skill };
+    const stream = streamFor(body as Record<string, unknown>);
+    eventStreams.set(state.messageId, stream);
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: streamFor(body as Record<string, unknown>),
+      contentType: "application/json",
+      body: JSON.stringify(
+        runCreated(
+          `run-${state.messageId}`,
+          1,
+          state.messages[state.messages.length - 2],
+          state.messages[state.messages.length - 1]
+        )
+      ),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
 
   return { messageId: () => state.messageId };
 }

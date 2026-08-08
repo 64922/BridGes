@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 19 — 文件夹式学习项目。
@@ -135,6 +136,8 @@ function sseStream(messageId: string, userMessageId: string, delta: string) {
 
 async function installMockChatApi(page: Page) {
   const conversations = new Map<string, MockConversation>();
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const summary = (conversation: MockConversation) => ({
     conversation_id: conversation.conversation_id,
@@ -240,10 +243,16 @@ async function installMockChatApi(page: Page) {
       if (!conversation.title) {
         conversation.title = String(body.content).slice(0, 20);
       }
+      eventStreams.set(
+        assistantMessage.message_id,
+        sseStream("a-1", "u-1", "这是替身生成的回答。")
+      );
       await route.fulfill({
         status: 200,
-        contentType: "text/event-stream",
-        body: sseStream("a-1", "u-1", "这是替身生成的回答。"),
+        contentType: "application/json",
+        body: JSON.stringify(
+          runCreated(`run-${assistantMessage.message_id}`, 1, userMessage, assistantMessage)
+        ),
       });
       return;
     }
@@ -254,6 +263,9 @@ async function installMockChatApi(page: Page) {
     }
     await route.continue();
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
 }
 
 test.describe("Issue 19 — 学习项目列表与创建", () => {

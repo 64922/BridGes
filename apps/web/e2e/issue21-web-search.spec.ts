@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /** Issue 21：公网搜索卡片的真实来源、失败恢复与本轮取消。 */
 
@@ -102,6 +103,8 @@ function installMockChatApi(page: Page) {
     messages: state.messages,
     mode_events: [],
   });
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   return {
     state,
@@ -131,31 +134,41 @@ function installMockChatApi(page: Page) {
         const assistant = message(`a-${state.counter}`, "assistant", scenario === "success" ? "基于来源回答。" : "", scenario === "success" ? "done" : "streaming", search);
         state.messages.push(user, assistant);
         if (scenario === "cancel") {
-          await route.fulfill({ status: 200, contentType: "text/event-stream", body: sseStarted(assistant.message_id, user.message_id, webSearch("loading")) });
-          return;
-        }
-        if (scenario === "error") {
-          await route.fulfill({
-            status: 200,
-            contentType: "text/event-stream",
-            body: `${sseStarted(assistant.message_id, user.message_id, webSearch("loading"))}event: error\ndata: ${JSON.stringify({ kind: "error", message_id: assistant.message_id, error: { code: "web_search_timeout", message: "联网搜索超时，请重试。", retryable: true }, thinking: null, duration_ms: 10, web_search: search })}\n\n`,
-          });
-          return;
+          eventStreams.set(
+            assistant.message_id,
+            sseStarted(assistant.message_id, user.message_id, webSearch("loading"))
+          );
+        } else if (scenario === "error") {
+          eventStreams.set(
+            assistant.message_id,
+            `${sseStarted(assistant.message_id, user.message_id, webSearch("loading"))}event: error\ndata: ${JSON.stringify({ kind: "error", message_id: assistant.message_id, error: { code: "web_search_timeout", message: "联网搜索超时，请重试。", retryable: true }, thinking: null, duration_ms: 10, web_search: search })}\n\n`
+          );
+        } else {
+          eventStreams.set(
+            assistant.message_id,
+            `${sseStarted(assistant.message_id, user.message_id, webSearch("loading"))}${sseDone(assistant)}`
+          );
         }
         await route.fulfill({
           status: 200,
-          contentType: "text/event-stream",
-          body: `${sseStarted(assistant.message_id, user.message_id, webSearch("loading"))}${sseDone(assistant)}`,
+          contentType: "application/json",
+          body: JSON.stringify(runCreated(`run-${assistant.message_id}`, 1, user, assistant)),
         });
       });
+      // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+      installRunEventsRoutes(page, eventStreams, CONVERSATION_ID);
       await page.route(`**/api/chat/conversations/${CONVERSATION_ID}/messages/*/retry`, async (route) => {
         state.counter += 1;
         const retried = message(`a-${state.counter}`, "assistant", "重试后的来源回答。", "done", successSearch());
         state.messages.push(retried);
+        eventStreams.set(
+          retried.message_id,
+          `${sseStarted(retried.message_id, "u-0", webSearch("loading"))}${sseDone(retried)}`
+        );
         await route.fulfill({
           status: 200,
-          contentType: "text/event-stream",
-          body: `${sseStarted(retried.message_id, "u-0", webSearch("loading"))}${sseDone(retried)}`,
+          contentType: "application/json",
+          body: JSON.stringify(runCreated(`run-${retried.message_id}`, 1, state.messages[0], retried)),
         });
       });
       await page.route(`**/api/chat/conversations/${CONVERSATION_ID}/messages/*/stop`, async (route) => {

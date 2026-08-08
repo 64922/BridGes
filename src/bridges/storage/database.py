@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 28
+SCHEMA_VERSION = 29
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1419,6 +1419,63 @@ MIGRATIONS: dict[int, list[str]] = {
         CREATE INDEX IF NOT EXISTS idx_workflow_runs_account
             ON workflow_runs(account_id, updated_at)
         """,
+    ],
+    # Issue 02：持久化后台生成运行（ADR-0013 的"生成运行"落地）。回复
+    # 生成从页面/SSE 生命周期迁移到持久化运行：generation_runs 保存每次
+    # 运行的最小状态机（queued → running → done | failed | stopped）——
+    # run ID、会话/消息归属、当前阶段、租约（崩溃恢复）、尝试号、终态
+    # 原因与脱敏耗时；generation_events 按 run 追加单调递增游标事件
+    # （SSE 订阅回放与恢复的唯一真相源，重启后仍可恢复）。generation
+    # 队列行入 task_claims（queue_name='generation'）走统一领取契约。
+    29: [
+        """
+        CREATE TABLE IF NOT EXISTS generation_runs (
+            run_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            user_message_id TEXT NOT NULL,
+            assistant_message_id TEXT NOT NULL,
+            attempt_number INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'queued'
+                CHECK (status IN ('queued', 'running', 'done', 'failed', 'stopped')),
+            stage TEXT,
+            config_json TEXT,
+            lease_owner TEXT,
+            lease_expires_at TEXT,
+            attempt_count INTEGER NOT NULL DEFAULT 0,
+            stop_requested INTEGER NOT NULL DEFAULT 0,
+            error_code TEXT,
+            error_message TEXT,
+            duration_ms INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_generation_runs_account_status
+            ON generation_runs(account_id, status)
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_generation_runs_message
+            ON generation_runs(assistant_message_id)
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS generation_events (
+            run_id TEXT NOT NULL REFERENCES generation_runs(run_id),
+            seq INTEGER NOT NULL,
+            account_id TEXT NOT NULL,
+            kind TEXT NOT NULL,
+            payload TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (run_id, seq)
+        )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_generation_events_run
+            ON generation_events(run_id, seq)
+        """,
+        # 存量 streaming 遗留消息（无后台运行）：由读取路径的陈旧收敛
+        # 兜底（保持既有 stream_interrupted 语义），不再回填运行。
     ],
 }
 

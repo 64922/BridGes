@@ -208,7 +208,16 @@ def test_attachment_binds_to_message_downloads_and_isolated_delete(
         json={"content": "请阅读这个附件", "attachment_ids": [object_id]},
     )
     assert sent.status_code == 200, sent.text
-    assert any(name == "done" for name, _ in _parse_sse(sent.text))
+    created = sent.json()
+    assert created["run_id"]
+    app.state.generation_executor.run_tick()
+    with alice_client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        assert any(name == "done" for name, _ in _parse_sse("\n".join(stream.iter_lines())))
 
     history = alice_client.get(f"/chat/conversations/{conversation_id}")
     assert history.status_code == 200, history.text

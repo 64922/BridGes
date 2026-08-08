@@ -1,5 +1,7 @@
 """FastAPI application for the BridGes API."""
 
+import os
+import threading
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Annotated, Any, cast
@@ -62,6 +64,7 @@ from bridges.chat import (
     ChatService,
     ConversationRepository,
 )
+from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
 from bridges.config import Settings, get_settings
 from bridges.contracts.ai import (
@@ -1148,6 +1151,50 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             selections_service=app.state.chat_selections_service,
             mcp_service=getattr(app.state, "mcp_service", None),
         )
+        # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
+        # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。
+        # test 环境（确定性适配器驱动）不自动启动线程，由测试显式驱动
+        # run_tick 或自行启动，避免与同步消费生成器的既有测试竞态。
+        app.state.generation_executor = GenerationRunExecutor(
+            app.state.chat_service, bridges_database
+        )
+        app.state.generation_executor_stop = threading.Event()
+
+        def _start_generation_executor() -> None:
+            environment = (
+                app.state.settings.environment
+                if app.state.settings is not None
+                else "production"
+            )
+            # test 环境（确定性适配器驱动）默认不自动启动执行器线程，由
+            # pytest 显式驱动 run_tick 或自行启动线程，避免与同步消费生成
+            # 器的既有测试竞态；e2e（真实部署形态）经环境变量显式启用。
+            force_executor = (
+                os.environ.get("BRIDGES_GENERATION_EXECUTOR", "").strip().lower()
+                in {"1", "true", "yes"}
+            )
+            if environment.lower() == "test" and not force_executor:
+                return
+            thread = threading.Thread(
+                target=app.state.generation_executor.run_loop,
+                kwargs={
+                    "stop": app.state.generation_executor_stop,
+                    "emit": lambda line: None,  # noqa: E731 - 执行器心跳静默
+                },
+                name="generation-executor",
+                daemon=True,
+            )
+            thread.start()
+            app.state.generation_executor_thread = thread
+
+        def _stop_generation_executor() -> None:
+            app.state.generation_executor_stop.set()
+            thread = getattr(app.state, "generation_executor_thread", None)
+            if thread is not None:
+                thread.join(timeout=5)
+
+        app.router.add_event_handler("startup", _start_generation_executor)
+        app.router.add_event_handler("shutdown", _stop_generation_executor)
         # Issue 30: 听写与单条回答朗读（固定 ASR/TTS 快照）。复用同一
         # 模型网关（固定模型标识进运行记录）、账户对象库（朗读音频按
         # 账户隔离留存）与对话仓库；听写音频不落盘，失败只重试同一快照。

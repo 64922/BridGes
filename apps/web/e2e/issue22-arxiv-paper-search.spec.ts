@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 const NOW = "2026-08-04T00:00:00Z";
 const CONVERSATION_ID = "conv-issue22";
@@ -94,6 +95,8 @@ async function installMockChatApi(page: Page, initialScenario: "success" | "erro
     scenario: initialScenario,
     messages: [message("u-0", "user", "你好", "done")],
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
   const history = () => ({
     conversation_id: CONVERSATION_ID,
     title: "Issue 22 论文搜索",
@@ -148,34 +151,49 @@ async function installMockChatApi(page: Page, initialScenario: "success" | "erro
     );
     state.messages.push(user, assistant);
     if (state.scenario === "error") {
-      await route.fulfill({
-        status: 200,
-        contentType: "text/event-stream",
-        body: `${sseStarted(assistant.message_id, user.message_id)}event: error\ndata: ${JSON.stringify({
+      eventStreams.set(
+        assistant.message_id,
+        `${sseStarted(assistant.message_id, user.message_id)}event: error\ndata: ${JSON.stringify({
           kind: "error",
           message_id: assistant.message_id,
           error: { code: "arxiv_timeout", message: "arXiv 搜索超时，请重试。", retryable: true },
           arxiv_search: search,
-        })}\n\n`,
+        })}\n\n`
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(runCreated(`run-${assistant.message_id}`, 1, user, assistant)),
       });
       return;
     }
+    eventStreams.set(
+      assistant.message_id,
+      `${sseStarted(assistant.message_id, user.message_id)}${sseDone(assistant)}`
+    );
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: `${sseStarted(assistant.message_id, user.message_id)}${sseDone(assistant)}`,
+      contentType: "application/json",
+      body: JSON.stringify(runCreated(`run-${assistant.message_id}`, 1, user, assistant)),
     });
   });
   await page.route(`**/api/chat/conversations/${CONVERSATION_ID}/messages/*/retry`, async (route) => {
     state.scenario = "success";
     const retried = message("a-2", "assistant", "依据 [arxiv-1] 回答。", "done", successSearch());
     state.messages.push(retried);
+    eventStreams.set(
+      retried.message_id,
+      `${sseStarted(retried.message_id, "u-1")}${sseDone(retried)}`
+    );
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: `${sseStarted(retried.message_id, "u-1")}${sseDone(retried)}`,
+      contentType: "application/json",
+      body: JSON.stringify(runCreated(`run-${retried.message_id}`, 1, state.messages[0], retried)),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams, CONVERSATION_ID);
 }
 
 async function registerAndOpen(page: Page): Promise<void> {

@@ -82,14 +82,28 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
-def _seed_done_assistant_message(client: TestClient, conversation_id: str) -> str:
-    """通过真实发送链路获得一条已完成的助手回答（stub 适配器确定性输出）。"""
+def _seed_done_assistant_message(
+    sqlite_app: Any, client: TestClient, conversation_id: str
+) -> str:
+    """通过真实发送链路获得一条已完成的助手回答（stub 适配器确定性输出）。
+
+    Issue 02：发送创建运行后由后台执行器领取执行（test 环境同步驱动），
+    订阅持久化事件拿到 done 终态。
+    """
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={"content": "你好"},
     )
     assert response.status_code == 200, response.text
-    events = _parse_sse(response.text)
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events = _parse_sse("\n".join(stream.iter_lines()))
     done = next((data for name, data in events if name == "done"), None)
     assert done is not None and done["message"]["status"] == "done"
     return done["message"]["message_id"]
@@ -173,7 +187,7 @@ def test_read_aloud_endpoints_account_scoped(client: TestClient, sqlite_app: Any
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "message_not_found"
     # 无 TTS 适配器时确定性失败（BLOCKED，非模拟成功）。
-    message_id = _seed_done_assistant_message(client, conversation_id)
+    message_id = _seed_done_assistant_message(sqlite_app, client, conversation_id)
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages/{message_id}/read-aloud"
     )

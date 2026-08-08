@@ -141,6 +141,77 @@ def _create_conversation(client: TestClient) -> str:
     return response.json()["conversation_id"]
 
 
+def _send(
+    client: TestClient, conversation_id: str, content: str = "你好", **extra: Any
+) -> dict[str, Any]:
+    """Issue 02：发送消息 → 创建响应（消息已落库、运行已入队，无 SSE 流）。"""
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": content, **extra},
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def _subscribe_all(
+    client: TestClient,
+    conversation_id: str,
+    message_id: str,
+    cursor: int = 0,
+    timeout: float = 15.0,
+) -> list[tuple[str, dict[str, Any]]]:
+    """订阅运行事件直到流结束（运行终态），返回事件序列（跳过心跳）。
+
+    订阅端点在运行终态时回放完全部事件即结束；运行进行中则长轮询
+    等待（心跳保活）。超时抛错，绝不悬挂。
+    """
+    events: list[tuple[str, dict[str, Any]]] = []
+    deadline = time.monotonic() + timeout
+    next_cursor = cursor
+    while time.monotonic() < deadline:
+        with client.stream(
+            "GET",
+            f"/chat/conversations/{conversation_id}/messages/{message_id}/events",
+            params={"cursor": next_cursor},
+        ) as response:
+            assert response.status_code == 200, response.text
+            body = "\n".join(response.iter_lines())
+        for name, payload in _parse_sse(body):
+            if name == "ping":
+                continue
+            events.append((name, payload))
+        if body.strip():
+            break
+        time.sleep(0.05)
+    if not body.strip():
+        raise AssertionError("订阅流在超时前未结束（运行未终态）。")
+    return events
+
+
+def _drive_executor(sqlite_app: Any, *, timeout: float = 10.0) -> None:
+    """同步驱动后台执行器直到没有待处理运行（test 环境无自动线程）。"""
+    executor = sqlite_app.state.generation_executor
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        executor.run_tick()
+        if "无待处理" in executor._last_summary:  # noqa: SLF001 - 测试读取摘要
+            return
+        time.sleep(0.02)
+    raise AssertionError("执行器未在超时前完成运行。")
+
+
+def _start_executor_thread(sqlite_app: Any) -> tuple[threading.Event, threading.Thread]:
+    """启动后台执行器线程（真实反馈环测试：订阅与执行并发）。"""
+    stop = threading.Event()
+    thread = threading.Thread(
+        target=sqlite_app.state.generation_executor.run_loop,
+        kwargs={"stop": stop},
+        daemon=True,
+    )
+    thread.start()
+    return stop, thread
+
+
 # ---------------------------------------------------------------------------
 # Issue 14：对话双模式
 # ---------------------------------------------------------------------------
@@ -256,7 +327,7 @@ def test_switch_mode_same_mode_is_idempotent_without_event(
 def test_second_account_cannot_switch_mode_or_read_mode_events(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    alice = _register(client, "1")
+    _register(client, "1")
     conversation_id = _create_conversation(client)
     client.post(
         f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
@@ -284,19 +355,23 @@ def test_second_account_cannot_switch_mode_or_read_mode_events(
 def test_new_account_without_any_key_can_send_and_receive_answer(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    """全新注册账户（无 Key、无密钥元数据、无探测记录）直接走通流式回答。"""
+    """全新注册账户（无 Key、无密钥元数据、无探测记录）直接走通生成。"""
     _register(client)
     # GQ-07 后组合根不再持有账户 Qwen 凭据服务或探测服务（GQ-02 AC1：
     # 新账户无需任何个人 Qwen 配置即可聊天，账户级密钥机制已整体删除）
     assert not hasattr(sqlite_app.state, "credential_service")
     assert not hasattr(sqlite_app.state, "credential_store")
     conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
+    created = _send(client, conversation_id, "你好")
+    assert created["run_id"]
+    assert created["cursor"] >= 1
+    assert created["user_message"]["status"] == "done"
+    assert created["assistant_message"]["status"] == "streaming"
+    # 后台执行器领取执行
+    _drive_executor(sqlite_app)
+    events = _subscribe_all(
+        client, conversation_id, created["assistant_message"]["message_id"]
     )
-    assert response.status_code == 200
-    events = _parse_sse(response.text)
     assert [e[0] for e in events] == ["started", "delta", "done"]
     done = events[-1][1]
     assert done["message"]["status"] == "done"
@@ -312,28 +387,28 @@ def test_chat_requires_authentication(client: TestClient) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 流式主链路
+# 生成主链路（持久化运行 + 事件订阅）
 # ---------------------------------------------------------------------------
 
 
 def test_send_streams_started_delta_done_and_persists_history(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = _register(client)
+    _register(client)
     conversation_id = _create_conversation(client)
 
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好，介绍一下你自己"},
-    )
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    events = _parse_sse(response.text)
+    created = _send(client, conversation_id, "你好，介绍一下你自己")
+    assert created["cursor"] == 1  # started 已持久化；无画像通知时不追加 profile
+    assert created["assistant_message"]["attempt_number"] == 1
+    message_id = created["assistant_message"]["message_id"]
+    _drive_executor(sqlite_app)
+
+    events = _subscribe_all(client, conversation_id, message_id)
     assert [e[0] for e in events] == ["started", "delta", "done"]
     started = events[0][1]
     assert started["conversation_id"] == conversation_id
     assert started["attempt_number"] == 1
-    message_id = started["message_id"]
+    assert started["message_id"] == message_id
     assert events[1][1]["message_id"] == message_id
     assert events[1][1]["delta"]  # 替身回答有正文
     done = events[2][1]
@@ -352,7 +427,7 @@ def test_send_multi_delta_streaming_via_programmable_adapter(
     client: TestClient, sqlite_app: Any
 ) -> None:
     """真实流式适配器形态：多个 delta 增量逐步呈现。"""
-    account = _register(client)
+    _register(client)
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(
             [
@@ -363,11 +438,9 @@ def test_send_multi_delta_streaming_via_programmable_adapter(
         )
     )
     conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
-    )
-    events = _parse_sse(response.text)
+    created = _send(client, conversation_id, "你好")
+    _drive_executor(sqlite_app)
+    events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
     assert [e[0] for e in events] == ["started", "delta", "delta", "delta", "done"]
     assert "".join(e[1]["delta"] for e in events if e[0] == "delta") == "第一第二第三"
 
@@ -375,16 +448,14 @@ def test_send_multi_delta_streaming_via_programmable_adapter(
 def test_send_failure_streams_error_event_and_persists_actionable_message(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = _register(client)
+    _register(client)
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(connect_error=RateLimitError("slow down"))
     )
     conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
-    )
-    events = _parse_sse(response.text)
+    created = _send(client, conversation_id, "你好")
+    _drive_executor(sqlite_app)
+    events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
     assert [e[0] for e in events] == ["started", "error"]
     error = events[1][1]["error"]
     assert error["code"] == "rate_limit"
@@ -398,65 +469,30 @@ def test_send_failure_streams_error_event_and_persists_actionable_message(
     assert "限流" in (assistant["error_message"] or "")
 
 
-def test_sse_always_terminates_when_message_finalized_before_stream(
+def test_subscribe_after_run_terminal_replays_all_events_and_ends(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    """消息在生成器启动前被停止：SSE 以诚实终态事件结束，绝不悬挂。"""
-    account = _register(client)
-    sqlite_app.state.chat_service._gateway = _gateway_with(
-        _ProgrammableStreamAdapter(
-            [StreamChunk(kind="delta", delta=f"块{i}") for i in range(20)],
-            slow=True,
-        )
-    )
+    """运行终态后订阅：回放全部持久化事件并立即结束，绝不悬挂。"""
+    _register(client)
     conversation_id = _create_conversation(client)
-    control_client = TestClient(sqlite_app)
-    control_client.cookies.set("bridges_session", client.cookies.get("bridges_session"))
-
-    collected: list[str] = []
-
-    def consume() -> None:
-        with client.stream(
-            "POST",
-            f"/chat/conversations/{conversation_id}/messages",
-            json={"content": "开始生成"},
-        ) as response:
-            assert response.status_code == 200
-            for line in response.iter_lines():
-                # 保留空行（SSE 事件分隔符），供 _parse_sse 按块切分
-                collected.append(line)
-
-    thread = threading.Thread(target=consume)
-    thread.start()
-    time.sleep(0.1)
-    history = control_client.get(f"/chat/conversations/{conversation_id}").json()
-    message_id = history["messages"][1]["message_id"]
-    stopped = control_client.post(
-        f"/chat/conversations/{conversation_id}/messages/{message_id}/stop"
-    )
-    assert stopped.status_code == 200
-    thread.join(timeout=10)
-    body = "\n".join(collected)
-    assert "event: started" in body
-    # 无论生成器是否来得及启动，SSE 都以 error（stopped）终态结束
-    assert "event: error" in body
-    assert '"code": "stopped"' in body
-    # 补发终态与 error 事件载荷一致：携带思考摘要与真实耗时，
-    # 停止后的 error 态渲染不依赖重新加载的间隙（Issue 14）。
-    error_events = [
-        payload
-        for name, payload in _parse_sse(body)
-        if name == "error" and payload["error"]["code"] == "stopped"
-    ]
-    assert error_events, "stopped 终态事件缺失"
-    error_payload = error_events[0]
-    assert "thinking" in error_payload
-    assert error_payload["thinking"]["quality"] == ["已停止生成，保留已生成内容。"]
-    assert error_payload["duration_ms"] is not None and error_payload["duration_ms"] >= 1
+    created = _send(client, conversation_id, "你好")
+    message_id = created["assistant_message"]["message_id"]
+    _drive_executor(sqlite_app)
+    # 从任意游标订阅都能拿到剩余事件并结束（这里从 0 全量回放）
+    events = _subscribe_all(client, conversation_id, message_id, cursor=0)
+    assert [e[0] for e in events] == ["started", "delta", "done"]
+    # 从最后游标订阅：立即空流结束
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/{message_id}/events",
+        params={"cursor": 999},
+    ) as response:
+        assert response.status_code == 200
+        assert "\n".join(response.iter_lines()).strip() == ""
 
 
 def test_stop_generation_via_api(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
+    _register(client)
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(
             [StreamChunk(kind="delta", delta=f"块{i}") for i in range(30)],
@@ -465,57 +501,70 @@ def test_stop_generation_via_api(client: TestClient, sqlite_app: Any) -> None:
     )
     conversation_id = _create_conversation(client)
 
-    # 流式消费与停止控制必须使用独立的 TestClient：同一 httpx 客户端并发
-    # 请求会互相干扰（Cookie 仓库等共享状态），导致流被误判为断流。
+    # 订阅与停止控制使用独立的 TestClient：同一 httpx 客户端并发
+    # 请求会互相干扰（Cookie 仓库等共享状态），导致订阅被误判为断开。
     control_client = TestClient(sqlite_app)
     control_client.cookies.set(
         "bridges_session", client.cookies.get("bridges_session")
     )
 
-    collected: list[str] = []
+    stop_exec, exec_thread = _start_executor_thread(sqlite_app)
+    try:
+        created = _send(client, conversation_id, "开始生成")
+        message_id = created["assistant_message"]["message_id"]
+        collected: list[tuple[str, dict[str, Any]]] = []
 
-    def consume() -> None:
-        with client.stream(
-            "POST",
-            f"/chat/conversations/{conversation_id}/messages",
-            json={"content": "开始生成"},
-        ) as response:
-            assert response.status_code == 200
-            for line in response.iter_lines():
-                if line and line.startswith("event: delta"):
-                    collected.append(line)
+        def consume() -> None:
+            # 订阅使用独立 TestClient：同一 httpx 客户端并发请求会互相
+            # 干扰（Cookie 仓库等共享状态），导致订阅被误判为断开。
+            collected.extend(_subscribe_all(control_client, conversation_id, message_id))
 
-    thread = threading.Thread(target=consume)
-    thread.start()
-    time.sleep(0.15)
-    history = control_client.get(f"/chat/conversations/{conversation_id}").json()
-    message_id = history["messages"][1]["message_id"]
-    stopped = control_client.post(
-        f"/chat/conversations/{conversation_id}/messages/{message_id}/stop"
-    )
-    thread.join(timeout=10)
-    assert stopped.status_code == 200
-    assert stopped.json()["message"]["status"] == "stopped"
-    assert len(collected) > 0  # 已收到部分增量
-    final = control_client.get(f"/chat/conversations/{conversation_id}").json()["messages"][1]
-    assert final["status"] == "stopped"
-    assert final["content"]  # 已接收正文保留
+        sub_thread = threading.Thread(target=consume)
+        sub_thread.start()
+        # 等待执行器领取并产出部分 delta（确认生成已真正开始）再停止；
+        # 避免停止抢在执行器领取前（排队期停止不调用模型，无正文可保留）。
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            probe = control_client.get(
+                f"/chat/conversations/{conversation_id}"
+            ).json()["messages"][1]
+            if probe["content"]:
+                break
+            time.sleep(0.05)
+        stopped = control_client.post(
+            f"/chat/conversations/{conversation_id}/messages/{message_id}/stop"
+        )
+        assert stopped.status_code == 200
+        # 只有显式停止才产生 stopped；停止在 2 秒内可见
+        assert stopped.json()["message"]["status"] == "stopped"
+        sub_thread.join(timeout=15)
+        # 订阅流以 error(stopped) 终态结束，绝不会被迟到事件改写成 done
+        kinds = [e[0] for e in collected]
+        assert "error" in kinds, kinds
+        assert any(
+            name == "error" and payload["error"]["code"] == "stopped"
+            for name, payload in collected
+        )
+        assert "done" not in kinds, kinds
+        final = control_client.get(f"/chat/conversations/{conversation_id}").json()["messages"][1]
+        assert final["status"] == "stopped"
+        assert final["content"]  # 已接收正文保留
+    finally:
+        stop_exec.set()
+        exec_thread.join(timeout=5)
 
 
 def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
+    _register(client)
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter(connect_error=RateLimitError("slow"))
     )
     conversation_id = _create_conversation(client)
-    client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "帮我分析"},
-    )
-    history = client.get(f"/chat/conversations/{conversation_id}").json()
-    failed_id = history["messages"][1]["message_id"]
+    created = _send(client, conversation_id, "帮我分析")
+    failed_id = created["assistant_message"]["message_id"]
+    _drive_executor(sqlite_app)
 
-    # 换成成功适配器后重试
+    # 换成成功适配器后重试：新运行与新尝试（历史失败尝试原样保留）
     sqlite_app.state.chat_service._gateway = _gateway_with(
         _ProgrammableStreamAdapter([StreamChunk(kind="delta", delta="重试后的回答")])
     )
@@ -523,8 +572,14 @@ def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) 
         f"/chat/conversations/{conversation_id}/messages/{failed_id}/retry"
     )
     assert response.status_code == 200
-    events = _parse_sse(response.text)
-    assert events[0][1]["attempt_number"] == 2
+    retried = response.json()
+    assert retried["assistant_message"]["attempt_number"] == 2
+    assert retried["run_id"] != created["run_id"]
+    _drive_executor(sqlite_app)
+
+    events = _subscribe_all(
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
     assert [e[0] for e in events] == ["started", "delta", "done"]
 
     history = client.get(f"/chat/conversations/{conversation_id}").json()
@@ -536,7 +591,7 @@ def test_retry_via_api_creates_new_attempt(client: TestClient, sqlite_app: Any) 
 
 
 def test_conversation_not_found_is_404(client: TestClient, sqlite_app: Any) -> None:
-    account = _register(client)
+    _register(client)
     response = client.get("/chat/conversations/does-not-exist")
     assert response.status_code == 404
     assert response.json()["detail"]["error"] == "conversation_not_found"
@@ -554,12 +609,10 @@ def test_conversation_not_found_is_404(client: TestClient, sqlite_app: Any) -> N
 def test_second_account_cannot_read_subscribe_retry_or_probe(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    alice = _register(client, "1")
+    _register(client, "1")
     conversation_id = _create_conversation(client)
-    client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "爱丽丝的私密问题"},
-    )
+    created = _send(client, conversation_id, "爱丽丝的私密问题")
+    assistant_id = created["assistant_message"]["message_id"]
 
     bob_client = TestClient(sqlite_app)
     _register(bob_client, "2")
@@ -574,8 +627,6 @@ def test_second_account_cannot_read_subscribe_retry_or_probe(
         ).status_code
         == 404
     )
-    history = client.get(f"/chat/conversations/{conversation_id}").json()
-    assistant_id = history["messages"][1]["message_id"]
     assert (
         bob_client.post(
             f"/chat/conversations/{conversation_id}/messages/{assistant_id}/retry"
@@ -585,6 +636,13 @@ def test_second_account_cannot_read_subscribe_retry_or_probe(
     assert (
         bob_client.post(
             f"/chat/conversations/{conversation_id}/messages/{assistant_id}/stop"
+        ).status_code
+        == 404
+    )
+    # Issue 02：跨账户无法订阅他人的运行事件（游标回放同样 404）
+    assert (
+        bob_client.get(
+            f"/chat/conversations/{conversation_id}/messages/{assistant_id}/events"
         ).status_code
         == 404
     )
@@ -601,8 +659,9 @@ def test_second_account_cannot_read_subscribe_retry_or_probe(
 def test_restart_runtime_restores_same_conversation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """GQ-02 纵向回归：全局确定性适配器 → 注册新账户 → 不创建账户 Key → 新建
-    对话 → 发送消息 → 收到完成事件 → 重启后恢复同一回答。"""
+    """GQ-02 + Issue 02 纵向回归：注册新账户 → 发送消息（生成中重启）→
+    重启后消息保持 streaming 且携带可恢复运行视图 → 新进程执行器领取
+    完成 → 恢复同一回答；不重复创建用户消息或模型调用。"""
     monkeypatch.setenv(
         "BRIDGES_DATABASE_URL", f"sqlite:///{tmp_path / 'bridges.db'}"
     )
@@ -616,14 +675,9 @@ def test_restart_runtime_restores_same_conversation(
     # 适配器是唯一放行机制（GQ-02 AC7）
     assert not hasattr(app1.state, "credential_store")
     conversation_id = _create_conversation(client1)
-    sent = client1.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "重启前的问题"},
-    )
-    assert sent.status_code == 200
-    events = _parse_sse(sent.text)
-    assert events[-1][0] == "done"
-    assert events[-1][1]["message"]["status"] == "done"
+    created = _send(client1, conversation_id, "重启前的问题")
+    message_id = created["assistant_message"]["message_id"]
+    # 不驱动执行器：运行停留在 queued，模拟生成中进程重启
 
     # 重启：同一环境重建应用（test 环境同样注册全局确定性适配器）
     get_settings.cache_clear()
@@ -635,13 +689,26 @@ def test_restart_runtime_restores_same_conversation(
     assert history.status_code == 200
     body = history.json()
     assert body["title"].startswith("重启前的问题")
-    assert [(m["role"], m["status"]) for m in body["messages"]] == [
+    # 重启后消息仍是 streaming（活跃运行不被读取收敛），携带运行视图
+    assistant = [m for m in body["messages"] if m["role"] == "assistant"][0]
+    assert assistant["status"] == "streaming"
+    assert assistant["active_run"] is not None
+    assert assistant["active_run"]["status"] == "queued"
+    assert assistant["active_run"]["run_id"]
+    # 新进程后台执行器领取并完成同一运行
+    _drive_executor(app2)
+    events = _subscribe_all(client2, conversation_id, message_id)
+    assert events[-1][0] == "done"
+    assert events[-1][1]["message"]["status"] == "done"
+    restored = client2.get(f"/chat/conversations/{conversation_id}").json()
+    assert [(m["role"], m["status"]) for m in restored["messages"]] == [
         ("user", "done"),
         ("assistant", "done"),
     ]
-    # 消息顺序与正文一致
-    assert body["messages"][0]["content"] == "重启前的问题"
-    assert body["messages"][1]["content"]
+    # 消息顺序与正文一致；用户消息只存在一条（未重复发送）
+    assert restored["messages"][0]["content"] == "重启前的问题"
+    assert restored["messages"][1]["content"]
+    assert len([m for m in restored["messages"] if m["role"] == "user"]) == 1
     # 对话列表同样恢复
     listing = client2.get("/chat/conversations").json()
     assert listing["conversations"][0]["conversation_id"] == conversation_id
@@ -667,15 +734,19 @@ def test_chat_unavailable_in_memory_mode() -> None:
 def test_sse_carries_thinking_in_started_and_done(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    account = _register(client)
+    _register(client)
     conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
-    )
-    events = _parse_sse(response.text)
+    created = _send(client, conversation_id, "你好")
+    # 创建响应本身即携带初始思考摘要（started 事件已持久化）
+    assert created["assistant_message"]["thinking"] is not None
+    assert created["assistant_message"]["thinking"]["steps"] == [
+        "理解你的问题与当前语境",
+        "组织并生成回答",
+    ]
+    _drive_executor(sqlite_app)
+    events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
     started = events[0][1]
-    # started 事件携带初始思考摘要（前端据此自动展开）
+    # started 事件同样携带初始思考摘要（前端据此自动展开）
     assert started["thinking"] is not None
     assert started["thinking"]["steps"] == [
         "理解你的问题与当前语境",
@@ -702,11 +773,9 @@ def test_error_event_keeps_thinking_and_duration(
         _ProgrammableStreamAdapter(connect_error=RateLimitError("slow down"))
     )
     conversation_id = _create_conversation(client)
-    response = client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "你好"},
-    )
-    events = _parse_sse(response.text)
+    created = _send(client, conversation_id, "你好")
+    _drive_executor(sqlite_app)
+    events = _subscribe_all(client, conversation_id, created["assistant_message"]["message_id"])
     error = events[-1]
     assert error[0] == "error"
     # 失败保留已完成摘要并显示中文状态
@@ -724,12 +793,8 @@ def test_second_account_cannot_read_thinking_summary(
 ) -> None:
     _register(client, "1")
     conversation_id = _create_conversation(client)
-    client.post(
-        f"/chat/conversations/{conversation_id}/messages",
-        json={"content": "爱丽丝的学习问题"},
-    )
-    history = client.get(f"/chat/conversations/{conversation_id}").json()
-    assistant_id = history["messages"][1]["message_id"]
+    created = _send(client, conversation_id, "爱丽丝的学习问题")
+    assistant_id = created["assistant_message"]["message_id"]
 
     bob_client = TestClient(sqlite_app)
     _register(bob_client, "2")

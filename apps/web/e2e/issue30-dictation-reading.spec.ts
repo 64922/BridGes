@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 30 — 交付听写与单条回答朗读。
@@ -125,6 +126,8 @@ async function installMockChatApi(
     messages: [...initialMessages],
     sent: 0,
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
   const history = () => ({
     conversation_id: "mock-1",
     title: "测试对话",
@@ -179,26 +182,33 @@ async function installMockChatApi(
       `这是对「${String(body.content ?? "")}」的回答。`
     );
     state.messages.push(user, assistant);
-    await route.fulfill({
-      status: 200,
-      contentType: "text/event-stream",
-      body:
-        sseBlock("started", {
-          kind: "started",
-          conversation_id: "mock-1",
-          user_message_id: `u-${turn}`,
-          message_id: `a-${turn}`,
-          attempt_number: 1,
-          thinking: null,
-        }) +
+    eventStreams.set(
+      assistant.message_id,
+      sseBlock("started", {
+        kind: "started",
+        conversation_id: "mock-1",
+        user_message_id: `u-${turn}`,
+        message_id: `a-${turn}`,
+        attempt_number: 1,
+        thinking: null,
+      }) +
         sseBlock("delta", { kind: "delta", message_id: `a-${turn}`, delta: "回答正文。" }) +
         sseBlock("done", {
           kind: "done",
           message_id: `a-${turn}`,
           message: assistant,
-        }),
+        })
+    );
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(runCreated(`run-${assistant.message_id}`, 1, user, assistant)),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
+
   return { sentBodies: () => sentBodies };
 }
 

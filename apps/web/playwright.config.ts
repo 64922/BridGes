@@ -60,6 +60,9 @@ export default defineConfig({
         BRIDGES_DATABASE_URL: `sqlite:///${path.join(E2E_DATA_DIR, "bridges.db").replace(/\\/g, "/")}`,
         BRIDGES_SECRET_KEY: "e2e-chat-test-secret-key",
         BRIDGES_ENVIRONMENT: "test",
+        // Issue 02：e2e 是真实部署形态——后台执行器线程显式启用
+        // （test 环境默认不自动启动，由 pytest 显式驱动）。
+        BRIDGES_GENERATION_EXECUTOR: "1",
         BRIDGES_SMTP_HOST: "127.0.0.1",
         BRIDGES_SMTP_PORT: "8025",
         BRIDGES_SMTP_PLAIN: "true",

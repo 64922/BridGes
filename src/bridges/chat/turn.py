@@ -202,6 +202,8 @@ STREAM_INTERRUPTED_MESSAGE = "连接中断，已保留已接收内容，可点�
 _ERROR_MESSAGES: dict[str, str] = {
     "rate_limit": "请求过于频繁（已触发限流），请稍后重试。",
     "transient": "连接中断或服务暂时不可用，请检查网络后重试。",
+    # Issue 02：后台执行器失联且无恢复预算时的明确可重试终态。
+    "generation_worker_lost": "生成进程意外退出，已保留已接收内容，可点击重试。",
     "region_error": "无法连接 Qwen 服务，请检查网络后重试。",
     "auth_error": "Qwen API Key 无效或已失效，请检查启动服务的全局百炼配置与权限。",
     "stream_interrupted": STREAM_INTERRUPTED_MESSAGE,
@@ -250,6 +252,8 @@ _RETRYABLE_CODES = frozenset(
         "transient",
         "region_error",
         "stream_interrupted",
+        # Issue 02：执行器失联收尸为可重试错误（用户点击重试创建新运行）。
+        "generation_worker_lost",
         "internal_error",
         "web_search_timeout",
         "web_search_rate_limit",

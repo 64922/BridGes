@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 20 — 交付分层本地检索、融合排序与引用。
@@ -132,6 +133,8 @@ function installMockChatApi(page: Page, scenario: "success" | "no_hits" | "index
     counter: 0,
   };
   const sentBody: Array<Record<string, unknown>> = [];
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const history = () => ({
     conversation_id: CONVERSATION_ID,
@@ -203,13 +206,19 @@ function installMockChatApi(page: Page, scenario: "success" | "no_hits" | "index
         const assistantMessage = baseMessage(`a-${state.counter}`, "assistant", "", "streaming");
         assistantMessage.retrieval = roundFor();
         state.messages.push(userMessage, assistantMessage);
-        await route.fulfill({
-          status: 200,
-          contentType: "text/event-stream",
-          body: `${sseStarted(assistantMessage.message_id, userMessage.message_id)}${sseDelta(
+        eventStreams.set(
+          assistantMessage.message_id,
+          `${sseStarted(assistantMessage.message_id, userMessage.message_id)}${sseDelta(
             assistantMessage.message_id,
             "正在生成"
-          )}${sseDone({ ...assistantMessage, content: "基于材料回答。", status: "done" })}`,
+          )}${sseDone({ ...assistantMessage, content: "基于材料回答。", status: "done" })}`
+        );
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(
+            runCreated(`run-${assistantMessage.message_id}`, 1, userMessage, assistantMessage)
+          ),
         });
       });
 
@@ -224,12 +233,21 @@ function installMockChatApi(page: Page, scenario: "success" | "no_hits" | "index
           retrievalRound()
         );
         state.messages.push(retried);
+        eventStreams.set(
+          retried.message_id,
+          `${sseStarted(retried.message_id, "u-0")}${sseDelta(retried.message_id, "重试后的")}${sseDone(retried)}`
+        );
         await route.fulfill({
           status: 200,
-          contentType: "text/event-stream",
-          body: `${sseStarted(retried.message_id, "u-0")}${sseDelta(retried.message_id, "重试后的")}${sseDone(retried)}`,
+          contentType: "application/json",
+          body: JSON.stringify(
+            runCreated(`run-${retried.message_id}`, 1, state.messages[0], retried)
+          ),
         });
       });
+
+      // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+      installRunEventsRoutes(page, eventStreams, CONVERSATION_ID);
 
       // 引用证据详情：展开引用时按需请求
       await page.route(

@@ -20,17 +20,19 @@ import {
   ApiError,
   deleteChatMessageAttachment,
   downloadChatAttachment,
+  createChatRun,
   getChatConversation,
   getLearningProject,
   isChatStreamEventOf,
   markProfileNotificationRead,
   recallProfileNotification as recallProfileNotificationApi,
   retryAttachmentIngestion,
-  retryChatMessage,
+  retryChatRun,
   stopChatMessage,
-  streamChatMessage,
+  subscribeChatRunEvents,
   switchChatMode,
   type ChatConversationProjection,
+  type ChatMessageProjection,
   type ChatAttachmentProjection,
   type ChatStreamEvent,
   type ArxivSearchProjection,
@@ -92,7 +94,8 @@ const MEDIA_ALWAYS_AVAILABLE: CapabilityAvailability = { available: true };
 interface ActiveRun {
   messageId: string;
   content: string;
-  kind: "send" | "retry";
+  /** send=新发送；retry=重试；resume=页面重开恢复进行中的运行 */
+  kind: "send" | "retry" | "resume";
   /** 流式中的可公开思考摘要（生成完成折叠后由服务端历史提供） */
   thinking: ChatThinking | null;
   /** 流式中的公网搜索状态与真实来源 */
@@ -120,6 +123,41 @@ interface ActiveRun {
 function secondsOf(durationMs: number | null | undefined): number | null {
   if (durationMs === null || durationMs === undefined) return null;
   return Math.max(1, Math.round(durationMs / 1000));
+}
+
+/**
+ * Issue 02：由助手消息投影构造进行中的 ActiveRun（创建响应/页面恢复共用）。
+ * 发送/重试时创建响应即携带初始思考摘要与搜索投影，不再等待 started 事件；
+ * 页面恢复时消息投影已含部分内容，由调用方填充 content。
+ */
+function activeRunFromAssistant(
+  assistant: ChatMessageProjection,
+  kind: ActiveRun["kind"],
+  thinkingSeconds: number | null = null
+): ActiveRun {
+  return {
+    messageId: assistant.message_id,
+    content: "",
+    kind,
+    status: "streaming",
+    thinking: assistant.thinking
+      ? {
+          steps: assistant.thinking.steps ?? [],
+          evidence: assistant.thinking.evidence ?? [],
+          tools: assistant.thinking.tools ?? [],
+          quality: assistant.thinking.quality ?? [],
+          seconds: thinkingSeconds,
+        }
+      : null,
+    webSearch: assistant.web_search ?? null,
+    arxivSearch: assistant.arxiv_search ?? null,
+    teaching: assistant.teaching ?? null,
+    humanizerProcess: null,
+    careerProcess: null,
+    imageProcess: null,
+    videoProcess: null,
+    mcpCallProcess: null,
+  };
 }
 
 /**
@@ -211,17 +249,12 @@ export default function ChatConversationPage() {
   // 切换对话/离开页面/切换账户时安全停止朗读播放会话。
   useEffect(() => () => readAloudSession.stop(), [conversationId]);
 
-  // Issue 39 AC3：组件卸载（切换账户导致 AppShell 重挂载/离开页面）时
-  // 先收敛服务端生成状态（同「停止」按钮语义），再中断流式请求，防止
-  // 旧账户的 SSE 流在后台继续消费并把事件写入已卸载的页面。
+  // Issue 02：组件卸载（切换账户导致 AppShell 重挂载/离开页面）只中断
+  // 本地订阅（移除订阅者），绝不调用停止接口——生成由后台执行器持有，
+  // 离开页面不会中断回复，返回时从游标恢复（Issue 39 AC3 的收敛职责
+  // 移交给持久化运行，页面卸载不再拥有运行生命周期）。
   useEffect(
     () => () => {
-      const run = activeRunRef.current;
-      if (run) {
-        void stopChatMessage(conversationId, run.messageId).catch(() => {
-          // 停止失败不阻塞卸载；服务端以断流收敛为失败/停止终态
-        });
-      }
       abortRef.current?.abort();
       activeRunRef.current = null;
     },
@@ -473,6 +506,10 @@ export default function ChatConversationPage() {
     (kind: ActiveRun["kind"], text: string) =>
       (event: ChatStreamEvent) => {
         if (isChatStreamEventOf(event, "started")) {
+          // Issue 02：ActiveRun 已由创建响应（send/retry）或消息投影
+          // （resume）建立，started 事件只在订阅游标回溯时兜底重建——
+          // 已有进行中状态时绝不覆盖（避免内容/思考摘要被清空）。
+          if (activeRunRef.current) return;
           // 同步写入 ref：SSE 事件可能在同一块内连续到达（started 后紧跟
           // delta），异步 setState 尚未刷新时 delta 处理器依赖 ref 判断归属
           const run: ActiveRun = {
@@ -620,6 +657,56 @@ export default function ChatConversationPage() {
   const activeRunRef = useRef<ActiveRun | null>(null);
   activeRunRef.current = activeRun;
 
+  /** Issue 02：订阅运行事件并自动重连（断线只移除订阅者，不改变运行）。
+   *  重连前刷新权威状态：消息已终态则交给 load 收敛；否则从服务端
+   *  最后游标续读（页面重开语义，绝不重复发送或调用模型）。 */
+  const subscribeWithRetry = useCallback(
+    async (
+      targetConversationId: string,
+      messageId: string,
+      startCursor: number,
+      onEvent: (event: ChatStreamEvent) => void,
+      signal: AbortSignal
+    ): Promise<void> => {
+      let cursor = startCursor;
+      let attempt = 0;
+      for (;;) {
+        try {
+          await subscribeChatRunEvents(
+            targetConversationId,
+            messageId,
+            cursor,
+            onEvent,
+            signal
+          );
+          return; // 正常结束（运行已终态，全部事件已回放）
+        } catch (error) {
+          if (signal.aborted) return; // 停止/卸载主动中断
+          attempt += 1;
+          if (attempt > 30) throw error;
+          await new Promise((resolve) =>
+            setTimeout(resolve, Math.min(300 * attempt, 3000))
+          );
+          try {
+            const projection = await getChatConversation(targetConversationId);
+            const message = projection.messages?.find(
+              (item) => item.message_id === messageId
+            );
+            if (!message || message.status !== "streaming") {
+              // 运行已终态（或消息已删除）：权威历史收敛
+              await load();
+              return;
+            }
+            cursor = message.active_run?.cursor ?? cursor;
+          } catch {
+            // 会话读取失败：保持原游标继续重试订阅
+          }
+        }
+      }
+    },
+    [load]
+  );
+
   const sendMessage = useCallback(
     async (
       text: string,
@@ -637,17 +724,11 @@ export default function ChatConversationPage() {
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
       abortRef.current = controller;
-      let started = false;
       try {
-        const onEvent = handleStreamEvent("send", text);
-        await streamChatMessage(
+        // Issue 02：创建运行（消息已落库、运行已入队），立即订阅持久化事件
+        const run = await createChatRun(
           conversationId,
           text,
-          (event) => {
-            if (event.event === "started") started = true;
-            onEvent(event);
-          },
-          controller.signal,
           attachmentIds,
           // Issue 20：本轮知识库开关（关闭后检索与引用不含知识库候选）
           useKnowledgeBase,
@@ -663,24 +744,35 @@ export default function ChatConversationPage() {
           // Issue 36：对选中 MCP 插件的调用载荷（调用对话框走真实消息流程）
           mcpCall
         );
+        const runState = activeRunFromAssistant(run.assistant_message, "send");
+        activeRunRef.current = runState;
+        setPendingUser({ id: run.user_message.message_id, text });
+        setActiveRun(runState);
+        await subscribeWithRetry(
+          conversationId,
+          run.assistant_message.message_id,
+          run.cursor,
+          handleStreamEvent("send", text),
+          controller.signal
+        );
         return true;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
-          return started; // 停止：状态由停止接口收敛
+          return true; // 停止/卸载：运行由后台执行器持有，服务端状态为准
         }
         const message = error instanceof Error ? error.message : "发送失败，请稍后重试。";
         setSendError({ message });
         setAnnouncement(`生成失败：${message}`);
         // 断流/内部错误时服务端已收敛消息状态：刷新展示可重试错误
         void load();
-        return started;
+        return true;
       } finally {
         abortRef.current = null;
         sendingRef.current = false;
         window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
       }
     },
-    [conversationId, handleStreamEvent, load]
+    [conversationId, handleStreamEvent, load, subscribeWithRetry]
   );
 
   /** Issue 28：提交人味化任务（真实消息流：任务契约随消息落库，可重试）。
@@ -901,7 +993,18 @@ export default function ChatConversationPage() {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        await retryChatMessage(conversationId, messageId, handleStreamEvent("retry", ""), controller.signal);
+        // Issue 02：重试创建新尝试与 queued 运行，随后订阅持久化事件
+        const run = await retryChatRun(conversationId, messageId);
+        const runState = activeRunFromAssistant(run.assistant_message, "retry");
+        activeRunRef.current = runState;
+        setActiveRun(runState);
+        await subscribeWithRetry(
+          conversationId,
+          run.assistant_message.message_id,
+          run.cursor,
+          handleStreamEvent("retry", ""),
+          controller.signal
+        );
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
@@ -915,8 +1018,40 @@ export default function ChatConversationPage() {
         window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
       }
     },
-    [conversationId, handleStreamEvent, load]
+    [conversationId, handleStreamEvent, load, subscribeWithRetry]
   );
+
+  // Issue 02：页面重开/刷新后恢复进行中的运行——消息投影已含部分内容
+  // 与活跃运行视图（active_run），从最后游标订阅剩余事件；绝不重复
+  // 发送用户消息或重复调用模型（运行由后台执行器持有）。
+  useEffect(() => {
+    if (loadState !== "ready" || conversation === null) return;
+    if (activeRunRef.current) return; // 已有进行中状态（发送/重试/恢复中）
+    for (const message of conversation.messages ?? []) {
+      if (message.status !== "streaming" || !message.active_run) continue;
+      const runState = activeRunFromAssistant(message, "resume");
+      runState.content = message.content ?? "";
+      activeRunRef.current = runState;
+      setActiveRun(runState);
+      setAnnouncement("正在生成回答");
+      const controller = new AbortController();
+      abortRef.current = controller;
+      void subscribeWithRetry(
+        conversationId,
+        message.message_id,
+        message.active_run.cursor,
+        handleStreamEvent("resume", ""),
+        controller.signal
+      );
+      return;
+    }
+  }, [
+    loadState,
+    conversation,
+    conversationId,
+    handleStreamEvent,
+    subscribeWithRetry,
+  ]);
 
   // 画像通知：一键撤回（自动写入记录）与关闭（标记已读）。失败可安全重试，
   // 本地状态只在成功后收敛，不显示假成功。
@@ -959,11 +1094,16 @@ export default function ChatConversationPage() {
     [conversation, loadState]
   );
 
-  // 组装渲染消息：服务端历史 + 进行中的乐观消息 + 错误收敛后的终态渲染
+  // 组装渲染消息：服务端历史 + 进行中的乐观消息 + 错误收敛后的终态渲染。
+  // Issue 02：resume 恢复时权威历史已含该 streaming 消息（部分内容），
+  // 由 ActiveRun 接管渲染，先从历史中移除同 messageId 项避免双份。
   const baseMessages = conversation
     ? buildThreadMessages(conversation.messages ?? [], conversation.mode_events ?? [])
     : [];
-  const threadMessages = [...baseMessages];
+  const resumedMessageId = activeRun?.kind === "resume" ? activeRun.messageId : null;
+  const threadMessages = resumedMessageId
+    ? baseMessages.filter((item) => !("id" in item) || item.id !== resumedMessageId)
+    : [...baseMessages];
   if (activeRun) {
     const isError = activeRun.status === "error";
     const assistantItem: ChatMessageLike = {
@@ -1001,8 +1141,9 @@ export default function ChatConversationPage() {
         ),
       });
       threadMessages.push(assistantItem);
-    } else if (activeRun.kind === "retry") {
-      // 重试流：在最新尝试（可能失败）之后追加新的流式尝试
+    } else if (activeRun.kind === "retry" || activeRun.kind === "resume") {
+      // 重试流：在最新尝试（可能失败）之后追加新的流式尝试；
+      // resume：恢复的进行中回答（历史项已移除，由本项接管渲染）
       threadMessages.push(assistantItem);
     }
   }

@@ -2362,7 +2362,7 @@
           "chat"
         ],
         "summary": "Send Message",
-        "description": "发送用户消息并流式接收真实 Qwen 回答（SSE）。\n\n事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；\n失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话与\n图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）：新账户\n无需任何个人 Qwen 配置即可发送，模型调用由已注册的全局模型网关\n执行。发送前可关闭本轮全局知识库层（``use_knowledge_base=false``）：\n关闭后本轮检索记录与引用均不包含知识库候选；也可关闭本轮画像使用\n（``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文\n说明均不含任何画像切片。",
+        "description": "发送用户消息：同事务创建消息与 queued 生成运行，立即返回。\n\nIssue 02：HTTP 不再拥有生成生命周期——生成由后台执行器按租约领取\n执行，事件持久化到运行游标；客户端以返回的 ``run_id``/``cursor``\n订阅 ``GET .../events`` 恢复进度，断开/刷新/切换会话都不改变运行。\n主对话与图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）。\n``use_knowledge_base=false``（Issue 20）：本轮检索与引用不含知识库\n候选；``use_profile=false``（Issue 27）：本轮请求、审计与上下文说明\n均不含任何画像切片（开关随运行快照落库，重试沿用）。",
         "operationId": "send_message_chat_conversations__conversation_id__messages_post",
         "parameters": [
           {
@@ -2403,16 +2403,11 @@
         },
         "responses": {
           "200": {
-            "description": "SSE 事件流：started → delta* → done | error（载荷由契约模型定义）",
+            "description": "创建响应：消息已落库、生成运行已入队；随后用 run_id/cursor 订阅持久化事件",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatStreamEvent"
-                }
-              },
-              "text/event-stream": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatStreamEvent"
+                  "$ref": "#/components/schemas/ChatRunStartedResponse"
                 }
               }
             }
@@ -2466,6 +2461,120 @@
               }
             },
             "description": "Service Unavailable"
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/messages/{message_id}/events": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Subscribe Message Events",
+        "description": "订阅生成运行的持久化事件（游标续读，跨账户安全 404）。\n\nIssue 02：事件由后台执行器持久化，本端点只回放与等待——客户端断开\n只移除订阅者，不改变运行状态。回放完成后运行若未终态，长轮询等待\n新事件（25 秒窗口内发心跳）；运行终态时全部事件（含终态事件）已\n可读，回放完即结束。页面重开从 ``active_run.cursor`` 恢复订阅。",
+        "operationId": "subscribe_message_events_chat_conversations__conversation_id__messages__message_id__events_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "message_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Message Id"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 0,
+              "default": 0,
+              "title": "Cursor"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "SSE 订阅：回放游标之后的持久化事件 → 心跳 → 终态后结束",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamEvent"
+                }
+              },
+              "text/event-stream": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatStreamEvent"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -2915,7 +3024,7 @@
           "chat"
         ],
         "summary": "Retry Message",
-        "description": "重试失败的助手消息：创建新的助手尝试并流式生成。\n\n新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域\n沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。重试与\n发送同源：不检查账户凭据或探测快照（GQ-02）。",
+        "description": "重试失败的助手消息：创建新的助手尝试与 queued 运行，立即返回。\n\n新尝试保留审计关系（尝试号递增），历史失败尝试原样保留；运行经后台\n执行器领取执行（与发送同一外壳）。检索作用域沿用被重试尝试轮次的\n设置（含知识库开关），不重复用户消息。重试与发送同源（GQ-02）。",
         "operationId": "retry_message_chat_conversations__conversation_id__messages__message_id__retry_post",
         "parameters": [
           {
@@ -2955,16 +3064,11 @@
         ],
         "responses": {
           "200": {
-            "description": "SSE 事件流：started → delta* → done | error（载荷由契约模型定义）",
+            "description": "创建响应：新尝试已落库、生成运行已入队；随后订阅持久化事件",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatStreamEvent"
-                }
-              },
-              "text/event-stream": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatStreamEvent"
+                  "$ref": "#/components/schemas/ChatRunStartedResponse"
                 }
               }
             }
@@ -31768,6 +31872,17 @@
             "title": "Run Lock Id",
             "description": "绑定的模型运行锁标识。"
           },
+          "active_run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ChatRunView"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "关联的持久化生成运行视图（未运行过为 None）。"
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -31925,6 +32040,95 @@
         ],
         "title": "ChatPluginSelectionItem",
         "description": "对话级插件选择条目（Issue 36）。\n\n``kind`` 区分 SKILL 插件（Issue 34，含内置与用户包）与 MCP 服务器\n（Issue 35）；``plugin_id`` 为插件/服务器的稳定标识。选择随会话持久\n化，服务端逐项校验「当前账户已安装且启用」，失效项清洗并解释影响。"
+      },
+      "ChatRunStartedResponse": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "持久化运行标识。"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor",
+            "description": "创建时已持久化的事件游标（started/profile）。"
+          },
+          "user_message": {
+            "$ref": "#/components/schemas/ChatMessageProjection",
+            "description": "本轮用户消息投影。"
+          },
+          "assistant_message": {
+            "$ref": "#/components/schemas/ChatMessageProjection",
+            "description": "助手消息投影。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "cursor",
+          "user_message",
+          "assistant_message"
+        ],
+        "title": "ChatRunStartedResponse",
+        "description": "发送/重试的创建响应：消息已落库、运行已入队，不再持有生成生命周期。\n\n客户端随后以 ``run_id``/``cursor`` 订阅已持久化事件（GET events 端点）；\n页面断开、刷新或切换会话都不会改变运行状态，只有显式停止或领域\n生命周期操作才会取消运行。"
+      },
+      "ChatRunStatus": {
+        "type": "string",
+        "enum": [
+          "queued",
+          "running",
+          "done",
+          "failed",
+          "stopped"
+        ],
+        "title": "ChatRunStatus",
+        "description": "持久化生成运行的终态/进行态（Issue 02 运行状态机）。"
+      },
+      "ChatRunView": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "持久化运行标识。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ChatRunStatus",
+            "description": "运行状态。"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor",
+            "description": "已持久化的最后事件游标；从下一游标恢复订阅。"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "title": "Attempt Count",
+            "description": "领取执行次数（租约恢复递增）。",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "运行创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "运行最近更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "status",
+          "cursor",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "ChatRunView",
+        "description": "消息上对外暴露的运行视图（页面恢复订阅的游标来源）。"
       },
       "ChatStopResponse": {
         "properties": {

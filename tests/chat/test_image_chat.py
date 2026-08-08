@@ -181,7 +181,16 @@ def test_image_message_flows_through_real_stream_and_worker(
         json={"content": "生成一张桥的素描", "image": _image_payload()},
     )
     assert response.status_code == 200, response.text
-    events = _parse_sse(response.text)
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events.extend(_parse_sse("\n".join(stream.iter_lines())))
     names = [name for name, _ in events]
     assert "started" in names
     assert "image" in names
@@ -320,7 +329,16 @@ def test_image_message_retry_rejected_via_card(sqlite_app: Any, client: TestClie
         json={"content": "生成一张桥的素描", "image": _image_payload()},
     )
     assert response.status_code == 200
-    events = _parse_sse(response.text)
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events.extend(_parse_sse("\n".join(stream.iter_lines())))
     done_event = next(data for name, data in events if name == "done")
     message_id = done_event["message"]["message_id"]
 
@@ -342,7 +360,16 @@ def test_task_endpoints_are_account_scoped(
         json={"content": "生成一张桥的素描", "image": _image_payload()},
     )
     assert response.status_code == 200
-    events = _parse_sse(response.text)
+    created = response.json()
+    sqlite_app.state.generation_executor.run_tick()
+    events: list[tuple[str, dict[str, Any]]] = []
+    with client.stream(
+        "GET",
+        f"/chat/conversations/{conversation_id}/messages/"
+        f"{created['assistant_message']['message_id']}/events",
+        params={"cursor": 0},
+    ) as stream:
+        events.extend(_parse_sse("\n".join(stream.iter_lines())))
     image_event = next(data for name, data in events if name == "image")
     task_id = image_event["task"]["task_id"]
 

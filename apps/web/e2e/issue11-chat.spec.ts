@@ -92,6 +92,8 @@ function installMockChatApi(page: Page) {
     messages: [mockUser("u-1", "你好"), mockAssistant("a-1", 1, "这是已保存的回答。", "done")],
     counter: 2,
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const history = () => ({
     conversation_id: "mock-1",
@@ -104,6 +106,13 @@ function installMockChatApi(page: Page) {
 
   const findAssistant = (messageId: string) =>
     state.messages.find((message) => message.message_id === messageId);
+
+  const runCreated = (userMessage: MockMessage, assistantMessage: MockMessage) => ({
+    run_id: `run-${assistantMessage.message_id}`,
+    cursor: 1,
+    user_message: userMessage,
+    assistant_message: assistantMessage,
+  });
 
   return {
     async install(): Promise<void> {
@@ -134,7 +143,7 @@ function installMockChatApi(page: Page) {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(history()) });
       });
 
-      // 发送：立即落库用户消息 + streaming 助手消息，SSE 增量返回
+      // 发送：创建响应（消息已落库、运行已入队）；事件由 events 端点回放
       await page.route("**/api/chat/conversations/mock-1/messages", async (route) => {
         if (route.request().method() !== "POST") return;
         const body = JSON.parse(route.request().postData() ?? "{}");
@@ -154,7 +163,24 @@ function installMockChatApi(page: Page) {
               )}${sseDelta(assistantMessage.message_id, "生成")}${sseDone(
                 { ...assistantMessage, content: "正在生成", status: "done" }
               )}`;
-        await route.fulfill({ status: 200, contentType: "text/event-stream", body: stream });
+        eventStreams.set(assistantMessage.message_id, stream);
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(runCreated(userMessage, assistantMessage)),
+        });
+      });
+
+      // Issue 02：订阅运行事件（回放持久化事件；运行终态后结束）
+      // 注意：glob 匹配含 query，尾部 ** 命中 ?cursor=N
+      await page.route("**/api/chat/conversations/mock-1/messages/*/events**", async (route) => {
+        const messageId = route.request().url().split("/messages/")[1].split("/")[0];
+        const message = findAssistant(messageId);
+        if (!message || message.status !== "streaming") {
+          await route.fulfill({ status: 200, contentType: "text/event-stream", body: eventStreams.get(messageId) ?? "" });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "text/event-stream", body: eventStreams.get(messageId) ?? "" });
       });
 
       // 停止：服务端把 streaming 收敛为 stopped（保留已接收正文）
@@ -184,13 +210,22 @@ function installMockChatApi(page: Page) {
           previous.status = "error";
         }
         state.messages.push(retried);
-        await route.fulfill({
-          status: 200,
-          contentType: "text/event-stream",
-          body: `${sseStarted(retried.message_id, 2, "u-1")}${sseDelta(retried.message_id, "重试后的")}${sseDelta(
+        eventStreams.set(
+          retried.message_id,
+          `${sseStarted(retried.message_id, 2, "u-1")}${sseDelta(retried.message_id, "重试后的")}${sseDelta(
             retried.message_id,
             "回答"
-          )}${sseDone(retried)}`,
+          )}${sseDone(retried)}`
+        );
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            run_id: `run-${retried.message_id}`,
+            cursor: 1,
+            user_message: mockUser("u-1", "你好"),
+            assistant_message: retried,
+          }),
         });
       });
     },

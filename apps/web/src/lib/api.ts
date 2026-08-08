@@ -23,6 +23,8 @@ export type ChatConversationListProjection = components["schemas"]["ChatConversa
 export type ChatStopResponse = components["schemas"]["ChatStopResponse"];
 export type ChatStreamEvent = components["schemas"]["ChatStreamEvent"];
 export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
+export type ChatRunStartedResponse = components["schemas"]["ChatRunStartedResponse"];
+export type ChatRunView = components["schemas"]["ChatRunView"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
 export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
@@ -1158,18 +1160,17 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
 }
 
 /**
- * 发送消息并流式接收回答；AbortController 用于停止/切换账户时中断。
- * 触发回调序列：started → delta* → done | error。
- * ``useKnowledgeBase``（Issue 20）：本轮是否启用全局知识库层；关闭后
- * 本轮检索记录与引用均不包含知识库候选。
- * ``useProfile``（Issue 27）：本轮是否使用画像切片；关闭后模型请求、
- * 审计与上下文说明均不含任何画像内容。
+ * 发送消息：同事务创建用户消息、助手占位与 queued 生成运行，立即返回。
+ *
+ * Issue 02：HTTP 不再持有生成生命周期——生成由后台执行器领取执行，
+ * 事件持久化到运行游标；随后以返回的 ``run_id``/``cursor`` 订阅
+ * ``subscribeChatRunEvents`` 恢复进度。断开/刷新/切换会话都不改变运行。
+ * ``useKnowledgeBase``（Issue 20）：本轮是否启用全局知识库层。
+ * ``useProfile``（Issue 27）：本轮是否使用画像切片。
  */
-export async function streamChatMessage(
+export async function createChatRun(
   conversationId: string,
   content: string,
-  onEvent: (event: ChatStreamEvent) => void,
-  signal?: AbortSignal,
   attachmentIds: string[] = [],
   useKnowledgeBase: boolean = true,
   useProfile: boolean = true,
@@ -1178,7 +1179,7 @@ export async function streamChatMessage(
   image?: ImageRequestPayload,
   video?: VideoRequestPayload,
   mcpCall?: McpCallRequestPayload
-): Promise<void> {
+): Promise<ChatRunStartedResponse> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1198,8 +1199,34 @@ export async function streamChatMessage(
       // Issue 36：对选中 MCP 插件的调用载荷（调用对话框走真实消息流程）
       ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
     }),
-    signal,
   });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/**
+ * 订阅生成运行的持久化事件（游标续读，断线由调用方重连）。
+ *
+ * Issue 02：事件由后台执行器持久化，本订阅只回放与等待——客户端断开
+ * 只移除订阅者，不改变运行状态。运行终态时全部事件（含终态事件）已
+ * 可读，回放完即结束；进行中由心跳保持连接。``signal`` 用于停止/卸载
+ * 时中断订阅（不影响运行）。
+ */
+export async function subscribeChatRunEvents(
+  conversationId: string,
+  messageId: string,
+  cursor: number,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal?: AbortSignal
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/events?cursor=${cursor}`,
+    {
+      credentials: "same-origin",
+      cache: "no-store",
+      signal,
+    }
+  );
   if (!res.ok) throw await parseApiError(res);
   await readSseStream(res, onEvent);
 }
@@ -1295,19 +1322,17 @@ export async function resolveAnswerFeedback(
   return res.json();
 }
 
-/** 重试失败的助手消息：创建新的助手尝试并流式生成。 */
-export async function retryChatMessage(
+/** 重试失败的助手消息：创建新尝试与 queued 运行（与发送同一外壳）。 */
+export async function retryChatRun(
   conversationId: string,
-  messageId: string,
-  onEvent: (event: ChatStreamEvent) => void,
-  signal?: AbortSignal
-): Promise<void> {
+  messageId: string
+): Promise<ChatRunStartedResponse> {
   const res = await fetch(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/retry`,
-    { method: "POST", credentials: "same-origin", signal }
+    { method: "POST", credentials: "same-origin" }
   );
   if (!res.ok) throw await parseApiError(res);
-  await readSseStream(res, onEvent);
+  return res.json();
 }
 
 export async function stopChatMessage(

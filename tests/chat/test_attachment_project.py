@@ -132,11 +132,11 @@ def test_project_layer_includes_chat_attachments(
     account = _register(client)
     project_id = _create_project(client)
     conversation_id = _create_conversation(client, project_id=project_id)
-    object_id = _upload_attachment(client, conversation_id, "可检索的项目材料")
+    _upload_attachment(client, conversation_id, "可检索的项目材料")
     # 项目文件（同项目另一来源）
     response = client.post(
         f"/learning-projects/{project_id}/files",
-        content="项目专用文件内容".encode("utf-8"),
+        content="项目专用文件内容".encode(),
         headers={"X-Bridges-Filename": quote("项目文件.md")},
     )
     assert response.status_code == 201, response.text
@@ -180,7 +180,7 @@ def test_cross_account_attachment_project_hidden(
     account_b = _register(client, tag="2")
     response = client.post(
         f"/chat/conversations/{conversation_id}/attachments",
-        content="越权内容".encode("utf-8"),
+        content="越权内容".encode(),
         headers={"X-Bridges-Filename": quote("越权.txt")},
     )
     assert response.status_code == 404

@@ -15,9 +15,8 @@ from typing import Any
 import pytest
 
 from bridges.ai import ModelGateway
-from bridges.ai.adapters import AdapterError, AuthError, RateLimitError
+from bridges.ai.adapters import AdapterError, AuthError, RateLimitError, StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
-from bridges.ai.adapters import StreamChunk
 from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import (
     STREAM_INTERRUPTED_MESSAGE,
@@ -442,38 +441,94 @@ def test_generator_close_finalizes_interrupted(service: ChatService) -> None:
     assert final.content  # 已接收正文保留
 
 
-def test_stale_streaming_message_reconciled_on_read(tmp_path: Path) -> None:
-    """进程重启后：遗留的 streaming 消息在读取时收敛为可重试错误。"""
+def test_stale_streaming_message_without_run_reconciled_on_read(
+    service: ChatService,
+) -> None:
+    """旧版本遗留：无运行记录的 streaming 消息在读取时收敛为可重试错误。
+
+    Issue 02 迁移后正常路径不再产生该状态（运行持久化）；本测试锁定
+    历史数据兜底语义：没有运行记录的半截占位绝不冒充回答。
+    """
+    created = service.create_conversation("alice")
+    user_msg, assistant = _start(service, created.conversation_id)
+    # 手工删除运行记录，模拟旧版本遗留的 streaming 消息
+    service._repo.delete_run_by_message("alice", assistant.message_id)
+    raw = service._repo.get_message("alice", assistant.message_id)
+    assert raw is not None
+    assert raw.status == ChatMessageStatus.STREAMING
+    projection = service.get_conversation("alice", created.conversation_id)
+    assert projection is not None
+    restored = [m for m in projection.messages if m.message_id == assistant.message_id][0]
+    assert restored.status == ChatMessageStatus.ERROR
+    assert restored.error_code == "stream_interrupted"
+    assert restored.error_message == STREAM_INTERRUPTED_MESSAGE
+
+
+def test_restarted_streaming_message_with_active_run_survives_read(tmp_path: Path) -> None:
+    """进程重启后：仍有活跃运行的消息保持生成中，读取不收敛也不打断。
+
+    Issue 02：运行持久化在数据库，重启后 queued/running 运行仍是活跃
+    判定源；执行器重新领取后按同一份任务契约恢复执行。运行终态后消息
+    由执行器收敛（本测试模拟执行器完成路径）。
+    """
     db_path = tmp_path / "bridges.db"
 
     def _build() -> ChatService:
         database = BridgesDatabase(db_path)
         database.initialize()
+        registry = CapabilityRegistry()
+        registry.register(_chat_capability())
+        gateway = ModelGateway(registry)
+        gateway.register_adapter(
+            "qwen_text_chat", "1", _ProgrammableStreamAdapter()
+        )
         return ChatService(
             repository=ConversationRepository(database),
-            gateway=ModelGateway(CapabilityRegistry()),
+            gateway=gateway,
         )
 
     first = _build()
     created = first.create_conversation("alice")
     _, assistant = first.start_generation("alice", created.conversation_id, "你好")
 
-    # 模拟进程重启：重建服务（注册表清空），DB 里仍是 streaming 残留
+    # 模拟进程重启：重建服务（内存注册表清空），DB 里仍是 streaming + queued 运行
     restarted = _build()
     raw = restarted._repo.get_message("alice", assistant.message_id)
     assert raw is not None
     assert raw.status == ChatMessageStatus.STREAMING
-    # 首次读取即收敛为可重试错误，绝不把半截占位当回答
+    run = restarted._repo.get_run_by_message("alice", assistant.message_id)
+    assert run is not None
+    assert run.status == "queued"
+    # 读取不收敛：活跃运行的消息保持 streaming，并携带可恢复的运行视图
     projection = restarted.get_conversation("alice", created.conversation_id)
     assert projection is not None
     restored = [m for m in projection.messages if m.message_id == assistant.message_id][0]
-    assert restored.status == ChatMessageStatus.ERROR
-    assert restored.error_code == "stream_interrupted"
-    assert restored.error_message == STREAM_INTERRUPTED_MESSAGE
-    # 再次读取：已收敛，不再变化
+    assert restored.status == ChatMessageStatus.STREAMING
+    assert restored.active_run is not None
+    assert restored.active_run.run_id == run.run_id
+    # 模拟执行器完成路径：消费生成收敛消息，再收敛运行终态
+    list(
+        restarted.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+    restarted._repo.finalize_generation_run(
+        "alice",
+        run.run_id,
+        status="done",
+        error_code=None,
+        error_message=None,
+        duration_ms=42,
+        now=datetime.now(UTC),
+    )
     projection2 = restarted.get_conversation("alice", created.conversation_id)
     assert projection2 is not None
-    assert all(m.status != ChatMessageStatus.STREAMING for m in projection2.messages)
+    final = [m for m in projection2.messages if m.message_id == assistant.message_id][0]
+    assert final.status == ChatMessageStatus.DONE
+    # 再次读取：不再变化
+    projection3 = restarted.get_conversation("alice", created.conversation_id)
+    assert projection3 is not None
+    assert all(m.status != ChatMessageStatus.STREAMING for m in projection3.messages)
 
 
 def test_long_running_stream_not_reconciled_by_read(service: ChatService) -> None:

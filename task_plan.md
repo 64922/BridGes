@@ -92,3 +92,16 @@
 - [x] T6 修复 issue37 陈旧断言（导出范围表"不包含百炼 Key"→ 现文案）→ verify: 单跑 6/6 通过
 - [x] T7 全量验证（openapi 幂等 / lint 0 error / typecheck / unit 19 / build / ruff·mypy 变更文件干净 / pytest 全量）→ verify: 见发布报告
 - [x] T8 发布报告 + 计划状态 + 提交 → verify: .scratch/收尾/GQ-08-发布验收报告.md
+
+## 收尾 Issue 02：持久化后台生成运行（2026-08-08）
+
+来源：`.scratch/收尾/issues/02-durable-generation-runtime.md`（ready-for-agent）。
+
+- [x] T1 数据层：schema v29（generation_runs/queued→running→done|failed|stopped、租约/尝试号/终态原因/脱敏耗时；generation_events 游标事件）+ repository 全量方法（含租约原子领取/续期/收尸/账户隔离）→ verify: 冒烟脚本断言通过
+- [x] T2 ChatService 发送/重试同事务创建消息+queued 运行+started/profile 事件+入队统一领取队列；stop 写 stop_requested+等待收敛；读取收敛改运行表判定 → verify: tests/chat 服务层全绿
+- [x] T3 GenerationRunExecutor 后台执行器（受监督循环：收尸→领取→回合编排→事件持久化+心跳续租+停止看门狗→终态补发；崩溃恢复上限 2 次）→ verify: 竞争/失联/恢复反馈环测试
+- [x] T4 API 改造：POST 返回创建响应（run_id/cursor/消息投影），新增 GET events 游标订阅端点（回放+心跳+终态结束），跨账户 404 → verify: test_chat_api 全绿
+- [x] T5 前端改造：创建响应建 ActiveRun+游标订阅+断线重连+页面重开恢复（卸载不再调用停止，绝不重复发送/调用模型）→ verify: typecheck 干净
+- [x] T6 e2e 协议替身适配 14 个文件（POST 返回 run + events 回放）+ 共享 helper → verify: issue11/14/21 等冒烟通过
+- [x] T7 反馈环测试（真实 HTTP+SQLite+可控慢模型：发送→切会话→断开→重连→单一 done 运行；刷新不重复；双执行器竞争；worker 失联恢复+收尸）→ verify: 4 条反馈环测试通过
+- [x] T8 全量回归 + 双轴代码审查 + 提交 → verify: 全量 2200 pytest + e2e 265 通过（审查修复：收尸补发终态事件/消息收敛、generation_worker_lost 登记可重试、停止 thinking 语义、死代码清理、重复收敛）

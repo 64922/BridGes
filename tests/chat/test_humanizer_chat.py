@@ -203,27 +203,32 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
-def _send_humanizer(client: TestClient, conversation_id: str) -> tuple[int, str]:
-    return client.post(
+def _send_humanizer(client: TestClient, conversation_id: str) -> dict[str, Any]:
+    """Issue 02：发送 SKILL 消息 → 创建响应（运行已入队，无 SSE 流）。"""
+    response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
         json={
             "content": "文章人味化：改写光合作用科普段落",
             "skill_id": _SKILL_PAYLOAD["skill_id"],
             "skill_input": _SKILL_PAYLOAD,
         },
-    ), ""
+    )
+    assert response.status_code == 200, response.text
+    return response.json()
 
 
 def test_humanizer_message_flows_through_real_message_stream(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
-    response, _ = _send_humanizer(client, conversation_id)
-    assert response.status_code == 200, response.text
-    events = _parse_sse(response.text)
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     names = [name for name, _ in events]
     assert names[0] == "started"
     assert "humanizer" in names  # 过程卡事件（loading 步骤）
@@ -252,14 +257,17 @@ def test_humanizer_message_flows_through_real_message_stream(
 
 
 def test_humanizer_process_events_carry_chinese_states(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
-    response, _ = _send_humanizer(client, conversation_id)
-    events = _parse_sse(response.text)
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     humanizer_events = [data for name, data in events if name == "humanizer"]
     assert humanizer_events
     first = humanizer_events[0]
@@ -269,16 +277,19 @@ def test_humanizer_process_events_carry_chinese_states(
 
 
 def test_retry_preserves_original_task_input(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(
         sqlite_app, _ProgrammableStructuredAdapter(error=RateLimitError("slow"))
     )
     conversation_id = _create_conversation(client)
 
-    response, _ = _send_humanizer(client, conversation_id)
-    events = _parse_sse(response.text)
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     assert events[-1][0] == "error"
     error_data = events[-1][1]
     assert error_data["error"]["retryable"] is True
@@ -291,7 +302,11 @@ def test_retry_preserves_original_task_input(
         json={},
     )
     assert retry.status_code == 200, retry.text
-    retry_events = _parse_sse(retry.text)
+    retried = retry.json()
+    generation_helpers["drive"](sqlite_app)
+    retry_events = generation_helpers["subscribe"](
+        client, conversation_id, retried["assistant_message"]["message_id"]
+    )
     assert retry_events[-1][0] == "done"
     retry_message = retry_events[-1][1]["message"]
     assert retry_message["attempt_number"] == 2
@@ -305,7 +320,7 @@ def test_retry_preserves_original_task_input(
 def test_unregistered_skill_rejected(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -327,7 +342,7 @@ def test_unregistered_skill_rejected(
 def test_invalid_skill_payload_rejected(
     sqlite_app: Any, client: TestClient
 ) -> None:
-    account = _register(client)
+    _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -352,7 +367,7 @@ def test_invalid_skill_payload_rejected(
 
 
 def test_humanizer_fact_lock_conflict_error_event(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
     _register(client)
     violating = _good_output()
@@ -362,8 +377,11 @@ def test_humanizer_fact_lock_conflict_error_event(
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=violating))
     conversation_id = _create_conversation(client)
 
-    response, _ = _send_humanizer(client, conversation_id)
-    events = _parse_sse(response.text)
+    created = _send_humanizer(client, conversation_id)
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
     assert events[-1][0] == "error"
     error_data = events[-1][1]
     assert error_data["error"]["code"] == "fact_lock_conflict"
@@ -377,14 +395,26 @@ def test_humanizer_fact_lock_conflict_error_event(
 
 
 def test_second_account_cannot_see_humanizer_results(
-    sqlite_app: Any, client: TestClient
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:
     _register(client, tag="1")
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
-    response, _ = _send_humanizer(client, conversation_id)
-    assert response.status_code == 200
+    created = _send_humanizer(client, conversation_id)
+    assert created["run_id"]
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "done"
 
     _register(client, tag="2")
     other = client.get(f"/chat/conversations/{conversation_id}")
     assert other.status_code == 404
+    assert (
+        client.get(
+            f"/chat/conversations/{conversation_id}/messages/"
+            f"{created['assistant_message']['message_id']}/events"
+        ).status_code
+        == 404
+    )

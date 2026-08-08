@@ -542,18 +542,42 @@ export interface paths {
         put?: never;
         /**
          * Send Message
-         * @description 发送用户消息并流式接收真实 Qwen 回答（SSE）。
+         * @description 发送用户消息：同事务创建消息与 queued 生成运行，立即返回。
          *
-         *     事件序列：``started``（消息已落库）→ 若干 ``delta`` → ``done``；
-         *     失败时 ``delta`` 后以 ``error`` 结束，保留已接收正文。主对话与
-         *     图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）：新账户
-         *     无需任何个人 Qwen 配置即可发送，模型调用由已注册的全局模型网关
-         *     执行。发送前可关闭本轮全局知识库层（``use_knowledge_base=false``）：
-         *     关闭后本轮检索记录与引用均不包含知识库候选；也可关闭本轮画像使用
-         *     （``use_profile=false``，Issue 27）：关闭后模型请求、审计与上下文
-         *     说明均不含任何画像切片。
+         *     Issue 02：HTTP 不再拥有生成生命周期——生成由后台执行器按租约领取
+         *     执行，事件持久化到运行游标；客户端以返回的 ``run_id``/``cursor``
+         *     订阅 ``GET .../events`` 恢复进度，断开/刷新/切换会话都不改变运行。
+         *     主对话与图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）。
+         *     ``use_knowledge_base=false``（Issue 20）：本轮检索与引用不含知识库
+         *     候选；``use_profile=false``（Issue 27）：本轮请求、审计与上下文说明
+         *     均不含任何画像切片（开关随运行快照落库，重试沿用）。
          */
         post: operations["send_message_chat_conversations__conversation_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/messages/{message_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Subscribe Message Events
+         * @description 订阅生成运行的持久化事件（游标续读，跨账户安全 404）。
+         *
+         *     Issue 02：事件由后台执行器持久化，本端点只回放与等待——客户端断开
+         *     只移除订阅者，不改变运行状态。回放完成后运行若未终态，长轮询等待
+         *     新事件（25 秒窗口内发心跳）；运行终态时全部事件（含终态事件）已
+         *     可读，回放完即结束。页面重开从 ``active_run.cursor`` 恢复订阅。
+         */
+        get: operations["subscribe_message_events_chat_conversations__conversation_id__messages__message_id__events_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -654,11 +678,11 @@ export interface paths {
         put?: never;
         /**
          * Retry Message
-         * @description 重试失败的助手消息：创建新的助手尝试并流式生成。
+         * @description 重试失败的助手消息：创建新的助手尝试与 queued 运行，立即返回。
          *
-         *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留。检索作用域
-         *     沿用被重试尝试轮次的设置（含知识库开关），不重复用户消息。重试与
-         *     发送同源：不检查账户凭据或探测快照（GQ-02）。
+         *     新尝试保留审计关系（尝试号递增），历史失败尝试原样保留；运行经后台
+         *     执行器领取执行（与发送同一外壳）。检索作用域沿用被重试尝试轮次的
+         *     设置（含知识库开关），不重复用户消息。重试与发送同源（GQ-02）。
          */
         post: operations["retry_message_chat_conversations__conversation_id__messages__message_id__retry_post"];
         delete?: never;
@@ -8188,6 +8212,8 @@ export interface components {
              * @description 绑定的模型运行锁标识。
              */
             run_lock_id?: string | null;
+            /** @description 关联的持久化生成运行视图（未运行过为 None）。 */
+            active_run?: components["schemas"]["ChatRunView"] | null;
             /**
              * Created At
              * Format: date-time
@@ -8292,6 +8318,72 @@ export interface components {
              * @description SKILL 插件标识或 MCP 服务器标识。
              */
             plugin_id: string;
+        };
+        /**
+         * ChatRunStartedResponse
+         * @description 发送/重试的创建响应：消息已落库、运行已入队，不再持有生成生命周期。
+         *
+         *     客户端随后以 ``run_id``/``cursor`` 订阅已持久化事件（GET events 端点）；
+         *     页面断开、刷新或切换会话都不会改变运行状态，只有显式停止或领域
+         *     生命周期操作才会取消运行。
+         */
+        ChatRunStartedResponse: {
+            /**
+             * Run Id
+             * @description 持久化运行标识。
+             */
+            run_id: string;
+            /**
+             * Cursor
+             * @description 创建时已持久化的事件游标（started/profile）。
+             */
+            cursor: number;
+            /** @description 本轮用户消息投影。 */
+            user_message: components["schemas"]["ChatMessageProjection"];
+            /** @description 助手消息投影。 */
+            assistant_message: components["schemas"]["ChatMessageProjection"];
+        };
+        /**
+         * ChatRunStatus
+         * @description 持久化生成运行的终态/进行态（Issue 02 运行状态机）。
+         * @enum {string}
+         */
+        ChatRunStatus: "queued" | "running" | "done" | "failed" | "stopped";
+        /**
+         * ChatRunView
+         * @description 消息上对外暴露的运行视图（页面恢复订阅的游标来源）。
+         */
+        ChatRunView: {
+            /**
+             * Run Id
+             * @description 持久化运行标识。
+             */
+            run_id: string;
+            /** @description 运行状态。 */
+            status: components["schemas"]["ChatRunStatus"];
+            /**
+             * Cursor
+             * @description 已持久化的最后事件游标；从下一游标恢复订阅。
+             */
+            cursor: number;
+            /**
+             * Attempt Count
+             * @description 领取执行次数（租约恢复递增）。
+             * @default 0
+             */
+            attempt_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 运行创建时间。
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description 运行最近更新时间。
+             */
+            updated_at: string;
         };
         /**
          * ChatStopResponse
@@ -25965,14 +26057,13 @@ export interface operations {
             };
         };
         responses: {
-            /** @description SSE 事件流：started → delta* → done | error（载荷由契约模型定义） */
+            /** @description 创建响应：消息已落库、生成运行已入队；随后用 run_id/cursor 订阅持久化事件 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatStreamEvent"];
-                    "text/event-stream": components["schemas"]["ChatStreamEvent"];
+                    "application/json": components["schemas"]["ChatRunStartedResponse"];
                 };
             };
             /** @description Unauthorized */
@@ -26009,6 +26100,70 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    subscribe_message_events_chat_conversations__conversation_id__messages__message_id__events_get: {
+        parameters: {
+            query?: {
+                cursor?: number;
+            };
+            header?: never;
+            path: {
+                conversation_id: string;
+                message_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description SSE 订阅：回放游标之后的持久化事件 → 心跳 → 终态后结束 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatStreamEvent"];
+                    "text/event-stream": components["schemas"]["ChatStreamEvent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Service Unavailable */
@@ -26301,14 +26456,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description SSE 事件流：started → delta* → done | error（载荷由契约模型定义） */
+            /** @description 创建响应：新尝试已落库、生成运行已入队；随后订阅持久化事件 */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatStreamEvent"];
-                    "text/event-stream": components["schemas"]["ChatStreamEvent"];
+                    "application/json": components["schemas"]["ChatRunStartedResponse"];
                 };
             };
             /** @description Unauthorized */

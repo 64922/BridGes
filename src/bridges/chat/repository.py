@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import json
+import secrets
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -37,6 +39,46 @@ class ModeEventRecord:
     account_id: str
     from_mode: str
     to_mode: str
+    created_at: datetime
+
+
+@dataclass
+class GenerationRunRecord:
+    """一次持久化生成运行（Issue 02：queued → running → done | failed | stopped）。
+
+    ``config`` 保存本轮发送/重试参数（知识库开关、画像开关），执行器
+    重跑时按同一份任务契约执行；``attempt_count`` 是领取执行次数（租约
+    超时恢复会递增），终态原因与脱敏耗时随运行落库。
+    """
+
+    run_id: str
+    account_id: str
+    conversation_id: str
+    user_message_id: str
+    assistant_message_id: str
+    attempt_number: int
+    status: str
+    config: dict[str, Any] | None
+    stage: str | None
+    lease_owner: str | None
+    lease_expires_at: datetime | None
+    attempt_count: int
+    stop_requested: bool
+    error_code: str | None
+    error_message: str | None
+    duration_ms: int | None
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass
+class GenerationEventRecord:
+    """运行上的一条单调游标事件（SSE 订阅回放与恢复的真相源）。"""
+
+    run_id: str
+    seq: int
+    kind: str
+    payload: dict[str, Any]
     created_at: datetime
 
 
@@ -945,6 +987,609 @@ class ConversationRepository:
                     _iso(lock.created_at),
                 ),
             )
+
+    # -- generation runs (Issue 02) ---------------------------------------
+
+    def insert_generation_turn(
+        self,
+        user_record: MessageRecord,
+        assistant_record: MessageRecord,
+        run_record: GenerationRunRecord,
+        events: list[tuple[str, dict[str, Any]]],
+        attachment_ids: list[str] | None = None,
+    ) -> None:
+        """同一事务原子创建一轮消息与 queued 运行（Issue 02 纵向切片）。
+
+        用户消息、助手占位、运行记录、运行初始事件（started/profile）与
+        generation 队列行要么全部落库、要么全部回滚——发送请求返回前
+        运行已可被后台执行器领取，绝不出现「消息已保存但运行缺失」或
+        反之的半状态。``attachment_ids`` 非空时在同一事务内绑定附件。
+        """
+        try:
+            with self._db.transaction():
+                for record in (user_record, assistant_record):
+                    self._db.scoped(record.account_id).execute(
+                        "INSERT INTO messages"
+                        "(message_id, conversation_id, account_id, role, attempt_number,"
+                        " status, content, thinking, error_code, error_message,"
+                        " duration_ms, model_id, run_lock_id, created_at, updated_at,"
+                        " web_search, arxiv_search, teaching, context_note, skill,"
+                        " career_planning, image, video, mcp_call)"
+                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            record.message_id,
+                            record.conversation_id,
+                            record.account_id,
+                            record.role.value,
+                            record.attempt_number,
+                            record.status.value,
+                            record.content,
+                            _json_dumps(record.thinking) if record.thinking else None,
+                            record.error_code,
+                            record.error_message,
+                            record.duration_ms,
+                            record.model_id,
+                            record.run_lock_id,
+                            _iso(record.created_at),
+                            _iso(record.updated_at),
+                            _json_dumps(record.web_search) if record.web_search else None,
+                            _json_dumps(record.arxiv_search)
+                            if record.arxiv_search
+                            else None,
+                            _json_dumps(record.teaching) if record.teaching else None,
+                            _json_dumps(record.context_note)
+                            if record.context_note
+                            else None,
+                            _json_dumps(record.skill) if record.skill else None,
+                            _json_dumps(record.career_planning)
+                            if record.career_planning
+                            else None,
+                            _json_dumps(record.image) if record.image else None,
+                            _json_dumps(record.video) if record.video else None,
+                            _json_dumps(record.mcp_call) if record.mcp_call else None,
+                        ),
+                    )
+                self._insert_generation_run_and_events(
+                    user_record.account_id, run_record, events
+                )
+                if attachment_ids:
+                    placeholders = ",".join("?" for _ in attachment_ids)
+                    rows = self._db.scoped(user_record.account_id).execute(
+                        "SELECT object_id FROM chat_attachments"
+                        " WHERE account_id = ? AND conversation_id = ?"
+                        " AND message_id IS NULL AND status = 'uploaded'"
+                        f" AND object_id IN ({placeholders})",
+                        (
+                            user_record.account_id,
+                            user_record.conversation_id,
+                            *attachment_ids,
+                        ),
+                    ).fetchall()
+                    if {str(row["object_id"]) for row in rows} != set(attachment_ids):
+                        raise StorageError("附件不存在或没有访问权限。")
+                    now = _iso(user_record.updated_at)
+                    for object_id in attachment_ids:
+                        self._db.scoped(user_record.account_id).execute(
+                            "UPDATE chat_attachments SET message_id = ?, status = 'bound',"
+                            " updated_at = ? WHERE object_id = ? AND account_id = ?"
+                            " AND conversation_id = ? AND message_id IS NULL",
+                            (
+                                user_record.message_id,
+                                now,
+                                object_id,
+                                user_record.account_id,
+                                user_record.conversation_id,
+                            ),
+                        )
+        except StorageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError("保存消息与生成运行失败，请稍后重试。") from exc
+
+    def insert_generation_attempt(
+        self,
+        assistant_record: MessageRecord,
+        run_record: GenerationRunRecord,
+        events: list[tuple[str, dict[str, Any]]],
+    ) -> None:
+        """同一事务原子创建新助手尝试与 queued 运行（重试路径）。
+
+        用户消息已存在于上一条尝试，本方法只插入新尝试、运行、初始事件
+        与队列行——绝不重复插入用户消息或改写历史。
+        """
+        try:
+            with self._db.transaction():
+                self._db.scoped(assistant_record.account_id).execute(
+                    "INSERT INTO messages"
+                    "(message_id, conversation_id, account_id, role, attempt_number,"
+                    " status, content, thinking, error_code, error_message,"
+                    " duration_ms, model_id, run_lock_id, created_at, updated_at,"
+                    " web_search, arxiv_search, teaching, context_note, skill,"
+                    " career_planning, image, video, mcp_call)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        assistant_record.message_id,
+                        assistant_record.conversation_id,
+                        assistant_record.account_id,
+                        assistant_record.role.value,
+                        assistant_record.attempt_number,
+                        assistant_record.status.value,
+                        assistant_record.content,
+                        (
+                            _json_dumps(assistant_record.thinking)
+                            if assistant_record.thinking
+                            else None
+                        ),
+                        assistant_record.error_code,
+                        assistant_record.error_message,
+                        assistant_record.duration_ms,
+                        assistant_record.model_id,
+                        assistant_record.run_lock_id,
+                        _iso(assistant_record.created_at),
+                        _iso(assistant_record.updated_at),
+                        (
+                            _json_dumps(assistant_record.web_search)
+                            if assistant_record.web_search
+                            else None
+                        ),
+                        (
+                            _json_dumps(assistant_record.arxiv_search)
+                            if assistant_record.arxiv_search
+                            else None
+                        ),
+                        (
+                            _json_dumps(assistant_record.teaching)
+                            if assistant_record.teaching
+                            else None
+                        ),
+                        (
+                            _json_dumps(assistant_record.context_note)
+                            if assistant_record.context_note
+                            else None
+                        ),
+                        _json_dumps(assistant_record.skill)
+                        if assistant_record.skill
+                        else None,
+                        (
+                            _json_dumps(assistant_record.career_planning)
+                            if assistant_record.career_planning
+                            else None
+                        ),
+                        _json_dumps(assistant_record.image)
+                        if assistant_record.image
+                        else None,
+                        _json_dumps(assistant_record.video)
+                        if assistant_record.video
+                        else None,
+                        _json_dumps(assistant_record.mcp_call)
+                        if assistant_record.mcp_call
+                        else None,
+                    ),
+                )
+                self._insert_generation_run_and_events(
+                    assistant_record.account_id, run_record, events
+                )
+        except StorageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError("保存生成运行失败，请稍后重试。") from exc
+
+    def _insert_generation_run_and_events(
+        self,
+        account_id: str,
+        run_record: GenerationRunRecord,
+        events: list[tuple[str, dict[str, Any]]],
+    ) -> None:
+        """事务内写入运行行、初始事件并登记领取队列（调用方持有事务）。"""
+        self._insert_generation_run_now(run_record)
+        self._enqueue_generation_now(run_record.run_id, account_id)
+        for kind, payload in events:
+            seq = self._next_event_seq(account_id, run_record.run_id)
+            self._db.scoped(account_id).execute(
+                "INSERT INTO generation_events"
+                "(run_id, seq, account_id, kind, payload, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    run_record.run_id,
+                    seq,
+                    account_id,
+                    kind,
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    _iso(run_record.updated_at),
+                ),
+            )
+
+    def _insert_generation_run_now(self, record: GenerationRunRecord) -> None:
+        """事务内写入运行行（调用方已持有事务）。"""
+        self._db.scoped(record.account_id).execute(
+            "INSERT INTO generation_runs"
+            "(run_id, account_id, conversation_id, user_message_id,"
+            " assistant_message_id, attempt_number, status, stage,"
+            " config_json, lease_owner, lease_expires_at, attempt_count,"
+            " stop_requested, error_code, error_message, duration_ms,"
+            " created_at, updated_at)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                record.run_id,
+                record.account_id,
+                record.conversation_id,
+                record.user_message_id,
+                record.assistant_message_id,
+                record.attempt_number,
+                record.status,
+                record.stage,
+                _json_dumps(record.config) if record.config else None,
+                record.lease_owner,
+                _iso(record.lease_expires_at) if record.lease_expires_at else None,
+                record.attempt_count,
+                1 if record.stop_requested else 0,
+                record.error_code,
+                record.error_message,
+                record.duration_ms,
+                _iso(record.created_at),
+                _iso(record.updated_at),
+            ),
+        )
+
+    def _enqueue_generation_now(self, run_id: str, account_id: str) -> None:
+        """事务内把运行登记进统一领取队列（系统级 task_claims 表）。"""
+        self._db.connection.execute(
+            "INSERT INTO task_claims(claim_id, queue_name, task_key, attempt,"
+            " status, payload_json, created_at, updated_at)"
+            " VALUES (?, 'generation', ?, 0, 'queued', ?, ?, ?)"
+            " ON CONFLICT(queue_name, task_key) DO UPDATE SET"
+            " payload_json = excluded.payload_json, updated_at = excluded.updated_at,"
+            " status = 'queued', attempt = 0, next_retry_at = NULL"
+            " WHERE task_claims.status != 'claimed'",
+            (
+                f"cl-gen-{secrets.token_urlsafe(16)}",
+                f"generation:{run_id}",
+                json.dumps({"run_id": run_id, "account_id": account_id}),
+                _iso(datetime.now(UTC)),
+                _iso(datetime.now(UTC)),
+            ),
+        )
+
+    def _next_event_seq(self, account_id: str, run_id: str) -> int:
+        row = self._db.scoped(account_id).execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq"
+            " FROM generation_events WHERE run_id = ? AND account_id = ?",
+            (run_id, account_id),
+        ).fetchone()
+        return int(row["next_seq"]) if row is not None else 1
+
+    def append_generation_event(
+        self,
+        account_id: str,
+        run_id: str,
+        kind: str,
+        payload: dict[str, Any],
+        created_at: datetime,
+    ) -> int:
+        """向运行追加一条游标事件，返回新 seq；须在调用方事务内执行。
+
+        运行必须属于当前账户（先按账户定位运行），跨账户追加返回 0。
+        """
+        with self._db.transaction():
+            run = self._db.scoped(account_id).execute(
+                "SELECT 1 FROM generation_runs WHERE run_id = ? AND account_id = ?",
+                (run_id, account_id),
+            ).fetchone()
+            if run is None:
+                return 0
+            row = self._db.scoped(account_id).execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 AS next_seq"
+                " FROM generation_events WHERE run_id = ? AND account_id = ?",
+                (run_id, account_id),
+            ).fetchone()
+            seq = int(row["next_seq"]) if row is not None else 1
+            self._db.scoped(account_id).execute(
+                "INSERT INTO generation_events"
+                "(run_id, seq, account_id, kind, payload, created_at)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    run_id,
+                    seq,
+                    account_id,
+                    kind,
+                    json.dumps(payload, ensure_ascii=False, sort_keys=True),
+                    _iso(created_at),
+                ),
+            )
+            return seq
+
+    def get_generation_run(
+        self, account_id: str, run_id: str
+    ) -> GenerationRunRecord | None:
+        row = self._db.scoped(account_id).execute(
+            "SELECT run_id, account_id, conversation_id, user_message_id,"
+            " assistant_message_id, attempt_number, status, stage,"
+            " config_json, lease_owner, lease_expires_at, attempt_count,"
+            " stop_requested, error_code, error_message, duration_ms,"
+            " created_at, updated_at"
+            " FROM generation_runs WHERE run_id = ? AND account_id = ?",
+            (run_id, account_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._run_from_row(row)
+
+    def get_run_by_message(
+        self, account_id: str, message_id: str
+    ) -> GenerationRunRecord | None:
+        """返回该助手消息最近一次运行（任意状态，页面恢复用）。"""
+        row = self._db.scoped(account_id).execute(
+            "SELECT run_id, account_id, conversation_id, user_message_id,"
+            " assistant_message_id, attempt_number, status, stage,"
+            " config_json, lease_owner, lease_expires_at, attempt_count,"
+            " stop_requested, error_code, error_message, duration_ms,"
+            " created_at, updated_at"
+            " FROM generation_runs WHERE assistant_message_id = ?"
+            " AND account_id = ? ORDER BY created_at DESC, run_id LIMIT 1",
+            (message_id, account_id),
+        ).fetchone()
+        if row is None:
+            return None
+        return self._run_from_row(row)
+
+    def list_active_runs(
+        self, account_id: str, conversation_id: str
+    ) -> list[GenerationRunRecord]:
+        """会话内尚未终态的运行（queued/running）；读取收敛的活跃判定源。"""
+        rows = self._db.scoped(account_id).execute(
+            "SELECT run_id, account_id, conversation_id, user_message_id,"
+            " assistant_message_id, attempt_number, status, stage,"
+            " config_json, lease_owner, lease_expires_at, attempt_count,"
+            " stop_requested, error_code, error_message, duration_ms,"
+            " created_at, updated_at"
+            " FROM generation_runs WHERE conversation_id = ? AND account_id = ?"
+            " AND status IN ('queued', 'running')"
+            " ORDER BY created_at, run_id",
+            (conversation_id, account_id),
+        ).fetchall()
+        return [self._run_from_row(row) for row in rows]
+
+    def delete_run_by_message(self, account_id: str, message_id: str) -> int:
+        """删除消息关联的运行与事件（测试构造遗留数据/运维清理路径）。"""
+        with self._db.transaction():
+            rows = self._db.scoped(account_id).execute(
+                "SELECT run_id FROM generation_runs"
+                " WHERE assistant_message_id = ? AND account_id = ?",
+                (message_id, account_id),
+            ).fetchall()
+            for row in rows:
+                self._db.scoped(account_id).execute(
+                    "DELETE FROM generation_events WHERE run_id = ? AND account_id = ?",
+                    (str(row["run_id"]), account_id),
+                )
+            cursor = self._db.scoped(account_id).execute(
+                "DELETE FROM generation_runs WHERE assistant_message_id = ?"
+                " AND account_id = ?",
+                (message_id, account_id),
+            )
+            return cursor.rowcount
+
+    def last_generation_event_seq(self, account_id: str, run_id: str) -> int:
+        row = self._db.scoped(account_id).execute(
+            "SELECT COALESCE(MAX(seq), 0) AS seq FROM generation_events"
+            " WHERE run_id = ? AND account_id = ?",
+            (run_id, account_id),
+        ).fetchone()
+        return int(row["seq"]) if row is not None else 0
+
+    def list_generation_events(
+        self, account_id: str, run_id: str, after_seq: int
+    ) -> list[GenerationEventRecord]:
+        rows = self._db.scoped(account_id).execute(
+            "SELECT run_id, seq, kind, payload, created_at FROM generation_events"
+            " WHERE run_id = ? AND account_id = ? AND seq > ?"
+            " ORDER BY seq",
+            (run_id, account_id, after_seq),
+        ).fetchall()
+        return [
+            GenerationEventRecord(
+                run_id=str(row["run_id"]),
+                seq=int(row["seq"]),
+                kind=str(row["kind"]),
+                payload=_json_loads_any(row["payload"]) or {},
+                created_at=_parse_iso(str(row["created_at"])),
+            )
+            for row in rows
+        ]
+
+    def claim_generation_run(
+        self,
+        account_id: str,
+        run_id: str,
+        *,
+        owner: str,
+        lease_expires_at: datetime,
+        max_attempts: int = 2,
+    ) -> int:
+        """原子领取运行（queued 领取或租约过期恢复），返回行数。
+
+        Issue 02 租约语义：queued 直接领取；running 且租约过期时按崩溃
+        恢复领取（attempt_count 递增）。``max_attempts`` 是执行尝试上限
+        （默认 2 = 1 次原始 + 1 次恢复），达到上限的运行不再被领取，由
+        收尸收敛为可重试失败——绝不永久 running。领取在 BEGIN IMMEDIATE
+        事务内完成，多个执行器竞争时只有一个成功（唯一执行模型调用）。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET status = 'running', lease_owner = ?,"
+                " lease_expires_at = ?, attempt_count = attempt_count + 1,"
+                " updated_at = ? WHERE run_id = ? AND account_id = ?"
+                " AND attempt_count < ? AND (status = 'queued'"
+                " OR (status = 'running' AND lease_expires_at IS NOT NULL"
+                "     AND lease_expires_at < ?))",
+                (
+                    owner,
+                    _iso(lease_expires_at),
+                    _iso(datetime.now(UTC)),
+                    run_id,
+                    account_id,
+                    max_attempts,
+                    _iso(datetime.now(UTC)),
+                ),
+            )
+            return cursor.rowcount
+
+    def update_generation_stage(
+        self, account_id: str, run_id: str, stage: str
+    ) -> int:
+        """更新运行当前阶段（Issue 02 规格：每次运行保存当前阶段）。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET stage = ?, updated_at = ?"
+                " WHERE run_id = ? AND account_id = ? AND status = 'running'",
+                (stage, _iso(datetime.now(UTC)), run_id, account_id),
+            )
+            return cursor.rowcount
+
+    def renew_generation_lease(
+        self, account_id: str, run_id: str, lease_expires_at: datetime
+    ) -> int:
+        """续期运行租约（长生成心跳），仅限 running 状态生效。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET lease_expires_at = ?, updated_at = ?"
+                " WHERE run_id = ? AND account_id = ? AND status = 'running'",
+                (
+                    _iso(lease_expires_at),
+                    _iso(datetime.now(UTC)),
+                    run_id,
+                    account_id,
+                ),
+            )
+            return cursor.rowcount
+
+    def request_generation_stop(self, account_id: str, run_id: str) -> int:
+        """写入停止请求（仅非终态运行生效）；执行器在安全检查点收敛。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET stop_requested = 1, updated_at = ?"
+                " WHERE run_id = ? AND account_id = ? AND status IN ('queued', 'running')",
+                (_iso(datetime.now(UTC)), run_id, account_id),
+            )
+            return cursor.rowcount
+
+    def finalize_generation_run(
+        self,
+        account_id: str,
+        run_id: str,
+        *,
+        status: str,
+        error_code: str | None,
+        error_message: str | None,
+        duration_ms: int | None,
+        now: datetime,
+    ) -> int:
+        """把运行原子收敛到终态；仅 queued/running → 目标状态，返回行数。
+
+        与消息终态收敛同一守卫语义：最多一个尝试可提交终态。
+        """
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET status = ?, error_code = ?,"
+                " error_message = ?, duration_ms = ?, lease_owner = NULL,"
+                " lease_expires_at = NULL, updated_at = ?"
+                " WHERE run_id = ? AND account_id = ? AND status IN ('queued', 'running')",
+                (
+                    status,
+                    error_code,
+                    error_message,
+                    duration_ms,
+                    _iso(now),
+                    run_id,
+                    account_id,
+                ),
+            )
+            return cursor.rowcount
+
+    def expire_overdue_runs(
+        self, max_attempts: int, now: datetime
+    ) -> list[GenerationRunRecord]:
+        """收尸：租约过期且尝试已到上限的运行收敛为可重试失败。
+
+        系统级收敛（跨账户调度，不经账户作用域）：持有运行的执行器
+        被强制退出后，租约到期时若已无恢复预算，必须给出明确可重试
+        终态而不是永久 running。返回被收尸的运行记录（执行器据此
+        收敛消息并补发终态事件，订阅端绝不悬挂）。
+        """
+        with self._db.transaction():
+            rows = self._db.connection.execute(
+                "SELECT run_id, account_id, conversation_id, user_message_id,"
+                " assistant_message_id, attempt_number, status, stage,"
+                " config_json, lease_owner, lease_expires_at, attempt_count,"
+                " stop_requested, error_code, error_message, duration_ms,"
+                " created_at, updated_at FROM generation_runs"
+                " WHERE status = 'running' AND lease_expires_at IS NOT NULL"
+                " AND lease_expires_at < ? AND attempt_count >= ?",
+                (_iso(now), max_attempts),
+            ).fetchall()
+            if not rows:
+                return []
+            self._db.connection.execute(
+                "UPDATE generation_runs SET status = 'failed', error_code = ?,"
+                " error_message = ?, lease_owner = NULL, lease_expires_at = NULL,"
+                " updated_at = ? WHERE status = 'running' AND lease_expires_at IS NOT NULL"
+                " AND lease_expires_at < ? AND attempt_count >= ?",
+                (
+                    "generation_worker_lost",
+                    "生成进程意外退出，已保留已接收内容，可点击重试。",
+                    _iso(now),
+                    _iso(now),
+                    max_attempts,
+                ),
+            )
+        return [self._run_from_row(row) for row in rows]
+
+    def request_stop_account_runs(self, account_id: str, now: datetime) -> int:
+        """为该账户全部非终态运行写入停止请求（账户删除编排调用）。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET stop_requested = 1, updated_at = ?"
+                " WHERE account_id = ? AND status IN ('queued', 'running')",
+                (_iso(now), account_id),
+            )
+            return cursor.rowcount
+
+    @staticmethod
+    def _run_from_row(row: Any) -> GenerationRunRecord:
+        return GenerationRunRecord(
+            run_id=str(row["run_id"]),
+            account_id=str(row["account_id"]),
+            conversation_id=str(row["conversation_id"]),
+            user_message_id=str(row["user_message_id"]),
+            assistant_message_id=str(row["assistant_message_id"]),
+            attempt_number=int(row["attempt_number"]),
+            status=str(row["status"]),
+            config=_json_loads_any(row["config_json"]),
+            stage=(str(row["stage"]) if row["stage"] is not None else None),
+            lease_owner=(
+                str(row["lease_owner"]) if row["lease_owner"] is not None else None
+            ),
+            lease_expires_at=(
+                _parse_iso(str(row["lease_expires_at"]))
+                if row["lease_expires_at"] is not None
+                else None
+            ),
+            attempt_count=int(row["attempt_count"]),
+            stop_requested=bool(row["stop_requested"]),
+            error_code=(
+                str(row["error_code"]) if row["error_code"] is not None else None
+            ),
+            error_message=(
+                str(row["error_message"]) if row["error_message"] is not None else None
+            ),
+            duration_ms=(
+                int(row["duration_ms"]) if row["duration_ms"] is not None else None
+            ),
+            created_at=_parse_iso(str(row["created_at"])),
+            updated_at=_parse_iso(str(row["updated_at"])),
+        )
 
     # -- helpers -----------------------------------------------------------
 

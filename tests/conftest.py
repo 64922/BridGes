@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Any
 
 import pytest
 from _pytest.tmpdir import TempPathFactory
@@ -105,3 +106,102 @@ def _deterministic_test_environment(
     # get_settings 是进程级 lru_cache；清掉缓存使下一次读取拿到
     # 上面的确定性环境，而不是前一个测试缓存的结果。
     get_settings.cache_clear()
+
+
+# ---------------------------------------------------------------------------
+# Issue 02 共享助手：持久化生成运行的测试驱动
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def generation_helpers() -> dict[str, Any]:
+    """持久化生成运行的测试助手（驱动执行器 / 订阅事件 / 发送消息）。
+
+    返回三个函数（闭包，按调用参数工作）：
+    - ``drive(app)``：同步驱动后台执行器直到没有待处理运行；
+    - ``subscribe(client, conversation_id, message_id, cursor=0)``：订阅
+      运行事件直到流结束，返回 ``[(kind, payload)]``（跳过心跳）；
+    - ``send(client, conversation_id, **body)``：POST 创建运行并断言成功，
+      返回创建响应 JSON。
+    test 环境不自动启动执行器线程（见 api/main.py 装配），测试用
+    ``drive`` 同步推进或自行启动线程做真实反馈环。
+    """
+    import json
+    import time
+
+    def drive(app: Any, *, timeout: float = 10.0) -> None:
+        executor = app.state.generation_executor
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            executor.run_tick()
+            if "无待处理" in executor._last_summary:  # noqa: SLF001 - 测试读摘要
+                return
+            time.sleep(0.02)
+        raise AssertionError("执行器未在超时前完成运行。")
+
+    def subscribe(
+        client: Any,
+        conversation_id: str,
+        message_id: str,
+        cursor: int = 0,
+        timeout: float = 15.0,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        events: list[tuple[str, dict[str, Any]]] = []
+        deadline = time.monotonic() + timeout
+        next_cursor = cursor
+        while time.monotonic() < deadline:
+            with client.stream(
+                "GET",
+                f"/chat/conversations/{conversation_id}/messages/{message_id}/events",
+                params={"cursor": next_cursor},
+            ) as response:
+                assert response.status_code == 200, response.text
+                body = "\n".join(response.iter_lines())
+            for block in body.split("\n\n"):
+                lines = [line for line in block.split("\n") if line]
+                event_name = None
+                data: list[str] = []
+                for line in lines:
+                    if line.startswith("event:"):
+                        event_name = line[len("event:"):].strip()
+                    elif line.startswith("data:"):
+                        data.append(line[len("data:"):].strip())
+                if event_name == "ping" or not event_name or not data:
+                    continue
+                events.append((event_name, json.loads("\n".join(data))))
+            if body.strip():
+                break
+            time.sleep(0.05)
+        if not body.strip():
+            raise AssertionError("订阅流在超时前未结束（运行未终态）。")
+        return events
+
+    def send(client: Any, conversation_id: str, **body: Any) -> dict[str, Any]:
+        response = client.post(
+            f"/chat/conversations/{conversation_id}/messages", json=body
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    def executor_thread(app: Any) -> tuple[Any, Any]:
+        """启动后台执行器线程（真实反馈环：订阅与执行并发）。
+
+        返回 (stop_event, thread)；测试结束须 stop + join，避免线程残留。
+        """
+        import threading
+
+        stop = threading.Event()
+        thread = threading.Thread(
+            target=app.state.generation_executor.run_loop,
+            kwargs={"stop": stop},
+            daemon=True,
+        )
+        thread.start()
+        return stop, thread
+
+    return {
+        "drive": drive,
+        "subscribe": subscribe,
+        "send": send,
+        "executor_thread": executor_thread,
+    }

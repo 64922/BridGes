@@ -255,6 +255,12 @@ class ChatMessageProjection(BaseModel):
     duration_ms: int | None = Field(default=None, description="本次生成耗时（毫秒）。")
     model_id: str | None = Field(default=None, description="实际使用的固定模型快照。")
     run_lock_id: str | None = Field(default=None, description="绑定的模型运行锁标识。")
+    # Issue 02：消息关联的持久化生成运行（生成中/已终态均可携带）。
+    # 页面重开时据此判断是否需要恢复订阅（status + cursor），发送响应
+    # 与读取投影共用同一来源，绝不重复创建用户消息或模型调用。
+    active_run: ChatRunView | None = Field(
+        default=None, description="关联的持久化生成运行视图（未运行过为 None）。"
+    )
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近更新时间。")
 
@@ -540,6 +546,41 @@ class ChatStopResponse(BaseModel):
     """停止生成的结果投影。"""
 
     message: ChatMessageProjection = Field(description="停止后的消息状态。")
+
+
+class ChatRunStatus(StrEnum):
+    """持久化生成运行的终态/进行态（Issue 02 运行状态机）。"""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+    STOPPED = "stopped"
+
+
+class ChatRunView(BaseModel):
+    """消息上对外暴露的运行视图（页面恢复订阅的游标来源）。"""
+
+    run_id: str = Field(description="持久化运行标识。")
+    status: ChatRunStatus = Field(description="运行状态。")
+    cursor: int = Field(description="已持久化的最后事件游标；从下一游标恢复订阅。")
+    attempt_count: int = Field(default=0, description="领取执行次数（租约恢复递增）。")
+    created_at: datetime = Field(description="运行创建时间。")
+    updated_at: datetime = Field(description="运行最近更新时间。")
+
+
+class ChatRunStartedResponse(BaseModel):
+    """发送/重试的创建响应：消息已落库、运行已入队，不再持有生成生命周期。
+
+    客户端随后以 ``run_id``/``cursor`` 订阅已持久化事件（GET events 端点）；
+    页面断开、刷新或切换会话都不会改变运行状态，只有显式停止或领域
+    生命周期操作才会取消运行。
+    """
+
+    run_id: str = Field(description="持久化运行标识。")
+    cursor: int = Field(description="创建时已持久化的事件游标（started/profile）。")
+    user_message: ChatMessageProjection = Field(description="本轮用户消息投影。")
+    assistant_message: ChatMessageProjection = Field(description="助手消息投影。")
 
 
 class ChatStreamEventKind(StrEnum):

@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 32：文生视频生成端到端测试。
@@ -132,6 +133,8 @@ async function installMockVideoApi(
     deleted: false,
     description: "由提示词「一条静谧的河」生成的视频",
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const taskForStatus = (status: VideoTask["status"]): VideoTask => {
     const base = state.task as VideoTask;
@@ -248,12 +251,16 @@ async function installMockVideoApi(
         message_id: assistant.message_id,
         message: assistant,
       });
+    eventStreams.set(assistant.message_id, sse);
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: sse,
+      contentType: "application/json",
+      body: JSON.stringify(runCreated(`run-${assistant.message_id}`, 1, user, assistant)),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
 
   // 任务轮询状态机：polls 计数推进（提交中 → 生成中 → 终态）。
   await page.route("**/api/chat/conversations/mock-1/video-tasks/**", async (route) => {

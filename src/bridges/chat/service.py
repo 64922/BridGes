@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import contextlib
 import secrets
+import time
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from typing import Any
@@ -28,6 +29,8 @@ from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
     ConversationRecord,
     ConversationRepository,
+    GenerationEventRecord,
+    GenerationRunRecord,
     MessageRecord,
     ModeEventRecord,
 )
@@ -70,6 +73,11 @@ from bridges.contracts.chat import (
     ChatMode,
     ChatModeEventProjection,
     ChatPluginSelectionItem,
+    ChatRunStatus,
+    ChatRunView,
+    ChatStreamEventKind,
+    ChatStreamProfileData,
+    ChatStreamStartedData,
     ChatThinkingSummary,
     ContextNoteProjection,
     ImageRequestPayload,
@@ -107,6 +115,46 @@ from bridges.web_search.service import WebSearchService
 
 #: 由首条用户消息推导对话标题的最大长度。
 _TITLE_MAX = 24
+
+
+def _started_event_payload(
+    *,
+    conversation_id: str,
+    user_message_id: str,
+    message_id: str,
+    attempt_number: int,
+    message: MessageRecord,
+) -> dict[str, Any]:
+    """构造 started 事件载荷（发送/重试共用；思考/搜索/教学投影随事件持久化）。
+
+    载荷与订阅回放的 SSE 帧 ``data`` 部分一致（不含外层 event 包装）。
+    """
+    return ChatStreamStartedData(
+        conversation_id=conversation_id,
+        user_message_id=user_message_id,
+        message_id=message_id,
+        attempt_number=attempt_number,
+        thinking=(
+            ChatThinkingSummary(**message.thinking)
+            if message.thinking is not None
+            else None
+        ),
+        web_search=(
+            WebSearchProjection(**message.web_search)
+            if message.web_search is not None
+            else None
+        ),
+        arxiv_search=(
+            ArxivSearchProjection(**message.arxiv_search)
+            if message.arxiv_search is not None
+            else None
+        ),
+        teaching=(
+            TeachingTurnProjection.model_validate(message.teaching)
+            if message.teaching is not None
+            else None
+        ),
+    ).model_dump(mode="json")
 
 
 class ChatDomainError(Exception):
@@ -452,44 +500,103 @@ class ChatService:
     ) -> ChatConversationProjection | None:
         """返回对话完整投影；不存在的对话返回 None。
 
-        读取时收敛"生成中但早已无人写入"的陈旧消息（进程重启/断流后
-        恢复场景）：仍处于 streaming 的消息落库为可重试错误，绝不把
-        半截占位当回答。
+        读取时以持久化生成为活跃判定源（Issue 02）：仍有 queued/running
+        运行的消息视为进行中，读取不打断；运行已终态而消息仍残留
+        streaming（执行器异常退出后的兜底）按运行终态收敛；完全没有
+        运行记录的遗留 streaming 消息（旧版本数据）保持 stream_interrupted
+        兜底。绝不把半截占位当回答，也绝不误伤可恢复的运行。
         """
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             return None
         messages = self._repo.list_messages(account_id, conversation_id)
         now = datetime.now(UTC)
+        active_runs = {
+            run.assistant_message_id: run
+            for run in self._repo.list_active_runs(account_id, conversation_id)
+        }
+        run_views: dict[str, ChatRunView] = {}
         for message in messages:
-            if message.status == ChatMessageStatus.STREAMING:
-                if self._lifecycle.is_active(message.message_id):
-                    # 生成仍在进行：读取不打断流
-                    continue
-                stale_thinking = failed_thinking(
-                    ChatThinkingSummary(**message.thinking)
-                    if message.thinking is not None
-                    else initial_thinking(CHAT_MODE),
-                    "stream_interrupted",
-                ).model_dump(mode="json")
-                finalize_message(
-                    self._repo,
+            if message.status != ChatMessageStatus.STREAMING:
+                continue
+            active = active_runs.get(message.message_id)
+            if active is not None:
+                # 运行尚未终态：生成仍在进行（或等待执行器领取），不打断
+                run_views[message.message_id] = self._run_view(active, account_id)
+                continue
+            run = self._repo.get_run_by_message(account_id, message.message_id)
+            if run is not None and run.status == ChatRunStatus.STOPPED.value:
+                # 运行已停止但消息残留 streaming（异常）：按停止语义收敛
+                self._reconcile_stale_message(
                     account_id,
-                    message.message_id,
+                    message,
+                    status=ChatMessageStatus.STOPPED,
+                    error_code=None,
+                    error_message=None,
+                    duration_ms=run.duration_ms,
+                    thinking=stopped_thinking(
+                        ChatThinkingSummary(**message.thinking)
+                        if message.thinking is not None
+                        else initial_thinking(CHAT_MODE)
+                    ).model_dump(mode="json"),
+                    now=now,
+                )
+            elif run is not None and run.status == ChatRunStatus.DONE.value:
+                # 运行已成功但消息残留 streaming（异常半写）：按内部错误收敛
+                self._reconcile_stale_message(
+                    account_id,
+                    message,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="internal_error",
+                    error_message="生成过程出现内部错误，请重试。",
+                    duration_ms=max(
+                        1, int((now - message.created_at).total_seconds() * 1000)
+                    ),
+                    thinking=failed_thinking(
+                        ChatThinkingSummary(**message.thinking)
+                        if message.thinking is not None
+                        else initial_thinking(CHAT_MODE),
+                        "internal_error",
+                    ).model_dump(mode="json"),
+                    now=now,
+                )
+            elif run is not None:
+                # 运行以失败终态结束而消息未被执行器收敛：按运行错误码收敛
+                self._reconcile_stale_message(
+                    account_id,
+                    message,
+                    status=ChatMessageStatus.ERROR,
+                    error_code=run.error_code or "internal_error",
+                    error_message=run.error_message
+                    or "生成过程出现内部错误，请重试。",
+                    duration_ms=run.duration_ms,
+                    thinking=failed_thinking(
+                        ChatThinkingSummary(**message.thinking)
+                        if message.thinking is not None
+                        else initial_thinking(CHAT_MODE),
+                        run.error_code or "internal_error",
+                    ).model_dump(mode="json"),
+                    now=now,
+                )
+            else:
+                # 旧版本遗留：无运行记录的 streaming 消息按断流收敛
+                self._reconcile_stale_message(
+                    account_id,
+                    message,
                     status=ChatMessageStatus.ERROR,
                     error_code="stream_interrupted",
                     error_message=STREAM_INTERRUPTED_MESSAGE,
-                    duration_ms=max(1, int((now - message.created_at).total_seconds() * 1000)),
-                    model_id=None,
-                    run_lock_id=None,
-                    started=_monotonic_of(message.created_at, now),
+                    duration_ms=max(
+                        1, int((now - message.created_at).total_seconds() * 1000)
+                    ),
+                    thinking=failed_thinking(
+                        ChatThinkingSummary(**message.thinking)
+                        if message.thinking is not None
+                        else initial_thinking(CHAT_MODE),
+                        "stream_interrupted",
+                    ).model_dump(mode="json"),
                     now=now,
-                    thinking=stale_thinking,
                 )
-                message.status = ChatMessageStatus.ERROR
-                message.error_code = "stream_interrupted"
-                message.error_message = STREAM_INTERRUPTED_MESSAGE
-                message.thinking = stale_thinking
         resolution = self._resolve_selections(account_id, conversation_id)
         return self._project_conversation(
             account_id,
@@ -504,6 +611,7 @@ class ChatService:
             updated_at=record.updated_at,
             messages=messages,
             mode_events=self._repo.list_mode_events(account_id, conversation_id),
+            run_views=run_views,
         )
 
     # ------------------------------------------------------------------
@@ -521,8 +629,16 @@ class ChatService:
         image: dict[str, Any] | None = None,
         video: dict[str, Any] | None = None,
         mcp_call: dict[str, Any] | None = None,
+        use_knowledge_base: bool = True,
+        use_profile: bool = True,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
-        """原子创建用户消息与 streaming 状态的助手消息，返回两者投影。
+        """原子创建用户消息、助手占位与 queued 运行，返回两者投影。
+
+        Issue 02：同一事务创建用户消息、streaming 助手占位与持久化生成
+        运行（queued）并登记进统一领取队列——发送返回即完成创建，生成
+        由后台执行器领取执行，页面/SSE 不再拥有运行生命周期。运行快照
+        本轮发送参数（``use_knowledge_base``/``use_profile``），执行器
+        与重试按同一份任务契约执行。
 
         ``skill_id``/``skill_input``（Issue 28）：携带时本轮走内置 SKILL
         编排（bridges-humanizer）；载荷随用户消息落库，重试沿用同一份
@@ -634,16 +750,44 @@ class ChatService:
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
         )
-        if attachment_ids:
-            self._repo.insert_messages_with_attachments(
-                user_message, assistant_message, attachment_ids
-            )
-        else:
-            self._repo.insert_message(user_message)
-            self._repo.insert_message(assistant_message)
+        # Issue 02：同一事务创建消息、queued 运行、started 事件与队列行；
+        # 运行创建即视为"活跃"，读取收敛不会误伤（判定源为运行表）。
+        run_id = secrets.token_urlsafe(16)
+        run_record = GenerationRunRecord(
+            run_id=run_id,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            user_message_id=user_message.message_id,
+            assistant_message_id=assistant_message.message_id,
+            attempt_number=assistant_message.attempt_number,
+            status=ChatRunStatus.QUEUED.value,
+            config={"use_knowledge_base": use_knowledge_base, "use_profile": use_profile},
+            stage=None,
+            lease_owner=None,
+            lease_expires_at=None,
+            attempt_count=0,
+            stop_requested=False,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            created_at=now,
+            updated_at=now,
+        )
+        started_payload = _started_event_payload(
+            conversation_id=conversation_id,
+            user_message_id=user_message.message_id,
+            message_id=assistant_message.message_id,
+            attempt_number=assistant_message.attempt_number,
+            message=assistant_message,
+        )
+        self._repo.insert_generation_turn(
+            user_message,
+            assistant_message,
+            run_record,
+            [(ChatStreamEventKind.STARTED.value, started_payload)],
+            attachment_ids or None,
+        )
         self._repo.touch_conversation(account_id, conversation_id, now)
-        # 预注册停止信号：生成一经创建即视为"活跃"，读取收敛不会误伤
-        self._lifecycle.register(assistant_message.message_id)
 
         if not record.title:
             title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
@@ -661,10 +805,24 @@ class ChatService:
                     content=content,
                     mode=mode.value,
                 )
+        # Issue 02：画像通知作为 profile 事件随运行持久化（started 之后），
+        # 订阅者从游标回放即可即时展示，重开页面不重复下发。
+        notifications = self.profile_notifications_for_message(
+            account_id, conversation_id, user_message.message_id
+        )
+        if notifications:
+            profile_payload = ChatStreamProfileData(
+                message_id=user_message.message_id,
+                notifications=notifications,
+            ).model_dump(mode="json")
+            self._repo.append_generation_event(
+                account_id, run_id, ChatStreamEventKind.PROFILE.value, profile_payload, now
+            )
 
+        run_view = self._run_view(run_record, account_id)
         return (
             self._project_message(user_message),
-            self._project_message(assistant_message),
+            self._project_message(assistant_message, run_view),
         )
 
     def stream_generation(
@@ -699,7 +857,14 @@ class ChatService:
     def stop_generation(
         self, account_id: str, conversation_id: str, message_id: str
     ) -> ChatMessageProjection:
-        """停止进行中的生成；幂等，已终态的消息直接返回当前状态。"""
+        """停止进行中的生成（显式操作）；幂等，已终态直接返回当前状态。
+
+        Issue 02：停止写入运行表的 stop_requested（跨进程真相源），并
+        设置同进程停止信号；后台执行器在安全检查点收敛为 stopped。本
+        方法等待执行器收敛（≤4 秒）；无执行器运行（测试环境/执行器被
+        长模型调用阻塞）时按既有语义兜底收敛，终态由原子守卫保证唯一
+        写入，绝不会被执行器迟到的终态改写成 done。
+        """
         message = self._repo.get_message(account_id, message_id)
         if message is None or message.conversation_id != conversation_id:
             raise ChatDomainError(
@@ -707,6 +872,33 @@ class ChatService:
             )
         if message.status != ChatMessageStatus.STREAMING:
             return self._project_message(message)
+
+        run = self._repo.get_run_by_message(account_id, message_id)
+        if run is not None and run.status in {
+            ChatRunStatus.QUEUED.value,
+            ChatRunStatus.RUNNING.value,
+        }:
+            self._repo.request_generation_stop(account_id, run.run_id)
+            entry = self._lifecycle.signal_and_started(message_id)
+            if entry is not None:
+                entry[0].set()
+            # 等待执行器在安全检查点收敛；终态后直接返回（含真实耗时）。
+            deadline = time.monotonic() + 4.0
+            while time.monotonic() < deadline:
+                current = self._repo.get_message(account_id, message_id)
+                if current is None or current.status != ChatMessageStatus.STREAMING:
+                    if current is not None:
+                        self._lifecycle.unregister(message_id)
+                        return self._project_message(current)
+                    break
+                time.sleep(0.1)
+            # 超时：执行器不存在或仍被长调用阻塞——按既有语义兜底收敛，
+            # 执行器下个安全检查点发现消息已终态后停止并收敛运行。
+            message = self._repo.get_message(account_id, message_id)
+            if message is None:
+                raise ChatDomainError(
+                    "message_not_found", "消息不存在或没有访问权限。", 404
+                )
 
         entry = self._lifecycle.signal_and_started(message_id)
         stop_event = entry[0] if entry is not None else None
@@ -760,10 +952,11 @@ class ChatService:
     def stop_account_generations(self, account_id: str) -> int:
         """停止该账户全部进行中的生成（账户删除编排调用）。
 
-        遍历账户下 streaming 状态消息并逐个发停止信号；生成线程在下次
-        收敛点按既有终止语义收尾（状态写入仍走账户作用域行），已终态或
-        跨进程遗留消息由 ``_finalize_message`` 幂等收敛。返回停止数量。
+        Issue 02：先向全部非终态运行写入 stop_requested（跨进程真相
+        源），再对仍处于 streaming 的消息逐个发同进程停止信号；后台
+        执行器在下次收敛点按既有终止语义收尾。返回停止的消息数量。
         """
+        self._repo.request_stop_account_runs(account_id, datetime.now(UTC))
         stopped = 0
         for conversation in self._repo.list_conversations(account_id):
             for message in self._repo.list_messages(account_id, conversation.conversation_id):
@@ -772,17 +965,24 @@ class ChatService:
                 entry = self._lifecycle.signal_and_started(message.message_id)
                 if entry is not None:
                     entry[0].set()
-                    self._lifecycle.unregister(message.message_id)
                 stopped += 1
         return stopped
 
     def retry_generation(
-        self, account_id: str, conversation_id: str, message_id: str
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        use_knowledge_base: bool = True,
+        use_profile: bool = True,
     ) -> tuple[ChatMessageProjection, ChatMessageProjection]:
         """为已终态（失败/停止/完成）的助手消息创建新的助手尝试。
 
         尝试号递增，历史尝试原样保留（含错误状态），新尝试成为该轮的
-        最新回答；绝不静默改写历史，也不把失败注册为成功。
+        最新回答；绝不静默改写历史，也不把失败注册为成功。Issue 02：
+        新尝试在同一事务创建 queued 运行并持久化 started 事件，由后台
+        执行器领取执行（与发送同一外壳）。``use_knowledge_base``/
+        ``use_profile`` 沿用旧尝试轮次的开关，随运行快照落库。
         """
         message = self._repo.get_message(account_id, message_id)
         if message is None or message.conversation_id != conversation_id:
@@ -857,12 +1057,45 @@ class ChatService:
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
         )
-        self._repo.insert_message(new_attempt)
+        # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
+        # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
+        run_id = secrets.token_urlsafe(16)
+        run_record = GenerationRunRecord(
+            run_id=run_id,
+            account_id=account_id,
+            conversation_id=conversation_id,
+            user_message_id=owner.message_id,
+            assistant_message_id=new_attempt.message_id,
+            attempt_number=new_attempt.attempt_number,
+            status=ChatRunStatus.QUEUED.value,
+            config={"use_knowledge_base": use_knowledge_base, "use_profile": use_profile},
+            stage=None,
+            lease_owner=None,
+            lease_expires_at=None,
+            attempt_count=0,
+            stop_requested=False,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            created_at=now,
+            updated_at=now,
+        )
+        started_payload = _started_event_payload(
+            conversation_id=conversation_id,
+            user_message_id=owner.message_id,
+            message_id=new_attempt.message_id,
+            attempt_number=new_attempt.attempt_number,
+            message=new_attempt,
+        )
+        self._repo.insert_generation_attempt(
+            new_attempt,
+            run_record,
+            [(ChatStreamEventKind.STARTED.value, started_payload)],
+        )
         self._repo.touch_conversation(account_id, conversation_id, now)
-        self._lifecycle.register(new_attempt.message_id)
         return (
             self._project_message(owner),
-            self._project_message(new_attempt),
+            self._project_message(new_attempt, self._run_view(run_record, account_id)),
         )
 
     # ------------------------------------------------------------------
@@ -1174,7 +1407,79 @@ class ChatService:
     # 投影
     # ------------------------------------------------------------------
 
-    def _project_message(self, message: MessageRecord) -> ChatMessageProjection:
+    def _reconcile_stale_message(
+        self,
+        account_id: str,
+        message: MessageRecord,
+        *,
+        status: ChatMessageStatus,
+        error_code: str | None,
+        error_message: str | None,
+        duration_ms: int | None,
+        thinking: dict[str, list[str]],
+        now: datetime,
+    ) -> None:
+        """把残留 streaming 消息按指定终态收敛（读取路径陈旧收敛唯一实现）。
+
+        原子守卫保证最多一个写入生效；同步回填记录字段，投影与落库一致。
+        """
+        finalize_message(
+            self._repo,
+            account_id,
+            message.message_id,
+            status=status,
+            error_code=error_code,
+            error_message=error_message,
+            duration_ms=duration_ms,
+            model_id=None,
+            run_lock_id=None,
+            started=_monotonic_of(message.created_at, now),
+            now=now,
+            thinking=thinking,
+        )
+        message.status = status
+        message.error_code = error_code
+        message.error_message = error_message
+        message.duration_ms = duration_ms
+        message.thinking = thinking
+
+    def run_view_of(
+        self, account_id: str, message_id: str
+    ) -> ChatRunView | None:
+        """返回消息关联运行的外部视图（游标/状态），未运行过返回 None。"""
+        run = self._repo.get_run_by_message(account_id, message_id)
+        if run is None:
+            return None
+        return self._run_view(run, account_id)
+
+    def generation_events(
+        self, account_id: str, run_id: str, after_seq: int
+    ) -> list[GenerationEventRecord]:
+        """按游标读取运行上的持久化事件（SSE 订阅回放；账户隔离）。"""
+        return self._repo.list_generation_events(account_id, run_id, after_seq)
+
+    def generation_run(
+        self, account_id: str, run_id: str
+    ) -> GenerationRunRecord | None:
+        """按账户读取运行记录（订阅端点判断终态；跨账户返回 None）。"""
+        return self._repo.get_generation_run(account_id, run_id)
+
+    def _run_view(self, run: GenerationRunRecord, account_id: str) -> ChatRunView:
+        """由运行记录构造外部视图；游标取已持久化的最后事件 seq。"""
+        return ChatRunView(
+            run_id=run.run_id,
+            status=ChatRunStatus(run.status),
+            cursor=self._repo.last_generation_event_seq(account_id, run.run_id),
+            attempt_count=run.attempt_count,
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+        )
+
+    def _project_message(
+        self,
+        message: MessageRecord,
+        run_view: ChatRunView | None = None,
+    ) -> ChatMessageProjection:
         attachments = (
             [
                 attachment.projection()
@@ -1278,6 +1583,7 @@ class ChatService:
             duration_ms=message.duration_ms,
             model_id=message.model_id,
             run_lock_id=message.run_lock_id,
+            active_run=run_view,
             created_at=message.created_at,
             updated_at=message.updated_at,
         )
@@ -1297,6 +1603,7 @@ class ChatService:
         mode_events: list[ModeEventRecord] | None = None,
         plugin_selection: list[ChatPluginSelectionItem] | None = None,
         removed_selections: list[RemovedPluginSelection] | None = None,
+        run_views: dict[str, ChatRunView] | None = None,
     ) -> ChatConversationProjection:
         return ChatConversationProjection(
             conversation_id=conversation_id,
@@ -1308,7 +1615,10 @@ class ChatService:
             removed_selections=list(removed_selections or []),
             created_at=created_at,
             updated_at=updated_at,
-            messages=[self._project_message(message) for message in messages],
+            messages=[
+                self._project_message(message, (run_views or {}).get(message.message_id))
+                for message in messages
+            ],
             mode_events=[
                 ChatModeEventProjection(
                     event_id=event.event_id,

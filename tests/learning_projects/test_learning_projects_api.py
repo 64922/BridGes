@@ -325,6 +325,8 @@ def test_delete_contents_delete_removes_everything(
         json={"content": "请阅读", "attachment_ids": [attachment_id]},
     )
     assert sent.status_code == 200, sent.text
+    # Issue 02：发送创建运行，后台执行器领取执行（test 环境同步驱动）
+    sqlite_app.state.generation_executor.run_tick()
 
     project_file = upload_project_file(client, project_id, "资料.txt", b"project file")
     assert project_file.status_code == 201, project_file.text

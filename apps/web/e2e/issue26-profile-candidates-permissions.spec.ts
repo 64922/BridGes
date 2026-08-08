@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 26 — 交付画像候选与分级许可更新。
@@ -364,6 +365,8 @@ async function installMockChatApi(
     messages: [],
     counter: 0,
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
   const notification = mode === "auto" ? AUTO_WRITE_NOTIFICATION : TRANSIENT_NOTIFICATION;
 
   const history = () => ({
@@ -437,10 +440,16 @@ async function installMockChatApi(
         message_id: assistantMessage.message_id,
         message: { ...assistantMessage, content: "正在生成", status: "done" },
       });
+    eventStreams.set(assistantMessage.message_id, stream);
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: stream,
+      contentType: "application/json",
+      body: JSON.stringify(
+        runCreated(`run-${assistantMessage.message_id}`, 1, userMessage, assistantMessage)
+      ),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
 }

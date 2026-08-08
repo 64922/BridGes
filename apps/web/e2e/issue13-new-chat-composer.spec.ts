@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 import { signUp, uniqueCredentials } from "./helpers/auth";
+import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 
 /**
  * Issue 13 — 交付新聊天输入区与完整空白态。
@@ -75,6 +76,8 @@ async function installMockChatApi(page: Page, options: { createDelayMs?: number 
       updated_at: string;
     }[],
   };
+  // Issue 02：消息 → 持久化事件流（POST 创建运行后由 events 端点回放）
+  const eventStreams = new Map<string, string>();
 
   const history = () => ({
     conversation_id: "mock-1",
@@ -131,12 +134,21 @@ async function installMockChatApi(page: Page, options: { createDelayMs?: number 
       assistantMessage.content = "这是替身生成的回答。";
       assistantMessage.status = "done";
     }
+    eventStreams.set(
+      assistantMessage.message_id,
+      sseStream("a-1", "u-1", "这是替身生成的回答。", done)
+    );
     await route.fulfill({
       status: 200,
-      contentType: "text/event-stream",
-      body: sseStream("a-1", "u-1", "这是替身生成的回答。", done),
+      contentType: "application/json",
+      body: JSON.stringify(
+        runCreated(`run-${assistantMessage.message_id}`, 1, userMessage, assistantMessage)
+      ),
     });
   });
+
+  // Issue 02：订阅运行事件（回放已持久化事件；运行终态后结束）
+  installRunEventsRoutes(page, eventStreams);
 
   await page.route("**/api/chat/conversations/mock-1/messages/*/stop", async (route) => {
     const target = state.messages.find((m) => m.message_id === "a-1");
