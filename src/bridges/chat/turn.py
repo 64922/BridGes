@@ -20,9 +20,10 @@ import contextlib
 import re
 import threading
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 if TYPE_CHECKING:
     from bridges.skills.humanizer.service import HumanizerRunEvent
@@ -34,6 +35,14 @@ from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.career.intent import is_career_intent
+from bridges.chat.budget import (
+    EXTERNAL_TIMEOUT_SECONDS,
+    RESULT_FAILED,
+    RESULT_OK,
+    RESULT_TIMEOUT,
+    RunBudget,
+    RunStage,
+)
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
@@ -47,6 +56,7 @@ from bridges.contracts.chat import (
     ChatStreamHumanizerData,
     ChatStreamImageData,
     ChatStreamMcpData,
+    ChatStreamStageData,
     ChatStreamVideoData,
     ChatThinkingSummary,
     ContextNoteProfileItem,
@@ -90,6 +100,20 @@ from bridges.web_search.service import WebSearchService
 #: 核心对话能力的固定绑定（ADR-0009 固定模型矩阵）。
 CHAT_CAPABILITY_NAME = "qwen_text_chat"
 CHAT_CAPABILITY_VERSION = "1"
+
+#: 并行公开搜索超时占位（预算到期未完成的结果；调用方按降级处理）。
+_SEARCH_TIMEOUT = object()
+
+
+def _wait_timeout(futures: list[Any], timeout: float) -> tuple[set[Any], set[Any]]:
+    """等待全部 future 完成或总超时（并行语义：总耗时接近较慢者）。"""
+    if not futures:
+        return set(), set()
+    if timeout <= 0:
+        return set(), set(futures)
+    # 等全部来源完成（或总超时）：并行语义 = 总耗时接近较慢者而非之和
+    done, pending = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
+    return done, pending
 
 #: 对话双模式（ADR-0022）：普通新聊天默认日常陪伴，学习项目新建对话默认学习模式。
 CHAT_MODE = ChatMode.COMPANION
@@ -241,6 +265,7 @@ _ERROR_MESSAGES: dict[str, str] = {
     "skill_version_conflict": "SKILL 版本固定，不支持自定义版本，请重新发起任务。",
     "humanizer_generation_failed": "人味化生成失败，请重试（输入已保留）。",
     "humanizer_failed": "人味化任务执行异常，请重试（输入已保留）。",
+    "budget_exceeded": "本次生成超过时延预算，已停止继续执行；请重试（输入已保留）。",
     "empty_output": "生成结果缺少最终文本，请重试。",
     "output_contract_incomplete": "输出合同不完整，请重试（输入已保留）。",
     "genre_check_failed": "体裁规则复核未通过，请调整任务后重试。",
@@ -286,6 +311,8 @@ _RETRYABLE_CODES = frozenset(
         "empty_output",
         "output_contract_incomplete",
         "genre_check_failed",
+        # Issue 06：超预算终止可重试（重试创建新运行，预算重新开始）。
+        "budget_exceeded",
     }
 )
 
@@ -425,6 +452,17 @@ def failed_thinking(
 def stopped_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummary:
     """用户停止时的摘要：保留已完成步骤并给出中文质量结论。"""
     return thinking.model_copy(update={"quality": ["已停止生成，保留已生成内容。"]})
+
+
+def budget_warning_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummary:
+    """预算受限交付时的摘要：已交付草稿，重试可获得更完整回答（Issue 06）。"""
+    return thinking.model_copy(
+        update={
+            "quality": [
+                "回答已交付（受时延预算限制，内容可能不完整）；重试可获得更完整回答。"
+            ]
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1164,12 +1202,18 @@ class TurnOrchestrator:
         )
         content = ""
         started = time.monotonic()
+        # Issue 06：本次 run 的统一阶段时钟与预算控制器（总预算 120s 硬门；
+        # 阶段事件经 stage 事件流下发，指标只记录 ID/阶段/毫秒/结果码）。
+        budget = RunBudget(run_context.run_id)
         conversation = self._repo.get_conversation(account_id, conversation_id)
         thinking = initial_thinking(
             ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
         )
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
+        #: 模型阶段标记：try 前初始化，finally 统一关闭计时（异常路径安全）
+        generation_entered = False
+        first_token_ms: int | None = None
         try:
             history = self._model_history(
                 account_id, conversation_id, until_user_message_id
@@ -1214,6 +1258,7 @@ class TurnOrchestrator:
                     run_context,
                     until_user_message_id,
                     use_knowledge_base,
+                    budget,
                 )
                 return
             # Issue 31：用户消息携带图片生成/编辑载荷（前端图片对话框提交）
@@ -1337,6 +1382,7 @@ class TurnOrchestrator:
                     until_user_message_id,
                     use_knowledge_base,
                     use_profile,
+                    budget,
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
@@ -1380,37 +1426,134 @@ class TurnOrchestrator:
                 previous_turn = previous_teaching_turn(
                     messages, owner.message_id if owner else None
                 )
-                thinking, retrieval_round = self._run_retrieval(
-                    account_id,
-                    conversation_id,
-                    assistant_message_id,
-                    until_user_message_id
-                    or (owner.message_id if owner is not None else None),
-                    round_query,
-                    use_knowledge_base=use_knowledge_base,
-                    thinking=thinking,
-                    stop_event=stop_event,
-                )
+                if budget.enter(RunStage.LOCAL_RETRIEVAL):
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
+                    )
+                    thinking, retrieval_round = self._run_retrieval(
+                        account_id,
+                        conversation_id,
+                        assistant_message_id,
+                        until_user_message_id
+                        or (owner.message_id if owner is not None else None),
+                        round_query,
+                        use_knowledge_base=use_knowledge_base,
+                        thinking=thinking,
+                        stop_event=stop_event,
+                    )
+                    budget.exit(
+                        RunStage.LOCAL_RETRIEVAL,
+                        category="layered_retrieval",
+                        count=1 if retrieval_round is not None else 0,
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.LOCAL_RETRIEVAL,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                    )
+                else:
+                    budget.exit(RunStage.LOCAL_RETRIEVAL)
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
+                    )
 
                 required_search = self._teaching.required_search(round_query, retrieval_round)
 
-                if required_search.value in {"arxiv", "both"} and self._arxiv_search is not None:
-                    arxiv_plan = self._arxiv_search.plan(
-                        round_query, mode, force=True
+                arxiv_plan = None
+                search_plan = None
+                public_search_entered = False
+                if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
+                    public_search_entered = True
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
                     )
-                    try:
-                        arxiv_search_projection = self._arxiv_search.search(
-                            account_id, arxiv_plan, stop_event=stop_event
+                    # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
+                    # 总耗时接近较慢者而非两者之和；结果按固定顺序（先论文
+                    # 后公网）处理，顺序确定。
+                    calls: list[tuple[str, Callable[[], object] | None]] = []
+                    if (
+                        required_search.value in {"arxiv", "both"}
+                        and self._arxiv_search is not None
+                    ):
+                        arxiv_plan = self._arxiv_search.plan(round_query, mode, force=True)
+                        calls.append(
+                            (
+                                "arxiv",
+                                lambda: self._arxiv_search.search(  # type: ignore[union-attr]
+                                    account_id, arxiv_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                ),
+                            )
                         )
-                    except Exception:  # noqa: BLE001 - 教学门对外统一呈现失败状态
-                        # Issue 05：意外异常不再折叠成启动失败，投影为独立的
-                        # 内部错误码（常规失败已由服务层分类为稳定错误码）。
+                    if (
+                        required_search.value in {"duckduckgo", "both"}
+                        and self._web_search is not None
+                    ):
+                        search_plan = self._web_search.plan(round_query, mode, force=True)
+                        calls.append(
+                            (
+                                "web",
+                                lambda: self._web_search.search(  # type: ignore[union-attr]
+                                    account_id, search_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                ),
+                            )
+                        )
+                    # 搜索阶段墙钟：取来源超时中较小者，且不超出剩余总预算
+                    stage_budget = min(
+                        EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
+                        EXTERNAL_TIMEOUT_SECONDS["web_search"],
+                    )
+                    search_results = self._parallel_search(
+                        calls,
+                        timeout_seconds=min(
+                            stage_budget, budget.remaining_ms() / 1000
+                        ),
+                    )
+                    arxiv_result = search_results.get("arxiv")
+                    web_result = search_results.get("web")
+                    if arxiv_plan is not None and arxiv_result is not _SEARCH_TIMEOUT:
+                        if isinstance(arxiv_result, Exception):
+                            # Issue 05：意外异常不再折叠成启动失败，投影为
+                            # 独立的内部错误码（常规失败由服务层分类）。
+                            arxiv_search_projection = ArxivSearchProjection(
+                                status=ArxivSearchStatus.ERROR,
+                                trigger_reason=arxiv_plan.reason,
+                                query_summary=arxiv_plan.query,
+                                error_code="arxiv_internal",
+                                error_message="arXiv 搜索服务异常，请重试。",
+                                can_retry=True,
+                            )
+                        else:
+                            arxiv_search_projection = arxiv_result
+                    elif arxiv_plan is not None:
+                        # 阶段预算到期：不等待慢来源，按超时降级（主流程继续）
                         arxiv_search_projection = ArxivSearchProjection(
                             status=ArxivSearchStatus.ERROR,
                             trigger_reason=arxiv_plan.reason,
                             query_summary=arxiv_plan.query,
-                            error_code="arxiv_internal",
-                            error_message="arXiv 搜索服务异常，请重试。",
+                            error_code="arxiv_timeout",
+                            error_message="arXiv 搜索超时，请重试。",
+                            can_retry=True,
+                        )
+                    if search_plan is not None and web_result is not _SEARCH_TIMEOUT:
+                        if isinstance(web_result, Exception):
+                            web_search_projection = WebSearchProjection(
+                                status=WebSearchStatus.ERROR,
+                                trigger_reason=search_plan.reason,
+                                query_summary=search_plan.query,
+                                error_code="web_search_request",
+                                error_message="公网搜索请求未完成，请重试。",
+                                can_retry=True,
+                            )
+                        else:
+                            web_search_projection = web_result
+                    elif search_plan is not None:
+                        web_search_projection = WebSearchProjection(
+                            status=WebSearchStatus.ERROR,
+                            trigger_reason=search_plan.reason,
+                            query_summary=search_plan.query,
+                            error_code="web_search_timeout",
+                            error_message="联网搜索超时，请重试。",
                             can_retry=True,
                         )
                     if arxiv_search_projection is not None:
@@ -1445,14 +1588,6 @@ class TurnOrchestrator:
                                 ),
                             )
                             return
-
-                if required_search.value in {"duckduckgo", "both"} and self._web_search is not None:
-                    search_plan = self._web_search.plan(
-                        round_query, mode, force=True
-                    )
-                    web_search_projection = self._web_search.search(
-                        account_id, search_plan, stop_event=stop_event
-                    )
                     if web_search_projection is not None:
                         self._repo.update_message_web_search(
                             account_id,
@@ -1483,6 +1618,25 @@ class TurnOrchestrator:
                                 ),
                             )
                             return
+                if public_search_entered:
+                    budget.exit(
+                        RunStage.PUBLIC_SEARCH,
+                        category="web_search",
+                        count=sum(
+                            1
+                            for projection in (
+                                web_search_projection,
+                                arxiv_search_projection,
+                            )
+                            if projection is not None
+                        ),
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.PUBLIC_SEARCH,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                    )
 
                 teaching_projection = self._teaching.prepare(
                     round_query,
@@ -1538,149 +1692,252 @@ class TurnOrchestrator:
                     yield StreamEvent(kind="done")
                     return
 
-            # 论文型问题优先走固定、只读的 arXiv MCP；搜索失败时 fail closed，
-            # 不允许模型记忆替代真实论文结果。
-            if mode != ChatMode.STUDY and self._arxiv_search is not None:
+            # 论文型问题优先走固定、只读的 arXiv MCP；公网搜索只接收当前
+            # 用户消息经本地规划器脱敏后的最小词组。两个来源失败时都 fail
+            # closed（不让模型用记忆伪装成真实结论）。Issue 06 T3：彼此
+            # 独立且都已确定需要的来源并行执行，总耗时接近较慢者；结果
+            # 按固定顺序（先论文后公网）处理，顺序确定。
+            if mode != ChatMode.STUDY:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
-                arxiv_plan = self._arxiv_search.plan(
-                    round_query,
-                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
+                mode_for_plan = (
+                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
                 )
-                if arxiv_plan.should_search:
-                    try:
-                        arxiv_search_projection = self._arxiv_search.search(
-                            account_id, arxiv_plan, stop_event=stop_event
-                        )
-                    except Exception:  # noqa: BLE001 - MCP 异常统一 fail closed
-                        arxiv_search_projection = ArxivSearchProjection(
-                            status=ArxivSearchStatus.ERROR,
-                            trigger_reason=arxiv_plan.reason,
-                            query_summary=arxiv_plan.query,
-                            error_code="arxiv_startup",
-                            error_message="arXiv 搜索服务启动失败，请重试。",
-                            can_retry=True,
-                        )
-                    if arxiv_search_projection is not None:
-                        self._repo.update_message_arxiv_search(
-                            account_id,
-                            assistant_message_id,
-                            arxiv_search_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
-                        )
-                        if arxiv_search_projection.status == ArxivSearchStatus.CANCELLED:
-                            finalize_message(
-                                self._repo,
-                                account_id,
-                                assistant_message_id,
-                                status=ChatMessageStatus.STOPPED,
-                                error_code=None,
-                                error_message=None,
-                                duration_ms=None,
-                                model_id=None,
-                                run_lock_id=None,
-                                started=started,
-                                now=datetime.now(UTC),
-                                thinking=stopped_thinking(thinking),
-                                arxiv_search=arxiv_search_projection.model_dump(mode="json"),
-                            )
-                            return
-                        thinking = arxiv_search_thinking(thinking, arxiv_search_projection)
-                        if arxiv_search_projection.status != ArxivSearchStatus.SUCCESS:
-                            error_code = arxiv_search_projection.error_code or "arxiv_no_results"
-                            error_message = (
-                                arxiv_search_projection.error_message
-                                or user_facing_error(error_code)
-                            )
-                            finalize_message(
-                                self._repo,
-                                account_id,
-                                assistant_message_id,
-                                status=ChatMessageStatus.ERROR,
-                                error_code=error_code,
-                                error_message=error_message,
-                                duration_ms=None,
-                                model_id=None,
-                                run_lock_id=None,
-                                started=started,
-                                now=datetime.now(UTC),
-                                thinking=failed_thinking(thinking, error_code),
-                                arxiv_search=arxiv_search_projection.model_dump(mode="json"),
-                            )
-                            yield StreamEvent(
-                                kind="error",
-                                error_code=error_code,
-                                error_message=error_message,
-                            )
-                            return
-            # 公网搜索只接收当前用户消息经本地规划器脱敏后的最小词组；搜索
-            # 失败或证据为空时 fail closed，不让模型用记忆伪装成联网结论。
-            if mode != ChatMode.STUDY and self._web_search is not None:
-                messages = self._repo.list_messages(account_id, conversation_id)
-                owner = owner_user_message(messages, assistant_message_id)
-                round_query = owner.content if owner is not None else ""
-                search_plan = self._web_search.plan(
-                    round_query,
-                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
-                )
-                if search_plan.should_search:
-                    web_search_projection = self._web_search.search(
-                        account_id, search_plan, stop_event=stop_event
+                arxiv_plan = None
+                search_plan = None
+                public_search_entered = False
+                if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
+                    public_search_entered = True
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
                     )
-                    if web_search_projection is not None:
-                        self._repo.update_message_web_search(
-                            account_id,
-                            assistant_message_id,
-                            web_search_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
-                        )
-                        if web_search_projection.status == WebSearchStatus.CANCELLED:
-                            finalize_message(
-                                self._repo,
+                    calls: list[tuple[str, Callable[[], object] | None]] = []
+                    if self._arxiv_search is not None:
+                        planned = self._arxiv_search.plan(round_query, mode_for_plan)
+                        if planned.should_search:
+                            arxiv_plan = planned
+                            calls.append(
+                                (
+                                    "arxiv",
+                                    lambda: self._arxiv_search.search(  # type: ignore[union-attr]
+                                        account_id, arxiv_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                    ),
+                                )
+                            )
+                    if self._web_search is not None:
+                        planned = self._web_search.plan(round_query, mode_for_plan)
+                        if planned.should_search:
+                            search_plan = planned
+                            calls.append(
+                                (
+                                    "web",
+                                    lambda: self._web_search.search(  # type: ignore[union-attr]
+                                        account_id, search_plan, stop_event=stop_event  # type: ignore[arg-type]
+                                    ),
+                                )
+                            )
+                    stage_budget = min(
+                        EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
+                        EXTERNAL_TIMEOUT_SECONDS["web_search"],
+                    )
+                    search_results = self._parallel_search(
+                        calls,
+                        timeout_seconds=min(
+                            stage_budget, budget.remaining_ms() / 1000
+                        ),
+                    )
+                    arxiv_result = search_results.get("arxiv")
+                    if arxiv_plan is not None:
+                        if arxiv_result is _SEARCH_TIMEOUT:
+                            arxiv_search_projection = ArxivSearchProjection(
+                                status=ArxivSearchStatus.ERROR,
+                                trigger_reason=arxiv_plan.reason,
+                                query_summary=arxiv_plan.query,
+                                error_code="arxiv_timeout",
+                                error_message="arXiv 搜索超时，请重试。",
+                                can_retry=True,
+                            )
+                        elif isinstance(arxiv_result, Exception):
+                            arxiv_search_projection = ArxivSearchProjection(
+                                status=ArxivSearchStatus.ERROR,
+                                trigger_reason=arxiv_plan.reason,
+                                query_summary=arxiv_plan.query,
+                                error_code="arxiv_startup",
+                                error_message="arXiv 搜索服务启动失败，请重试。",
+                                can_retry=True,
+                            )
+                        else:
+                            arxiv_search_projection = arxiv_result
+                        if arxiv_search_projection is not None:
+                            self._repo.update_message_arxiv_search(
                                 account_id,
                                 assistant_message_id,
-                                status=ChatMessageStatus.STOPPED,
-                                error_code=None,
-                                error_message=None,
-                                duration_ms=None,
-                                model_id=None,
-                                run_lock_id=None,
-                                started=started,
-                                now=datetime.now(UTC),
-                                thinking=stopped_thinking(thinking),
-                                web_search=web_search_projection.model_dump(mode="json"),
+                                arxiv_search_projection.model_dump(mode="json"),
+                                datetime.now(UTC),
                             )
-                            return
-                        thinking = web_search_thinking(thinking, web_search_projection)
-                        if web_search_projection.status != WebSearchStatus.SUCCESS:
-                            error_code = (
-                                web_search_projection.error_code or "web_search_no_results"
+                            if (
+                                arxiv_search_projection.status
+                                == ArxivSearchStatus.CANCELLED
+                            ):
+                                finalize_message(
+                                    self._repo,
+                                    account_id,
+                                    assistant_message_id,
+                                    status=ChatMessageStatus.STOPPED,
+                                    error_code=None,
+                                    error_message=None,
+                                    duration_ms=None,
+                                    model_id=None,
+                                    run_lock_id=None,
+                                    started=started,
+                                    now=datetime.now(UTC),
+                                    thinking=stopped_thinking(thinking),
+                                    arxiv_search=arxiv_search_projection.model_dump(
+                                        mode="json"
+                                    ),
+                                )
+                                return
+                            thinking = arxiv_search_thinking(
+                                thinking, arxiv_search_projection
                             )
-                            error_message = (
-                                web_search_projection.error_message
-                                or user_facing_error(error_code)
+                            if (
+                                arxiv_search_projection.status
+                                != ArxivSearchStatus.SUCCESS
+                            ):
+                                error_code = (
+                                    arxiv_search_projection.error_code
+                                    or "arxiv_no_results"
+                                )
+                                error_message = (
+                                    arxiv_search_projection.error_message
+                                    or user_facing_error(error_code)
+                                )
+                                finalize_message(
+                                    self._repo,
+                                    account_id,
+                                    assistant_message_id,
+                                    status=ChatMessageStatus.ERROR,
+                                    error_code=error_code,
+                                    error_message=error_message,
+                                    duration_ms=None,
+                                    model_id=None,
+                                    run_lock_id=None,
+                                    started=started,
+                                    now=datetime.now(UTC),
+                                    thinking=failed_thinking(thinking, error_code),
+                                    arxiv_search=arxiv_search_projection.model_dump(
+                                        mode="json"
+                                    ),
+                                )
+                                yield StreamEvent(
+                                    kind="error",
+                                    error_code=error_code,
+                                    error_message=error_message,
+                                )
+                                return
+                    web_result = search_results.get("web")
+                    if search_plan is not None:
+                        if web_result is _SEARCH_TIMEOUT:
+                            web_search_projection = WebSearchProjection(
+                                status=WebSearchStatus.ERROR,
+                                trigger_reason=search_plan.reason,
+                                query_summary=search_plan.query,
+                                error_code="web_search_timeout",
+                                error_message="联网搜索超时，请重试。",
+                                can_retry=True,
                             )
-                            finalize_message(
-                                self._repo,
+                        elif isinstance(web_result, Exception):
+                            web_search_projection = WebSearchProjection(
+                                status=WebSearchStatus.ERROR,
+                                trigger_reason=search_plan.reason,
+                                query_summary=search_plan.query,
+                                error_code="web_search_request",
+                                error_message="公网搜索请求未完成，请重试。",
+                                can_retry=True,
+                            )
+                        else:
+                            web_search_projection = web_result
+                        if web_search_projection is not None:
+                            self._repo.update_message_web_search(
                                 account_id,
                                 assistant_message_id,
-                                status=ChatMessageStatus.ERROR,
-                                error_code=error_code,
-                                error_message=error_message,
-                                duration_ms=None,
-                                model_id=None,
-                                run_lock_id=None,
-                                started=started,
-                                now=datetime.now(UTC),
-                                thinking=failed_thinking(thinking, error_code),
+                                web_search_projection.model_dump(mode="json"),
+                                datetime.now(UTC),
                             )
-                            yield StreamEvent(
-                                kind="error",
-                                error_code=error_code,
-                                error_message=error_message,
+                            if (
+                                web_search_projection.status
+                                == WebSearchStatus.CANCELLED
+                            ):
+                                finalize_message(
+                                    self._repo,
+                                    account_id,
+                                    assistant_message_id,
+                                    status=ChatMessageStatus.STOPPED,
+                                    error_code=None,
+                                    error_message=None,
+                                    duration_ms=None,
+                                    model_id=None,
+                                    run_lock_id=None,
+                                    started=started,
+                                    now=datetime.now(UTC),
+                                    thinking=stopped_thinking(thinking),
+                                    web_search=web_search_projection.model_dump(
+                                        mode="json"
+                                    ),
+                                )
+                                return
+                            thinking = web_search_thinking(
+                                thinking, web_search_projection
                             )
-                            return
+                            if web_search_projection.status != WebSearchStatus.SUCCESS:
+                                error_code = (
+                                    web_search_projection.error_code
+                                    or "web_search_no_results"
+                                )
+                                error_message = (
+                                    web_search_projection.error_message
+                                    or user_facing_error(error_code)
+                                )
+                                finalize_message(
+                                    self._repo,
+                                    account_id,
+                                    assistant_message_id,
+                                    status=ChatMessageStatus.ERROR,
+                                    error_code=error_code,
+                                    error_message=error_message,
+                                    duration_ms=None,
+                                    model_id=None,
+                                    run_lock_id=None,
+                                    started=started,
+                                    now=datetime.now(UTC),
+                                    thinking=failed_thinking(thinking, error_code),
+                                )
+                                yield StreamEvent(
+                                    kind="error",
+                                    error_code=error_code,
+                                    error_message=error_message,
+                                )
+                                return
+                if public_search_entered:
+                    budget.exit(
+                        RunStage.PUBLIC_SEARCH,
+                        category="web_search",
+                        count=sum(
+                            1
+                            for projection in (
+                                web_search_projection,
+                                arxiv_search_projection,
+                            )
+                            if projection is not None
+                        ),
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.PUBLIC_SEARCH,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                    )
             if stop_event.is_set():
                 finalize_message(
                     self._repo,
@@ -1709,17 +1966,37 @@ class TurnOrchestrator:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
-                thinking, retrieval_round = self._run_retrieval(
-                    account_id,
-                    conversation_id,
-                    assistant_message_id,
-                    until_user_message_id
-                    or (owner.message_id if owner is not None else None),
-                    round_query,
-                    use_knowledge_base=use_knowledge_base,
-                    thinking=thinking,
-                    stop_event=stop_event,
-                )
+                if budget.enter(RunStage.LOCAL_RETRIEVAL):
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
+                    )
+                    thinking, retrieval_round = self._run_retrieval(
+                        account_id,
+                        conversation_id,
+                        assistant_message_id,
+                        until_user_message_id
+                        or (owner.message_id if owner is not None else None),
+                        round_query,
+                        use_knowledge_base=use_knowledge_base,
+                        thinking=thinking,
+                        stop_event=stop_event,
+                    )
+                    budget.exit(
+                        RunStage.LOCAL_RETRIEVAL,
+                        category="layered_retrieval",
+                        count=1 if retrieval_round is not None else 0,
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.LOCAL_RETRIEVAL,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                    )
+                else:
+                    budget.exit(RunStage.LOCAL_RETRIEVAL)
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
+                    )
             # Issue 36：本对话启用的插件工具集合（选择器持久化到会话）
             # 以独立 system 块注入——模型只能引用本清单列出的插件能力；
             # 未选择或清除选择后该块不再注入（Verification 3：清除后
@@ -1758,6 +2035,52 @@ class TurnOrchestrator:
                 teaching_projection=teaching_projection,
                 profile_context=profile_context,
             )
+            generation_entered = budget.enter(RunStage.MODEL_GENERATION)
+            generation_started = time.monotonic()
+            if generation_entered:
+                yield self._stage_event(
+                    assistant_message_id, RunStage.MODEL_GENERATION, "active"
+                )
+            else:
+                # 预算耗尽（T5）：有草稿带警告交付，无草稿失败可重试——
+                # 不得保持永久 running，必须提交明确终态。
+                if content:
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=budget_warning_thinking(thinking),
+                    )
+                    yield StreamEvent(kind="done")
+                else:
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="budget_exceeded",
+                        error_message=user_facing_error("budget_exceeded"),
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=failed_thinking(thinking, "budget_exceeded"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="budget_exceeded",
+                        error_message=user_facing_error("budget_exceeded"),
+                    )
+                return
             for event in gateway.stream(
                 CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
             ):
@@ -1784,12 +2107,20 @@ class TurnOrchestrator:
                     )
                     return
                 if event.kind == "delta":
+                    if first_token_ms is None:
+                        first_token_ms = max(
+                            1, int((time.monotonic() - generation_started) * 1000)
+                        )
                     content += event.delta
                     self._repo.update_message_content(
                         account_id, assistant_message_id, content, datetime.now(UTC)
                     )
                     self._lifecycle.touch(assistant_message_id)
                     yield event
+                    if budget.expired():
+                        # 预算到期：停止后续模型输出，按草稿交付（T5）
+                        budget.mark_exhausted()
+                        break
                 elif event.kind == "error":
                     self._persist_lock(account_id, event.lock)
                     finalize_message(
@@ -1810,6 +2141,27 @@ class TurnOrchestrator:
                     return
                 elif event.kind == "done":
                     self._persist_lock(account_id, event.lock)
+                    # 模型阶段关闭事件（在质量检查前发出，duration 只含
+                    # 模型流式本身；脱敏首 token 指标随事件持久化，供本地
+                    # 性能摘要聚合；错误路径由 finally 关闭计时）
+                    budget.exit(
+                        RunStage.MODEL_GENERATION,
+                        category="qwen_text_chat",
+                        first_token_ms=first_token_ms,
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.MODEL_GENERATION,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                        first_token_ms=first_token_ms,
+                    )
+                    # 质量检查阶段（Issue 06）：联网/论文引用核验
+                    quality_entered = budget.enter(RunStage.QUALITY_CHECK)
+                    if quality_entered:
+                        yield self._stage_event(
+                            assistant_message_id, RunStage.QUALITY_CHECK, "active"
+                        )
                     if web_search_projection is not None:
                         citation_error = web_search_citation_error(
                             content, len(web_search_projection.results)
@@ -1847,6 +2199,12 @@ class TurnOrchestrator:
                                 ),
                                 web_search=invalid_web_projection.model_dump(mode="json"),
                             )
+                            if quality_entered:
+                                budget.exit(
+                                    RunStage.QUALITY_CHECK,
+                                    result=RESULT_FAILED,
+                                    category="citation_check",
+                                )
                             yield StreamEvent(
                                 kind="error",
                                 error_code="web_search_citation_invalid",
@@ -1891,6 +2249,12 @@ class TurnOrchestrator:
                                 ),
                                 arxiv_search=invalid_arxiv_projection.model_dump(mode="json"),
                             )
+                            if quality_entered:
+                                budget.exit(
+                                    RunStage.QUALITY_CHECK,
+                                    result=RESULT_FAILED,
+                                    category="citation_check",
+                                )
                             yield StreamEvent(
                                 kind="error",
                                 error_code="arxiv_citation_invalid",
@@ -1898,6 +2262,29 @@ class TurnOrchestrator:
                                 lock=event.lock,
                             )
                             return
+                    if quality_entered:
+                        budget.exit(
+                            RunStage.QUALITY_CHECK,
+                            category="citation_check",
+                            count=(
+                                1
+                                if web_search_projection is not None
+                                or arxiv_search_projection is not None
+                                else 0
+                            ),
+                        )
+                        yield self._stage_event(
+                            assistant_message_id,
+                            RunStage.QUALITY_CHECK,
+                            "done",
+                            duration_ms=budget.metrics()[-1].duration_ms,
+                        )
+                    # 收尾阶段（Issue 06）：结果落库与终态提交（瞬时）
+                    if budget.enter(RunStage.FINALIZING):
+                        yield self._stage_event(
+                            assistant_message_id, RunStage.FINALIZING, "active"
+                        )
+                    budget.exit(RunStage.FINALIZING)
                     finalize_message(
                         self._repo,
                         account_id,
@@ -1914,6 +2301,34 @@ class TurnOrchestrator:
                     )
                     yield event
                     return
+            if budget.expired():
+                # 预算到期收敛（T5）：已接收草稿带警告交付，绝不永久 running。
+                # 模型阶段计时由 finally 统一关闭（结果码按预算状态推断）。
+                finalize_message(
+                    self._repo,
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.DONE,
+                    error_code=None,
+                    error_message=None,
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=datetime.now(UTC),
+                    thinking=budget_warning_thinking(thinking),
+                )
+                yield self._stage_event(
+                    assistant_message_id,
+                    RunStage.MODEL_GENERATION,
+                    "timeout",
+                    duration_ms=max(
+                        1, int((time.monotonic() - generation_started) * 1000)
+                    ),
+                    first_token_ms=first_token_ms,
+                )
+                yield StreamEvent(kind="done")
+                return
         except GeneratorExit:
             # 客户端断开：收敛为可重试错误，保留已接收正文与已完成摘要。
             finalize_message(
@@ -1955,7 +2370,98 @@ class TurnOrchestrator:
             )
             return
         finally:
+            # 模型阶段统一关闭（Issue 06）：结果码按预算状态与消息终态推断，
+            # 仅记录脱敏指标；stage 关闭事件在特殊路径（预算到期）已发。
+            if generation_entered:
+                status_map = {
+                    ChatMessageStatus.DONE.value: RESULT_OK,
+                    ChatMessageStatus.ERROR.value: RESULT_FAILED,
+                    ChatMessageStatus.STOPPED.value: RESULT_TIMEOUT,
+                }
+                message = self._repo.get_message(account_id, assistant_message_id)
+                result = (
+                    RESULT_TIMEOUT
+                    if budget.expired()
+                    else status_map.get(
+                        message.status.value if message is not None else None,
+                        RESULT_FAILED,
+                    )
+                )
+                budget.exit(
+                    RunStage.MODEL_GENERATION,
+                    result=result,
+                    category="qwen_text_chat",
+                    first_token_ms=first_token_ms,
+                )
             self._lifecycle.unregister(assistant_message_id)
+
+    # ------------------------------------------------------------------
+    # 阶段事件与并行公开搜索（Issue 06：统一阶段时钟/预算埋点）
+    # ------------------------------------------------------------------
+
+    def _stage_event(
+        self,
+        assistant_message_id: str,
+        stage: RunStage,
+        status: Literal["active", "done", "timeout", "failed", "skipped"],
+        *,
+        duration_ms: int | None = None,
+        first_token_ms: int | None = None,
+    ) -> StreamEvent:
+        """构造 stage 事件（脱敏：只带阶段/状态/毫秒，绝无正文）。"""
+        return StreamEvent(
+            kind="stage",
+            stage=ChatStreamStageData(
+                message_id=assistant_message_id,
+                stage=stage.value,
+                status=status,
+                duration_ms=duration_ms,
+                first_token_ms=first_token_ms,
+            ),
+        )
+
+    def _parallel_search(
+        self,
+        calls: list[tuple[str, Callable[[], object] | None]],
+        *,
+        timeout_seconds: float,
+    ) -> dict[str, Any]:
+        """并行执行彼此独立且都已确定需要的公开搜索（Issue 06 T3）。
+
+        ``calls`` 为 ``(来源名, 可调用)`` 列表，全部经线程池提交（单源
+        同样受阶段墙钟约束，避免慢来源阻塞主流程）。结果按原列表顺序
+        返回（顺序确定）；超时未完成或抛异常的结果以 ``_SEARCH_TIMEOUT``
+        /异常对象占位，由调用方按既有失败语义降级，
+        后台线程自灭（搜索客户端自带超时），主流程绝不等待超预算来源。
+        """
+        if not calls:
+            return {}
+        executor = ThreadPoolExecutor(
+            max_workers=len(calls), thread_name_prefix="public-search"
+        )
+        try:
+            futures = {
+                name: executor.submit(call) if call is not None else None
+                for name, call in calls
+            }
+            done, _ = _wait_timeout(
+                [f for f in futures.values() if f is not None], timeout_seconds
+            )
+            results: dict[str, Any] = {}
+            for name, future in futures.items():
+                if future is None:
+                    results[name] = None
+                elif future not in done:
+                    results[name] = _SEARCH_TIMEOUT
+                else:
+                    try:
+                        results[name] = future.result()
+                    except Exception as exc:  # noqa: BLE001 - 调用方按异常降级
+                        results[name] = exc
+            return results
+        finally:
+            # 不等待后台线程（超时来源自灭）；工作线程由进程退出回收
+            executor.shutdown(wait=False)
 
     # ------------------------------------------------------------------
     # 检索（全部编排路径的单一实现）
@@ -2005,6 +2511,7 @@ class TurnOrchestrator:
         run_context: RunContextEnvelope,
         until_user_message_id: str | None,
         use_knowledge_base: bool,
+        budget: RunBudget,
     ) -> Iterator[StreamEvent]:
         """SKILL 编排：证据合同检索 → 过程事件 → 终态收敛（done/error）。
 
@@ -2026,60 +2533,173 @@ class TurnOrchestrator:
         messages = self._repo.list_messages(account_id, conversation_id)
         owner = owner_user_message(messages, assistant_message_id)
         round_query = owner.content if owner is not None else ""
-        thinking, retrieval_round = self._run_retrieval(
-            account_id,
-            conversation_id,
-            assistant_message_id,
-            until_user_message_id or (owner.message_id if owner is not None else None),
-            round_query,
-            use_knowledge_base=use_knowledge_base,
-            thinking=thinking,
-            stop_event=stop_event,
-        )
+        if budget.enter(RunStage.LOCAL_RETRIEVAL):
+            yield self._stage_event(
+                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
+            )
+            thinking, retrieval_round = self._run_retrieval(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                until_user_message_id or (owner.message_id if owner is not None else None),
+                round_query,
+                use_knowledge_base=use_knowledge_base,
+                thinking=thinking,
+                stop_event=stop_event,
+            )
+            budget.exit(
+                RunStage.LOCAL_RETRIEVAL,
+                category="layered_retrieval",
+                count=1 if retrieval_round is not None else 0,
+            )
+            yield self._stage_event(
+                assistant_message_id,
+                RunStage.LOCAL_RETRIEVAL,
+                "done",
+                duration_ms=budget.metrics()[-1].duration_ms,
+            )
+        else:
+            budget.exit(RunStage.LOCAL_RETRIEVAL)
+            yield self._stage_event(
+                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
+            )
         # Spec AC8：可引用来源经本地/联网证据合同呈现。联网与 arXiv 按
         # 既有触发器（明确要求/时效/核查等）决定是否执行；结果投影传入
         # 人味化编排，只可引用清单内材料，新增引用一律标记未核实。
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
-        if not stop_event.is_set():
+        public_search_entered = False
+        if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
+            public_search_entered = True
+            yield self._stage_event(
+                assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
+            )
             messages = self._repo.list_messages(account_id, conversation_id)
             owner = owner_user_message(messages, assistant_message_id)
             round_query = owner.content if owner is not None else ""
+            mode_for_plan = (
+                ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            )
+            # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
+            # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
+            calls: list[tuple[str, Callable[[], object] | None]] = []
+            search_plan = None
+            arxiv_plan = None
             if self._web_search is not None:
-                search_plan = self._web_search.plan(
-                    round_query,
-                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
-                )
-                if search_plan.should_search:
-                    web_search_projection = self._web_search.search(
-                        account_id, search_plan, stop_event=stop_event
-                    )
-                    if web_search_projection is not None:
-                        self._repo.update_message_web_search(
-                            account_id,
-                            assistant_message_id,
-                            web_search_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
+                planned = self._web_search.plan(round_query, mode_for_plan)
+                if planned.should_search:
+                    search_plan = planned
+                    calls.append(
+                        (
+                            "web",
+                            lambda plan=planned: self._web_search.search(  # type: ignore[union-attr]
+                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            ),
                         )
-                        thinking = web_search_thinking(thinking, web_search_projection)
+                    )
             if self._arxiv_search is not None:
-                arxiv_plan = self._arxiv_search.plan(
-                    round_query,
-                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE,
-                )
-                if arxiv_plan.should_search:
-                    arxiv_search_projection = self._arxiv_search.search(
-                        account_id, arxiv_plan, stop_event=stop_event
-                    )
-                    if arxiv_search_projection is not None:
-                        self._repo.update_message_arxiv_search(
-                            account_id,
-                            assistant_message_id,
-                            arxiv_search_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
+                planned = self._arxiv_search.plan(round_query, mode_for_plan)
+                if planned.should_search:
+                    arxiv_plan = planned
+                    calls.append(
+                        (
+                            "arxiv",
+                            lambda plan=planned: self._arxiv_search.search(  # type: ignore[union-attr]
+                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            ),
                         )
-                        thinking = arxiv_search_thinking(thinking, arxiv_search_projection)
+                    )
+            stage_budget = min(
+                EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
+                EXTERNAL_TIMEOUT_SECONDS["web_search"],
+            )
+            search_results = self._parallel_search(
+                calls,
+                timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
+            )
+            web_result = search_results.get("web")
+            if (
+                search_plan is not None
+                and web_result is not _SEARCH_TIMEOUT
+                and not isinstance(web_result, Exception)
+            ):
+                web_search_projection = web_result
+            arxiv_result = search_results.get("arxiv")
+            if (
+                arxiv_plan is not None
+                and arxiv_result is not _SEARCH_TIMEOUT
+                and not isinstance(arxiv_result, Exception)
+            ):
+                arxiv_search_projection = arxiv_result
+            if web_search_projection is not None:
+                self._repo.update_message_web_search(
+                    account_id,
+                    assistant_message_id,
+                    web_search_projection.model_dump(mode="json"),
+                    datetime.now(UTC),
+                )
+                thinking = web_search_thinking(thinking, web_search_projection)
+            if arxiv_search_projection is not None:
+                self._repo.update_message_arxiv_search(
+                    account_id,
+                    assistant_message_id,
+                    arxiv_search_projection.model_dump(mode="json"),
+                    datetime.now(UTC),
+                )
+                thinking = arxiv_search_thinking(thinking, arxiv_search_projection)
+        if public_search_entered:
+            budget.exit(
+                RunStage.PUBLIC_SEARCH,
+                category="web_search",
+                count=sum(
+                    1
+                    for projection in (
+                        web_search_projection,
+                        arxiv_search_projection,
+                    )
+                    if projection is not None
+                ),
+            )
+            yield self._stage_event(
+                assistant_message_id,
+                RunStage.PUBLIC_SEARCH,
+                "done",
+                duration_ms=budget.metrics()[-1].duration_ms,
+            )
         try:
+            generation_entered = budget.enter(RunStage.MODEL_GENERATION)
+            if generation_entered:
+                yield self._stage_event(
+                    assistant_message_id, RunStage.MODEL_GENERATION, "active"
+                )
+            else:
+                # 预算耗尽：结构化技能无可交付草稿，直接失败并允许重试
+                finalize_message(
+                    self._repo,
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=datetime.now(UTC),
+                    thinking=failed_thinking(thinking, "budget_exceeded"),
+                )
+                yield StreamEvent(
+                    kind="error",
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
+                )
+                return
+            # 质量检查阶段（Issue 06）：技能编排内含生成与确定性复核
+            quality_entered = budget.enter(RunStage.QUALITY_CHECK)
+            if quality_entered:
+                yield self._stage_event(
+                    assistant_message_id, RunStage.QUALITY_CHECK, "active"
+                )
             for run_event in self._humanizer.run_task(
                 account_id,
                 conversation_id,
@@ -2090,6 +2710,35 @@ class TurnOrchestrator:
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
             ):
+                if budget.expired():
+                    # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
+                    budget.mark_exhausted()
+                    if quality_entered:
+                        budget.exit(
+                            RunStage.QUALITY_CHECK,
+                            result=RESULT_FAILED,
+                            category="qwen_structured_output",
+                        )
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="budget_exceeded",
+                        error_message=user_facing_error("budget_exceeded"),
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=failed_thinking(thinking, "budget_exceeded"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="budget_exceeded",
+                        error_message=user_facing_error("budget_exceeded"),
+                    )
+                    return
                 if stop_event.is_set():
                     finalize_message(
                         self._repo,
@@ -2157,6 +2806,24 @@ class TurnOrchestrator:
                 self._repo.update_message_content(
                     account_id, assistant_message_id, final_text, now
                 )
+                if quality_entered:
+                    budget.exit(
+                        RunStage.QUALITY_CHECK,
+                        category="qwen_structured_output",
+                        count=1,
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.QUALITY_CHECK,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                    )
+                # 收尾阶段（Issue 06）：结果落库与终态提交
+                if budget.enter(RunStage.FINALIZING):
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.FINALIZING, "active"
+                    )
+                budget.exit(RunStage.FINALIZING)
                 finalize_message(
                     self._repo,
                     account_id,
@@ -2193,6 +2860,12 @@ class TurnOrchestrator:
                 error_code="humanizer_failed",
                 error_message="人味化任务执行异常，请重试（输入已保留）。",
             )
+        finally:
+            # 模型阶段脱敏计时（终态事件已发出，stage 关闭不额外发事件）
+            if generation_entered:
+                budget.exit(
+                    RunStage.MODEL_GENERATION, category="qwen_structured_output"
+                )
 
     # ------------------------------------------------------------------
     # Issue 29：生涯规划编排路径
@@ -2208,6 +2881,7 @@ class TurnOrchestrator:
         until_user_message_id: str | None,
         use_knowledge_base: bool,
         use_profile: bool,
+        budget: RunBudget,
     ) -> Iterator[StreamEvent]:
         """生涯规划编排（Issue 29）：证据获取 → 过程事件 → 终态收敛。
 
@@ -2233,47 +2907,130 @@ class TurnOrchestrator:
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
         # 检索与联网证据获取（复用 humanizer 分支的同一套证据合同）。
-        thinking, retrieval_round = self._run_retrieval(
-            account_id,
-            conversation_id,
-            assistant_message_id,
-            until_user_message_id,
-            intent,
-            use_knowledge_base=use_knowledge_base,
-            thinking=thinking,
-            stop_event=stop_event,
-        )
-        if not stop_event.is_set():
+        if budget.enter(RunStage.LOCAL_RETRIEVAL):
+            yield self._stage_event(
+                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
+            )
+            thinking, retrieval_round = self._run_retrieval(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                until_user_message_id,
+                intent,
+                use_knowledge_base=use_knowledge_base,
+                thinking=thinking,
+                stop_event=stop_event,
+            )
+            budget.exit(
+                RunStage.LOCAL_RETRIEVAL,
+                category="layered_retrieval",
+                count=1 if retrieval_round is not None else 0,
+            )
+            yield self._stage_event(
+                assistant_message_id,
+                RunStage.LOCAL_RETRIEVAL,
+                "done",
+                duration_ms=budget.metrics()[-1].duration_ms,
+            )
+        else:
+            budget.exit(RunStage.LOCAL_RETRIEVAL)
+            yield self._stage_event(
+                assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
+            )
+        public_search_entered = False
+        if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
+            public_search_entered = True
+            yield self._stage_event(
+                assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
+            )
+            # Issue 06 T3：彼此独立且都已确定需要的公开来源并行执行，
+            # 总耗时接近较慢者；顺序处理（先公网后论文）保持确定。
+            calls: list[tuple[str, Callable[[], object] | None]] = []
+            search_plan = None
+            arxiv_plan = None
             if self._web_search is not None:
-                search_plan = self._web_search.plan(intent, mode)
-                if search_plan.should_search:
-                    web_search_projection = self._web_search.search(
-                        account_id, search_plan, stop_event=stop_event
-                    )
-                    if web_search_projection is not None:
-                        self._repo.update_message_web_search(
-                            account_id,
-                            assistant_message_id,
-                            web_search_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
+                planned = self._web_search.plan(intent, mode)
+                if planned.should_search:
+                    search_plan = planned
+                    calls.append(
+                        (
+                            "web",
+                            lambda plan=planned: self._web_search.search(  # type: ignore[union-attr]
+                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            ),
                         )
-                        thinking = web_search_thinking(thinking, web_search_projection)
+                    )
             if self._arxiv_search is not None:
-                arxiv_plan = self._arxiv_search.plan(intent, mode)
-                if arxiv_plan.should_search:
-                    arxiv_search_projection = self._arxiv_search.search(
-                        account_id, arxiv_plan, stop_event=stop_event
+                planned = self._arxiv_search.plan(intent, mode)
+                if planned.should_search:
+                    arxiv_plan = planned
+                    calls.append(
+                        (
+                            "arxiv",
+                            lambda plan=planned: self._arxiv_search.search(  # type: ignore[union-attr]
+                                account_id, plan, stop_event=stop_event  # type: ignore[arg-type]
+                            ),
+                        )
                     )
-                    if arxiv_search_projection is not None:
-                        self._repo.update_message_arxiv_search(
-                            account_id,
-                            assistant_message_id,
-                            arxiv_search_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
-                        )
-                        thinking = arxiv_search_thinking(
-                            thinking, arxiv_search_projection
-                        )
+            stage_budget = min(
+                EXTERNAL_TIMEOUT_SECONDS["arxiv_search"],
+                EXTERNAL_TIMEOUT_SECONDS["web_search"],
+            )
+            search_results = self._parallel_search(
+                calls,
+                timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
+            )
+            web_result = search_results.get("web")
+            if (
+                search_plan is not None
+                and web_result is not _SEARCH_TIMEOUT
+                and not isinstance(web_result, Exception)
+            ):
+                web_search_projection = web_result
+            arxiv_result = search_results.get("arxiv")
+            if (
+                arxiv_plan is not None
+                and arxiv_result is not _SEARCH_TIMEOUT
+                and not isinstance(arxiv_result, Exception)
+            ):
+                arxiv_search_projection = arxiv_result
+            if web_search_projection is not None:
+                self._repo.update_message_web_search(
+                    account_id,
+                    assistant_message_id,
+                    web_search_projection.model_dump(mode="json"),
+                    datetime.now(UTC),
+                )
+                thinking = web_search_thinking(thinking, web_search_projection)
+            if arxiv_search_projection is not None:
+                self._repo.update_message_arxiv_search(
+                    account_id,
+                    assistant_message_id,
+                    arxiv_search_projection.model_dump(mode="json"),
+                    datetime.now(UTC),
+                )
+                thinking = arxiv_search_thinking(
+                    thinking, arxiv_search_projection
+                )
+        if public_search_entered:
+            budget.exit(
+                RunStage.PUBLIC_SEARCH,
+                category="web_search",
+                count=sum(
+                    1
+                    for projection in (
+                        web_search_projection,
+                        arxiv_search_projection,
+                    )
+                    if projection is not None
+                ),
+            )
+            yield self._stage_event(
+                assistant_message_id,
+                RunStage.PUBLIC_SEARCH,
+                "done",
+                duration_ms=budget.metrics()[-1].duration_ms,
+            )
         # 最小画像切片编译与「本次上下文说明」披露：模型提示词由编排服务
         # 自行组装（这里只复用编译/披露/审计，切片上下文不在本路径注入）。
         context_note, _profile_context = self._compile_profile_slice(
@@ -2293,6 +3050,39 @@ class TurnOrchestrator:
             context_note.state == ContextNoteState.READY if context_note else False
         )
         try:
+            generation_entered = budget.enter(RunStage.MODEL_GENERATION)
+            if generation_entered:
+                yield self._stage_event(
+                    assistant_message_id, RunStage.MODEL_GENERATION, "active"
+                )
+            else:
+                # 预算耗尽：结构化技能无可交付草稿，直接失败并允许重试
+                finalize_message(
+                    self._repo,
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=datetime.now(UTC),
+                    thinking=failed_thinking(thinking, "budget_exceeded"),
+                )
+                yield StreamEvent(
+                    kind="error",
+                    error_code="budget_exceeded",
+                    error_message=user_facing_error("budget_exceeded"),
+                )
+                return
+            # 质量检查阶段（Issue 06）：技能编排内含生成与确定性复核
+            quality_entered = budget.enter(RunStage.QUALITY_CHECK)
+            if quality_entered:
+                yield self._stage_event(
+                    assistant_message_id, RunStage.QUALITY_CHECK, "active"
+                )
             for run_event in self._career_planner.run_task(
                 account_id,
                 conversation_id,
@@ -2307,6 +3097,35 @@ class TurnOrchestrator:
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
             ):
+                if budget.expired():
+                    # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
+                    budget.mark_exhausted()
+                    if quality_entered:
+                        budget.exit(
+                            RunStage.QUALITY_CHECK,
+                            result=RESULT_FAILED,
+                            category="qwen_structured_output",
+                        )
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="budget_exceeded",
+                        error_message=user_facing_error("budget_exceeded"),
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=failed_thinking(thinking, "budget_exceeded"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="budget_exceeded",
+                        error_message=user_facing_error("budget_exceeded"),
+                    )
+                    return
                 if stop_event.is_set():
                     finalize_message(
                         self._repo,
@@ -2374,6 +3193,24 @@ class TurnOrchestrator:
                 self._repo.update_message_content(
                     account_id, assistant_message_id, final_text, now
                 )
+                if quality_entered:
+                    budget.exit(
+                        RunStage.QUALITY_CHECK,
+                        category="qwen_structured_output",
+                        count=1,
+                    )
+                    yield self._stage_event(
+                        assistant_message_id,
+                        RunStage.QUALITY_CHECK,
+                        "done",
+                        duration_ms=budget.metrics()[-1].duration_ms,
+                    )
+                # 收尾阶段（Issue 06）：结果落库与终态提交
+                if budget.enter(RunStage.FINALIZING):
+                    yield self._stage_event(
+                        assistant_message_id, RunStage.FINALIZING, "active"
+                    )
+                budget.exit(RunStage.FINALIZING)
                 finalize_message(
                     self._repo,
                     account_id,
@@ -2410,6 +3247,12 @@ class TurnOrchestrator:
                 error_code="career_failed",
                 error_message="生涯规划执行异常，请重试（输入已保留）。",
             )
+        finally:
+            # 模型阶段脱敏计时（终态事件已发出，stage 关闭不额外发事件）
+            if generation_entered:
+                budget.exit(
+                    RunStage.MODEL_GENERATION, category="qwen_structured_output"
+                )
 
     # ------------------------------------------------------------------
     # Issue 31/32/36：异步任务与 MCP 调用编排路径

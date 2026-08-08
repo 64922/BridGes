@@ -274,6 +274,11 @@ def test_worker_loss_recovers_once_then_reaps_to_failed(
             time.sleep(0.02)
         assert run is not None and run.status == "running"
         assert run.attempt_count == 1
+        # Issue 06 起回合编排在模型调用前持久化阶段事件：看到 running 时
+        # 模型调用可能尚未开始，轮询等待适配器真正挂起（模拟持有运行）。
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and adapter.stream_calls == 0:
+            time.sleep(0.02)
         assert adapter.stream_calls == 1
         # 模拟 worker 被强制退出：运行租约与队列租约同时过期（worker 死
         # 后无人续租，两套租约自然到期——真实语义等价）

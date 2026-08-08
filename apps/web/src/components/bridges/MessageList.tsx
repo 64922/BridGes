@@ -19,6 +19,7 @@ import type {
   CareerPlanningProjection,
   ChatStreamCareerData,
   ChatStreamHumanizerData,
+  ChatStreamStageData,
   HumanizerResultProjection,
   ImageTaskProjection,
   McpCallMessageProjection,
@@ -64,6 +65,17 @@ export interface ChatThinking {
   seconds: number | null;
 }
 
+/** Issue 06：统一阶段枚举 → 面向用户的中文阶段标签（流式阶段行）。 */
+export const STAGE_LABEL: Record<string, string> = {
+  queued: "排队中",
+  local_retrieval: "检索本地资料",
+  public_search: "搜索公开来源",
+  model_generation: "生成回答中",
+  quality_check: "核验引用与质量",
+  repair: "修复与重试",
+  finalizing: "整理收尾",
+};
+
 export interface ChatMessage {
   id: string;
   role: "user" | "assistant";
@@ -85,6 +97,8 @@ export interface ChatMessage {
   teaching?: TeachingTurnProjection | null;
   /** Issue 27：本次上下文说明披露（画像切片/材料类别/用途）；无披露为 null */
   contextNote?: ContextNoteProjection | null;
+  /** Issue 06：流式中的统一阶段状态（检索/生成/检查/收尾，脱敏） */
+  stage?: ChatStreamStageData | null;
   /** Issue 28：文章人味化结果投影（助手消息）；非人味化消息为 null */
   humanizer?: HumanizerResultProjection | null;
   /** Issue 28：用户消息的 SKILL 载荷快照（任务摘要展示）；普通消息为 null */
@@ -782,7 +796,12 @@ export function MessageList({
                   message.content
                 )}
 
-                {message.status === "streaming" && (
+                {message.status === "streaming" && message.stage != null && (
+                  <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
+                    {STAGE_LABEL[message.stage.stage] ?? "正在生成回答"}…
+                  </p>
+                )}
+                {message.status === "streaming" && message.stage == null && (
                   <p role="status" style={{ fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}>
                     正在生成回答…
                   </p>

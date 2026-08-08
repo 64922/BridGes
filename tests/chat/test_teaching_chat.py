@@ -51,4 +51,4 @@ def test_study_mode_persists_teaching_gate_and_does_not_use_model_without_eviden
     assert final.teaching.can_answer_reliably is False
     assert final.teaching.evidence_gate.gap
     assert final.content == final.teaching.gap_response
-    assert [event.kind for event in events] == ["delta", "done"]
+    assert [event.kind for event in events if event.kind != "stage"] == ["delta", "done"]

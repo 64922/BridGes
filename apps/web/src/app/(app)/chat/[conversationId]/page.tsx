@@ -56,6 +56,7 @@ import type {
   ChatStreamHumanizerData,
   ChatStreamImageData,
   ChatStreamMcpData,
+  ChatStreamStageData,
   ChatStreamVideoData,
 } from "@/lib/api";
 import type {
@@ -96,6 +97,8 @@ interface ActiveRun {
   arxivSearch: ArxivSearchProjection | null;
   /** 流式中的学习模式教学卡片与证据门 */
   teaching: TeachingTurnProjection | null;
+  /** Issue 06：流式中的统一阶段状态（检索/生成/检查/收尾，脱敏）。 */
+  stage: ChatStreamStageData | null;
   /** Issue 28：流式中的文章人味化过程卡状态（五态中文）。 */
   humanizerProcess: ChatStreamHumanizerData | null;
   /** Issue 29：流式中的生涯规划过程卡状态（五态中文）。 */
@@ -144,6 +147,8 @@ function activeRunFromAssistant(
     webSearch: assistant.web_search ?? null,
     arxivSearch: assistant.arxiv_search ?? null,
     teaching: assistant.teaching ?? null,
+    // Issue 06：创建即入队——首个真实阶段事件到达前显示"排队中"
+    stage: { kind: "stage", message_id: assistant.message_id, stage: "queued", status: "active" },
     humanizerProcess: null,
     careerProcess: null,
     imageProcess: null,
@@ -427,6 +432,13 @@ export default function ChatConversationPage() {
             webSearch: event.data.web_search ?? null,
             arxivSearch: event.data.arxiv_search ?? null,
             teaching: event.data.teaching ?? null,
+            // Issue 06：回放起点即排队中，首个真实阶段事件到达后覆盖
+            stage: {
+              kind: "stage",
+              message_id: event.data.message_id,
+              stage: "queued",
+              status: "active",
+            },
             humanizerProcess: null,
             careerProcess: null,
             imageProcess: null,
@@ -439,6 +451,16 @@ export default function ChatConversationPage() {
           }
           setActiveRun(run);
           setAnnouncement("正在生成回答");
+        } else if (isChatStreamEventOf(event, "stage")) {
+          // Issue 06：统一阶段事件（脱敏：仅阶段枚举/状态/耗时）；阶段行
+          // 在流式期间即时呈现，终态由 done 后权威历史的消息投影接管。
+          if (activeRunRef.current?.messageId === event.data.message_id) {
+            activeRunRef.current = {
+              ...activeRunRef.current,
+              stage: event.data,
+            };
+            setActiveRun((run) => (run ? { ...run, stage: event.data } : run));
+          }
         } else if (
           isChatStreamEventOf(event, "delta") &&
           activeRunRef.current?.messageId === event.data.message_id
@@ -529,6 +551,7 @@ export default function ChatConversationPage() {
               webSearch: event.data.web_search ?? current?.webSearch ?? null,
               arxivSearch: event.data.arxiv_search ?? current?.arxivSearch ?? null,
               teaching: event.data.teaching ?? current?.teaching ?? null,
+              stage: current?.stage ?? null,
               humanizerProcess: current?.humanizerProcess ?? null,
               careerProcess: current?.careerProcess ?? null,
               imageProcess: current?.imageProcess ?? null,
@@ -1011,6 +1034,7 @@ export default function ChatConversationPage() {
       webSearch: activeRun.webSearch,
       arxivSearch: activeRun.arxivSearch,
       teaching: activeRun.teaching,
+      stage: activeRun.stage,
       humanizerProcess: activeRun.humanizerProcess,
       careerProcess: activeRun.careerProcess,
       image: activeRun.imageProcess?.task ?? undefined,

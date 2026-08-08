@@ -144,3 +144,16 @@
 - [x] T4 反馈环测试：必红 1 reauth→自动重试 save 单 attempt（API 层）；必红 2 10 秒晚到收敛 verified（closeout）；A/B 竞争、删除期间迟到、IMAP 断线、120s 超时、重启恢复、秘密扫描 → verify: 全部通过（closeout 3/3，含 receipt_timeout 短窗口）
 - [x] T5 前端原页再认证：reauth_required 不再整页阻断，卡片内密码确认+自动重试+取消清空；verifying 阶段文案（发送中/确认收件）；轮询覆盖 120s；返回恢复权威状态 → verify: typecheck 干净（NewChatHome 错误属外部并行会话）+ issue33 e2e 3/3（修复 sendNow 展开竞态）
 - [x] T6 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest 2226 通过（2 条外部会话 flaky 重跑绿）+ issue33 e2e 3/3，双轴审查修复 5 处，提交 c80de79
+## 收尾 Issue 06：端到端时延预算、阶段埋点和有界降级（2026-08-08）
+
+来源：`.scratch/收尾/issues/06-latency-budgets-observability.md`（ready-for-agent，Blocked by 01/02 均已完）。
+分支：`06-latency-budgets-observability`（基于 c3682480，独立 worktree，不动主线）。
+
+- [x] T1 统一阶段时钟与预算控制器模块（阶段枚举 queued/local_retrieval/public_search/model_generation/quality_check/repair/finalizing、总预算 120s、外部调用 timeout 集中配置、剩余预算重试门、脱敏指标）→ verify: 单元测试覆盖阶段转换与预算耗尽
+- [x] T2 回合编排接线：阶段事件发射 + 预算重试 → verify: 阶段顺序断言 + 重试预算边界测试
+- [x] T3 独立公开搜索并行执行（companion/study/humanizer/career 四路径）→ verify: 并行墙钟断言 + 顺序确定性断言
+- [x] T4 前端阶段展示与首事件时效（创建即"排队中"，阶段行真实文案）→ verify: e2e 2 条断言阶段文案与终态接管
+- [x] T5 超预算有界降级终态（草稿带警告交付/失败 budget_exceeded 可重试；注入 30s 慢搜索 8s 墙钟降级不等待）→ verify: 反馈环测试
+- [x] T6 本地性能摘要 p50/p95/超时率/阶段占比/重试次数（防回归：本地适配器 p95 首 token ≤2s、终态 ≤5s；无遥测外传、日志无用户内容）→ verify: 摘要单测 + 脱敏扫描
+- [x] T7 可控时钟反馈环测试（快速/慢/超时/预算耗尽四态）→ verify: 反馈环测试 7 条全绿
+- [x] T8 全量回归 + 双轴代码审查 + 提交 → verify: 全量 2212 pytest（2 基线失败为 05/10 未完成工作）+ issue06 e2e 2 条通过（审查修复：exit 幂等/首 token 精确/技能路径完整阶段/摘要 count 语义/on_stage 死代码清理/ADR-0025；提交 89550be）

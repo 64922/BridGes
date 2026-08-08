@@ -28,6 +28,7 @@ export type ChatFirstTurnRequest = components["schemas"]["ChatFirstTurnRequest"]
 export type ChatFirstTurnResponse = components["schemas"]["ChatFirstTurnResponse"];
 export type ChatRunView = components["schemas"]["ChatRunView"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
+export type ChatStreamStageData = components["schemas"]["ChatStreamStageData"];
 export type ChatStreamDeltaData = components["schemas"]["ChatStreamDeltaData"];
 export type ChatStreamErrorData = components["schemas"]["ChatStreamErrorData"];
 // Issue 28：内置 bridges-humanizer SKILL 契约（生成类型来自 openapi.json）。
