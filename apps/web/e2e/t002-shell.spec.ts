@@ -3,14 +3,13 @@ import { expect, test } from "@playwright/test";
 import { signUp, uniqueCredentials } from "./helpers/auth";
 
 test.describe("T002 — 电脑端布局与无障碍基线", () => {
-  test("公共入口显示健康状态、跳转链接和地标", async ({ page }) => {
+  test("未登录访问根路径直接进入新版登录页", async ({ page }) => {
     await page.goto("/");
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("heading", { name: "BridGes" }).first()).toBeVisible();
-    await expect(page.getByRole("link", { name: "登录" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "注册" })).toBeVisible();
-    await expect(page.getByTestId("main-content")).toBeVisible();
-    await expect(page.getByRole("region", { name: /系统健康状态/ })).toBeVisible();
+    await page.waitForURL("/login");
+    await expect(page).toHaveTitle("登录 — BridGes");
+    await expect(page.getByRole("heading", { name: "登录" })).toBeVisible();
+    await expect(page.getByLabel("用户名或 QQ 邮箱")).toBeVisible();
+    await expect(page.getByLabel("密码")).toBeVisible();
   });
 
   test("跳转主内容链接在 Tab 后可见并可将焦点移到 main", async ({ page }) => {
