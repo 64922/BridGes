@@ -507,6 +507,90 @@ class ChatMessageCreateRequest(BaseModel):
     )
 
 
+class ChatFirstTurnRequest(BaseModel):
+    """原子创建新会话首轮（Issue 03）。
+
+    首页发送第一条消息或调用任一功能时使用：服务端在同一事务内创建
+    会话、用户消息、助手占位与 queued 运行，返回完整投影。``idempotency_key``
+    抵御双击与网络重放（同键并发只产生一份数据）；``conversation_id``
+    可选指定已预建的空会话（附件上传路径先建会话再发送），缺省新建。
+    ``mode``/``project_id``/``plugin_selection`` 随首轮写入会话，不再
+    依赖跳转前的 PATCH 往返。载荷互斥与校验语义同发送消息。
+    """
+
+    content: str = Field(min_length=1, max_length=4000, description="首条用户消息正文。")
+    idempotency_key: str = Field(
+        min_length=8,
+        max_length=128,
+        description="客户端生成的一次性幂等键；同账户同键重放返回同一份数据。",
+    )
+    conversation_id: str | None = Field(
+        default=None,
+        max_length=200,
+        description="已预建的空会话标识（附件上传路径）；缺省在事务内新建会话。",
+    )
+    mode: ChatMode = Field(default=ChatMode.COMPANION, description="会话初始模式。")
+    project_id: str | None = Field(
+        default=None, max_length=200, description="可选学习项目标识。"
+    )
+    plugin_selection: list[ChatPluginSelectionItem] = Field(
+        default_factory=list,
+        max_length=20,
+        description="初始插件选择（可选，逐项校验可用）。",
+    )
+    attachment_ids: list[str] = Field(
+        default_factory=list,
+        max_length=10,
+        description="已上传且待绑定到首条消息的对象标识（须属于指定会话）。",
+    )
+    use_knowledge_base: bool = Field(
+        default=True, description="首轮是否启用全局知识库层。"
+    )
+    use_profile: bool = Field(
+        default=True, description="首轮是否使用画像切片（可在发送前关闭）。"
+    )
+    skill_id: str | None = Field(
+        default=None,
+        description="内置 SKILL 注册标识（Issue 28）；携带时首轮走 SKILL 编排。",
+    )
+    skill_input: HumanizerSkillInput | None = Field(
+        default=None,
+        description="SKILL 任务载荷（契约模型校验，标识须为内置注册）。",
+    )
+    image: ImageRequestPayload | None = Field(
+        default=None,
+        description="图片生成/编辑请求载荷（Issue 31）；携带时首轮创建图片任务。",
+    )
+    video: VideoRequestPayload | None = Field(
+        default=None,
+        description="文生视频请求载荷（Issue 32）；携带时首轮创建视频任务。",
+    )
+    mcp_call: McpCallRequestPayload | None = Field(
+        default=None,
+        description="对选中 MCP 插件的调用载荷（Issue 36）；与 SKILL/图片/视频载荷互斥。",
+    )
+
+
+class ChatFirstTurnResponse(BaseModel):
+    """原子首轮的创建响应（Issue 03）。
+
+    客户端收到成功响应后再导航到会话页：``conversation`` 为完整投影
+    （含首轮消息与运行视图），``run_id``/``cursor`` 供立即订阅已持久化
+    事件。``idempotent_replay`` 指示本次是幂等重放（HTTP 200）而非新建
+    （HTTP 201），前端无须区分即可恢复同一会话。
+    """
+
+    conversation: ChatConversationProjection = Field(description="首轮后的完整会话投影。")
+    run_id: str = Field(description="首轮生成运行标识。")
+    cursor: int = Field(description="创建时已持久化的事件游标（started/profile）。")
+    user_message: ChatMessageProjection = Field(description="首条用户消息投影。")
+    assistant_message: ChatMessageProjection = Field(description="助手占位消息投影。")
+    idempotent_replay: bool = Field(
+        default=False, description="是否为同键重放（重放不产生新数据）。"
+    )
+
+
+
 class VideoRequestPayload(BaseModel):
     """文生视频请求（Issue 32）。
 
@@ -563,6 +647,9 @@ class ChatRunView(BaseModel):
 
     run_id: str = Field(description="持久化运行标识。")
     status: ChatRunStatus = Field(description="运行状态。")
+    stage: str | None = Field(
+        default=None, description="运行当前阶段（Issue 06 统一阶段枚举）。"
+    )
     cursor: int = Field(description="已持久化的最后事件游标；从下一游标恢复订阅。")
     attempt_count: int = Field(default=0, description="领取执行次数（租约恢复递增）。")
     created_at: datetime = Field(description="运行创建时间。")
@@ -587,6 +674,7 @@ class ChatStreamEventKind(StrEnum):
     """SSE 流事件类型（Issue 11/14 起稳定的事件名）。"""
 
     STARTED = "started"
+    STAGE = "stage"
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
@@ -626,6 +714,25 @@ class ChatStreamDeltaData(BaseModel):
     kind: Literal["delta"] = "delta"
     message_id: str = Field(description="助手消息标识。")
     delta: str = Field(description="增量正文片段。")
+
+
+class ChatStreamStageData(BaseModel):
+    """stage 事件载荷：统一阶段转换（Issue 06 阶段埋点）。
+
+    只携带阶段枚举、状态与脱敏耗时，绝不携带消息/文档/搜索正文；前端
+    据此渲染真实阶段（检索/生成/检查/收尾），替代笼统"思考中"。
+    """
+
+    kind: Literal["stage"] = "stage"
+    message_id: str = Field(description="助手消息标识。")
+    stage: str = Field(description="统一阶段枚举值（queued/local_retrieval/…）。")
+    status: Literal["active", "done", "timeout", "failed", "skipped"] = Field(
+        description="阶段状态：active 进入；done 正常完成；timeout/failed/skipped 降级。"
+    )
+    duration_ms: int | None = Field(default=None, description="阶段耗时（毫秒，done 起携带）。")
+    first_token_ms: int | None = Field(
+        default=None, description="模型首可见块耗时（毫秒，仅 model_generation 阶段）。"
+    )
 
 
 class ChatStreamErrorDetail(BaseModel):
@@ -767,6 +874,7 @@ class ChatStreamEvent(BaseModel):
     event: ChatStreamEventKind = Field(description="事件名（SSE 帧头）。")
     data: Annotated[
         ChatStreamStartedData
+        | ChatStreamStageData
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData

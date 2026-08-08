@@ -67,6 +67,7 @@ from bridges.contracts.chat import (
     ChatConversationListProjection,
     ChatConversationProjection,
     ChatConversationSummary,
+    ChatFirstTurnResponse,
     ChatMessageProjection,
     ChatMessageRole,
     ChatMessageStatus,
@@ -655,15 +656,8 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
-        skill_payload = self._validate_skill_payload(skill_id, skill_input)
-        # Issue 31/32/36：SKILL / 图片 / 视频 / MCP 调用四类载荷互斥——
-        # 同一轮只允许一种载荷驱动生成，并发携带按 422 拒绝而不是静默
-        # 丢弃（失败不伪装成功，契约单一来源）。
-        has_skill = skill_payload is not None
-        image_payload = _validate_image_payload(image, has_skill)
-        video_payload = _validate_video_payload(video, has_skill or image_payload is not None)
-        mcp_call_payload = _validate_mcp_call_payload(
-            mcp_call, has_skill or image_payload is not None or video_payload is not None
+        skill_payload, image_payload, video_payload, mcp_call_payload = (
+            self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
         )
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
@@ -677,6 +671,98 @@ class ChatService:
                 "上一轮回答仍在生成中，请先停止或等待完成。",
                 409,
             )
+        attachment_ids = self._validate_attachments(
+            account_id, conversation_id, attachment_ids
+        )
+
+        mode = ChatMode(record.mode)
+        (
+            user_message,
+            assistant_message,
+            run_record,
+            started_payload,
+        ) = self._assemble_generation_records(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            content=content,
+            mode=mode,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+            use_knowledge_base=use_knowledge_base,
+            use_profile=use_profile,
+            now=now,
+        )
+        self._repo.insert_generation_turn(
+            user_message,
+            assistant_message,
+            run_record,
+            [(ChatStreamEventKind.STARTED.value, started_payload)],
+            attachment_ids or None,
+        )
+        self._repo.touch_conversation(account_id, conversation_id, now)
+
+        if not record.title:
+            title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
+            self._repo.set_conversation_title(account_id, conversation_id, title, now)
+
+        self._process_profile_effects(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            user_message_id=user_message.message_id,
+            content=content,
+            mode=mode,
+            run_id=run_record.run_id,
+            now=now,
+        )
+
+        run_view = self._run_view(run_record, account_id)
+        return (
+            self._project_message(user_message),
+            self._project_message(assistant_message, run_view),
+        )
+
+    def _validate_turn_payloads(
+        self,
+        skill_id: str | None,
+        skill_input: dict[str, Any] | None,
+        image: dict[str, Any] | None,
+        video: dict[str, Any] | None,
+        mcp_call: dict[str, Any] | None,
+    ) -> tuple[
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+        dict[str, Any] | None,
+    ]:
+        """校验一轮载荷：SKILL 注册、图片/视频/MCP 结构与四类互斥。
+
+        供续轮（``start_generation``）与原子首轮（``start_first_turn``）
+        共用，失败按 422 拒绝而不是静默丢弃（失败不伪装成功）。
+        """
+        skill_payload = self._validate_skill_payload(skill_id, skill_input)
+        # Issue 31/32/36：SKILL / 图片 / 视频 / MCP 调用四类载荷互斥——
+        # 同一轮只允许一种载荷驱动生成，并发携带按 422 拒绝而不是静默
+        # 丢弃（失败不伪装成功，契约单一来源）。
+        has_skill = skill_payload is not None
+        image_payload = _validate_image_payload(image, has_skill)
+        video_payload = _validate_video_payload(
+            video, has_skill or image_payload is not None
+        )
+        mcp_call_payload = _validate_mcp_call_payload(
+            mcp_call,
+            has_skill or image_payload is not None or video_payload is not None,
+        )
+        return skill_payload, image_payload, video_payload, mcp_call_payload
+
+    def _validate_attachments(
+        self,
+        account_id: str,
+        conversation_id: str,
+        attachment_ids: list[str] | None,
+    ) -> list[str]:
+        """校验附件归属：必须属于当前账户/会话且尚未绑定其他消息。"""
         attachment_ids = list(attachment_ids or [])
         if attachment_ids:
             if self._attachments is None:
@@ -689,8 +775,29 @@ class ChatService:
                 )
             except ChatAttachmentError as exc:
                 raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
+        return attachment_ids
 
-        mode = ChatMode(record.mode)
+    def _assemble_generation_records(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        content: str,
+        mode: ChatMode,
+        skill_payload: dict[str, Any] | None,
+        image_payload: dict[str, Any] | None,
+        video_payload: dict[str, Any] | None,
+        mcp_call_payload: dict[str, Any] | None,
+        use_knowledge_base: bool,
+        use_profile: bool,
+        now: datetime,
+    ) -> tuple[MessageRecord, MessageRecord, GenerationRunRecord, dict[str, Any]]:
+        """组装一轮的用户消息、助手占位、queued 运行与 started 载荷。
+
+        供续轮（``start_generation``）与原子首轮（``start_first_turn``）
+        共用；调用方负责事务写入与幂等语义。运行创建即视为"活跃"，
+        读取收敛不会误伤（判定源为运行表）。
+        """
         thinking = initial_thinking(mode).model_dump(mode="json")
         # Issue 28：SKILL 任务不需要搜索/教学初始计划（其证据合同由
         # 人味化编排按需执行），避免把任务摘要误当搜索查询。
@@ -750,8 +857,7 @@ class ChatService:
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
         )
-        # Issue 02：同一事务创建消息、queued 运行、started 事件与队列行；
-        # 运行创建即视为"活跃"，读取收敛不会误伤（判定源为运行表）。
+        # Issue 02：同一事务创建消息、queued 运行、started 事件与队列行。
         run_id = secrets.token_urlsafe(16)
         run_record = GenerationRunRecord(
             run_id=run_id,
@@ -780,49 +886,196 @@ class ChatService:
             attempt_number=assistant_message.attempt_number,
             message=assistant_message,
         )
-        self._repo.insert_generation_turn(
-            user_message,
-            assistant_message,
-            run_record,
-            [(ChatStreamEventKind.STARTED.value, started_payload)],
-            attachment_ids or None,
-        )
-        self._repo.touch_conversation(account_id, conversation_id, now)
+        return user_message, assistant_message, run_record, started_payload
 
-        if not record.title:
-            title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
-            self._repo.set_conversation_title(account_id, conversation_id, title, now)
+    def _process_profile_effects(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        user_message_id: str,
+        content: str,
+        mode: ChatMode,
+        run_id: str,
+        now: datetime,
+    ) -> None:
+        """首轮/续轮的画像记忆副作用：处理消息并把通知追加为 profile 事件。
 
-        # Issue 26：确定性记忆意图处理（明确记住/不记/仅会话、许可内自动
-        # 写入、敏感候选、单次情绪提示）。画像处理失败绝不阻断聊天主流程：
-        # 记忆能力独立于回答生成，通知留待重试轮次补发。
+        Issue 26：确定性记忆意图处理（明确记住/不记/仅会话、许可内自动
+        写入、敏感候选、单次情绪提示）。画像处理失败绝不阻断聊天主流程：
+        记忆能力独立于回答生成，通知留待重试轮次补发。
+        Issue 02：画像通知作为 profile 事件随运行持久化（started 之后），
+        订阅者从游标回放即可即时展示，重开页面不重复下发。
+        """
         if self._profiles is not None:
             with contextlib.suppress(Exception):  # noqa: BLE001 - 辅助路径静默降级
                 self._profiles.process_conversation_message(
                     account_id,
-                    message_id=user_message.message_id,
+                    message_id=user_message_id,
                     conversation_id=conversation_id,
                     content=content,
                     mode=mode.value,
                 )
-        # Issue 02：画像通知作为 profile 事件随运行持久化（started 之后），
-        # 订阅者从游标回放即可即时展示，重开页面不重复下发。
         notifications = self.profile_notifications_for_message(
-            account_id, conversation_id, user_message.message_id
+            account_id, conversation_id, user_message_id
         )
         if notifications:
             profile_payload = ChatStreamProfileData(
-                message_id=user_message.message_id,
+                message_id=user_message_id,
                 notifications=notifications,
             ).model_dump(mode="json")
             self._repo.append_generation_event(
                 account_id, run_id, ChatStreamEventKind.PROFILE.value, profile_payload, now
             )
 
+    def start_first_turn(
+        self,
+        account_id: str,
+        *,
+        content: str,
+        idempotency_key: str,
+        conversation_id: str | None = None,
+        mode: ChatMode = ChatMode.COMPANION,
+        project_id: str | None = None,
+        plugin_selection: list[ChatPluginSelectionItem] | None = None,
+        attachment_ids: list[str] | None = None,
+        skill_id: str | None = None,
+        skill_input: dict[str, Any] | None = None,
+        image: dict[str, Any] | None = None,
+        video: dict[str, Any] | None = None,
+        mcp_call: dict[str, Any] | None = None,
+        use_knowledge_base: bool = True,
+        use_profile: bool = True,
+    ) -> ChatFirstTurnResponse:
+        """原子创建新会话首轮（Issue 03）：会话、用户消息、助手占位与
+        queued 运行在同一事务内落库，返回完整投影。
+
+        首页发送第一条消息或调用任一功能时使用，成功响应后再导航——
+        ``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御
+        双击与网络重放：同账户同键重放（含并发）只产生一份数据，返回
+        既有会话且 ``idempotent_replay=True``（HTTP 200）。``conversation_id``
+        可选指定已预建的空会话（附件上传路径先建会话再发送）；缺省在
+        事务内新建。``mode``/``project_id``/``plugin_selection`` 随首轮
+        写入会话。失败不留任何会话/消息（整事务回滚），不产生空草稿。
+        """
+        now = datetime.now(UTC)
+        content = content.strip()
+        if not content:
+            raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
+        skill_payload, image_payload, video_payload, mcp_call_payload = (
+            self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
+        )
+        # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
+        # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
+        # 同键重放（含预建会话路径）必须 200 返回既有数据，不能被 409
+        # 短路；并发不同键双发同一预建会话由事务内检查拦截。
+        if conversation_id is not None:
+            record = self._repo.get_conversation(account_id, conversation_id)
+            if record is None:
+                raise ChatDomainError(
+                    "conversation_not_found", "对话不存在或没有访问权限。", 404
+                )
+        attachment_ids = self._validate_attachments(
+            account_id, conversation_id, attachment_ids
+        )
+        title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
+        target_conversation_id = conversation_id or secrets.token_urlsafe(16)
+        (
+            user_message,
+            assistant_message,
+            run_record,
+            started_payload,
+        ) = self._assemble_generation_records(
+            account_id=account_id,
+            conversation_id=target_conversation_id,
+            content=content,
+            mode=mode,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+            use_knowledge_base=use_knowledge_base,
+            use_profile=use_profile,
+            now=now,
+        )
+        created_id, created, conflict_not_empty = self._repo.insert_first_turn(
+            account_id=account_id,
+            conversation_id=target_conversation_id,
+            idempotency_key=idempotency_key,
+            title=title,
+            mode=mode.value,
+            created_at=now,
+            project_id=project_id,
+            plugin_selection=(
+                [item.model_dump() for item in plugin_selection]
+                if plugin_selection
+                else None
+            ),
+            user_record=user_message,
+            assistant_record=assistant_message,
+            run_record=run_record,
+            events=[(ChatStreamEventKind.STARTED.value, started_payload)],
+            attachment_ids=attachment_ids or None,
+        )
+        if conflict_not_empty:
+            raise ChatDomainError(
+                "conversation_not_empty",
+                "该对话已有消息，不能作为首轮发送目标。",
+                409,
+            )
+        if not created:
+            # 幂等命中：返回已存在数据，不执行任何首轮副作用（消息已
+            # 落库、profile 事件已随原首轮持久化）。
+            conversation = self.get_conversation(account_id, created_id)
+            user_projection = next(
+                (m for m in conversation.messages if m.role == ChatMessageRole.USER),
+                None,
+            )
+            assistant_projection = next(
+                (m for m in conversation.messages if m.role == ChatMessageRole.ASSISTANT),
+                None,
+            )
+            if user_projection is None or assistant_projection is None:
+                raise ChatDomainError(
+                    "first_turn_replay_inconsistent",
+                    "首轮数据不完整，请刷新后重试。",
+                    409,
+                )
+            # 运行视图按消息查询：终态运行同样有记录（active_run 只在活跃
+            # 时附加到投影），因此 run 完成/失败/停止后重放仍返回 200。
+            run_view = self.run_view_of(account_id, assistant_projection.message_id)
+            if run_view is None:
+                raise ChatDomainError(
+                    "first_turn_replay_inconsistent",
+                    "首轮数据不完整，请刷新后重试。",
+                    409,
+                )
+            return ChatFirstTurnResponse(
+                conversation=conversation,
+                run_id=run_view.run_id,
+                cursor=run_view.cursor,
+                user_message=user_projection,
+                assistant_message=assistant_projection,
+                idempotent_replay=True,
+            )
+        self._process_profile_effects(
+            account_id=account_id,
+            conversation_id=created_id,
+            user_message_id=user_message.message_id,
+            content=content,
+            mode=mode,
+            run_id=run_record.run_id,
+            now=now,
+        )
         run_view = self._run_view(run_record, account_id)
-        return (
-            self._project_message(user_message),
-            self._project_message(assistant_message, run_view),
+        conversation = self.get_conversation(account_id, created_id)
+        return ChatFirstTurnResponse(
+            conversation=conversation,
+            run_id=run_record.run_id,
+            cursor=run_view.cursor,
+            user_message=self._project_message(user_message),
+            assistant_message=self._project_message(assistant_message, run_view),
+            idempotent_replay=False,
         )
 
     def stream_generation(

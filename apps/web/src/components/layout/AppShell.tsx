@@ -34,6 +34,22 @@ export function AppShell({ children, showSkipLink = true }: AppShellProps) {
     readAloudSession.dispose();
   }, [accountRevision]);
 
+  // Issue 03：客户端导航后浏览器可能把焦点程序化落在「跳转到主内容」
+  // 链接上（:focus 会触发其蓝色覆盖层、盖住 Logo）。程序化聚焦不触发
+  // :focus-visible，因此只在「焦点在跳转链接且非键盘聚焦」时纠正到
+  // 稳定的主区；键盘 Tab 到达（真实 focus-visible）保留不动，跳转链接
+  // 对键盘用户始终可见可用。整页加载/刷新不干预（pathname 无变化）。
+  useEffect(() => {
+    const active = document.activeElement;
+    if (
+      active instanceof HTMLElement &&
+      active.classList.contains("sc-visually-hidden") &&
+      !active.matches(":focus-visible")
+    ) {
+      document.getElementById("main-content")?.focus();
+    }
+  }, [pathname]);
+
   // Issue 24：全局 Ctrl/Cmd+K 打开统一搜索页并记录触发元素（Esc 返回时
   // 归还焦点）；已在搜索页时改为聚焦搜索输入框，不与输入框内行为冲突。
   useEffect(() => {

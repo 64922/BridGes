@@ -370,6 +370,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/first-turn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create First Turn
+         * @description 原子创建新会话首轮（Issue 03）：同一事务创建会话、用户消息、
+         *     助手占位与 queued 运行，返回完整投影。
+         *
+         *     首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再
+         *     导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御
+         *     双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。
+         *     ``conversation_id`` 可选指定已预建的空会话（附件上传路径先建会话
+         *     再发送），缺省在事务内新建会话；``mode``/``project_id``/
+         *     ``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。
+         */
+        post: operations["create_first_turn_chat_first_turn_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations/{conversation_id}": {
         parameters: {
             query?: never;
@@ -8072,6 +8100,112 @@ export interface components {
             message: string;
         };
         /**
+         * ChatFirstTurnRequest
+         * @description 原子创建新会话首轮（Issue 03）。
+         *
+         *     首页发送第一条消息或调用任一功能时使用：服务端在同一事务内创建
+         *     会话、用户消息、助手占位与 queued 运行，返回完整投影。``idempotency_key``
+         *     抵御双击与网络重放（同键并发只产生一份数据）；``conversation_id``
+         *     可选指定已预建的空会话（附件上传路径先建会话再发送），缺省新建。
+         *     ``mode``/``project_id``/``plugin_selection`` 随首轮写入会话，不再
+         *     依赖跳转前的 PATCH 往返。载荷互斥与校验语义同发送消息。
+         */
+        ChatFirstTurnRequest: {
+            /**
+             * Content
+             * @description 首条用户消息正文。
+             */
+            content: string;
+            /**
+             * Idempotency Key
+             * @description 客户端生成的一次性幂等键；同账户同键重放返回同一份数据。
+             */
+            idempotency_key: string;
+            /**
+             * Conversation Id
+             * @description 已预建的空会话标识（附件上传路径）；缺省在事务内新建会话。
+             */
+            conversation_id?: string | null;
+            /**
+             * @description 会话初始模式。
+             * @default companion
+             */
+            mode: components["schemas"]["ChatMode"];
+            /**
+             * Project Id
+             * @description 可选学习项目标识。
+             */
+            project_id?: string | null;
+            /**
+             * Plugin Selection
+             * @description 初始插件选择（可选，逐项校验可用）。
+             */
+            plugin_selection?: components["schemas"]["ChatPluginSelectionItem"][];
+            /**
+             * Attachment Ids
+             * @description 已上传且待绑定到首条消息的对象标识（须属于指定会话）。
+             */
+            attachment_ids?: string[];
+            /**
+             * Use Knowledge Base
+             * @description 首轮是否启用全局知识库层。
+             * @default true
+             */
+            use_knowledge_base: boolean;
+            /**
+             * Use Profile
+             * @description 首轮是否使用画像切片（可在发送前关闭）。
+             * @default true
+             */
+            use_profile: boolean;
+            /**
+             * Skill Id
+             * @description 内置 SKILL 注册标识（Issue 28）；携带时首轮走 SKILL 编排。
+             */
+            skill_id?: string | null;
+            /** @description SKILL 任务载荷（契约模型校验，标识须为内置注册）。 */
+            skill_input?: components["schemas"]["HumanizerSkillInput"] | null;
+            /** @description 图片生成/编辑请求载荷（Issue 31）；携带时首轮创建图片任务。 */
+            image?: components["schemas"]["ImageRequestPayload"] | null;
+            /** @description 文生视频请求载荷（Issue 32）；携带时首轮创建视频任务。 */
+            video?: components["schemas"]["VideoRequestPayload"] | null;
+            /** @description 对选中 MCP 插件的调用载荷（Issue 36）；与 SKILL/图片/视频载荷互斥。 */
+            mcp_call?: components["schemas"]["McpCallRequestPayload"] | null;
+        };
+        /**
+         * ChatFirstTurnResponse
+         * @description 原子首轮的创建响应（Issue 03）。
+         *
+         *     客户端收到成功响应后再导航到会话页：``conversation`` 为完整投影
+         *     （含首轮消息与运行视图），``run_id``/``cursor`` 供立即订阅已持久化
+         *     事件。``idempotent_replay`` 指示本次是幂等重放（HTTP 200）而非新建
+         *     （HTTP 201），前端无须区分即可恢复同一会话。
+         */
+        ChatFirstTurnResponse: {
+            /** @description 首轮后的完整会话投影。 */
+            conversation: components["schemas"]["ChatConversationProjection"];
+            /**
+             * Run Id
+             * @description 首轮生成运行标识。
+             */
+            run_id: string;
+            /**
+             * Cursor
+             * @description 创建时已持久化的事件游标（started/profile）。
+             */
+            cursor: number;
+            /** @description 首条用户消息投影。 */
+            user_message: components["schemas"]["ChatMessageProjection"];
+            /** @description 助手占位消息投影。 */
+            assistant_message: components["schemas"]["ChatMessageProjection"];
+            /**
+             * Idempotent Replay
+             * @description 是否为同键重放（重放不产生新数据）。
+             * @default false
+             */
+            idempotent_replay: boolean;
+        };
+        /**
          * ChatMessageCreateRequest
          * @description 发送一条用户消息。
          *
@@ -8362,6 +8496,11 @@ export interface components {
             /** @description 运行状态。 */
             status: components["schemas"]["ChatRunStatus"];
             /**
+             * Stage
+             * @description 运行当前阶段（Issue 06 统一阶段枚举）。
+             */
+            stage?: string | null;
+            /**
              * Cursor
              * @description 已持久化的最后事件游标；从下一游标恢复订阅。
              */
@@ -8541,14 +8680,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video" | "mcp_call";
+        ChatStreamEventKind: "started" | "stage" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video" | "mcp_call";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -8658,6 +8797,46 @@ export interface components {
              * @description 本轮产生的画像通知。
              */
             notifications?: components["schemas"]["ProfileNotification"][];
+        };
+        /**
+         * ChatStreamStageData
+         * @description stage 事件载荷：统一阶段转换（Issue 06 阶段埋点）。
+         *
+         *     只携带阶段枚举、状态与脱敏耗时，绝不携带消息/文档/搜索正文；前端
+         *     据此渲染真实阶段（检索/生成/检查/收尾），替代笼统"思考中"。
+         */
+        ChatStreamStageData: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "stage";
+            /**
+             * Message Id
+             * @description 助手消息标识。
+             */
+            message_id: string;
+            /**
+             * Stage
+             * @description 统一阶段枚举值（queued/local_retrieval/…）。
+             */
+            stage: string;
+            /**
+             * Status
+             * @description 阶段状态：active 进入；done 正常完成；timeout/failed/skipped 降级。
+             * @enum {string}
+             */
+            status: "active" | "done" | "timeout" | "failed" | "skipped";
+            /**
+             * Duration Ms
+             * @description 阶段耗时（毫秒，done 起携带）。
+             */
+            duration_ms?: number | null;
+            /**
+             * First Token Ms
+             * @description 模型首可见块耗时（毫秒，仅 model_generation 阶段）。
+             */
+            first_token_ms?: number | null;
         };
         /**
          * ChatStreamStartedData
@@ -21459,6 +21638,23 @@ export interface components {
          */
         SliceStatus: "active" | "expired" | "revoked" | "cancelled";
         /**
+         * SmtpAttemptState
+         * @description 验证 attempt 的阶段状态机（Issue 10）。
+         *
+         *     - ``smtp_connecting``：attempt 已创建，尚未完成 SMTP 发送；
+         *     - ``mail_sent``：SMTP 已接受测试邮件，收件确认计时开始；
+         *     - ``waiting_receipt``：正在有界退避轮询 IMAP 收件；
+         *     - ``verified``：自发自收验证通过（终态，且账户 SMTP 终态已提交）；
+         *     - ``failed``：验证失败（终态，error_code 说明原因）；
+         *     - ``superseded``：已被新 attempt 取代或凭据已删除（终态，
+         *       迟到结果不得再提交账户 SMTP 状态）。
+         *
+         *     只有当前 attempt（``reminder_settings.smtp_attempt_id`` 指向的）
+         *     可以提交账户 SMTP 终态；旧 attempt 的迟到成功/失败一律失效。
+         * @enum {string}
+         */
+        SmtpAttemptState: "smtp_connecting" | "mail_sent" | "waiting_receipt" | "verified" | "failed" | "superseded";
+        /**
          * SmtpCodeSaveRequest
          * @description 保存 QQ 邮箱授权码的请求；系统不接受 QQ 登录密码。
          */
@@ -21475,7 +21671,9 @@ export interface components {
          * @description 账户 SMTP 配置投影；绝不包含授权码正文。
          *
          *     ``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往
-         *     同一邮箱；页面展示此字段并禁止修改收件人。
+         *     同一邮箱；页面展示此字段并禁止修改收件人。验证进行中时
+         *     ``attempt_state``/``attempt_deadline_at`` 提供细粒度进度与收件
+         *     截止时间，页面据此持续轮询；attempt 终态后这两个字段为 None。
          */
         SmtpSettingsProjection: {
             /** @description 授权码保存与验证状态。 */
@@ -21500,6 +21698,13 @@ export interface components {
              * @description 可操作的中文原因与重新验证路径。
              */
             error_message?: string | null;
+            /** @description 当前验证 attempt 的阶段（验证进行中时存在；终态为 None）。 */
+            attempt_state?: components["schemas"]["SmtpAttemptState"] | null;
+            /**
+             * Attempt Deadline At
+             * @description 收件确认截止时间（UTC）；等待收件时存在。
+             */
+            attempt_deadline_at?: string | null;
             /**
              * Updated At
              * @description 最近一次配置或验证状态更新时间。
@@ -21511,7 +21716,8 @@ export interface components {
          * @description 账户 SMTP 授权码的验证状态。
          *
          *     - ``unconfigured``：尚未保存授权码；
-         *     - ``verifying``：授权码已保存，自发自收验证进行中；
+         *     - ``verifying``：授权码已保存，自发自收验证进行中（细粒度进度
+         *       见 ``SmtpSettingsProjection.attempt_state``）；
          *     - ``verified``：自发自收验证通过，可以启用邮件提醒；
          *     - ``failed``：验证失败或授权失效，error_code/error_message
          *       说明原因并提供重新验证路径。
@@ -25414,6 +25620,86 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+        };
+    };
+    create_first_turn_chat_first_turn_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatFirstTurnRequest"];
+            };
+        };
+        responses: {
+            /** @description 幂等重放：同键已存在，返回既有首轮数据（不产生新数据） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatFirstTurnResponse"];
+                };
+            };
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatFirstTurnResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

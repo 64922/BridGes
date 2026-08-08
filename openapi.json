@@ -1466,6 +1466,116 @@
         }
       }
     },
+    "/chat/first-turn": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Create First Turn",
+        "description": "原子创建新会话首轮（Issue 03）：同一事务创建会话、用户消息、\n助手占位与 queued 运行，返回完整投影。\n\n首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再\n导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御\n双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。\n``conversation_id`` 可选指定已预建的空会话（附件上传路径先建会话\n再发送），缺省在事务内新建会话；``mode``/``project_id``/\n``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。",
+        "operationId": "create_first_turn_chat_first_turn_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatFirstTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatFirstTurnResponse"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "幂等重放：同键已存在，返回既有首轮数据（不产生新数据）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatFirstTurnResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/chat/conversations/{conversation_id}": {
       "patch": {
         "tags": [
@@ -31533,6 +31643,190 @@
         "title": "ChatError",
         "description": "聊天 API 的错误响应体（非泄漏、可操作的中文说明）。"
       },
+      "ChatFirstTurnRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Content",
+            "description": "首条用户消息正文。"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 8,
+            "title": "Idempotency Key",
+            "description": "客户端生成的一次性幂等键；同账户同键重放返回同一份数据。"
+          },
+          "conversation_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Conversation Id",
+            "description": "已预建的空会话标识（附件上传路径）；缺省在事务内新建会话。"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/ChatMode",
+            "description": "会话初始模式。",
+            "default": "companion"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Project Id",
+            "description": "可选学习项目标识。"
+          },
+          "plugin_selection": {
+            "items": {
+              "$ref": "#/components/schemas/ChatPluginSelectionItem"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Plugin Selection",
+            "description": "初始插件选择（可选，逐项校验可用）。"
+          },
+          "attachment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 10,
+            "title": "Attachment Ids",
+            "description": "已上传且待绑定到首条消息的对象标识（须属于指定会话）。"
+          },
+          "use_knowledge_base": {
+            "type": "boolean",
+            "title": "Use Knowledge Base",
+            "description": "首轮是否启用全局知识库层。",
+            "default": true
+          },
+          "use_profile": {
+            "type": "boolean",
+            "title": "Use Profile",
+            "description": "首轮是否使用画像切片（可在发送前关闭）。",
+            "default": true
+          },
+          "skill_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skill Id",
+            "description": "内置 SKILL 注册标识（Issue 28）；携带时首轮走 SKILL 编排。"
+          },
+          "skill_input": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerSkillInput"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "SKILL 任务载荷（契约模型校验，标识须为内置注册）。"
+          },
+          "image": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "图片生成/编辑请求载荷（Issue 31）；携带时首轮创建图片任务。"
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "文生视频请求载荷（Issue 32）；携带时首轮创建视频任务。"
+          },
+          "mcp_call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/McpCallRequestPayload"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "对选中 MCP 插件的调用载荷（Issue 36）；与 SKILL/图片/视频载荷互斥。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "idempotency_key"
+        ],
+        "title": "ChatFirstTurnRequest",
+        "description": "原子创建新会话首轮（Issue 03）。\n\n首页发送第一条消息或调用任一功能时使用：服务端在同一事务内创建\n会话、用户消息、助手占位与 queued 运行，返回完整投影。``idempotency_key``\n抵御双击与网络重放（同键并发只产生一份数据）；``conversation_id``\n可选指定已预建的空会话（附件上传路径先建会话再发送），缺省新建。\n``mode``/``project_id``/``plugin_selection`` 随首轮写入会话，不再\n依赖跳转前的 PATCH 往返。载荷互斥与校验语义同发送消息。"
+      },
+      "ChatFirstTurnResponse": {
+        "properties": {
+          "conversation": {
+            "$ref": "#/components/schemas/ChatConversationProjection",
+            "description": "首轮后的完整会话投影。"
+          },
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "首轮生成运行标识。"
+          },
+          "cursor": {
+            "type": "integer",
+            "title": "Cursor",
+            "description": "创建时已持久化的事件游标（started/profile）。"
+          },
+          "user_message": {
+            "$ref": "#/components/schemas/ChatMessageProjection",
+            "description": "首条用户消息投影。"
+          },
+          "assistant_message": {
+            "$ref": "#/components/schemas/ChatMessageProjection",
+            "description": "助手占位消息投影。"
+          },
+          "idempotent_replay": {
+            "type": "boolean",
+            "title": "Idempotent Replay",
+            "description": "是否为同键重放（重放不产生新数据）。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation",
+          "run_id",
+          "cursor",
+          "user_message",
+          "assistant_message"
+        ],
+        "title": "ChatFirstTurnResponse",
+        "description": "原子首轮的创建响应（Issue 03）。\n\n客户端收到成功响应后再导航到会话页：``conversation`` 为完整投影\n（含首轮消息与运行视图），``run_id``/``cursor`` 供立即订阅已持久化\n事件。``idempotent_replay`` 指示本次是幂等重放（HTTP 200）而非新建\n（HTTP 201），前端无须区分即可恢复同一会话。"
+      },
       "ChatMessageCreateRequest": {
         "properties": {
           "content": {
@@ -32095,6 +32389,18 @@
             "$ref": "#/components/schemas/ChatRunStatus",
             "description": "运行状态。"
           },
+          "stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stage",
+            "description": "运行当前阶段（Issue 06 统一阶段枚举）。"
+          },
           "cursor": {
             "type": "integer",
             "title": "Cursor",
@@ -32382,6 +32688,9 @@
                 "$ref": "#/components/schemas/ChatStreamStartedData"
               },
               {
+                "$ref": "#/components/schemas/ChatStreamStageData"
+              },
+              {
                 "$ref": "#/components/schemas/ChatStreamDeltaData"
               },
               {
@@ -32422,6 +32731,7 @@
                 "image": "#/components/schemas/ChatStreamImageData",
                 "mcp_call": "#/components/schemas/ChatStreamMcpData",
                 "profile": "#/components/schemas/ChatStreamProfileData",
+                "stage": "#/components/schemas/ChatStreamStageData",
                 "started": "#/components/schemas/ChatStreamStartedData",
                 "video": "#/components/schemas/ChatStreamVideoData"
               }
@@ -32440,6 +32750,7 @@
         "type": "string",
         "enum": [
           "started",
+          "stage",
           "delta",
           "error",
           "done",
@@ -32591,6 +32902,70 @@
         ],
         "title": "ChatStreamProfileData",
         "description": "profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。\n\n通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条\n自动写入通知携带一键撤回入口。"
+      },
+      "ChatStreamStageData": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "stage",
+            "title": "Kind",
+            "default": "stage"
+          },
+          "message_id": {
+            "type": "string",
+            "title": "Message Id",
+            "description": "助手消息标识。"
+          },
+          "stage": {
+            "type": "string",
+            "title": "Stage",
+            "description": "统一阶段枚举值（queued/local_retrieval/…）。"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "done",
+              "timeout",
+              "failed",
+              "skipped"
+            ],
+            "title": "Status",
+            "description": "阶段状态：active 进入；done 正常完成；timeout/failed/skipped 降级。"
+          },
+          "duration_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duration Ms",
+            "description": "阶段耗时（毫秒，done 起携带）。"
+          },
+          "first_token_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Token Ms",
+            "description": "模型首可见块耗时（毫秒，仅 model_generation 阶段）。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "message_id",
+          "stage",
+          "status"
+        ],
+        "title": "ChatStreamStageData",
+        "description": "stage 事件载荷：统一阶段转换（Issue 06 阶段埋点）。\n\n只携带阶段枚举、状态与脱敏耗时，绝不携带消息/文档/搜索正文；前端\n据此渲染真实阶段（检索/生成/检查/收尾），替代笼统\"思考中\"。"
       },
       "ChatStreamStartedData": {
         "properties": {
@@ -52853,6 +53228,19 @@
         "title": "SliceStatus",
         "description": "Lifecycle status of a compiled memory slice bound to a run."
       },
+      "SmtpAttemptState": {
+        "type": "string",
+        "enum": [
+          "smtp_connecting",
+          "mail_sent",
+          "waiting_receipt",
+          "verified",
+          "failed",
+          "superseded"
+        ],
+        "title": "SmtpAttemptState",
+        "description": "验证 attempt 的阶段状态机（Issue 10）。\n\n- ``smtp_connecting``：attempt 已创建，尚未完成 SMTP 发送；\n- ``mail_sent``：SMTP 已接受测试邮件，收件确认计时开始；\n- ``waiting_receipt``：正在有界退避轮询 IMAP 收件；\n- ``verified``：自发自收验证通过（终态，且账户 SMTP 终态已提交）；\n- ``failed``：验证失败（终态，error_code 说明原因）；\n- ``superseded``：已被新 attempt 取代或凭据已删除（终态，\n  迟到结果不得再提交账户 SMTP 状态）。\n\n只有当前 attempt（``reminder_settings.smtp_attempt_id`` 指向的）\n可以提交账户 SMTP 终态；旧 attempt 的迟到成功/失败一律失效。"
+      },
       "SmtpCodeSaveRequest": {
         "properties": {
           "authorization_code": {
@@ -52918,6 +53306,30 @@
             "title": "Error Message",
             "description": "可操作的中文原因与重新验证路径。"
           },
+          "attempt_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SmtpAttemptState"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "当前验证 attempt 的阶段（验证进行中时存在；终态为 None）。"
+          },
+          "attempt_deadline_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempt Deadline At",
+            "description": "收件确认截止时间（UTC）；等待收件时存在。"
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -52938,7 +53350,7 @@
           "qq_email"
         ],
         "title": "SmtpSettingsProjection",
-        "description": "账户 SMTP 配置投影；绝不包含授权码正文。\n\n``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往\n同一邮箱；页面展示此字段并禁止修改收件人。"
+        "description": "账户 SMTP 配置投影；绝不包含授权码正文。\n\n``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往\n同一邮箱；页面展示此字段并禁止修改收件人。验证进行中时\n``attempt_state``/``attempt_deadline_at`` 提供细粒度进度与收件\n截止时间，页面据此持续轮询；attempt 终态后这两个字段为 None。"
       },
       "SmtpStatus": {
         "type": "string",
@@ -52949,7 +53361,7 @@
           "failed"
         ],
         "title": "SmtpStatus",
-        "description": "账户 SMTP 授权码的验证状态。\n\n- ``unconfigured``：尚未保存授权码；\n- ``verifying``：授权码已保存，自发自收验证进行中；\n- ``verified``：自发自收验证通过，可以启用邮件提醒；\n- ``failed``：验证失败或授权失效，error_code/error_message\n  说明原因并提供重新验证路径。"
+        "description": "账户 SMTP 授权码的验证状态。\n\n- ``unconfigured``：尚未保存授权码；\n- ``verifying``：授权码已保存，自发自收验证进行中（细粒度进度\n  见 ``SmtpSettingsProjection.attempt_state``）；\n- ``verified``：自发自收验证通过，可以启用邮件提醒；\n- ``failed``：验证失败或授权失效，error_code/error_message\n  说明原因并提供重新验证路径。"
       },
       "Source": {
         "properties": {

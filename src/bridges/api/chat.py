@@ -36,6 +36,8 @@ from bridges.contracts.chat import (
     ChatConversationUpdateRequest,
     ChatCreateRequest,
     ChatError,
+    ChatFirstTurnRequest,
+    ChatFirstTurnResponse,
     ChatMessageCreateRequest,
     ChatMessageProjection,
     ChatModeSwitchRequest,
@@ -292,6 +294,100 @@ def create_conversation(
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
+
+
+@router.post(
+    "/first-turn",
+    response_model=ChatFirstTurnResponse,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        status.HTTP_200_OK: {
+            "model": ChatFirstTurnResponse,
+            "description": "幂等重放：同键已存在，返回既有首轮数据（不产生新数据）",
+        },
+        status.HTTP_201_CREATED: {"model": ChatFirstTurnResponse},
+        status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
+        status.HTTP_404_NOT_FOUND: {"model": ChatError},
+        status.HTTP_409_CONFLICT: {"model": ChatError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
+        status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
+    },
+)
+def create_first_turn(
+    body: ChatFirstTurnRequest,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+    learning_project_service: LearningProjectServiceDep,
+    selections_service: SelectionsServiceDep,
+    response: Response,
+) -> ChatFirstTurnResponse:
+    """原子创建新会话首轮（Issue 03）：同一事务创建会话、用户消息、
+    助手占位与 queued 运行，返回完整投影。
+
+    首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再
+    导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御
+    双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。
+    ``conversation_id`` 可选指定已预建的空会话（附件上传路径先建会话
+    再发送），缺省在事务内新建会话；``mode``/``project_id``/
+    ``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。
+    """
+    try:
+        if body.project_id is not None:
+            try:
+                learning_project_service.get_project(subject.account_id, body.project_id)
+            except LearningProjectError as exc:
+                raise _error(
+                    status.HTTP_404_NOT_FOUND,
+                    "project_not_found",
+                    "学习项目不存在或没有访问权限。",
+                ) from exc
+        if body.plugin_selection:
+            if selections_service is None:
+                raise _error(
+                    status.HTTP_503_SERVICE_UNAVAILABLE,
+                    "selections_unavailable",
+                    "插件选择服务未启用，请稍后重试。",
+                )
+            result = selections_service.validate_items(
+                subject.account_id, body.plugin_selection or []
+            )
+            if result.removed:
+                reasons = "；".join(
+                    f"「{entry.name}」{entry.reason}" for entry in result.removed
+                )
+                raise _error(status.HTTP_422_UNPROCESSABLE_CONTENT, "plugin_not_available", reasons)
+        first_turn = service.start_first_turn(
+            subject.account_id,
+            content=body.content,
+            idempotency_key=body.idempotency_key,
+            conversation_id=body.conversation_id,
+            mode=body.mode,
+            project_id=body.project_id,
+            plugin_selection=body.plugin_selection,
+            attachment_ids=body.attachment_ids,
+            skill_id=body.skill_id,
+            skill_input=(
+                body.skill_input.model_dump(mode="json") if body.skill_input else None
+            ),
+            image=(
+                body.image.model_dump(mode="json") if body.image is not None else None
+            ),
+            video=(
+                body.video.model_dump(mode="json") if body.video is not None else None
+            ),
+            mcp_call=(
+                body.mcp_call.model_dump(mode="json")
+                if body.mcp_call is not None
+                else None
+            ),
+            use_knowledge_base=body.use_knowledge_base,
+            use_profile=body.use_profile,
+        )
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+    if first_turn.idempotent_replay:
+        response.status_code = status.HTTP_200_OK
+    return first_turn
 
 
 @router.patch(

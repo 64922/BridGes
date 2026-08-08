@@ -1,6 +1,6 @@
 # 03 原子创建新会话首轮并修复空白主区、最近列表和焦点异常
 
-Status: ready-for-agent
+Status: completed
 Priority: P0
 Type: defect
 Blocked by: 01, 02
@@ -57,3 +57,16 @@ Blocks: 04, 08, 11
 ## Comments
 
 - 2026-08-08：截图中的蓝色“图标”已定位为获得焦点后展开的 skip link，并非 Logo 图片资源损坏。
+- 2026-08-08（完成）：已交付「原子首轮」纵向切片——`POST /chat/first-turn`
+  同一事务创建会话、用户消息、助手占位与 queued 运行并返回完整投影
+  （schema v31：conversations.idempotency_key + 唯一索引，幂等键抵御双击/
+  网络重放/并发）；首页 5 个发送入口（普通/生涯规划/图片/视频/人味化）
+  统一走该命令，成功后导航并从服务端投影恢复，sessionStorage 不再承担
+  业务真相；skip link 改为仅 `:focus-visible` 显示 + 客户端导航后焦点纠正
+  （鼠标/程序化导航不显示蓝色覆盖层）；失败整事务回滚不留空草稿。
+  反馈环：后端 10 条（闸门投影可见/幂等重放/并发收敛/列表立即可见/失败
+  无残留/预建会话复用/技能与附件路径/执行器完成/刷新恢复）+ Playwright
+  7 条（含串行 100 次首轮无空白无重复无遗漏、键盘/鼠标焦点双路径）。
+  验收：全量 2176 pytest + 7 e2e 通过；issue11/13/closeout-smoke 回归通过
+  （issue13 mock 适配 first-turn 契约、closeout 配置补 02 遗漏的
+  BRIDGES_GENERATION_EXECUTOR=1 基线修复）。

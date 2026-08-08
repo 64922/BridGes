@@ -42,14 +42,6 @@ import {
 } from "@/lib/api";
 import { readAloudSession } from "@/lib/read-aloud";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
-import {
-  chatAttachmentKey,
-  chatImageKey,
-  chatNoProfileKey,
-  chatPromptKey,
-  chatSkillKey,
-  chatVideoKey,
-} from "@/lib/chat-flow";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import { ImageDialog } from "@/components/bridges/ImageDialog";
@@ -406,101 +398,6 @@ export default function ChatConversationPage() {
     },
     [conversation, loadState]
   );
-
-  // 新对话首页跳转带来的待发送消息：同步消费防 StrictMode 双发
-  useEffect(() => {
-    if (loadState !== "ready" || conversation === null || (conversation.messages ?? []).length > 0) {
-      return;
-    }
-    if (sendingRef.current) return;
-    const prompt = sessionStorage.getItem(chatPromptKey(conversationId));
-    if (prompt) {
-      sessionStorage.removeItem(chatPromptKey(conversationId));
-      const rawAttachmentIds = sessionStorage.getItem(chatAttachmentKey(conversationId));
-      sessionStorage.removeItem(chatAttachmentKey(conversationId));
-      let attachmentIds: string[] = [];
-      if (rawAttachmentIds) {
-        try {
-          const parsed: unknown = JSON.parse(rawAttachmentIds);
-          if (Array.isArray(parsed) && parsed.every((item) => typeof item === "string")) {
-            attachmentIds = parsed;
-          }
-        } catch {
-          setSendError({ message: "附件发送信息损坏，请重新上传后重试。" });
-        }
-      }
-      // Issue 28：首页提交的人味化任务载荷（消费即删除，防 StrictMode 双发）
-      const rawSkill = sessionStorage.getItem(chatSkillKey(conversationId));
-      sessionStorage.removeItem(chatSkillKey(conversationId));
-      let skillId: string | undefined;
-      let skillInput: unknown;
-      if (rawSkill) {
-        try {
-          const parsed: unknown = JSON.parse(rawSkill);
-          if (parsed && typeof parsed === "object" && "skill_id" in parsed) {
-            skillId = (parsed as { skill_id: string }).skill_id;
-            skillInput = parsed;
-          }
-        } catch {
-          setSendError({ message: "人味化任务信息损坏，请重新提交。" });
-        }
-      }
-      // Issue 29：首页生涯规划对话框关闭画像时暂存标记（消费即删除）。
-      const rawNoProfile = sessionStorage.getItem(chatNoProfileKey(conversationId));
-      sessionStorage.removeItem(chatNoProfileKey(conversationId));
-      // Issue 31：首页提交的图片任务载荷（消费即删除，防 StrictMode 双发）。
-      const rawImage = sessionStorage.getItem(chatImageKey(conversationId));
-      sessionStorage.removeItem(chatImageKey(conversationId));
-      let imagePayload: ImageRequestPayload | undefined;
-      if (rawImage) {
-        try {
-          const parsed: unknown = JSON.parse(rawImage);
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            "kind" in parsed &&
-            typeof (parsed as { kind: unknown }).kind === "string" &&
-            "prompt" in parsed &&
-            typeof (parsed as { prompt: unknown }).prompt === "string"
-          ) {
-            imagePayload = parsed as ImageRequestPayload;
-          }
-        } catch {
-          setSendError({ message: "图片任务信息损坏，请重新提交。" });
-        }
-      }
-      // Issue 32：首页提交的视频任务载荷（消费即删除，防 StrictMode 双发）。
-      const rawVideo = sessionStorage.getItem(chatVideoKey(conversationId));
-      sessionStorage.removeItem(chatVideoKey(conversationId));
-      let videoPayload: VideoRequestPayload | undefined;
-      if (rawVideo) {
-        try {
-          const parsed: unknown = JSON.parse(rawVideo);
-          if (
-            parsed &&
-            typeof parsed === "object" &&
-            "prompt" in parsed &&
-            typeof (parsed as { prompt: unknown }).prompt === "string"
-          ) {
-            videoPayload = parsed as VideoRequestPayload;
-          }
-        } catch {
-          setSendError({ message: "视频任务信息损坏，请重新提交。" });
-        }
-      }
-      sendingRef.current = true;
-      void sendMessage(
-        prompt,
-        attachmentIds,
-        true,
-        rawNoProfile ? false : true,
-        skillId,
-        skillInput,
-        imagePayload,
-        videoPayload
-      );
-    }
-  }, [loadState, conversation, conversationId]);
 
   const handleStreamEvent = useCallback(
     (kind: ActiveRun["kind"], text: string) =>

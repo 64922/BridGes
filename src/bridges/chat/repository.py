@@ -990,6 +990,96 @@ class ConversationRepository:
 
     # -- generation runs (Issue 02) ---------------------------------------
 
+    def _insert_turn_locked(
+        self,
+        user_record: MessageRecord,
+        assistant_record: MessageRecord,
+        run_record: GenerationRunRecord,
+        events: list[tuple[str, dict[str, Any]]],
+        attachment_ids: list[str] | None = None,
+    ) -> None:
+        """事务内的轮次落库：消息、运行、初始事件与附件绑定（须已持锁）。
+
+        Issue 03 把本段从 ``insert_generation_turn`` 抽为私有辅助，供
+        续轮（02）与原子首轮（03）在同一事务边界内复用；调用方负责
+        开启/提交事务与幂等语义。
+        """
+        for record in (user_record, assistant_record):
+            self._db.scoped(record.account_id).execute(
+                "INSERT INTO messages"
+                "(message_id, conversation_id, account_id, role, attempt_number,"
+                " status, content, thinking, error_code, error_message,"
+                " duration_ms, model_id, run_lock_id, created_at, updated_at,"
+                " web_search, arxiv_search, teaching, context_note, skill,"
+                " career_planning, image, video, mcp_call)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
+                " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    record.message_id,
+                    record.conversation_id,
+                    record.account_id,
+                    record.role.value,
+                    record.attempt_number,
+                    record.status.value,
+                    record.content,
+                    _json_dumps(record.thinking) if record.thinking else None,
+                    record.error_code,
+                    record.error_message,
+                    record.duration_ms,
+                    record.model_id,
+                    record.run_lock_id,
+                    _iso(record.created_at),
+                    _iso(record.updated_at),
+                    _json_dumps(record.web_search) if record.web_search else None,
+                    _json_dumps(record.arxiv_search)
+                    if record.arxiv_search
+                    else None,
+                    _json_dumps(record.teaching) if record.teaching else None,
+                    _json_dumps(record.context_note)
+                    if record.context_note
+                    else None,
+                    _json_dumps(record.skill) if record.skill else None,
+                    _json_dumps(record.career_planning)
+                    if record.career_planning
+                    else None,
+                    _json_dumps(record.image) if record.image else None,
+                    _json_dumps(record.video) if record.video else None,
+                    _json_dumps(record.mcp_call) if record.mcp_call else None,
+                ),
+            )
+        self._insert_generation_run_and_events(
+            user_record.account_id, run_record, events
+        )
+        if attachment_ids:
+            placeholders = ",".join("?" for _ in attachment_ids)
+            rows = self._db.scoped(user_record.account_id).execute(
+                "SELECT object_id FROM chat_attachments"
+                " WHERE account_id = ? AND conversation_id = ?"
+                " AND message_id IS NULL AND status = 'uploaded'"
+                f" AND object_id IN ({placeholders})",
+                (
+                    user_record.account_id,
+                    user_record.conversation_id,
+                    *attachment_ids,
+                ),
+            ).fetchall()
+            if {str(row["object_id"]) for row in rows} != set(attachment_ids):
+                raise StorageError("附件不存在或没有访问权限。")
+            now = _iso(user_record.updated_at)
+            for object_id in attachment_ids:
+                self._db.scoped(user_record.account_id).execute(
+                    "UPDATE chat_attachments SET message_id = ?, status = 'bound',"
+                    " updated_at = ? WHERE object_id = ? AND account_id = ?"
+                    " AND conversation_id = ? AND message_id IS NULL",
+                    (
+                        user_record.message_id,
+                        now,
+                        object_id,
+                        user_record.account_id,
+                        user_record.conversation_id,
+                    ),
+                )
+
     def insert_generation_turn(
         self,
         user_record: MessageRecord,
@@ -1007,85 +1097,121 @@ class ConversationRepository:
         """
         try:
             with self._db.transaction():
-                for record in (user_record, assistant_record):
-                    self._db.scoped(record.account_id).execute(
-                        "INSERT INTO messages"
-                        "(message_id, conversation_id, account_id, role, attempt_number,"
-                        " status, content, thinking, error_code, error_message,"
-                        " duration_ms, model_id, run_lock_id, created_at, updated_at,"
-                        " web_search, arxiv_search, teaching, context_note, skill,"
-                        " career_planning, image, video, mcp_call)"
-                        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                        (
-                            record.message_id,
-                            record.conversation_id,
-                            record.account_id,
-                            record.role.value,
-                            record.attempt_number,
-                            record.status.value,
-                            record.content,
-                            _json_dumps(record.thinking) if record.thinking else None,
-                            record.error_code,
-                            record.error_message,
-                            record.duration_ms,
-                            record.model_id,
-                            record.run_lock_id,
-                            _iso(record.created_at),
-                            _iso(record.updated_at),
-                            _json_dumps(record.web_search) if record.web_search else None,
-                            _json_dumps(record.arxiv_search)
-                            if record.arxiv_search
-                            else None,
-                            _json_dumps(record.teaching) if record.teaching else None,
-                            _json_dumps(record.context_note)
-                            if record.context_note
-                            else None,
-                            _json_dumps(record.skill) if record.skill else None,
-                            _json_dumps(record.career_planning)
-                            if record.career_planning
-                            else None,
-                            _json_dumps(record.image) if record.image else None,
-                            _json_dumps(record.video) if record.video else None,
-                            _json_dumps(record.mcp_call) if record.mcp_call else None,
-                        ),
-                    )
-                self._insert_generation_run_and_events(
-                    user_record.account_id, run_record, events
+                self._insert_turn_locked(
+                    user_record, assistant_record, run_record, events, attachment_ids
                 )
-                if attachment_ids:
-                    placeholders = ",".join("?" for _ in attachment_ids)
-                    rows = self._db.scoped(user_record.account_id).execute(
-                        "SELECT object_id FROM chat_attachments"
-                        " WHERE account_id = ? AND conversation_id = ?"
-                        " AND message_id IS NULL AND status = 'uploaded'"
-                        f" AND object_id IN ({placeholders})",
-                        (
-                            user_record.account_id,
-                            user_record.conversation_id,
-                            *attachment_ids,
-                        ),
-                    ).fetchall()
-                    if {str(row["object_id"]) for row in rows} != set(attachment_ids):
-                        raise StorageError("附件不存在或没有访问权限。")
-                    now = _iso(user_record.updated_at)
-                    for object_id in attachment_ids:
-                        self._db.scoped(user_record.account_id).execute(
-                            "UPDATE chat_attachments SET message_id = ?, status = 'bound',"
-                            " updated_at = ? WHERE object_id = ? AND account_id = ?"
-                            " AND conversation_id = ? AND message_id IS NULL",
-                            (
-                                user_record.message_id,
-                                now,
-                                object_id,
-                                user_record.account_id,
-                                user_record.conversation_id,
-                            ),
-                        )
         except StorageError:
             raise
         except Exception as exc:  # noqa: BLE001
             raise StorageError("保存消息与生成运行失败，请稍后重试。") from exc
+
+    def insert_first_turn(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        idempotency_key: str,
+        title: str,
+        mode: str,
+        created_at: datetime,
+        project_id: str | None,
+        plugin_selection: list[dict[str, Any]] | None,
+        user_record: MessageRecord,
+        assistant_record: MessageRecord,
+        run_record: GenerationRunRecord,
+        events: list[tuple[str, dict[str, Any]]],
+        attachment_ids: list[str] | None = None,
+    ) -> tuple[str, bool, bool]:
+        """同一事务原子创建会话与首轮（Issue 03，幂等）。
+
+        会话、用户消息、助手占位、queued 运行、初始事件与附件绑定要么
+        全部落库、要么全部回滚——首轮请求返回前运行已可被后台执行器
+        领取。``idempotency_key`` 在事务内先查后插（BEGIN IMMEDIATE
+        串行化并发），同账户同键重放返回已存在会话且不产生任何新数据；
+        唯一索引 ``(account_id, idempotency_key)`` 为兜底约束。
+
+        返回 ``(conversation_id, created, conflict_not_empty)``：
+        ``created`` 为 False 表示幂等命中（调用方应按重放组装投影，
+        不执行首轮副作用）；``conflict_not_empty`` 表示指定会话已有
+        消息（并发不同键首轮同一预建会话时由事务内检查拦截，调用方
+        按 409 拒绝——检查与写入同持写锁，杜绝双发）。
+        """
+        try:
+            with self._db.transaction():
+                existing = self._db.scoped(account_id).execute(
+                    "SELECT conversation_id FROM conversations"
+                    " WHERE account_id = ? AND idempotency_key = ?",
+                    (account_id, idempotency_key),
+                ).fetchone()
+                if existing is not None:
+                    return str(existing["conversation_id"]), False, False
+                # 指定了已预建的空会话（附件上传路径先建会话再发送）时
+                # 复用并写入首轮参数；缺省在事务内新建会话。非空会话
+                # 作为首轮目标按冲突返回（幂等重放已在上面短路，因此
+                # 这里只可能是并发不同键双发）。
+                prebuilt = self._db.scoped(account_id).execute(
+                    "SELECT 1 FROM conversations"
+                    " WHERE conversation_id = ? AND account_id = ?",
+                    (conversation_id, account_id),
+                ).fetchone()
+                if prebuilt is not None:
+                    already_started = self._db.scoped(account_id).execute(
+                        "SELECT 1 FROM messages"
+                        " WHERE conversation_id = ? AND account_id = ? LIMIT 1",
+                        (conversation_id, account_id),
+                    ).fetchone()
+                    if already_started is not None:
+                        return conversation_id, False, True
+                    self._db.scoped(account_id).execute(
+                        "UPDATE conversations SET title = ?, mode = ?,"
+                        " project_id = ?, plugin_selection = ?,"
+                        " idempotency_key = ?, updated_at = ?"
+                        " WHERE conversation_id = ? AND account_id = ?",
+                        (
+                            title,
+                            mode,
+                            project_id,
+                            _json_dumps(plugin_selection)
+                            if plugin_selection
+                            else None,
+                            idempotency_key,
+                            _iso(created_at),
+                            conversation_id,
+                            account_id,
+                        ),
+                    )
+                else:
+                    self._db.scoped(account_id).execute(
+                        "INSERT INTO conversations"
+                        "(conversation_id, account_id, title, mode, pinned, project_id,"
+                        " plugin_selection, idempotency_key, created_at, updated_at)"
+                        " VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
+                        (
+                            conversation_id,
+                            account_id,
+                            title,
+                            mode,
+                            project_id,
+                            _json_dumps(plugin_selection)
+                            if plugin_selection
+                            else None,
+                            idempotency_key,
+                            _iso(created_at),
+                            _iso(created_at),
+                        ),
+                    )
+                self._insert_turn_locked(
+                    user_record,
+                    assistant_record,
+                    run_record,
+                    events,
+                    attachment_ids,
+                )
+            return conversation_id, True, False
+        except StorageError:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            raise StorageError("保存首轮会话失败，请稍后重试。") from exc
 
     def insert_generation_attempt(
         self,

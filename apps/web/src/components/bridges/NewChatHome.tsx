@@ -12,22 +12,20 @@ import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import { ImageDialog } from "@/components/bridges/ImageDialog";
 import { VideoDialog } from "@/components/bridges/VideoDialog";
-import type { HumanizerSkillInput, ImageTaskKind, VideoRequestPayload } from "@/lib/api";
+import type {
+  HumanizerSkillInput,
+  ImageRequestPayload,
+  ImageTaskKind,
+  VideoRequestPayload,
+} from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
+import { pluginHumanizerKey } from "@/lib/chat-flow";
+import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
-  chatAttachmentKey,
-  chatImageKey,
-  chatNoProfileKey,
-  chatPromptKey,
-  chatSkillKey,
-  chatVideoKey,
-  pluginHumanizerKey,
-} from "@/lib/chat-flow";
-import {
+  ApiError,
   createChatConversation,
-  updateChatConversation,
-  updateChatConversationProject,
+  startFirstTurn,
   type ChatPluginSelectionItem,
 } from "@/lib/api";
 
@@ -42,8 +40,10 @@ import styles from "@/components/bridges/chat/chat.module.css";
  * 点击预填结构化意图到输入区，经正常消息流发送（不跳过授权、审计与
  * 对话保存）。无临时聊天、无模型选择器、无实时语音入口。
  *
- * 发送时先创建对话，再携带待发送消息跳转到对话页自动发送；未配置
- * Key / 能力不可用时由服务端预检返回可操作中文提示，并给出设置入口。
+ * Issue 03：发送走「原子首轮」命令——服务端在同一事务内创建会话、用户
+ * 消息、助手占位与 queued 运行，返回完整投影；客户端收到成功响应后再
+ * 导航，``sessionStorage`` 不再承担业务真相。失败停留在首页且输入不丢失，
+ * 不产生不可见空草稿；幂等键抵御双击与网络重放。
  */
 export function NewChatHome() {
   const router = useRouter();
@@ -56,18 +56,21 @@ export function NewChatHome() {
   const [learningProject, setLearningProject] = useState<{ project_id: string; name: string } | null>(null);
   // 递增计数器保证每次建议卡点击都触发预填（同毫秒点击不会丢）
   const prefillCounter = useRef(0);
+  // 预建空会话（Composer 选择附件上传时才创建，作为附件归属上下文）
   const preparedConversationRef = useRef<string | undefined>();
+  // Issue 03：同步防重——setState 是异步的，双击/快速连点会在 React
+  // 渲染前触发多次 onSend；ref 在本次首轮完成前拦截后续提交。
+  const firstTurnInFlightRef = useRef(false);
+  // Issue 03：幂等键复用——请求成功（服务端已创建）后清空；网络/5xx
+  // 失败（响应丢失、服务端可能已提交）时保留同键重试，由服务端幂等
+  // 收敛到同一会话；4xx 是服务端明确拒绝（未产生数据），清空允许下次
+  // 以新意图全新提交。这使「导航重试」不会产生第二份会话/消息/run。
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const ensureConversation = async (): Promise<string | undefined> => {
     if (preparedConversationRef.current) return preparedConversationRef.current;
     try {
-      // Issue 36：预建空对话时携带当前插件选择（先选插件再传附件的路径）。
-      const conversation = await createChatConversation(
-        undefined,
-        mode,
-        learningProject?.project_id,
-        pluginSelection
-      );
+      const conversation = await createChatConversation();
       preparedConversationRef.current = conversation.conversation_id;
       return conversation.conversation_id;
     } catch (error) {
@@ -82,14 +85,11 @@ export function NewChatHome() {
   const [careerOpen, setCareerOpen] = useState(false);
   const [imageOpen, setImageOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
-  // Issue 36：新聊天首页暂存的插件选择（发送创建对话时携带；chip 与
+  // Issue 36：新聊天首页暂存的插件选择（随首轮写入会话；chip 与
   // 真实选择器共用，随对话持久化；停用/卸载/撤权由服务端清洗解释）。
   const [pluginSelection, setPluginSelection] = useState<ChatPluginSelectionItem[]>([]);
   const [pluginNames, setPluginNames] = useState<Record<string, string>>({});
   const [pluginPickerOpen, setPluginPickerOpen] = useState(false);
-  // 是否触碰过插件选择（含清空）：触碰后发送必须 PATCH 会话，否则服务端
-  // 旧选择会在「先选后清再发送」路径上静默复活（Issue 36 AC7 持久化语义）。
-  const pluginsTouchedRef = useRef(false);
 
   // Issue 34：插件页「在聊天中使用 humanizer」意图——消费即删除，
   // 防止刷新或 StrictMode 双触发重复打开。
@@ -99,95 +99,110 @@ export function NewChatHome() {
     setHumanizerOpen(true);
   }, []);
 
-  /** Issue 29：首页提交生涯规划任务——先建对话，暂存问题后跳转对话页
-   *  自动发送（真实消息流；画像开关语义与 Composer 一致）。 */
+  /** Issue 03：原子首轮统一入口——普通消息/生涯规划/图片/视频/人味化
+   *  全部经同一命令提交，成功后导航到会话页并刷新侧栏最近列表。 */
+  const submitFirstTurn = async (options: {
+    content: string;
+    attachmentIds?: string[];
+    conversationId?: string;
+    useProfile?: boolean;
+    skillId?: string;
+    skillInput?: HumanizerSkillInput;
+    image?: ImageRequestPayload;
+    video?: VideoRequestPayload;
+  }): Promise<boolean> => {
+    if (firstTurnInFlightRef.current) return false;
+    firstTurnInFlightRef.current = true;
+    if (idempotencyKeyRef.current === null) {
+      idempotencyKeyRef.current = crypto.randomUUID();
+    }
+    setSending(true);
+    setSendError(null);
+    try {
+      const result = await startFirstTurn({
+        content: options.content,
+        idempotency_key: idempotencyKeyRef.current,
+        conversation_id: options.conversationId,
+        mode,
+        project_id: learningProject?.project_id,
+        plugin_selection: pluginSelection,
+        attachment_ids: options.attachmentIds ?? [],
+        use_knowledge_base: true,
+        use_profile: options.useProfile ?? true,
+        ...(options.skillId !== undefined ? { skill_id: options.skillId } : {}),
+        ...(options.skillInput !== undefined ? { skill_input: options.skillInput } : {}),
+        ...(options.image !== undefined ? { image: options.image } : {}),
+        ...(options.video !== undefined ? { video: options.video } : {}),
+      });
+      // 首轮事务已成功：侧栏立即刷新（服务端列表对该会话立即可见，
+      // 不等待助手完成），随后导航到会话页从服务端投影恢复。幂等键
+      // 一次性：成功后清空，下次发送是新意图。
+      idempotencyKeyRef.current = null;
+      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
+      router.push(`/chat/${result.conversation.conversation_id}`);
+      return true;
+    } catch (error) {
+      // 原子命令失败不产生任何会话/消息：停留在可编辑首页，输入保留。
+      // 4xx 是服务端明确拒绝（未产生数据），清空幂等键允许下次全新
+      // 提交；网络/5xx（响应丢失、服务端可能已创建）保留同键重试，
+      // 由服务端幂等收敛到同一会话——「导航重试」不会产生第二份数据。
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        idempotencyKeyRef.current = null;
+      }
+      setSendError({
+        message: error instanceof Error ? error.message : "发送失败，请稍后重试。",
+      });
+      setSending(false);
+      return false;
+    } finally {
+      firstTurnInFlightRef.current = false;
+    }
+  };
+
+  /** Issue 29：首页提交生涯规划任务（真实消息流；画像开关语义与 Composer 一致）。 */
   const handleCareerSubmit = async (
     content: string,
     useProfile: boolean
   ): Promise<boolean> => {
-    try {
-      const conversationId =
-        preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
-      preparedConversationRef.current = conversationId;
-      sessionStorage.setItem(chatPromptKey(conversationId), content);
-      if (!useProfile) {
-        sessionStorage.setItem(chatNoProfileKey(conversationId), "1");
-      }
-      router.push(`/chat/${conversationId}`);
-      return true;
-    } catch (error) {
-      setSendError({
-        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-      });
-      return false;
-    }
+    return submitFirstTurn({ content, useProfile });
   };
 
-  /** Issue 31：首页提交图片任务——先建对话，暂存 image 载荷后跳转对话页自动发送。 */
+  /** Issue 31：首页提交图片任务（image 载荷随首轮落库，任务异步执行）。 */
   const handleImageSubmit = async (payload: {
     kind: ImageTaskKind;
     prompt: string;
     sourceVersionId?: string;
     sourceObjectId?: string;
   }): Promise<boolean> => {
-    try {
-      const conversationId =
-        preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
-      preparedConversationRef.current = conversationId;
-      sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
-      sessionStorage.setItem(chatImageKey(conversationId), JSON.stringify(payload));
-      router.push(`/chat/${conversationId}`);
-      return true;
-    } catch (error) {
-      setSendError({
-        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-      });
-      return false;
-    }
+    const imagePayload: ImageRequestPayload = {
+      kind: payload.kind,
+      prompt: payload.prompt,
+      ...(payload.sourceVersionId
+        ? { source_version_id: payload.sourceVersionId }
+        : {}),
+      ...(payload.sourceObjectId
+        ? { source_object_id: payload.sourceObjectId }
+        : {}),
+    };
+    return submitFirstTurn({ content: payload.prompt, image: imagePayload });
   };
 
-  /** Issue 32：首页提交视频任务——先建对话，暂存 video 载荷后跳转对话页自动发送。 */
+  /** Issue 32：首页提交视频任务（video 载荷随首轮落库，任务异步执行）。 */
   const handleVideoSubmit = async (payload: { prompt: string }): Promise<boolean> => {
-    try {
-      const conversationId =
-        preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
-      preparedConversationRef.current = conversationId;
-      const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
-      sessionStorage.setItem(chatPromptKey(conversationId), payload.prompt);
-      sessionStorage.setItem(chatVideoKey(conversationId), JSON.stringify(videoPayload));
-      router.push(`/chat/${conversationId}`);
-      return true;
-    } catch (error) {
-      setSendError({
-        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-      });
-      return false;
-    }
+    const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
+    return submitFirstTurn({ content: payload.prompt, video: videoPayload });
   };
 
-  /** Issue 28：首页提交人味化任务——先建对话，暂存 SKILL 载荷后跳转对话页自动发送。 */
+  /** Issue 28：首页提交人味化任务（SKILL 载荷随首轮落库，可重试）。 */
   const handleHumanizerSubmit = async (
     content: string,
     skillInput: HumanizerSkillInput
   ): Promise<boolean> => {
-    try {
-      const conversationId =
-        preparedConversationRef.current ??
-        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
-      preparedConversationRef.current = conversationId;
-      sessionStorage.setItem(chatPromptKey(conversationId), content);
-      sessionStorage.setItem(chatSkillKey(conversationId), JSON.stringify(skillInput));
-      router.push(`/chat/${conversationId}`);
-      return true;
-    } catch (error) {
-      setSendError({
-        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-      });
-      return false;
-    }
+    return submitFirstTurn({
+      content,
+      skillId: skillInput.skill_id,
+      skillInput,
+    });
   };
 
   const handleSend = async (
@@ -195,34 +210,13 @@ export function NewChatHome() {
     attachmentIds: string[] = [],
     preparedConversationId?: string
   ): Promise<boolean> => {
-    setSending(true);
-    setSendError(null);
-    try {
-      // 附件预建对话不含项目归属；发送时把当前选择的项目一并写入，
-      // 保证「先传附件、后选项目、再发送」的路径归属一致。
-      const prepared = preparedConversationId ?? preparedConversationRef.current;
-      const conversationId =
-        prepared ??
-        (await createChatConversation(undefined, mode, learningProject?.project_id, pluginSelection)).conversation_id;
-      if (prepared && (learningProject || pluginSelection.length > 0)) {
-        await updateChatConversationProject(conversationId, learningProject?.project_id ?? null);
-      }
-      if (prepared && pluginsTouchedRef.current) {
-        await updateChatConversation(conversationId, { pluginSelection });
-      }
-      sessionStorage.setItem(chatPromptKey(conversationId), text);
-      if (attachmentIds.length > 0) {
-        sessionStorage.setItem(chatAttachmentKey(conversationId), JSON.stringify(attachmentIds));
-      }
-      router.push(`/chat/${conversationId}`);
-      return true;
-    } catch (error) {
-      setSendError({
-        message: error instanceof Error ? error.message : "创建对话失败，请稍后重试。",
-      });
-      setSending(false);
-      return false;
-    }
+    // 附件路径：已预建的会话作为首轮目标（附件归属该校验），
+    // 项目归属/插件选择随首轮请求由服务端写入该会话。
+    return submitFirstTurn({
+      content: text,
+      attachmentIds,
+      conversationId: preparedConversationId ?? preparedConversationRef.current,
+    });
   };
 
   return (
@@ -263,7 +257,6 @@ export function NewChatHome() {
                 pluginNames={pluginNames}
                 onSelectPlugins={() => setPluginPickerOpen(true)}
                 onRemovePlugin={(kind, pluginId) => {
-                  pluginsTouchedRef.current = true;
                   setPluginSelection((current) =>
                     current.filter(
                       (item) => !(item.kind === kind && item.plugin_id === pluginId)
@@ -273,7 +266,7 @@ export function NewChatHome() {
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
-                  正在创建对话…
+                  正在创建对话并发送…
                 </p>
               )}
               <SuggestionCards
@@ -320,7 +313,6 @@ export function NewChatHome() {
         onClose={() => setPluginPickerOpen(false)}
         selected={pluginSelection}
         onSelect={(selection, names) => {
-          pluginsTouchedRef.current = true;
           setPluginSelection(selection);
           setPluginNames(names);
         }}

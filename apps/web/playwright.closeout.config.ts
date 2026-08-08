@@ -135,6 +135,9 @@ export default defineConfig({
         BRIDGES_SECRET_KEY: "e2e-closeout-secret-key-01",
         BRIDGES_API_HOST: "127.0.0.1",
         BRIDGES_API_PORT: String(PORTS.api),
+        // Issue 03：与全局 playwright.config.ts 对齐——收尾真实链路同样
+        // 需要后台生成执行器（Issue 02 迁移后 test 环境默认不自动启动）。
+        BRIDGES_GENERATION_EXECUTOR: "1",
         BRIDGES_SMTP_HOST: "127.0.0.1",
         BRIDGES_SMTP_PORT: String(PORTS.smtp),
         BRIDGES_SMTP_PLAIN: "true",
