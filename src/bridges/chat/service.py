@@ -965,19 +965,15 @@ class ChatService:
         skill_payload, image_payload, video_payload, mcp_call_payload = (
             self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
         )
-        # 指定会话（附件路径）必须存在、属于当前账户且仍为空；缺省新建
-        # 会话没有这些问题。非空会话作为首轮目标按 409 拒绝，防止双发。
+        # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
+        # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
+        # 同键重放（含预建会话路径）必须 200 返回既有数据，不能被 409
+        # 短路；并发不同键双发同一预建会话由事务内检查拦截。
         if conversation_id is not None:
             record = self._repo.get_conversation(account_id, conversation_id)
             if record is None:
                 raise ChatDomainError(
                     "conversation_not_found", "对话不存在或没有访问权限。", 404
-                )
-            if self._repo.list_messages(account_id, conversation_id):
-                raise ChatDomainError(
-                    "conversation_not_empty",
-                    "该对话已有消息，不能作为首轮发送目标。",
-                    409,
                 )
         attachment_ids = self._validate_attachments(
             account_id, conversation_id, attachment_ids
@@ -1002,7 +998,7 @@ class ChatService:
             use_profile=use_profile,
             now=now,
         )
-        created_id, created = self._repo.insert_first_turn(
+        created_id, created, conflict_not_empty = self._repo.insert_first_turn(
             account_id=account_id,
             conversation_id=target_conversation_id,
             idempotency_key=idempotency_key,
@@ -1021,6 +1017,12 @@ class ChatService:
             events=[(ChatStreamEventKind.STARTED.value, started_payload)],
             attachment_ids=attachment_ids or None,
         )
+        if conflict_not_empty:
+            raise ChatDomainError(
+                "conversation_not_empty",
+                "该对话已有消息，不能作为首轮发送目标。",
+                409,
+            )
         if not created:
             # 幂等命中：返回已存在数据，不执行任何首轮副作用（消息已
             # 落库、profile 事件已随原首轮持久化）。
@@ -1033,13 +1035,16 @@ class ChatService:
                 (m for m in conversation.messages if m.role == ChatMessageRole.ASSISTANT),
                 None,
             )
-            if assistant_projection is None or assistant_projection.active_run is None:
+            if user_projection is None or assistant_projection is None:
                 raise ChatDomainError(
                     "first_turn_replay_inconsistent",
                     "首轮数据不完整，请刷新后重试。",
                     409,
                 )
-            if user_projection is None:
+            # 运行视图按消息查询：终态运行同样有记录（active_run 只在活跃
+            # 时附加到投影），因此 run 完成/失败/停止后重放仍返回 200。
+            run_view = self.run_view_of(account_id, assistant_projection.message_id)
+            if run_view is None:
                 raise ChatDomainError(
                     "first_turn_replay_inconsistent",
                     "首轮数据不完整，请刷新后重试。",
@@ -1047,8 +1052,8 @@ class ChatService:
                 )
             return ChatFirstTurnResponse(
                 conversation=conversation,
-                run_id=assistant_projection.active_run.run_id,
-                cursor=assistant_projection.active_run.cursor,
+                run_id=run_view.run_id,
+                cursor=run_view.cursor,
                 user_message=user_projection,
                 assistant_message=assistant_projection,
                 idempotent_replay=True,

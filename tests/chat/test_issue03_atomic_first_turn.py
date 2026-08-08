@@ -301,6 +301,118 @@ def test_first_turn_reuses_existing_empty_conversation(client: TestClient) -> No
     assert status == 404, body
 
 
+def test_first_turn_idempotent_replay_with_prebuilt_conversation(
+    client: TestClient,
+) -> None:
+    """预建会话（附件路径）同键重放：必须 200 返回既有数据，不被 409 短路。"""
+    _register(client)
+    prebuilt = _create_conversation(client)
+
+    first_status, first = _first_turn(
+        client,
+        {
+            "content": "附件路径首轮",
+            "idempotency_key": "prebuilt-replay-key-014",
+            "conversation_id": prebuilt,
+        },
+    )
+    assert first_status == 201, first
+
+    # 同键 + 同预建会话重放（模拟网络响应重放）：返回既有数据而非 409
+    second_status, second = _first_turn(
+        client,
+        {
+            "content": "附件路径首轮",
+            "idempotency_key": "prebuilt-replay-key-014",
+            "conversation_id": prebuilt,
+        },
+    )
+    assert second_status == 200, second
+    assert second["idempotent_replay"] is True
+    assert second["run_id"] == first["run_id"]
+
+    projection = client.get(f"/chat/conversations/{prebuilt}").json()
+    assert len([m for m in projection["messages"] if m["role"] == "user"]) == 1
+
+
+def test_first_turn_idempotent_replay_after_run_terminal(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """run 完成（终态）后同键重放：仍返回 200 与同一会话（契约：重放返回既有数据）。"""
+    _register(client)
+    release = threading.Event()
+    release.set()
+    adapter = _GatedSlowAdapter([release])
+    sqlite_app.state.chat_service._gateway = _gateway_with(adapter)
+
+    _, body = _first_turn(
+        client, {"content": "完成后再重放", "idempotency_key": "terminal-replay-key-015"}
+    )
+    conversation_id = body["conversation"]["conversation_id"]
+
+    # 驱动到 done（active_run 从投影消失，run 记录仍在运行表）
+    stop_exec, exec_thread = generation_helpers["executor_thread"](sqlite_app)
+    generation_helpers["subscribe"](
+        client, conversation_id, body["assistant_message"]["message_id"]
+    )
+    stop_exec.set()
+    exec_thread.join(timeout=5)
+    final = client.get(f"/chat/conversations/{conversation_id}").json()
+    assistant = [m for m in final["messages"] if m["role"] == "assistant"][0]
+    assert assistant["status"] == "done"
+    assert assistant.get("active_run") is None
+
+    replay_status, replay = _first_turn(
+        client,
+        {"content": "完成后再重放", "idempotency_key": "terminal-replay-key-015"},
+    )
+    assert replay_status == 200, replay
+    assert replay["idempotent_replay"] is True
+    assert replay["conversation"]["conversation_id"] == conversation_id
+    assert replay["run_id"] == body["run_id"]
+
+
+def test_first_turn_concurrent_different_keys_same_prebuilt(
+    client: TestClient,
+) -> None:
+    """并发不同键首轮同一预建会话：一个 201、一个 409，只产生一条消息。"""
+    _register(client)
+    prebuilt = _create_conversation(client)
+    results: list[tuple[int, dict[str, Any]]] = []
+    errors: list[Exception] = []
+    barrier = threading.Barrier(2)
+
+    def call(key: str) -> None:
+        barrier.wait()
+        try:
+            status, body = _first_turn(
+                client,
+                {
+                    "content": "并发抢同一预建会话",
+                    "idempotency_key": key,
+                    "conversation_id": prebuilt,
+                },
+            )
+            results.append((status, body))
+        except Exception as exc:  # noqa: BLE001 - 测试收集异常
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=call, args=(key,))
+        for key in ("prebuilt-concurrent-key-a", "prebuilt-concurrent-key-b")
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=15)
+
+    assert not errors, errors
+    statuses = sorted(status for status, _ in results)
+    assert statuses == [201, 409], results
+    projection = client.get(f"/chat/conversations/{prebuilt}").json()
+    assert len([m for m in projection["messages"] if m["role"] == "user"]) == 1
+
+
 def test_first_turn_plain_turn_completes_via_executor(
     sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
 ) -> None:

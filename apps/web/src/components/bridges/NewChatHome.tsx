@@ -23,6 +23,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { pluginHumanizerKey } from "@/lib/chat-flow";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
+  ApiError,
   createChatConversation,
   startFirstTurn,
   type ChatPluginSelectionItem,
@@ -60,6 +61,11 @@ export function NewChatHome() {
   // Issue 03：同步防重——setState 是异步的，双击/快速连点会在 React
   // 渲染前触发多次 onSend；ref 在本次首轮完成前拦截后续提交。
   const firstTurnInFlightRef = useRef(false);
+  // Issue 03：幂等键复用——请求成功（服务端已创建）后清空；网络/5xx
+  // 失败（响应丢失、服务端可能已提交）时保留同键重试，由服务端幂等
+  // 收敛到同一会话；4xx 是服务端明确拒绝（未产生数据），清空允许下次
+  // 以新意图全新提交。这使「导航重试」不会产生第二份会话/消息/run。
+  const idempotencyKeyRef = useRef<string | null>(null);
 
   const ensureConversation = async (): Promise<string | undefined> => {
     if (preparedConversationRef.current) return preparedConversationRef.current;
@@ -107,12 +113,15 @@ export function NewChatHome() {
   }): Promise<boolean> => {
     if (firstTurnInFlightRef.current) return false;
     firstTurnInFlightRef.current = true;
+    if (idempotencyKeyRef.current === null) {
+      idempotencyKeyRef.current = crypto.randomUUID();
+    }
     setSending(true);
     setSendError(null);
     try {
       const result = await startFirstTurn({
         content: options.content,
-        idempotency_key: crypto.randomUUID(),
+        idempotency_key: idempotencyKeyRef.current,
         conversation_id: options.conversationId,
         mode,
         project_id: learningProject?.project_id,
@@ -126,12 +135,20 @@ export function NewChatHome() {
         ...(options.video !== undefined ? { video: options.video } : {}),
       });
       // 首轮事务已成功：侧栏立即刷新（服务端列表对该会话立即可见，
-      // 不等待助手完成），随后导航到会话页从服务端投影恢复。
+      // 不等待助手完成），随后导航到会话页从服务端投影恢复。幂等键
+      // 一次性：成功后清空，下次发送是新意图。
+      idempotencyKeyRef.current = null;
       window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
       router.push(`/chat/${result.conversation.conversation_id}`);
       return true;
     } catch (error) {
-      // 原子命令失败不产生任何会话/消息：停留在可编辑首页，输入保留
+      // 原子命令失败不产生任何会话/消息：停留在可编辑首页，输入保留。
+      // 4xx 是服务端明确拒绝（未产生数据），清空幂等键允许下次全新
+      // 提交；网络/5xx（响应丢失、服务端可能已创建）保留同键重试，
+      // 由服务端幂等收敛到同一会话——「导航重试」不会产生第二份数据。
+      if (error instanceof ApiError && error.status >= 400 && error.status < 500) {
+        idempotencyKeyRef.current = null;
+      }
       setSendError({
         message: error instanceof Error ? error.message : "发送失败，请稍后重试。",
       });

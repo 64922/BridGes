@@ -126,14 +126,36 @@ async function installMockChatApi(page: Page, options: { createDelayMs?: number 
       created_at: NOW,
       updated_at: NOW,
     };
-    const assistantMessage = {
+    const assistantMessage: {
+      message_id: string;
+      conversation_id: string;
+      role: string;
+      attempt_number: number;
+      status: string;
+      content: string;
+      error_code: null;
+      error_message: null;
+      duration_ms: number | null;
+      model_id: string | null;
+      run_lock_id: string | null;
+      created_at: string;
+      updated_at: string;
+      // Issue 03：与真实服务端一致——streaming 助手消息携带活跃运行
+      // 视图，会话页重开后据此从游标恢复订阅（resume 语义）
+      active_run?: {
+        run_id: string;
+        status: string;
+        cursor: number;
+        attempt_count: number;
+        created_at: string;
+        updated_at: string;
+      };
+    } = {
       ...userMessage,
       message_id: "a-1",
       role: "assistant",
       content: "",
       status: "streaming",
-      // Issue 03：与真实服务端一致——streaming 助手消息携带活跃运行
-      // 视图，会话页重开后据此从游标恢复订阅（resume 语义）
       active_run: {
         run_id: "run-a-1",
         status: "streaming",

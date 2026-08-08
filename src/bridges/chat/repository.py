@@ -1121,7 +1121,7 @@ class ConversationRepository:
         run_record: GenerationRunRecord,
         events: list[tuple[str, dict[str, Any]]],
         attachment_ids: list[str] | None = None,
-    ) -> tuple[str, bool]:
+    ) -> tuple[str, bool, bool]:
         """同一事务原子创建会话与首轮（Issue 03，幂等）。
 
         会话、用户消息、助手占位、queued 运行、初始事件与附件绑定要么
@@ -1130,8 +1130,11 @@ class ConversationRepository:
         串行化并发），同账户同键重放返回已存在会话且不产生任何新数据；
         唯一索引 ``(account_id, idempotency_key)`` 为兜底约束。
 
-        返回 ``(conversation_id, created)``：``created`` 为 False 表示
-        幂等命中（调用方应按重放组装投影，不执行首轮副作用）。
+        返回 ``(conversation_id, created, conflict_not_empty)``：
+        ``created`` 为 False 表示幂等命中（调用方应按重放组装投影，
+        不执行首轮副作用）；``conflict_not_empty`` 表示指定会话已有
+        消息（并发不同键首轮同一预建会话时由事务内检查拦截，调用方
+        按 409 拒绝——检查与写入同持写锁，杜绝双发）。
         """
         try:
             with self._db.transaction():
@@ -1141,15 +1144,24 @@ class ConversationRepository:
                     (account_id, idempotency_key),
                 ).fetchone()
                 if existing is not None:
-                    return str(existing["conversation_id"]), False
+                    return str(existing["conversation_id"]), False, False
                 # 指定了已预建的空会话（附件上传路径先建会话再发送）时
-                # 复用并写入首轮参数；缺省在事务内新建会话。
+                # 复用并写入首轮参数；缺省在事务内新建会话。非空会话
+                # 作为首轮目标按冲突返回（幂等重放已在上面短路，因此
+                # 这里只可能是并发不同键双发）。
                 prebuilt = self._db.scoped(account_id).execute(
                     "SELECT 1 FROM conversations"
                     " WHERE conversation_id = ? AND account_id = ?",
                     (conversation_id, account_id),
                 ).fetchone()
                 if prebuilt is not None:
+                    already_started = self._db.scoped(account_id).execute(
+                        "SELECT 1 FROM messages"
+                        " WHERE conversation_id = ? AND account_id = ? LIMIT 1",
+                        (conversation_id, account_id),
+                    ).fetchone()
+                    if already_started is not None:
+                        return conversation_id, False, True
                     self._db.scoped(account_id).execute(
                         "UPDATE conversations SET title = ?, mode = ?,"
                         " project_id = ?, plugin_selection = ?,"
@@ -1195,7 +1207,7 @@ class ConversationRepository:
                     events,
                     attachment_ids,
                 )
-            return conversation_id, True
+            return conversation_id, True, False
         except StorageError:
             raise
         except Exception as exc:  # noqa: BLE001
