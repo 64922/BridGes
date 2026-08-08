@@ -143,4 +143,4 @@
 - [x] T3 服务层状态机：attempt 创建/supersede、单步推进、120s 窗口（可配置）、终态提交检查当前 attempt（原子 WHERE smtp_attempt_id）、错误码区分、supervisor 循环替代 daemon thread、重启恢复 → verify: 状态机单测 9 条（虚拟时钟）
 - [x] T4 反馈环测试：必红 1 reauth→自动重试 save 单 attempt（API 层）；必红 2 10 秒晚到收敛 verified（closeout）；A/B 竞争、删除期间迟到、IMAP 断线、120s 超时、重启恢复、秘密扫描 → verify: 全部通过（closeout 3/3，含 receipt_timeout 短窗口）
 - [x] T5 前端原页再认证：reauth_required 不再整页阻断，卡片内密码确认+自动重试+取消清空；verifying 阶段文案（发送中/确认收件）；轮询覆盖 120s；返回恢复权威状态 → verify: typecheck 干净（NewChatHome 错误属外部并行会话）+ issue33 e2e 3/3（修复 sendNow 展开竞态）
-- [ ] T6 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest + e2e 通过
+- [x] T6 全量回归 + 双轴代码审查 + 提交 → verify: 全量 pytest 2226 通过（2 条外部会话 flaky 重跑绿）+ issue33 e2e 3/3，双轴审查修复 5 处，提交 c80de79
