@@ -27,9 +27,12 @@ from collections.abc import Callable
 from email.message import EmailMessage
 from typing import Any
 
-#: 自发自收验证的 IMAP 轮询次数与间隔（秒）。
-_VERIFY_POLLS = 4
+#: 同步组合路径的收件确认轮询间隔（秒）；异步路径由服务层受监督
+#: 循环按固定 tick 推进（同一 IMAP 会话 + NOOP 保活）。
 _VERIFY_POLL_INTERVAL_SECONDS = 2.0
+
+#: IMAP 会话 NOOP 保活间隔（每 N 次查询发送一次）。
+_NOOP_EVERY = 5
 
 
 class SmtpError(Exception):
@@ -42,14 +45,42 @@ class SmtpError(Exception):
         super().__init__(message)
 
 
+def _is_imap_login_rejected(exc: imaplib.IMAP4.error) -> bool:
+    """判断 IMAP 异常是否为登录阶段被拒（区别于已登录后的服务器错误）。
+
+    imaplib 对 ``LOGIN`` 被拒（NO/BAD 响应）抛 ``IMAP4.error``，消息形如
+    ``LOGIN command error: NO [AUTHENTICATIONFAILED] ...`` 或
+    ``LOGIN command error: NO LOGIN failed``；已登录会话内的
+    SELECT/SEARCH 错误不包含 ``LOGIN`` 标记。
+    """
+    lowered = str(exc).lower()
+    if "login" not in lowered:
+        return False
+    # imaplib 提取的拒绝文本形如 "LOGIN failed"（假服务器 NO 响应）或
+    # "LOGIN command error: NO [AUTHENTICATIONFAILED] ..."（真实服务器）
+    return (
+        "failed" in lowered
+        or "authentication" in lowered
+        or "no " in lowered
+        or "bad " in lowered
+    )
+
+
 def _classify(exc: Exception) -> SmtpError:
     """把 smtplib/imaplib/网络异常归类为领域错误。"""
-    if isinstance(exc, smtplib.SMTPAuthenticationError) or (
-        isinstance(exc, imaplib.IMAP4.error) and "authentication" in str(exc).lower()
-    ):
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
         return SmtpError(
             "smtp_auth_failed",
             "邮箱授权码无效或已失效，请检查后重新验证（不是 QQ 登录密码）。",
+        )
+    # IMAP 登录被拒（LOGIN ... NO [AUTHENTICATIONFAILED] / NO LOGIN failed /
+    # 含 authentication 的服务器回显）→ 授权码失效语义，不可重试。
+    # imaplib 对登录失败抛 IMAP4.error（"LOGIN command error: NO ..."），
+    # 与已登录会话内的服务器错误（SELECT/SEARCH NO）区分开。
+    if isinstance(exc, imaplib.IMAP4.error) and _is_imap_login_rejected(exc):
+        return SmtpError(
+            "smtp_auth_failed",
+            "邮箱授权码无法登录收件服务器，请检查后重新验证（不是 QQ 登录密码）。",
         )
     if isinstance(exc, smtplib.SMTPRecipientsRefused):
         return SmtpError(
@@ -106,6 +137,7 @@ class QqMailGateway:
         imap_plain: bool = False,
         timeout: float = 15.0,
         imap_connect: Callable[[], Any] | None = None,
+        verify_window_seconds: float = 120.0,
     ) -> None:
         self._smtp_host = smtp_host
         self._smtp_port = smtp_port
@@ -117,6 +149,13 @@ class QqMailGateway:
         self._imap_plain = imap_plain
         self._timeout = timeout
         self._imap_connect = imap_connect
+        #: 同步组合路径的收件确认窗口（秒）；异步路径由服务层 attempt
+        #: 状态机按同一窗口推进（默认 120 秒，测试注入短窗口）。
+        self._verify_window_seconds = verify_window_seconds
+        #: 收件确认的 IMAP 会话缓存（email → 连接）：轮询复用同一
+        #: 会话 + NOOP 保活，断线时丢弃并由下一次查询重建（Issue 10）。
+        self._imap_sessions: dict[str, Any] = {}
+        self._imap_checks: dict[str, int] = {}
 
     # ------------------------------------------------------------------
     # 发送
@@ -170,33 +209,10 @@ class QqMailGateway:
         return smtplib.SMTP_SSL(self._smtp_host, self._smtp_port, timeout=self._timeout)
 
     # ------------------------------------------------------------------
-    # 自发自收验证
+    # 自发自收验证（分阶段：发送 / 收件确认，供 attempt 状态机推进）
     # ------------------------------------------------------------------
 
-    def verify_self_send_receive(self, *, email: str, auth_code: str) -> str:
-        """自发自收验证：SMTP 发送测试邮件 → IMAP 确认到达；返回 Message-ID。
-
-        失败抛 :class:`SmtpError`（auth_failed / transient / failed），
-        调用方据其更新验证状态并给出重新验证路径。
-        """
-        token = secrets.token_hex(6)
-        subject = f"BridGes 验证邮件 {token}"
-        mid = f"<bridges-verify-{token}@bridges.local>"
-        self.send_mail(
-            from_addr=email,
-            to_addr=email,
-            auth_code=auth_code,
-            subject=subject,
-            body="这是一封 BridGes 发送的验证邮件，用于确认你的 QQ 邮箱可以正常收发。",
-            message_id=mid,
-        )
-        self._confirm_receipt(email=email, auth_code=auth_code, token=token)
-        return mid
-
-    def _confirm_receipt(
-        self, *, email: str, auth_code: str, token: str
-    ) -> None:
-        """轮询 IMAP INBOX 直到出现带令牌的验证邮件或超时。"""
+    def _connect_imap(self) -> Any:
         connect = self._imap_connect
         if connect is None:
             def _default() -> Any:
@@ -208,35 +224,127 @@ class QqMailGateway:
                     self._imap_host, self._imap_port, timeout=self._timeout
                 )
             connect = _default
-        imap = connect()
+        return connect()
+
+    def _imap_login(self, email: str, auth_code: str) -> Any:
+        """建立并登录一个 IMAP 会话（失败抛 :class:`SmtpError`）。
+
+        imaplib 对登录被拒（NO/BAD）抛 ``IMAP4.error``，经 ``_classify``
+        归类为 ``smtp_auth_failed``（与已登录会话内的服务器错误区分）。
+        """
+        imap = self._connect_imap()
         try:
-            for attempt in range(_VERIFY_POLLS):
-                if attempt > 0:
-                    time.sleep(_VERIFY_POLL_INTERVAL_SECONDS)
-                try:
-                    status, _ = imap.login(email, auth_code)
-                    if status != "OK":
-                        raise SmtpError(
-                            "smtp_auth_failed",
-                            "邮箱授权码无法登录收件服务器，请检查后重新验证。",
-                        )
-                    imap.select("INBOX")
-                    status, data = imap.search(None, f"SUBJECT {token}")
-                    if status == "OK" and data and data[0]:
-                        return
-                    imap.logout()
-                    imap = connect()
-                except SmtpError:
-                    raise
-                except (imaplib.IMAP4.error, OSError, TimeoutError) as exc:
-                    raise _classify(exc) from exc
-            raise SmtpError(
-                "verification_failed",
-                "验证邮件未在预期时间内到达收件箱，请稍后重试或检查邮箱设置。",
-            )
-        finally:
-            with contextlib.suppress(Exception):  # noqa: BLE001 - 收尾失败不影响结果
+            imap.login(email, auth_code)
+        except (imaplib.IMAP4.error, OSError, TimeoutError) as exc:
+            with contextlib.suppress(Exception):  # noqa: BLE001
                 imap.logout()
+            raise _classify(exc) from exc
+        return imap
+
+    def _discard_imap_session(self, email: str, imap: Any) -> None:
+        with contextlib.suppress(Exception):  # noqa: BLE001 - 收尾失败不影响结果
+            imap.logout()
+        if self._imap_sessions.get(email) is imap:
+            self._imap_sessions.pop(email, None)
+        self._imap_checks.pop(email, None)
+
+    def close_imap_session(self, email: str) -> None:
+        """显式关闭某邮箱的轮询会话（验证终态后调用，避免空闲连接常驻）。"""
+        imap = self._imap_sessions.get(email)
+        if imap is not None:
+            self._discard_imap_session(email, imap)
+
+    def send_verification_mail(
+        self, *, email: str, auth_code: str, token: str | None = None
+    ) -> str:
+        """SMTP 发送验证邮件并返回不可变验证令牌（Message-ID 用令牌派生）。
+
+        只完成发送；收件确认由调用方按窗口分阶段执行
+        :meth:`check_verification_receipt`（ADR-0017：仅 SMTP 接受邮件
+        不能直接判定邮箱控制权已验证）。``token`` 由调用方（验证
+        attempt）预先生成并持久化，保证重启后可按同一令牌恢复轮询。
+        """
+        token = token or secrets.token_hex(6)
+        self.send_mail(
+            from_addr=email,
+            to_addr=email,
+            auth_code=auth_code,
+            subject=f"BridGes 验证邮件 {token}",
+            body="这是一封 BridGes 发送的验证邮件，用于确认你的 QQ 邮箱可以正常收发。",
+            message_id=f"<bridges-verify-{token}@bridges.local>",
+        )
+        return token
+
+    def check_verification_receipt(
+        self, *, email: str, auth_code: str, token: str
+    ) -> bool:
+        """单次 IMAP 收件确认：按主题令牌搜索 INBOX，返回是否到达。
+
+        复用同一 IMAP 会话（按邮箱缓存）+ NOOP 保活；会话断线
+        （网络/服务器断开）自动丢弃并重建一次再查询；仍失败抛
+        :class:`SmtpError`（transient），由调用方保持等待下轮再试。
+        """
+        imap = self._imap_sessions.get(email)
+        if imap is None:
+            imap = self._imap_login(email, auth_code)
+            self._imap_sessions[email] = imap
+        try:
+            checks = self._imap_checks.get(email, 0) + 1
+            self._imap_checks[email] = checks
+            if checks % _NOOP_EVERY == 0:
+                # NOOP 保活：部分服务器空闲超时会断开；失败按断线重建
+                imap.noop()
+            imap.select("INBOX")
+            # 以不可变 token 派生的 Message-ID 为主（重启恢复后仍指向同一
+            # 封邮件），主题为兼容回退（部分服务器不支持 HEADER 搜索）。
+            message_id = f"<bridges-verify-{token}@bridges.local>"
+            status, data = imap.search(None, "HEADER", "Message-ID", message_id)
+            if status == "OK" and data and data[0]:
+                return True
+            status, data = imap.search(None, f"SUBJECT {token}")
+            return bool(status == "OK" and data and data[0])
+        except (imaplib.IMAP4.abort, OSError, TimeoutError) as exc:
+            # 会话断线：丢弃缓存，下一次调用重建（IMAP 临时断线恢复）。
+            # 登录阶段（_imap_login）的认证失败已归类为 smtp_auth_failed；
+            # 已建立会话后的断线属于临时网络问题，保持轮询不失败。
+            self._discard_imap_session(email, imap)
+            raise SmtpError(
+                "smtp_transient",
+                "收件服务器连接中断，将继续尝试确认收件。",
+                retryable=True,
+            ) from exc
+        except imaplib.IMAP4.error as exc:
+            # 已登录会话内的服务器错误（SELECT/SEARCH 拒绝等）：临时，
+            # 保持等待下轮再试，不把一次服务器抖动写成不可逆失败。
+            if "authentication" in str(exc).lower():
+                raise _classify(exc) from exc
+            raise SmtpError(
+                "smtp_transient",
+                "收件确认暂时失败，将继续尝试确认收件。",
+                retryable=True,
+            ) from exc
+
+    def verify_self_send_receive(self, *, email: str, auth_code: str) -> str:
+        """同步组合：SMTP 发送测试邮件 → 有界轮询 IMAP 确认到达。
+
+        同步快路径由服务层在 ``verify_async=False``（测试）时使用；
+        生产异步路径使用分阶段的 :meth:`send_verification_mail` 与
+        :meth:`check_verification_receipt`（attempt 状态机推进）。
+        失败抛 :class:`SmtpError`（auth_failed / transient / failed），
+        调用方据其更新验证状态并给出重新验证路径。
+        """
+        token = self.send_verification_mail(email=email, auth_code=auth_code)
+        deadline = time.monotonic() + self._verify_window_seconds
+        while time.monotonic() < deadline:
+            if self.check_verification_receipt(
+                email=email, auth_code=auth_code, token=token
+            ):
+                return f"<bridges-verify-{token}@bridges.local>"
+            time.sleep(_VERIFY_POLL_INTERVAL_SECONDS)
+        raise SmtpError(
+            "verification_failed",
+            "验证邮件未在预期时间内到达收件箱，请稍后重试或检查邮箱设置。",
+        )
 
 
 __all__ = [

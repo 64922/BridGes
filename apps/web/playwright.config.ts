@@ -24,7 +24,11 @@ const PYTHON = resolveVenvPython();
 
 // E2E 数据目录：绝对路径 + 启动前显式创建父目录（不要求人工预建
 // .e2e-data；唯一绝对 SQLite 路径避免相对工作目录解析差异）。
-const E2E_DATA_DIR = path.resolve(REPO_ROOT, "apps/web/.e2e-data");
+// 允许 E2E_DATA_DIR 覆盖：并行会话共用同一工作区时用独立目录隔离
+// 数据库，避免多套 webServer 同时写同一 SQLite。
+const E2E_DATA_DIR = process.env.E2E_DATA_DIR
+  ? path.resolve(REPO_ROOT, process.env.E2E_DATA_DIR)
+  : path.resolve(REPO_ROOT, "apps/web/.e2e-data");
 fs.mkdirSync(E2E_DATA_DIR, { recursive: true });
 
 export default defineConfig({

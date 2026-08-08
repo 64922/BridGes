@@ -105,12 +105,40 @@ def test_verify_self_send_receive_auth_failure(servers: FakeMailServers) -> None
     assert exc_info.value.code == "smtp_auth_failed"
 
 
+def test_imap_login_rejection_classified_as_auth_failed(
+    servers: FakeMailServers,
+) -> None:
+    """IMAP 单独登录被拒（NO LOGIN failed）→ smtp_auth_failed。
+
+    覆盖 IMAP-only 失败路径（未先走 SMTP）：SMTP 接受但 IMAP 拒绝时
+    必须立即失败，而不是空转到收件窗口超时（issue 10 实施步骤 8）。
+    """
+    with pytest.raises(SmtpError) as exc_info:
+        _gateway(servers).check_verification_receipt(
+            email=EMAIL, auth_code="WRONGCODE1234", token="deadbeef00"
+        )
+    assert exc_info.value.code == "smtp_auth_failed"
+    assert "授权码" in exc_info.value.message
+
+
+def test_receipt_found_by_message_id(servers: FakeMailServers) -> None:
+    """收件确认以 Message-ID 头为主键搜索（主题为兼容回退）。"""
+    gateway = _gateway(servers)
+    token = gateway.send_verification_mail(email=EMAIL, auth_code=VALID_CODE)
+    assert (
+        gateway.check_verification_receipt(
+            email=EMAIL, auth_code=VALID_CODE, token=token
+        )
+        is True
+    )
+
+
 def test_verify_receipt_timeout_when_mail_never_arrives() -> None:
     """测试邮件未到达收件箱 → 轮询超时 → verification_failed。"""
     with FakeMailServers(
         FakeMailbox(auth_codes={VALID_CODE}, drop_all_messages=True)
     ) as dropping, pytest.raises(SmtpError) as exc_info:
-        _gateway(dropping).verify_self_send_receive(
+        _gateway(dropping, verify_window_seconds=2.0).verify_self_send_receive(
             email=EMAIL, auth_code=VALID_CODE
         )
     assert exc_info.value.code == "verification_failed"

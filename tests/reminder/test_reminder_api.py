@@ -111,6 +111,39 @@ def test_save_smtp_code_requires_recent_auth(
     assert response.json()["detail"]["error"] == "reauth_required"
 
 
+def test_reauth_retry_creates_single_verification_attempt(
+    client: TestClient, reminder_app: Any
+) -> None:
+    """必红（issue 10）：reauth_required → 密码确认 → 自动重试保存。
+
+    原页密码确认成功后自动重试原保存命令（授权码无需重输），断言只
+    创建一个有效验证 attempt：403 拒绝发生在敏感门前（服务层未执行，
+    不创建 attempt），确认后的重试保存恰好创建一个并最终 verified。
+    """
+    from datetime import UTC, datetime, timedelta
+
+    _register(client)
+    identity = reminder_app.state.identity_service
+    identity._now = lambda: datetime.now(UTC) + timedelta(minutes=6)
+    response = client.put("/reminders/smtp", json={"authorization_code": AUTH_CODE})
+    assert response.status_code == 403
+    assert response.json()["detail"]["error"] == "reauth_required"
+    # 原页模态框的密码确认接口
+    _reauth(client)
+    response = client.put("/reminders/smtp", json={"authorization_code": AUTH_CODE})
+    assert response.status_code == 200, response.text
+    payload = _wait_verified(client)
+    assert payload["status"] == "verified"
+    database = reminder_app.state.reminder_service._database
+    rows = database.connection.execute(
+        "SELECT attempt_id, state, error_code FROM smtp_verification_attempts"
+    ).fetchall()
+    assert len(rows) == 1, f"应只创建一个验证 attempt，实际 {len(rows)}"
+    assert rows[0]["state"] == "verified"
+    assert rows[0]["error_code"] is None
+    assert AUTH_CODE not in str(rows)
+
+
 def test_save_verify_and_projection_without_leak(client: TestClient) -> None:
     """保存授权码 → 自发自收验证（假服务器）→ verified；无泄漏。"""
     _register(client)

@@ -157,7 +157,7 @@ from bridges.profiles import InMemoryProfileRepository, ProfileService
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
-from bridges.reminder.service import ReminderService
+from bridges.reminder.service import VERIFY_WINDOW_SECONDS, ReminderService
 from bridges.reminder.smtp import QqMailGateway
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.science import (
@@ -1227,6 +1227,18 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 ),
                 imap_port=settings.imap_port if settings is not None else 993,
                 imap_plain=bool(settings and settings.imap_plain),
+            ),
+            # Issue 10: 收件确认窗口与受监督轮询间隔（默认 120s / 2s，
+            # 测试可通过环境变量收敛到短窗口）。
+            verify_window_seconds=(
+                settings.smtp_verify_window_seconds
+                if settings is not None
+                else VERIFY_WINDOW_SECONDS
+            ),
+            supervisor_tick_seconds=(
+                settings.smtp_verify_tick_seconds
+                if settings is not None
+                else 2.0
             ),
         )
 

@@ -12,6 +12,7 @@ interface PasswordFieldProps {
   required?: boolean;
   autoComplete?: string;
   placeholder?: string;
+  autoFocus?: boolean;
 }
 
 /**
@@ -31,6 +32,7 @@ export function PasswordField({
   required = false,
   autoComplete,
   placeholder,
+  autoFocus = false,
 }: PasswordFieldProps) {
   const [visible, setVisible] = useState(false);
   const describedBy =
@@ -58,6 +60,7 @@ export function PasswordField({
           required={required}
           autoComplete={autoComplete}
           placeholder={placeholder}
+          autoFocus={autoFocus}
           aria-invalid={Boolean(error) || undefined}
           aria-describedby={describedBy}
           style={{

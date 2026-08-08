@@ -16,7 +16,7 @@
  * 近期密码确认门；切换账户由 accountRevision 重挂本组件。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Dialog } from "@/components/bridges/Dialog";
 import { PasswordField } from "@/components/bridges/PasswordField";
@@ -38,6 +38,7 @@ import {
   listReminders,
   parseReminder,
   pauseReminder,
+  reauthenticate,
   resumeReminder,
   saveSmtpCode,
   sendReminderNow,
@@ -123,8 +124,20 @@ const TIMEZONE_OPTIONS = [
 
 const AUTH_CODE_RE = /^[A-Za-z0-9]{10,32}$/;
 
+// 轮询覆盖收件确认窗口（120 秒）+ 余量：1.5s × 100 = 150 秒。
 const POLL_INTERVAL_MS = 1500;
-const POLL_LIMIT = 60;
+const POLL_LIMIT = 100;
+
+// 验证进行中的阶段文案（Issue 10：区分「发送中」与「等待收件」，
+// 不提前宣称已验证；晚到邮件在窗口内持续轮询收敛）。
+function verifyingHint(settings: SmtpSettingsProjection | null): string {
+  const state = settings?.attempt_state;
+  if (state === "smtp_connecting") return "正在发送验证邮件…";
+  if (state === "mail_sent" || state === "waiting_receipt") {
+    return "验证邮件已发送，正在确认收件（最长 120 秒；邮件可能延迟到达）。";
+  }
+  return "验证中，请稍候…";
+}
 
 function repeatLabel(reminder: ReminderProjection): string {
   const rule = reminder.schedule.repeat;
@@ -191,14 +204,15 @@ function StatusChip({
 interface SmtpSetupCardProps {
   settings: SmtpSettingsProjection | null;
   onChanged: (next: SmtpSettingsProjection) => void;
-  onRequireReauth: () => void;
   onSessionExpired: () => void;
 }
+
+/** SMTP 卡片内可自动重试的操作（原页再认证后重放）。 */
+type SmtpAction = "save" | "reverify" | "remove";
 
 function SmtpSetupCard({
   settings,
   onChanged,
-  onRequireReauth,
   onSessionExpired,
 }: SmtpSetupCardProps) {
   const [code, setCode] = useState("");
@@ -209,6 +223,14 @@ function SmtpSetupCard({
   const [deleting, setDeleting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // 原页再认证（Issue 10）：reauth_required 不再整页阻断，卡片内密码
+  // 确认成功后自动重试原命令；密码与授权码只留在组件内存，成功/取消
+  // 后立即清空。pendingActionRef 记录等待重放的操作。
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthError, setReauthError] = useState<string | undefined>();
+  const [reauthBusy, setReauthBusy] = useState(false);
+  const pendingActionRef = useRef<SmtpAction | null>(null);
 
   const handleChanged = (next: SmtpSettingsProjection, message: string) => {
     onChanged(next);
@@ -216,17 +238,28 @@ function SmtpSetupCard({
     setActionError(null);
   };
 
-  const guard = (cause: unknown): boolean => {
-    const kind = classifyApiError(cause);
-    if (kind === "reauth") {
-      onRequireReauth();
-      return true;
+  /** 执行敏感操作：reauth_required → 打开原页密码确认（不跳转不刷新）。 */
+  const execute = async (
+    action: SmtpAction,
+    runner: () => Promise<SmtpSettingsProjection>
+  ): Promise<SmtpSettingsProjection | null> => {
+    try {
+      return await runner();
+    } catch (cause) {
+      const kind = classifyApiError(cause);
+      if (kind === "reauth") {
+        pendingActionRef.current = action;
+        setReauthOpen(true);
+        setReauthError(undefined);
+        setReauthPassword("");
+        return null;
+      }
+      if (kind === "session") {
+        onSessionExpired();
+        return null;
+      }
+      throw cause;
     }
-    if (kind === "session") {
-      onSessionExpired();
-      return true;
-    }
-    return false;
   };
 
   const save = async () => {
@@ -238,15 +271,13 @@ function SmtpSetupCard({
     setSaving(true);
     setActionError(null);
     try {
-      handleChanged(
-        await saveSmtpCode(code),
-        "授权码已保存，正在进行自发自收验证。"
-      );
-      setCode("");
-    } catch (cause) {
-      if (!guard(cause)) {
-        setActionError(cause instanceof Error ? cause.message : "授权码保存失败，请稍后重试。");
+      const result = await execute("save", () => saveSmtpCode(code));
+      if (result) {
+        handleChanged(result, "授权码已保存，正在发送验证邮件…");
+        setCode("");
       }
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "授权码保存失败，请稍后重试。");
     } finally {
       setSaving(false);
     }
@@ -256,11 +287,12 @@ function SmtpSetupCard({
     setVerifying(true);
     setActionError(null);
     try {
-      handleChanged(await verifySmtpNow(), "已发起重新验证，请稍候。");
-    } catch (cause) {
-      if (!guard(cause)) {
-        setActionError(cause instanceof Error ? cause.message : "重新验证失败，请稍后重试。");
+      const result = await execute("reverify", () => verifySmtpNow());
+      if (result) {
+        handleChanged(result, "已发起重新验证，请稍候。");
       }
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "重新验证失败，请稍后重试。");
     } finally {
       setVerifying(false);
     }
@@ -270,15 +302,59 @@ function SmtpSetupCard({
     setDeleting(true);
     setActionError(null);
     try {
-      handleChanged(await deleteSmtpCode(), "已删除授权码并停止邮件提醒。");
-      setConfirmingDelete(false);
-    } catch (cause) {
-      if (!guard(cause)) {
-        setActionError(cause instanceof Error ? cause.message : "删除失败，请稍后重试。");
+      const result = await execute("remove", () => deleteSmtpCode());
+      if (result) {
+        handleChanged(result, "已删除授权码并停止邮件提醒。");
+        setConfirmingDelete(false);
       }
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "删除失败，请稍后重试。");
     } finally {
       setDeleting(false);
     }
+  };
+
+  /** 密码确认成功：立即清空密码并自动重试原命令（授权码无需重输）。 */
+  const confirmReauth = async () => {
+    setReauthError(undefined);
+    if (!reauthPassword) {
+      setReauthError("请输入当前账户密码。");
+      return;
+    }
+    setReauthBusy(true);
+    try {
+      await reauthenticate(reauthPassword);
+    } catch (cause) {
+      const kind = classifyApiError(cause);
+      if (kind === "session") {
+        onSessionExpired();
+        return;
+      }
+      // 密码错误：只显示局部错误并聚焦密码字段，不清空授权码、不跳转
+      setReauthError(
+        cause instanceof Error ? cause.message : "密码确认失败，请重试。"
+      );
+      return;
+    } finally {
+      setReauthBusy(false);
+    }
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    setReauthPassword("");
+    setReauthOpen(false);
+    if (action === "save") await save();
+    else if (action === "reverify") await reverify();
+    else if (action === "remove") await remove();
+  };
+
+  /** 取消密码确认：清空敏感内存（密码；save 场景连同授权码），不改服务器。 */
+  const cancelReauth = () => {
+    const action = pendingActionRef.current;
+    pendingActionRef.current = null;
+    setReauthOpen(false);
+    setReauthPassword("");
+    setReauthError(undefined);
+    if (action === "save") setCode("");
   };
 
   const status = settings
@@ -312,6 +388,12 @@ function SmtpSetupCard({
             </Button>
           )}
         </div>
+      )}
+
+      {settings?.status === "verifying" && (
+        <p role="status" className={styles.notice}>
+          {verifyingHint(settings)}
+        </p>
       )}
 
       <form
@@ -374,6 +456,36 @@ function SmtpSetupCard({
         </p>
       )}
       {actionError && <ErrorSummary errors={[actionError]} />}
+
+      <Dialog
+        open={reauthOpen}
+        onClose={cancelReauth}
+        title="安全确认"
+        description="此操作需要近期密码确认。请输入当前 BridGes 账户密码以继续，无需重新登录；确认后自动完成原操作。"
+      >
+        <div className={styles.dialogBody}>
+          <PasswordField
+            id="reauth-password"
+            label="当前账户密码"
+            value={reauthPassword}
+            onChange={(value) => {
+              setReauthPassword(value);
+              setReauthError(undefined);
+            }}
+            error={reauthError}
+            autoComplete="current-password"
+            autoFocus
+          />
+          <div className={styles.dialogActions}>
+            <Button variant="secondary" onClick={cancelReauth}>
+              取消
+            </Button>
+            <Button onClick={() => void confirmReauth()} isLoading={reauthBusy}>
+              确认并继续
+            </Button>
+          </div>
+        </div>
+      </Dialog>
     </section>
   );
 }
@@ -924,7 +1036,6 @@ export function TaskSchedule() {
       <SmtpSetupCard
         settings={smtp}
         onChanged={setLiveSmtp}
-        onRequireReauth={() => setPermissionDenied(true)}
         onSessionExpired={() => void refreshSession()}
       />
 

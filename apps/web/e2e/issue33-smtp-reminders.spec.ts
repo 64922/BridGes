@@ -75,9 +75,13 @@ test("配置-验证-解析-确认-投递-记录-编辑/取消全流程", async (
   await expect(page.getByText("启用中", { exact: true })).toBeVisible();
   await expect(page.getByText(/下次执行/)).toBeVisible();
 
-  // 手动补发（真实投递到假邮件服务器）→ 展开投递记录
+  // 手动补发（真实投递到假邮件服务器）→ 成功后自动展开投递记录。
+  // 不重复点击「查看投递记录」：sendNow 完成时已 setExpanded(true)，
+  // 与点击 toggle 交错会落在「收起投递记录」上反而折叠（竞态）。
   await page.getByRole("button", { name: "手动补发" }).click();
-  await page.getByRole("button", { name: "查看投递记录" }).click();
+  await expect(page.getByRole("button", { name: "收起投递记录" })).toBeVisible({
+    timeout: 10_000,
+  });
   await expect(page.getByText("手动重试·成功")).toBeVisible({ timeout: 10_000 });
 
   // 编辑：改为每周一和周三下午 3 点半

@@ -25,7 +25,8 @@ class SmtpStatus(StrEnum):
     """账户 SMTP 授权码的验证状态。
 
     - ``unconfigured``：尚未保存授权码；
-    - ``verifying``：授权码已保存，自发自收验证进行中；
+    - ``verifying``：授权码已保存，自发自收验证进行中（细粒度进度
+      见 ``SmtpSettingsProjection.attempt_state``）；
     - ``verified``：自发自收验证通过，可以启用邮件提醒；
     - ``failed``：验证失败或授权失效，error_code/error_message
       说明原因并提供重新验证路径。
@@ -37,11 +38,36 @@ class SmtpStatus(StrEnum):
     FAILED = "failed"
 
 
+class SmtpAttemptState(StrEnum):
+    """验证 attempt 的阶段状态机（Issue 10）。
+
+    - ``smtp_connecting``：attempt 已创建，尚未完成 SMTP 发送；
+    - ``mail_sent``：SMTP 已接受测试邮件，收件确认计时开始；
+    - ``waiting_receipt``：正在有界退避轮询 IMAP 收件；
+    - ``verified``：自发自收验证通过（终态，且账户 SMTP 终态已提交）；
+    - ``failed``：验证失败（终态，error_code 说明原因）；
+    - ``superseded``：已被新 attempt 取代或凭据已删除（终态，
+      迟到结果不得再提交账户 SMTP 状态）。
+
+    只有当前 attempt（``reminder_settings.smtp_attempt_id`` 指向的）
+    可以提交账户 SMTP 终态；旧 attempt 的迟到成功/失败一律失效。
+    """
+
+    SMTP_CONNECTING = "smtp_connecting"
+    MAIL_SENT = "mail_sent"
+    WAITING_RECEIPT = "waiting_receipt"
+    VERIFIED = "verified"
+    FAILED = "failed"
+    SUPERSEDED = "superseded"
+
+
 class SmtpSettingsProjection(BaseModel):
     """账户 SMTP 配置投影；绝不包含授权码正文。
 
     ``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往
-    同一邮箱；页面展示此字段并禁止修改收件人。
+    同一邮箱；页面展示此字段并禁止修改收件人。验证进行中时
+    ``attempt_state``/``attempt_deadline_at`` 提供细粒度进度与收件
+    截止时间，页面据此持续轮询；attempt 终态后这两个字段为 None。
     """
 
     status: SmtpStatus = Field(description="授权码保存与验证状态。")
@@ -52,6 +78,13 @@ class SmtpSettingsProjection(BaseModel):
     error_code: str | None = Field(default=None, description="稳定错误码。")
     error_message: str | None = Field(
         default=None, description="可操作的中文原因与重新验证路径。"
+    )
+    attempt_state: SmtpAttemptState | None = Field(
+        default=None,
+        description="当前验证 attempt 的阶段（验证进行中时存在；终态为 None）。",
+    )
+    attempt_deadline_at: datetime | None = Field(
+        default=None, description="收件确认截止时间（UTC）；等待收件时存在。"
     )
     updated_at: datetime | None = Field(
         default=None, description="最近一次配置或验证状态更新时间。"
@@ -327,6 +360,7 @@ __all__ = [
     "ReminderSettingsUpdateRequest",
     "ReminderStatus",
     "ReminderUpdateRequest",
+    "SmtpAttemptState",
     "SmtpCodeSaveRequest",
     "SmtpSettingsProjection",
     "SmtpStatus",

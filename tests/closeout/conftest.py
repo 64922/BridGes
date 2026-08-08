@@ -358,6 +358,7 @@ def api_server(
         mail: dict[str, int] | None = None,
         port: int | None = None,
         health_timeout: float = 45.0,
+        smtp_verify_window_seconds: float | None = None,
     ) -> SpawnedApi:
         # 1) 数据目录预检：父目录必须可写，否则 10 秒内以中文原因失败
         #    （mkdir 与写入探针都可能在权限/路径非法时抛 OSError，统一转
@@ -399,6 +400,11 @@ def api_server(
                     "BRIDGES_IMAP_PLAIN": "true",
                 }
             )
+            if smtp_verify_window_seconds is not None:
+                # Issue 10: 收件确认窗口可配置（超时测试用短窗口收敛）
+                env["BRIDGES_SMTP_VERIFY_WINDOW_SECONDS"] = str(
+                    smtp_verify_window_seconds
+                )
         proc = subprocess.Popen(
             [
                 str(venv_python),

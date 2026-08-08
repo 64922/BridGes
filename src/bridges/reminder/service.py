@@ -51,6 +51,7 @@ from bridges.contracts.reminder import (
     ReminderSettingsUpdateRequest,
     ReminderStatus,
     ReminderUpdateRequest,
+    SmtpAttemptState,
     SmtpSettingsProjection,
     SmtpStatus,
 )
@@ -77,6 +78,20 @@ MAX_SEND_ATTEMPTS = 3
 _RETRY_BACKOFF_SECONDS = 30
 #: 退避上限（秒）：与队列 EXPONENTIAL 公式的 cap 对齐。
 _RETRY_CAP_SECONDS = 300
+
+#: 自发自收验证的收件确认窗口（秒，Issue 10）：默认 120 秒覆盖正常
+#: 投递延迟，超时终态为 ``receipt_timeout``（可配置覆盖，测试用短窗口）。
+VERIFY_WINDOW_SECONDS = 120.0
+
+#: 验证 attempt 的活跃阶段（可被 supersede / 可推进）。
+_ACTIVE_ATTEMPT_STATES = (
+    SmtpAttemptState.SMTP_CONNECTING.value,
+    SmtpAttemptState.MAIL_SENT.value,
+    SmtpAttemptState.WAITING_RECEIPT.value,
+)
+
+#: 活跃阶段 SQL 占位符（参数化拼接，无注入风险）。
+_ACTIVE_PLACEHOLDERS = ", ".join("?" for _ in _ACTIVE_ATTEMPT_STATES)
 
 #: 到期判定的宽松阈值：调度器轮询粒度（60s）内的正常延迟不算补发，
 #: 只有超过该阈值的到期才进入 24 小时补发/错过语义。
@@ -132,6 +147,9 @@ class ReminderService:
         verify_async: bool = True,
         max_send_attempts: int = MAX_SEND_ATTEMPTS,
         catch_up_window: timedelta = CATCH_UP_WINDOW,
+        verify_window_seconds: float = VERIFY_WINDOW_SECONDS,
+        supervisor_tick_seconds: float = 2.0,
+        supervisor_enabled: bool = True,
     ) -> None:
         self._database = database
         self._credentials = credential_store
@@ -143,6 +161,17 @@ class ReminderService:
         self._verify_async = verify_async
         self._max_send_attempts = max_send_attempts
         self._catch_up_window = catch_up_window
+        # Issue 10：验证 attempt 状态机参数——收件确认窗口（超时终态
+        # receipt_timeout）与受监督轮询的 tick 间隔。
+        self._verify_window_seconds = verify_window_seconds
+        self._supervisor_tick_seconds = supervisor_tick_seconds
+        self._stop_event = threading.Event()
+        if verify_async and supervisor_enabled:
+            threading.Thread(
+                target=self._supervisor_loop,
+                name="smtp-verification-supervisor",
+                daemon=True,
+            ).start()
 
     # ------------------------------------------------------------------
     # 内部工具
@@ -221,12 +250,22 @@ class ReminderService:
             )
 
     def _smtp_projection(self, account_id: str, settings: dict[str, Any]) -> SmtpSettingsProjection:
+        attempt_state: SmtpAttemptState | None = None
+        attempt_deadline_at: datetime | None = None
+        attempt_id = settings.get("smtp_attempt_id")
+        if settings.get("smtp_status") == SmtpStatus.VERIFYING.value and attempt_id:
+            attempt = self._attempt_row(account_id, str(attempt_id))
+            if attempt is not None and attempt["state"] in _ACTIVE_ATTEMPT_STATES:
+                attempt_state = SmtpAttemptState(str(attempt["state"]))
+                attempt_deadline_at = _decode_dt(attempt["deadline_at"])
         return SmtpSettingsProjection(
             status=SmtpStatus(settings.get("smtp_status") or SmtpStatus.UNCONFIGURED.value),
             qq_email=self._require_qq_email(account_id),
             verified_at=_decode_dt(settings.get("smtp_verified_at")),
             error_code=settings.get("smtp_error_code"),
             error_message=settings.get("smtp_error_message"),
+            attempt_state=attempt_state,
+            attempt_deadline_at=attempt_deadline_at,
             updated_at=_decode_dt(settings.get("smtp_updated_at")),
         )
 
@@ -247,35 +286,31 @@ class ReminderService:
         *,
         session_id: str | None = None,
     ) -> SmtpSettingsProjection:
-        """保存/替换授权码并触发自发自收验证（不接收 QQ 登录密码）。"""
+        """保存/替换授权码并创建验证 attempt（不接收 QQ 登录密码）。
+
+        授权码只写入凭据存储；attempt 表只保存随机验证令牌（非秘密）。
+        旧 attempt 在同一事务内被 supersede，晚到结果不得覆盖新配置。
+        """
         if not _AUTH_CODE_RE.match(authorization_code):
             raise ReminderError(
                 "invalid_auth_code",
                 "请输入 QQ 邮箱授权码（16 位字母数字），而不是 QQ 登录密码。",
             )
-        email = self._require_qq_email(account_id)
+        self._require_qq_email(account_id)
         try:
             self._credentials.save(account_id, SecretStr(authorization_code))
         except CredentialStoreError as exc:
             raise ReminderError(
                 "credential_store_unavailable", str(exc), 503
             ) from exc
-        now = self._now()
-        self._update_settings_fields(
-            account_id,
-            smtp_status=SmtpStatus.VERIFYING.value,
-            smtp_verified_at=None,
-            smtp_error_code=None,
-            smtp_error_message=None,
-            smtp_updated_at=_encode_dt(now),
-        )
+        attempt_id = self._new_attempt(account_id, session_id=session_id)
         self._audit(
             account_id=account_id,
             action=AuditAction.SMTP_CODE_SAVE,
             result=AuditResult.SUCCESS,
             session_id=session_id,
         )
-        self._schedule_verification(account_id, email, authorization_code, session_id)
+        self._advance_or_sync(account_id, attempt_id, session_id=session_id)
         return self.get_smtp_settings(account_id)
 
     def verify_smtp_now(
@@ -285,24 +320,10 @@ class ReminderService:
         session_id: str | None = None,
     ) -> SmtpSettingsProjection:
         """重新执行自发自收验证（授权码仍保存时有效）。"""
-        email = self._require_qq_email(account_id)
-        code = self._load_auth_code(account_id)
-        self._update_settings_fields(
-            account_id,
-            smtp_status=SmtpStatus.VERIFYING.value,
-            smtp_error_code=None,
-            smtp_error_message=None,
-        )
-        if self._verify_async:
-            worker = threading.Thread(
-                target=self._run_verification,
-                args=(account_id, email, code),
-                kwargs={"session_id": session_id},
-                daemon=True,
-            )
-            worker.start()
-        else:
-            self._run_verification(account_id, email, code, session_id=session_id)
+        self._require_qq_email(account_id)
+        self._load_auth_code(account_id)
+        attempt_id = self._new_attempt(account_id, session_id=session_id)
+        self._advance_or_sync(account_id, attempt_id, session_id=session_id)
         return self.get_smtp_settings(account_id)
 
     def delete_smtp_code(
@@ -311,17 +332,30 @@ class ReminderService:
         *,
         session_id: str | None = None,
     ) -> SmtpSettingsProjection:
-        """删除授权码并复位验证状态；暂停依赖它的启用中提醒。"""
+        """删除授权码并复位验证状态；暂停依赖它的启用中提醒。
+
+        同一事务内把全部活跃 attempt 标 superseded：删除后任何旧
+        attempt 的迟到成功/失败都不得恢复 verified。
+        """
         email = self._require_qq_email(account_id)
         with contextlib.suppress(CredentialStoreError):
             self._credentials.delete(account_id)
-        self._update_settings_fields(
-            account_id,
-            smtp_status=SmtpStatus.UNCONFIGURED.value,
-            smtp_verified_at=None,
-            smtp_error_code=None,
-            smtp_error_message=None,
-        )
+        now = self._now()
+        with self._database.transaction():
+            scoped = self._database.scoped(account_id)
+            scoped.execute(
+                "UPDATE smtp_verification_attempts SET state = ?, updated_at = ?"
+                " WHERE account_id = ? AND state IN ("
+                + _ACTIVE_PLACEHOLDERS + ")",
+                (SmtpAttemptState.SUPERSEDED.value, _encode_dt(now), account_id,
+                 *_ACTIVE_ATTEMPT_STATES),
+            )
+            scoped.execute(
+                "UPDATE reminder_settings SET smtp_status = ?, smtp_verified_at = NULL,"
+                " smtp_error_code = NULL, smtp_error_message = NULL,"
+                " smtp_attempt_id = NULL, smtp_updated_at = ? WHERE account_id = ?",
+                (SmtpStatus.UNCONFIGURED.value, _encode_dt(now), account_id),
+            )
         self._pause_reminders_without_credential(account_id)
         self._audit(
             account_id=account_id,
@@ -348,81 +382,332 @@ class ReminderService:
             )
         return secret.get_secret_value()
 
-    def _schedule_verification(
-        self,
-        account_id: str,
-        email: str,
-        code: str,
-        session_id: str | None,
-    ) -> None:
-        if not self._verify_async:
-            self._run_verification(account_id, email, code, session_id=session_id)
-            return
-        worker = threading.Thread(
-            target=self._run_verification,
-            args=(account_id, email, code),
-            kwargs={"session_id": session_id},
-            daemon=True,
-        )
-        worker.start()
+    # ------------------------------------------------------------------
+    # 验证 attempt 状态机（Issue 10）
+    #
+    # 每次保存/重新验证创建唯一 attempt（smtp_verification_attempts 表），
+    # 只有 ``reminder_settings.smtp_attempt_id`` 指向的当前 attempt 可以
+    # 提交账户 SMTP 终态；更换授权码、重新验证、删除凭据都会 supersede
+    # 旧 attempt，旧 attempt 的迟到成功/失败一律丢弃。推进由受监督循环
+    # （``_supervisor_loop``）按固定 tick 驱动：SMTP 发送 → mail_sent
+    # （收件截止计时）→ waiting_receipt（IMAP 单次查询，同一会话 + NOOP
+    # 保活，断线自动恢复）→ verified | failed；超过收件窗口 → 终态
+    # ``receipt_timeout``。授权码正文绝不进入 attempt 表或任何投影。
+    # ------------------------------------------------------------------
 
-    def _run_verification(
+    def _attempt_row(
+        self, account_id: str, attempt_id: str
+    ) -> dict[str, Any] | None:
+        scoped = self._database.scoped(account_id)
+        row = scoped.execute(
+            "SELECT * FROM smtp_verification_attempts"
+            " WHERE account_id = ? AND attempt_id = ?",
+            (account_id, attempt_id),
+        ).fetchone()
+        return dict(row) if row is not None else None
+
+    def _new_attempt(
+        self, account_id: str, *, session_id: str | None
+    ) -> str:
+        """创建唯一验证 attempt 并 supersede 旧活跃 attempt，返回 attempt ID。"""
+        self._settings_row(account_id)  # 确保 settings 行存在（UPDATE 不隐式建行）
+        attempt_id = f"av-{secrets.token_hex(8)}"
+        token = secrets.token_hex(6)
+        now = self._now()
+        deadline = now + timedelta(seconds=self._verify_window_seconds)
+        with self._database.transaction():
+            scoped = self._database.scoped(account_id)
+            scoped.execute(
+                "UPDATE smtp_verification_attempts SET state = ?, updated_at = ?"
+                " WHERE account_id = ? AND state IN ("
+                + _ACTIVE_PLACEHOLDERS + ")",
+                (SmtpAttemptState.SUPERSEDED.value, _encode_dt(now), account_id,
+                 *_ACTIVE_ATTEMPT_STATES),
+            )
+            scoped.execute(
+                "INSERT INTO smtp_verification_attempts ("
+                " attempt_id, account_id, state, message_token, deadline_at,"
+                " created_at, updated_at, session_id"
+                ") VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (attempt_id, account_id, SmtpAttemptState.SMTP_CONNECTING.value,
+                 token, _encode_dt(deadline), _encode_dt(now), _encode_dt(now),
+                 session_id),
+            )
+            scoped.execute(
+                "UPDATE reminder_settings SET smtp_status = ?, smtp_verified_at = NULL,"
+                " smtp_error_code = NULL, smtp_error_message = NULL,"
+                " smtp_attempt_id = ?, smtp_updated_at = ? WHERE account_id = ?",
+                (SmtpStatus.VERIFYING.value, attempt_id, _encode_dt(now), account_id),
+            )
+        return attempt_id
+
+    def _attempt_update(
         self,
         account_id: str,
-        email: str,
-        code: str,
+        attempt_id: str,
+        *,
+        state: str,
+        deadline_at: str | None = None,
+        error_code: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """推进 attempt 状态；已被 supersede 的 attempt 不再改写。"""
+        now = self._now()
+        with self._database.transaction():
+            self._database.scoped(account_id).execute(
+                "UPDATE smtp_verification_attempts SET state = ?, deadline_at = ?,"
+                " error_code = ?, error_message = ?, updated_at = ?"
+                " WHERE account_id = ? AND attempt_id = ? AND state IN ("
+                + _ACTIVE_PLACEHOLDERS + ")",
+                (state, deadline_at, error_code, error_message, _encode_dt(now),
+                 account_id, attempt_id, *_ACTIVE_ATTEMPT_STATES),
+            )
+
+    def _commit_verified(
+        self,
+        account_id: str,
+        attempt_id: str,
         *,
         session_id: str | None = None,
     ) -> None:
-        """后台自发自收验证；结果写回状态并审计（线程内失败不静默）。"""
+        """提交 verified 终态；只有当前 attempt 能提交账户 SMTP 状态。
+
+        ``UPDATE ... WHERE smtp_attempt_id = ?`` 是原子 supersede 检查：
+        提交影响行数为 0 说明 attempt 已被取代/凭据已删除，迟到成功
+        不得覆盖新配置，attempt 保持 superseded。
+        """
+        now = self._now()
+        with self._database.transaction():
+            scoped = self._database.scoped(account_id)
+            cursor = scoped.execute(
+                "UPDATE reminder_settings SET smtp_status = ?, smtp_verified_at = ?,"
+                " smtp_error_code = NULL, smtp_error_message = NULL,"
+                " smtp_updated_at = ? WHERE account_id = ? AND smtp_attempt_id = ?",
+                (SmtpStatus.VERIFIED.value, _encode_dt(now), _encode_dt(now),
+                 account_id, attempt_id),
+            )
+            committed = cursor.rowcount == 1
+            scoped.execute(
+                "UPDATE smtp_verification_attempts SET state = ?, updated_at = ?"
+                " WHERE account_id = ? AND attempt_id = ? AND state IN ("
+                + _ACTIVE_PLACEHOLDERS + ")",
+                (SmtpAttemptState.VERIFIED.value, _encode_dt(now), account_id,
+                 attempt_id, *_ACTIVE_ATTEMPT_STATES),
+            )
+        # 验证已到终态：关闭该邮箱的轮询会话，避免空闲连接常驻
+        with contextlib.suppress(Exception):  # noqa: BLE001 - 收尾失败无碍
+            self._gateway.close_imap_session(self._require_qq_email(account_id))
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.SMTP_VERIFY,
+            result=AuditResult.SUCCESS
+            if committed
+            else AuditResult.BLOCKED,
+            details={} if committed else {"error_code": "superseded"},
+            session_id=session_id,
+        )
+
+    def _commit_failed(
+        self,
+        account_id: str,
+        attempt_id: str,
+        error_code: str,
+        error_message: str,
+        *,
+        session_id: str | None = None,
+    ) -> None:
+        """提交 failed 终态；同样只有当前 attempt 能写账户 SMTP 状态。"""
+        now = self._now()
+        with self._database.transaction():
+            scoped = self._database.scoped(account_id)
+            scoped.execute(
+                "UPDATE reminder_settings SET smtp_status = ?, smtp_error_code = ?,"
+                " smtp_error_message = ?, smtp_updated_at = ?"
+                " WHERE account_id = ? AND smtp_attempt_id = ?",
+                (SmtpStatus.FAILED.value, error_code, error_message,
+                 _encode_dt(now), account_id, attempt_id),
+            )
+            scoped.execute(
+                "UPDATE smtp_verification_attempts SET state = ?, error_code = ?,"
+                " error_message = ?, updated_at = ?"
+                " WHERE account_id = ? AND attempt_id = ? AND state IN ("
+                + _ACTIVE_PLACEHOLDERS + ")",
+                (SmtpAttemptState.FAILED.value, error_code, error_message,
+                 _encode_dt(now), account_id, attempt_id, *_ACTIVE_ATTEMPT_STATES),
+            )
+        # 验证已到终态：关闭该邮箱的轮询会话，避免空闲连接常驻
+        with contextlib.suppress(Exception):  # noqa: BLE001 - 收尾失败无碍
+            self._gateway.close_imap_session(self._require_qq_email(account_id))
+        self._audit(
+            account_id=account_id,
+            action=AuditAction.SMTP_VERIFY,
+            result=AuditResult.BLOCKED,
+            details={"error_code": error_code},
+            session_id=session_id,
+        )
+
+    def _advance_or_sync(
+        self,
+        account_id: str,
+        attempt_id: str,
+        *,
+        session_id: str | None,
+    ) -> None:
+        """异步：attempt 已创建，由受监督循环推进；同步：立即完成验证。"""
+        if self._verify_async:
+            return
+        email = self._require_qq_email(account_id)
+        code = self._load_auth_code(account_id)
         try:
             self._gateway.verify_self_send_receive(email=email, auth_code=code)
         except SmtpError as exc:
-            self._update_settings_fields(
-                account_id,
-                smtp_status=SmtpStatus.FAILED.value,
-                smtp_error_code=exc.code,
-                smtp_error_message=exc.message,
-            )
-            self._audit(
-                account_id=account_id,
-                action=AuditAction.SMTP_VERIFY,
-                result=AuditResult.BLOCKED,
-                details={"error_code": exc.code},
-                session_id=session_id,
+            self._commit_failed(
+                account_id, attempt_id, exc.code, exc.message, session_id=session_id
             )
             return
         except Exception:  # noqa: BLE001 - 不可预期错误如实落为 failed
             # 固定中文文案：不携带原始异常文本（可能含服务器回显细节）
-            self._update_settings_fields(
+            self._commit_failed(
                 account_id,
-                smtp_status=SmtpStatus.FAILED.value,
-                smtp_error_code="verification_failed",
-                smtp_error_message="验证过程出现未知错误，请稍后重试。",
-            )
-            self._audit(
-                account_id=account_id,
-                action=AuditAction.SMTP_VERIFY,
-                result=AuditResult.BLOCKED,
-                details={"error_code": "verification_failed"},
+                attempt_id,
+                "verification_failed",
+                "验证过程出现未知错误，请稍后重试。",
                 session_id=session_id,
             )
             return
+        self._commit_verified(account_id, attempt_id, session_id=session_id)
+
+    def _advance_verification(self, account_id: str) -> None:
+        """单步推进当前验证 attempt（受监督轮询的推进原语）。"""
+        settings = self._settings_row(account_id, create=False)
+        if settings is None or settings.get("smtp_status") != SmtpStatus.VERIFYING.value:
+            return
+        attempt_id = settings.get("smtp_attempt_id")
+        if not attempt_id:
+            return
+        attempt = self._attempt_row(account_id, str(attempt_id))
+        if attempt is None or attempt["state"] not in _ACTIVE_ATTEMPT_STATES:
+            return
         now = self._now()
-        self._update_settings_fields(
+        if attempt["state"] == SmtpAttemptState.SMTP_CONNECTING.value:
+            # 发送阶段同样受窗口约束：创建时已记录截止，网络临时失败在
+            # 窗口内有界重试，超窗才以 smtp_transient 终态失败。
+            deadline = _decode_dt(attempt["deadline_at"])
+            if deadline is not None and now >= deadline:
+                self._commit_failed(
+                    account_id,
+                    str(attempt_id),
+                    "smtp_transient",
+                    "验证邮件发送暂时失败，请稍后重新验证。",
+                )
+                return
+            self._advance_send(account_id, str(attempt_id), now)
+            return
+        self._advance_poll(account_id, str(attempt_id), attempt, now)
+
+    def _advance_send(
+        self, account_id: str, attempt_id: str, now: datetime
+    ) -> None:
+        """SMTP 发送阶段：成功后记录收件截止并进入 mail_sent。
+
+        认证失败/拒绝（smtp_auth_failed/smtp_rejected）与凭据不可用
+        如实终态失败；网络临时失败（smtp_transient）保持 smtp_connecting
+        由受监督循环在窗口内有界重试（不写失败、不向用户承诺未发生的
+        自动重试）。
+        """
+        try:
+            email = self._require_qq_email(account_id)
+            code = self._load_auth_code(account_id)
+            attempt = self._attempt_row(account_id, attempt_id)
+            assert attempt is not None
+            self._gateway.send_verification_mail(
+                email=email, auth_code=code, token=str(attempt["message_token"])
+            )
+        except SmtpError as exc:
+            if exc.retryable:
+                # 网络临时失败：保留 smtp_connecting，下轮 tick 重试；
+                # 超窗由 _advance_verification 以 smtp_transient 终态。
+                return
+            self._commit_failed(account_id, attempt_id, exc.code, exc.message)
+            return
+        except ReminderError as exc:
+            self._commit_failed(account_id, attempt_id, exc.code, exc.message)
+            return
+        deadline = now + timedelta(seconds=self._verify_window_seconds)
+        self._attempt_update(
             account_id,
-            smtp_status=SmtpStatus.VERIFIED.value,
-            smtp_verified_at=_encode_dt(now),
-            smtp_error_code=None,
-            smtp_error_message=None,
-            smtp_updated_at=_encode_dt(now),
+            attempt_id,
+            state=SmtpAttemptState.MAIL_SENT.value,
+            deadline_at=_encode_dt(deadline),
         )
-        self._audit(
-            account_id=account_id,
-            action=AuditAction.SMTP_VERIFY,
-            result=AuditResult.SUCCESS,
-            session_id=session_id,
+
+    def _advance_poll(
+        self,
+        account_id: str,
+        attempt_id: str,
+        attempt: dict[str, Any],
+        now: datetime,
+    ) -> None:
+        """收件确认阶段：超时 → receipt_timeout；否则单次 IMAP 查询。"""
+        deadline = _decode_dt(attempt["deadline_at"])
+        if deadline is not None and now >= deadline:
+            self._commit_failed(
+                account_id,
+                attempt_id,
+                "receipt_timeout",
+                f"验证邮件未在 {self._verify_window_seconds:.0f} 秒内到达收件箱，"
+                "请稍后重试或重新验证（邮件可能延迟到达）。",
+            )
+            return
+        # 回传 deadline：attempt_update 的 deadline_at 是覆盖语义，
+        # 缺省会清空已记录的收件截止（导致永不超时）。
+        self._attempt_update(
+            account_id,
+            attempt_id,
+            state=SmtpAttemptState.WAITING_RECEIPT.value,
+            deadline_at=_encode_dt(deadline),
         )
+        try:
+            email = self._require_qq_email(account_id)
+            code = self._load_auth_code(account_id)
+            received = self._gateway.check_verification_receipt(
+                email=email, auth_code=code, token=str(attempt["message_token"])
+            )
+        except SmtpError as exc:
+            if exc.code == "smtp_auth_failed":
+                # IMAP 登录被拒：不可重试，立即失败并提供重新验证路径
+                self._commit_failed(account_id, attempt_id, exc.code, exc.message)
+            # 其余（smtp_transient 等）：保持 waiting_receipt 下轮再试
+            return
+        except ReminderError as exc:
+            self._commit_failed(account_id, attempt_id, exc.code, exc.message)
+            return
+        if received:
+            self._commit_verified(account_id, attempt_id)
+
+    def _supervisor_tick(self) -> None:
+        """推进全部验证中账户的当前 attempt（有界退避一步）。"""
+        rows = self._database.connection.execute(
+            "SELECT account_id FROM reminder_settings WHERE smtp_status = ?",
+            (SmtpStatus.VERIFYING.value,),
+        ).fetchall()
+        for row in rows:
+            try:
+                self._advance_verification(str(row["account_id"]))
+            except Exception:  # noqa: BLE001 - 单账户推进失败不中断整轮
+                continue
+
+    def _supervisor_loop(self) -> None:
+        """受监督轮询循环：固定 tick 推进验证；重启后从数据库恢复。"""
+        while not self._stop_event.wait(self._supervisor_tick_seconds):
+            try:
+                self._supervisor_tick()
+            except Exception:  # noqa: BLE001 - 单轮失败不退出循环
+                continue
+
+    def stop(self) -> None:
+        """停止受监督轮询（进程关闭时调用；daemon 线程不阻塞退出）。"""
+        self._stop_event.set()
 
     # ------------------------------------------------------------------
     # 账户设置（时区）
