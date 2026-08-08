@@ -1,6 +1,6 @@
 # 09 让生涯规划助手具备快速入题、后台执行和可恢复降级
 
-Status: in-progress
+Status: completed
 Priority: P0
 Type: defect / reliability
 Blocked by: 02, 06
