@@ -408,6 +408,18 @@ export function CareerPlanningResultCard({
                 </p>
               )}
             </div>
+          ) : result.clarification ? (
+            <div style={sectionStyle} data-testid="career-clarification">
+              <p style={{ margin: 0, fontWeight: 600, fontSize: "var(--text-sm)" }}>
+                需要补充一个关键信息
+              </p>
+              <p style={{ margin: "var(--space-1) 0 0", color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+                {result.clarification}
+              </p>
+              <p style={{ margin: "var(--space-1) 0 0", color: "var(--color-text-tertiary)", fontSize: "var(--text-xs)" }}>
+                直接回复你的答案即可继续规划。
+              </p>
+            </div>
           ) : (
             output && (
               <>

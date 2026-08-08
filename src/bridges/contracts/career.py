@@ -21,9 +21,10 @@ from pydantic import BaseModel, Field
 
 
 class CareerPlanningProcessState(StrEnum):
-    """生涯规划过程卡状态（与 humanizer 五态一致，另加 done）。
+    """生涯规划过程卡状态（与 humanizer 五态一致，另加 done/clarify）。
 
     - ``loading``：进行中；
+    - ``clarify``：信息不足，先问一个关键澄清问题（Issue 09 intake）；
     - ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；
     - ``error``：不可重试错误；
     - ``permission``：凭据/能力未就绪；
@@ -32,6 +33,7 @@ class CareerPlanningProcessState(StrEnum):
     """
 
     LOADING = "loading"
+    CLARIFY = "clarify"
     EMPTY = "empty"
     ERROR = "error"
     PERMISSION = "permission"
@@ -228,6 +230,11 @@ class CareerPlanningProjection(BaseModel):
     verified_at: datetime = Field(description="整体核查时间（复核完成时间）。")
     output: CareerPlanningOutputContract | None = Field(
         default=None, description="交付的六类输出合同；失败/阻断时为 None。"
+    )
+    clarification: str | None = Field(
+        default=None,
+        description="信息不足时的关键澄清问题（Issue 09 intake；非空时"
+        "消息正文即为该问题，不交付六类规划）。",
     )
     evidence_sources: list[CareerEvidenceSource] = Field(
         default_factory=list, description="本轮使用的全部证据（含核查时间）。"

@@ -270,6 +270,107 @@ def test_assumption_without_verification_step_is_flagged() -> None:
     assert any("缺少下一步核查方式" in warning for warning in result.warnings)
 
 
+def test_review_warns_missing_near_term_action() -> None:
+    """可执行性门（Issue 09）：无未来 7 天行动时给出非阻断提示。"""
+    output = _output(
+        suggestions=[
+            CareerSuggestion(
+                item_id="suggestion:1",
+                content="学习 SQL 与 Python。",
+                evidence_refs=["web:0"],
+                verification="完成一个小项目验证。",
+            )
+        ]
+    )
+    result = review_output(output, {"web:0": _evidence("web:0")}, now=NOW)
+    assert result.passed
+    assert any("未来 7 天" in warning for warning in result.warnings)
+
+
+def test_review_accepts_near_term_action() -> None:
+    """可执行性门：建议含「未来 7 天」时不再提示缺近期行动。"""
+    output = _output(
+        suggestions=[
+            CareerSuggestion(
+                item_id="suggestion:1",
+                content="未来 7 天完成一门 SQL 入门课。",
+                evidence_refs=["web:0"],
+                verification="完成后检验掌握程度。",
+            )
+        ]
+    )
+    result = review_output(output, {"web:0": _evidence("web:0")}, now=NOW)
+    assert not any("未来 7 天" in warning for warning in result.warnings)
+
+
+def test_review_warns_out_of_order_milestones() -> None:
+    """里程碑顺序门（Issue 09）：后面的阶段起点早于前面的阶段时提示。"""
+    output = _output(
+        path=[
+            CareerStage(
+                item_id="stage:1",
+                content="先补齐统计基础。",
+                evidence_refs=[],
+                timeline="第 3-6 个月",
+            ),
+            CareerStage(
+                item_id="stage:2",
+                content="再完成项目。",
+                evidence_refs=[],
+                timeline="第 1-3 个月",
+            ),
+        ]
+    )
+    result = review_output(output, {"web:0": _evidence("web:0")}, now=NOW)
+    assert any("顺序" in warning for warning in result.warnings)
+
+
+def test_review_accepts_ordered_milestones() -> None:
+    """里程碑顺序门：时间范围递增时无顺序提示。"""
+    output = _output(
+        path=[
+            CareerStage(
+                item_id="stage:1",
+                content="先补齐统计基础。",
+                evidence_refs=[],
+                timeline="第 1-3 个月",
+            ),
+            CareerStage(
+                item_id="stage:2",
+                content="再完成项目。",
+                evidence_refs=[],
+                timeline="第 3-6 个月",
+            ),
+        ]
+    )
+    result = review_output(output, {"web:0": _evidence("web:0")}, now=NOW)
+    assert not any("顺序" in warning for warning in result.warnings)
+
+
+def test_review_warns_missing_open_questions_without_external_evidence() -> None:
+    """待核实项门（Issue 09）：无外部证据且未列出待核实项时提示。"""
+    output = _output(open_questions=[])
+    evidence_map = {
+        "statement:current": _evidence(
+            "statement:current", kind=CareerEvidenceKind.USER_STATEMENT
+        )
+    }
+    result = review_output(output, evidence_map, now=NOW)
+    assert any("待核实项" in warning for warning in result.warnings)
+
+
+def test_review_accepts_open_questions_without_external_evidence() -> None:
+    """待核实项门：无外部证据但列出待核实项时不提示。"""
+    output = _output(open_questions=["行业统计口径未披露，建议进一步核查。"])
+    evidence_map = {
+        "statement:current": _evidence(
+            "statement:current", kind=CareerEvidenceKind.USER_STATEMENT
+        )
+    }
+    result = review_output(output, evidence_map, now=NOW)
+    assert not any("待核实项" in warning for warning in result.warnings)
+
+
 def test_apply_review_states_writes_chinese_notes() -> None:
     """复核状态回写条目 note 与核查时间：未核实/冲突/过时对用户可见。"""
     output = _output(facts=[CareerFact(item_id="fact:1", content="某说法。", evidence_refs=[])])

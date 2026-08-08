@@ -34,6 +34,7 @@ from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
+from bridges.career.intake import assess_intake
 from bridges.career.intent import is_career_intent
 from bridges.chat.budget import (
     EXTERNAL_TIMEOUT_SECONDS,
@@ -47,7 +48,12 @@ from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.contracts.ai import ModelRunLock
-from bridges.contracts.career import CareerPlanningStatus
+from bridges.contracts.career import (
+    CareerPlanningProcessState,
+    CareerPlanningProjection,
+    CareerPlanningStatus,
+    CareerRunEvent,
+)
 from bridges.contracts.chat import (
     ChatMessageRole,
     ChatMessageStatus,
@@ -363,7 +369,8 @@ class CareerPlannerOrchestrator(Protocol):
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
-    ) -> Iterator[HumanizerRunEvent]: ...
+        budget: RunBudget | None = None,
+    ) -> Iterator[CareerRunEvent]: ...
 
 
 class ImageOrchestrator(Protocol):
@@ -423,6 +430,14 @@ def initial_thinking(mode: ChatMode) -> ChatThinkingSummary:
     return ChatThinkingSummary(
         steps=[step.describe() for step in _contract(mode).steps],
     )
+
+
+def _truncate_text(text: str, max_chars: int) -> str:
+    """截断文本到指定长度（生涯澄清投影的意图快照用）。"""
+    value = (text or "").strip()
+    if len(value) <= max_chars:
+        return value
+    return value[: max_chars - 1] + "…"
 
 
 def done_thinking(thinking: ChatThinkingSummary) -> ChatThinkingSummary:
@@ -1358,10 +1373,18 @@ class TurnOrchestrator:
             # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
             # 走生涯规划编排——同一真实消息流程，六类输出经 career 过程事件
             # 呈现，终态 done/error 收敛；非规划消息继续普通回答。
+            # Issue 09：上一轮助手是澄清问题时（career_planning.clarification
+            # 非空），本轮用户回复继续走生涯编排——澄清问答是同一规划的
+            # 延续，不因回复不含触发词而断裂。
             if (
                 owner_message is not None
-                and is_career_intent(owner_message.content)
                 and self._career_planner is not None
+                and (
+                    is_career_intent(owner_message.content)
+                    or self._has_pending_career_clarification(
+                        account_id, conversation_id, until_user_message_id
+                    )
+                )
             ):
                 yield from self._stream_career_planning(
                     account_id,
@@ -2916,6 +2939,23 @@ class TurnOrchestrator:
         conversation = self._repo.get_conversation(account_id, conversation_id)
         mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
         thinking = initial_thinking(mode)
+        # Issue 09 intake：信息不足时 2 秒内返回一个关键澄清问题，不启动
+        # 检索与完整规划生成（确定性判断，无模型调用）。
+        assessment = assess_intake(intent)
+        if not assessment.enough:
+            yield from self._stream_career_clarification(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                intent,
+                mode,
+                use_profile=use_profile,
+                question=assessment.question
+                or "请补充你的目标方向与当前阶段，我好为你规划。",
+                thinking=thinking,
+                started=started,
+            )
+            return
         retrieval_round: RetrievalRoundProjection | None = None
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
@@ -3109,6 +3149,7 @@ class TurnOrchestrator:
                 retrieval_round=retrieval_round,
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
+                budget=budget,
             ):
                 if budget.expired():
                     # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
@@ -3266,6 +3307,113 @@ class TurnOrchestrator:
                 budget.exit(
                     RunStage.MODEL_GENERATION, category="qwen_structured_output"
                 )
+
+    def _stream_career_clarification(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        intent: str,
+        mode: ChatMode,
+        *,
+        use_profile: bool,
+        question: str,
+        thinking: ChatThinkingSummary,
+        started: float,
+    ) -> Iterator[StreamEvent]:
+        """信息不足：只问一个关键澄清问题，不启动完整规划生成（Issue 09）。
+
+        消息以 DONE 终态交付（正文即澄清问题，不调用任何模型）；用户
+        回复后由澄清粘性（``_has_pending_career_clarification``）继续走
+        生涯编排——澄清问答是同一规划的延续。
+        """
+        now = datetime.now(UTC)
+        projection = CareerPlanningProjection(
+            plan_id=assistant_message_id,
+            intent=_truncate_text(intent, 240),
+            status=CareerPlanningStatus.DONE,
+            profile_enabled=use_profile,
+            profile_used=False,
+            verified_at=now,
+            output=None,
+            clarification=question,
+            evidence_sources=[],
+            review=None,
+            process_state=CareerPlanningProcessState.CLARIFY,
+            process_steps=["收集信息"],
+            error_code=None,
+            error_message=None,
+            created_at=now,
+        )
+        self._repo.update_message_career_planning(
+            account_id,
+            assistant_message_id,
+            projection.model_dump(mode="json"),
+            now,
+        )
+        self._repo.update_message_content(
+            account_id, assistant_message_id, question, now
+        )
+        finalize_message(
+            self._repo,
+            account_id,
+            assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            model_id=None,
+            run_lock_id=None,
+            started=started,
+            now=now,
+            thinking=done_thinking(thinking),
+        )
+        yield StreamEvent(
+            kind="career",
+            career=ChatStreamCareerData(
+                message_id=assistant_message_id,
+                state=CareerPlanningProcessState.CLARIFY,
+                step_label="需要补充信息",
+                detail=question,
+                retryable=False,
+                progress_steps=["收集信息"],
+            ),
+        )
+        yield StreamEvent(kind="done")
+
+    def _has_pending_career_clarification(
+        self,
+        account_id: str,
+        conversation_id: str,
+        until_user_message_id: str | None,
+    ) -> bool:
+        """会话级生涯澄清粘性：本用户消息之前最近的助手消息是否在等澄清。
+
+        澄清问题由助手以 DONE 终态交付（career_planning.clarification
+        非空）；用户回复它的下一轮继续走生涯编排，保证「先问关键问题、
+        再给完整规划」的两轮交互不断裂。
+        """
+        for message in reversed(
+            self._repo.list_messages(account_id, conversation_id)
+        ):
+            if (
+                until_user_message_id is not None
+                and message.message_id == until_user_message_id
+            ):
+                # 当前轮用户消息本身：跳过（它之前的助手消息才是历史）。
+                continue
+            if message.role != ChatMessageRole.ASSISTANT:
+                continue
+            if message.status == ChatMessageStatus.STREAMING:
+                # 本轮占位助手消息：跳过，继续向前找最近的已终态助手消息。
+                continue
+            career = message.career_planning or {}
+            if not career:
+                # 无生涯投影的普通助手消息：澄清可能隔了几轮普通消息，
+                # 继续向前找最近的生涯助手消息。
+                continue
+            return bool((career.get("clarification") or "").strip())
+        return False
 
     # ------------------------------------------------------------------
     # Issue 31/32/36：异步任务与 MCP 调用编排路径

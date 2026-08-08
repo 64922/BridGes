@@ -30678,6 +30678,7 @@
         "type": "string",
         "enum": [
           "loading",
+          "clarify",
           "empty",
           "error",
           "permission",
@@ -30685,7 +30686,7 @@
           "done"
         ],
         "title": "CareerPlanningProcessState",
-        "description": "生涯规划过程卡状态（与 humanizer 五态一致，另加 done）。\n\n- ``loading``：进行中；\n- ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；\n- ``error``：不可重试错误；\n- ``permission``：凭据/能力未就绪；\n- ``recovery``：可重试错误；\n- ``done``：完成。"
+        "description": "生涯规划过程卡状态（与 humanizer 五态一致，另加 done/clarify）。\n\n- ``loading``：进行中；\n- ``clarify``：信息不足，先问一个关键澄清问题（Issue 09 intake）；\n- ``empty``：无可用画像/证据的合法空态（回答仍基于用户陈述）；\n- ``error``：不可重试错误；\n- ``permission``：凭据/能力未就绪；\n- ``recovery``：可重试错误；\n- ``done``：完成。"
       },
       "CareerPlanningProjection": {
         "properties": {
@@ -30729,6 +30730,18 @@
               }
             ],
             "description": "交付的六类输出合同；失败/阻断时为 None。"
+          },
+          "clarification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification",
+            "description": "信息不足时的关键澄清问题（Issue 09 intake；非空时消息正文即为该问题，不交付六类规划）。"
           },
           "evidence_sources": {
             "items": {

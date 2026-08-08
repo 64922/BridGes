@@ -19,6 +19,7 @@ import re
 from datetime import datetime
 
 from bridges.contracts.career import (
+    CareerEvidenceKind,
     CareerEvidenceSource,
     CareerItemBase,
     CareerItemState,
@@ -73,6 +74,18 @@ _NEGATION_HINTS: tuple[str, ...] = (
 
 #: 否定检测的向前扫描窗口长度（字符），覆盖「不构成就业、薪酬或录取保证」。
 _NEGATION_WINDOW = 15
+
+#: 近期行动时间词（Issue 09 可执行性门）：suggestions 中至少一条含
+#: 任一即视为「未来 7 天可执行行动」。与验收标准「未来 7 天」严格对齐，
+#: 不把「一个月内/本月」等更长粒度算作 7 天行动。
+_NEAR_TERM_WORDS: tuple[str, ...] = (
+    "7 天",
+    "7天",
+    "一周",
+    "本周",
+    "这周",
+    "未来一周",
+)
 
 #: 证据关系说明词：条目引用多个证据时，note 含任一即视为已说明关系。
 _RELATIONSHIP_WORDS: tuple[str, ...] = (
@@ -169,7 +182,8 @@ def review_output(
         boundary_violations.append("输出合同不完整：六类结果全部为空。")
 
     # 3-6. 逐条复核（事实证据门/引用核验/过时/冲突）。
-    for category, item in _iter_items(output):
+    items = list(_iter_items(output))
+    for category, item in items:
         refs = list(item.evidence_refs)
         # 引用核验：先筛出真实存在的证据。
         known = [ref for ref in refs if ref in evidence_map]
@@ -211,6 +225,63 @@ def review_output(
             )
         )
 
+    # 7. 可执行性门（非阻断，Issue 09）：至少一条近期行动与一个可检查
+    # 里程碑，缺一即提示（不阻断交付——可执行性缺口不构成边界违反）。
+    if not any(
+        any(word in item.content for word in _NEAR_TERM_WORDS)
+        for category, item in items
+        if category == "suggestions"
+    ):
+        warnings.append(
+            "缺少未来 7 天可执行行动：近期学习建议（suggestions）中没有"
+            "含具体近期时间（如未来 7 天/一周内）的行动条目。"
+        )
+    path_steps = [(category, item) for category, item in items if category == "path"]
+    # 运行时 category == "path" 的条目必为 CareerStage（timeline 字段存在）；
+    # getattr 仅为满足静态类型（_iter_items 的公共类型是 CareerItemBase）。
+    if not any(
+        (getattr(item, "timeline", None) or "").strip() for _, item in path_steps
+    ):
+        warnings.append(
+            "缺少可检查里程碑：成长路径（path）中没有带时间范围（timeline）"
+            "的阶段，无法验证进展。"
+        )
+    else:
+        # 8. 里程碑顺序门（非阻断，Issue 09 实施步骤 5）：可提取时间范围
+        # 起点时，后面的阶段不得早于前面的阶段（保证路径可执行顺序）。
+        ranks = [
+            rank
+            for _, item in path_steps
+            if (rank := _timeline_start_rank(getattr(item, "timeline", None)))
+            is not None
+        ]
+        if len(ranks) >= 2 and any(
+            later < earlier
+            for earlier, later in zip(ranks, ranks[1:], strict=False)
+        ):
+            warnings.append(
+                "成长路径（path）的时间范围顺序异常：后面的阶段起点早于"
+                "前面的阶段，无法验证进展顺序。"
+            )
+
+    # 9. 待核实项门（非阻断，Issue 09 实施步骤 4）：本轮没有外部证据
+    # （联网/论文/本地材料）时，输出必须列出待核实项（open_questions），
+    # 否则外部事实无法核验。
+    has_external = any(
+        source.kind
+        in (
+            CareerEvidenceKind.WEB_SEARCH,
+            CareerEvidenceKind.ARXIV,
+            CareerEvidenceKind.RETRIEVAL,
+        )
+        for source in evidence_map.values()
+    )
+    if not has_external and not output.open_questions:
+        warnings.append(
+            "本轮没有联网/论文/本地材料证据，且未列出待核实项"
+            "（open_questions）：涉及外部事实的表述无法核验。"
+        )
+
     passed = not boundary_violations
     return CareerReviewResult(
         passed=passed,
@@ -218,6 +289,41 @@ def review_output(
         boundary_violations=boundary_violations,
         warnings=warnings,
     )
+
+
+#: 中文数字到阿拉伯数字（一到九十九，覆盖「第 3-6 个月」「第十周」）。
+_CN_DIGITS: dict[str, int] = {
+    "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+    "六": 6, "七": 7, "八": 8, "九": 9,
+}
+
+#: 时间范围起点提取：`第 N …` / `第 N-M 个月/周/天/年` 中的起始值。
+_TIMELINE_START = re.compile(r"第\s*([一二三四五六七八九十\d]+)")
+
+
+def _cn_to_int(text: str) -> int | None:
+    """中文/阿拉伯数字转整数（一到九十九；无法识别返回 None）。"""
+    if text.isdigit():
+        return int(text)
+    if text == "十":
+        return 10
+    if len(text) == 2 and text[0] in _CN_DIGITS and text[1] == "十":
+        return _CN_DIGITS[text[0]] * 10
+    if len(text) == 2 and text[0] == "十" and text[1] in _CN_DIGITS:
+        return 10 + _CN_DIGITS[text[1]]
+    if len(text) == 1 and text in _CN_DIGITS:
+        return _CN_DIGITS[text]
+    return None
+
+
+def _timeline_start_rank(timeline: str | None) -> int | None:
+    """从时间范围文本提取起点数值（「第 1-3 个月」→ 1）；无法提取返回 None。"""
+    if not timeline:
+        return None
+    match = _TIMELINE_START.search(timeline)
+    if match is None:
+        return None
+    return _cn_to_int(match.group(1))
 
 
 def _explains_relationship(note: str | None) -> bool:
