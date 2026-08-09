@@ -28,7 +28,10 @@ from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
 from bridges.contracts.profile_extraction import ProfilePrivacyNotice
 from bridges.contracts.profiles import ProfileNotification
-from bridges.contracts.retrieval import RetrievalRoundProjection
+from bridges.contracts.retrieval import (
+    RetrievalDecisionProjection,
+    RetrievalRoundProjection,
+)
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
@@ -205,6 +208,10 @@ class ChatMessageProjection(BaseModel):
     retrieval: RetrievalRoundProjection | None = Field(
         default=None,
         description="本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。",
+    )
+    retrieval_decision: RetrievalDecisionProjection | None = Field(
+        default=None,
+        description="本轮全局知识库检索决策（Issue 12）；跳过也会持久化。",
     )
     web_search: WebSearchProjection | None = Field(
         default=None,

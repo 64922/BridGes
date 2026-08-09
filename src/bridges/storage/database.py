@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 39
+SCHEMA_VERSION = 40
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1886,6 +1886,34 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE UNIQUE INDEX IF NOT EXISTS idx_video_tasks_account_message
         ON video_tasks(account_id, message_id) WHERE message_id IS NOT NULL
+        """,
+    ],
+    # Issue 12：在任何索引检索前固化全局知识库决策；重试沿用户回合复用同一快照。
+    40: [
+        """
+        CREATE TABLE retrieval_decisions (
+            decision_id TEXT PRIMARY KEY,
+            assistant_message_id TEXT NOT NULL,
+            user_message_id TEXT,
+            conversation_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            action TEXT NOT NULL CHECK (action IN ('retrieve', 'skip')),
+            reason TEXT NOT NULL,
+            rules_version TEXT NOT NULL,
+            capability_route TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            query_fingerprint TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, user_message_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_retrieval_decisions_message
+        ON retrieval_decisions(account_id, assistant_message_id)
+        """,
+        """
+        CREATE INDEX idx_retrieval_decisions_user_message
+        ON retrieval_decisions(account_id, user_message_id)
         """,
     ],
 }

@@ -63,6 +63,8 @@ export function buildThreadMessages(
       thinking: latest.thinking ? projectionThinking(latest) : undefined,
       // Issue 20：本轮分层检索轮次（含引用）；无检索作用域时为 null
       retrieval: latest.retrieval ?? null,
+      // Issue 12：跳过决策也会持久化，用于避免专用能力闪现检索加载态
+      retrievalDecision: latest.retrieval_decision ?? null,
       webSearch: latest.web_search ?? null,
       arxivSearch: latest.arxiv_search ?? null,
       teaching: latest.teaching ?? null,

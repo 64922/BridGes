@@ -112,6 +112,7 @@ def _send(chat_env: dict[str, Any], conversation_id: str, content: str, *,
     user, assistant = chat_env["chat"].start_generation(
         chat_env["account_a"], conversation_id, content,
         attachment_ids=attachment_ids or [],
+        use_knowledge_base=use_knowledge_base,
     )
     events = list(
         chat_env["chat"].stream_generation(
@@ -167,7 +168,7 @@ def test_generation_runs_retrieval_injects_context_and_persists_citations(
     assert final.thinking.steps
 
 
-def test_retry_creates_new_retrieval_round(chat_env: dict[str, Any]) -> None:
+def test_retry_reuses_retrieval_round_and_citations(chat_env: dict[str, Any]) -> None:
     account = chat_env["account_a"]
     conversation_id = seed_conversation(chat_env, account)
     add_material(chat_env, account, "知识库.txt", "热力学第二定律内容。", layer="knowledge_base")
@@ -193,7 +194,10 @@ def test_retry_creates_new_retrieval_round(chat_env: dict[str, Any]) -> None:
     final = chat_env["chat"].message_projection(account, retried.message_id)
     assert final is not None
     assert final.retrieval is not None
-    assert final.retrieval.round_id != first_round_id
+    assert final.retrieval.round_id == first_round_id
+    assert final.retrieval_decision is not None
+    assert first.retrieval_decision is not None
+    assert final.retrieval_decision.decision_id == first.retrieval_decision.decision_id
     # 同作用域同结果（仅引用标识为新轮次生成，展示数据一致）
     def citation_facts(round_) -> list[tuple[str, str, str]]:
         return [(c.filename, c.object_id, c.snippet) for c in round_.citations]
@@ -236,6 +240,8 @@ def test_no_scope_yields_no_retrieval_round(chat_env: dict[str, Any]) -> None:
     conversation_id = seed_conversation(chat_env, account)
     _, final, _ = _send(chat_env, conversation_id, "你好")
     assert final.retrieval is None
+    assert final.retrieval_decision is not None
+    assert final.retrieval_decision.action.value == "skip"
     payload = chat_env["adapter"].payloads[0]
     assert all(m["role"] != "system" or "以下是本轮检索到的本地材料" not in m["content"]
                for m in payload["messages"])

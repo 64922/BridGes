@@ -30302,6 +30302,17 @@
             ],
             "description": "本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。"
           },
+          "retrieval_decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RetrievalDecisionProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本轮全局知识库检索决策（Issue 12）；跳过也会持久化。"
+          },
           "web_search": {
             "anyOf": [
               {
@@ -47871,6 +47882,39 @@
         "title": "RetrievalCandidate",
         "description": "A single candidate chunk returned by scoped hybrid retrieval.\n\nScores are ranking signals only; they are not evidence strength and must not\nbe shown to users as confidence or truth values."
       },
+      "RetrievalCandidateFile": {
+        "properties": {
+          "document_id": {
+            "type": "string",
+            "title": "Document Id",
+            "description": "稳定索引文档身份。"
+          },
+          "object_id": {
+            "type": "string",
+            "title": "Object Id",
+            "description": "稳定对象身份；用于授权校验。"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "用户可理解的文件名。"
+          },
+          "media_type": {
+            "type": "string",
+            "title": "Media Type",
+            "description": "文件媒体类型。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "document_id",
+          "object_id",
+          "filename",
+          "media_type"
+        ],
+        "title": "RetrievalCandidateFile",
+        "description": "两阶段检索第一阶段选出的文件摘要。"
+      },
       "RetrievalChannel": {
         "type": "string",
         "enum": [
@@ -47879,6 +47923,109 @@
         ],
         "title": "RetrievalChannel",
         "description": "Channel that produced a retrieval candidate."
+      },
+      "RetrievalDecisionAction": {
+        "type": "string",
+        "enum": [
+          "retrieve",
+          "skip"
+        ],
+        "title": "RetrievalDecisionAction",
+        "description": "全局知识库是否进入本轮证据编排。"
+      },
+      "RetrievalDecisionProjection": {
+        "properties": {
+          "decision_id": {
+            "type": "string",
+            "title": "Decision Id",
+            "description": "稳定决策标识；重试同一用户回合时复用。"
+          },
+          "assistant_message_id": {
+            "type": "string",
+            "title": "Assistant Message Id",
+            "description": "首次绑定的助手消息标识。"
+          },
+          "user_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Message Id",
+            "description": "触发决策的用户消息标识。"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "所属对话标识。"
+          },
+          "action": {
+            "$ref": "#/components/schemas/RetrievalDecisionAction",
+            "description": "retrieve 或 skip。"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/RetrievalDecisionReason",
+            "description": "确定性决策原因。"
+          },
+          "rules_version": {
+            "type": "string",
+            "title": "Rules Version",
+            "description": "决策规则版本；只影响新回合。"
+          },
+          "capability_route": {
+            "type": "string",
+            "title": "Capability Route",
+            "description": "能力路由快照，不是模型输出。"
+          },
+          "mode": {
+            "type": "string",
+            "title": "Mode",
+            "description": "决策时锁定的对话模式。"
+          },
+          "query_fingerprint": {
+            "type": "string",
+            "title": "Query Fingerprint",
+            "description": "用户请求的不可逆指纹，不保存原文。"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "决策形成时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "decision_id",
+          "assistant_message_id",
+          "conversation_id",
+          "action",
+          "reason",
+          "rules_version",
+          "capability_route",
+          "mode",
+          "query_fingerprint",
+          "created_at"
+        ],
+        "title": "RetrievalDecisionProjection",
+        "description": "一轮聊天在任何索引副作用前形成的可恢复检索决策。"
+      },
+      "RetrievalDecisionReason": {
+        "type": "string",
+        "enum": [
+          "explicit_knowledge_base",
+          "uploaded_material",
+          "study_explanation",
+          "knowledge_base_required",
+          "user_disabled",
+          "specialized_capability",
+          "companion_default"
+        ],
+        "title": "RetrievalDecisionReason",
+        "description": "检索决策的稳定原因枚举。"
       },
       "RetrievalExercise": {
         "properties": {
@@ -47976,6 +48123,14 @@
             "description": "该层去重后的候选数。",
             "default": 0
           },
+          "candidate_files": {
+            "items": {
+              "$ref": "#/components/schemas/RetrievalCandidateFile"
+            },
+            "type": "array",
+            "title": "Candidate Files",
+            "description": "候选文件元数据摘要；不包含文件正文。"
+          },
           "note": {
             "anyOf": [
               {
@@ -48003,6 +48158,9 @@
           "disabled",
           "no_material",
           "index_unavailable",
+          "index_processing",
+          "index_corrupt",
+          "timeout",
           "ok"
         ],
         "title": "RetrievalLayerStatus",

@@ -13,6 +13,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 import sqlite3
 from datetime import UTC, datetime
@@ -24,6 +25,10 @@ from bridges.contracts.retrieval import (
     CitationAccessStatus,
     CitationDetailProjection,
     CitationProjection,
+    RetrievalCandidateFile,
+    RetrievalDecisionAction,
+    RetrievalDecisionProjection,
+    RetrievalDecisionReason,
     RetrievalLayerResult,
     RetrievalLayerStatus,
     RetrievalRoundProjection,
@@ -31,6 +36,11 @@ from bridges.contracts.retrieval import (
     RetrievalSufficiency,
 )
 from bridges.ingestion.embedding import EmbeddingError, EmbeddingPort
+from bridges.retrieval.decision import (
+    RULES_VERSION,
+    decide_retrieval,
+    query_fingerprint,
+)
 from bridges.retrieval.repository import RetrievalRepository
 from bridges.retrieval.search import (
     LAYER_QUOTAS,
@@ -61,6 +71,8 @@ _LAYER_ORDER = (
 _INDEX_UNAVAILABLE_NOTE = "本地索引不可用，暂无法检索本地材料，请稍后重试。"
 #: 向量检索不可用时的回退说明。
 _VECTOR_UNAVAILABLE_NOTE = "向量检索暂不可用，本轮仅使用关键词检索。"
+#: 第一阶段最多允许进入片段检索的全局知识库文件数。
+KNOWLEDGE_BASE_CANDIDATE_LIMIT = 8
 
 
 class RetrievalError(Exception):
@@ -106,6 +118,79 @@ class LayeredRetrievalService:
     # 每轮检索编排
     # ------------------------------------------------------------------
 
+    def ensure_decision(
+        self,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        user_message_id: str | None,
+        query: str,
+        *,
+        mode: str,
+        capability_route: str,
+        use_knowledge_base: bool,
+    ) -> RetrievalDecisionProjection:
+        """在任何索引副作用前形成并持久化一份检索决策。"""
+        existing = self._repository.decision_row(
+            account_id,
+            user_message_id=user_message_id,
+        )
+        if existing is None:
+            existing = self._repository.decision_row(
+                account_id,
+                assistant_message_id=assistant_message_id,
+            )
+        if existing is not None:
+            return self._project_decision(existing)
+
+        decision = decide_retrieval(
+            query,
+            mode=mode,
+            capability_route=capability_route,
+            use_knowledge_base=use_knowledge_base,
+        )
+        now = _now()
+        try:
+            with self._database.transaction():
+                self._repository.insert_decision(
+                    account_id=account_id,
+                    decision_id=f"dec-{secrets.token_urlsafe(12)}",
+                    assistant_message_id=assistant_message_id,
+                    user_message_id=user_message_id,
+                    conversation_id=conversation_id,
+                    action=decision.action.value,
+                    reason=decision.reason.value,
+                    rules_version=RULES_VERSION,
+                    capability_route=capability_route,
+                    mode=mode,
+                    query_fingerprint=query_fingerprint(query),
+                    created_at=now,
+                )
+        except sqlite3.IntegrityError:
+            # 并发重试可能同时形成同一用户回合的决策；唯一约束选出先提交的
+            # 快照，调用方永远不会看到第二份规则结果。
+            existing = self._repository.decision_row(
+                account_id,
+                user_message_id=user_message_id,
+            )
+            if existing is None:
+                raise
+        else:
+            existing = self._repository.decision_row(
+                account_id,
+                assistant_message_id=assistant_message_id,
+            )
+        if existing is None:
+            raise sqlite3.IntegrityError("检索决策写入后无法读取。")
+        return self._project_decision(existing)
+
+    def decision_projection(
+        self, account_id: str, assistant_message_id: str
+    ) -> RetrievalDecisionProjection | None:
+        """返回助手尝试对应的决策；重试沿用户消息复用原快照。"""
+        row = self._repository.decision_row_for_message(account_id, assistant_message_id)
+        return self._project_decision(row) if row is not None else None
+
     def run_round(
         self,
         account_id: str,
@@ -115,6 +200,7 @@ class LayeredRetrievalService:
         query: str,
         *,
         use_knowledge_base: bool,
+        decision: RetrievalDecisionProjection | None = None,
     ) -> RetrievalRoundProjection | None:
         """为一条助手消息执行一轮分层检索并固化结果。
 
@@ -122,6 +208,32 @@ class LayeredRetrievalService:
         无材料/被关闭），前端不渲染检索卡；其余情况总是返回结构化轮次
         投影，绝不把无命中伪装成成功。
         """
+        if decision is not None:
+            # 新聊天回合的决策控制整个检索副作用；历史直接调用仍走下方兼容路径。
+            # 重试不得用新的请求开关改写已持久化的决策。
+            if (
+                decision.action != RetrievalDecisionAction.RETRIEVE
+                and decision.reason != RetrievalDecisionReason.USER_DISABLED
+            ):
+                return None
+            use_knowledge_base = decision.action == RetrievalDecisionAction.RETRIEVE
+            if user_message_id is not None:
+                existing = self._repository.round_row_for_user_message(
+                    account_id, user_message_id
+                )
+                if existing is not None:
+                    return self._project_round(
+                        existing,
+                        self._repository.citation_rows(
+                            account_id, str(existing["round_id"])
+                        ),
+                        message_id=assistant_message_id,
+                    )
+        else:
+            # 直接调用检索服务是 Issue 20 的历史公开接口，保留其显式
+            # ``use_knowledge_base`` 语义；聊天编排必须先传入 Issue 12
+            # 决策快照，避免绕过意图门。
+            use_knowledge_base = bool(use_knowledge_base)
         # conversations 属 chat 域：经属主 ConversationRepository 读取
         # 归属项目，对话不存在时本轮无作用域可检索。
         conversation = self._conversations.get_conversation(
@@ -138,9 +250,37 @@ class LayeredRetrievalService:
             attachment_ids=attachment_ids,
             project_id=project_id,
             use_knowledge_base=use_knowledge_base,
+            query=query,
         )
         # 没有任何层有已就绪材料时跳过本轮（无检索作用域，不假装成功）。
         if not any(layer["ready_document_ids"] for layer in layers.values()):
+            if decision is not None and decision.action == RetrievalDecisionAction.RETRIEVE:
+                unavailable = any(
+                    layer["status"]
+                    in {
+                        RetrievalLayerStatus.INDEX_PROCESSING,
+                        RetrievalLayerStatus.INDEX_CORRUPT,
+                        RetrievalLayerStatus.TIMEOUT,
+                    }
+                    for layer in layers.values()
+                )
+                sufficiency = (
+                    RetrievalSufficiency.INDEX_UNAVAILABLE
+                    if unavailable
+                    else RetrievalSufficiency.NO_HITS
+                )
+                return self._persist_round(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    user_message_id,
+                    use_knowledge_base=use_knowledge_base,
+                    index_version_id=None,
+                    sufficiency=sufficiency,
+                    layers=self._layer_results(layers, index_unavailable=False, notes={}),
+                    candidates=[],
+                    note=_sufficiency_note(sufficiency),
+                )
             return None
 
         active = self._active_version(account_id)
@@ -184,6 +324,10 @@ class LayeredRetrievalService:
                 layer_search_failed = True
                 layers[layer]["status"] = RetrievalLayerStatus.INDEX_UNAVAILABLE
                 layers[layer]["note"] = "该层关键词检索失败，请稍后重试。"
+            except TimeoutError:
+                layer_search_failed = True
+                layers[layer]["status"] = RetrievalLayerStatus.TIMEOUT
+                layers[layer]["note"] = "该层检索超时，请稍后重试。"
             vector_rows[layer] = self._vector_rows(account_id, version_id, document_ids)
 
         search_results: dict[RetrievalSourceLayer, LayerSearchResult] = {}
@@ -272,11 +416,19 @@ class LayeredRetrievalService:
         """返回消息绑定的检索轮次投影；无轮次返回 None（不渲染卡片）。"""
         row = self._repository.round_row(account_id, message_id)
         if row is None:
+            user_message_id = self._repository.generation_user_message_id(
+                account_id, message_id
+            )
+            if user_message_id is not None:
+                row = self._repository.round_row_for_user_message(
+                    account_id, user_message_id
+                )
+        if row is None:
             return None
         citations = self._repository.citation_rows(
             account_id, str(row["round_id"])
         )
-        return self._project_round(row, citations)
+        return self._project_round(row, citations, message_id=message_id)
 
     def citation_detail(
         self,
@@ -295,7 +447,18 @@ class LayeredRetrievalService:
             raise RetrievalError(
                 "citation_not_found", "引用不存在或没有访问权限。"
             )
-        if str(row["message_id"]) != message_id or str(
+        same_message = str(row["message_id"]) == message_id
+        request_user_message_id = self._repository.generation_user_message_id(
+            account_id, message_id
+        )
+        round_user_message_id = self._repository.round_user_message_id(
+            account_id, str(row["round_id"])
+        )
+        same_retry_turn = (
+            request_user_message_id is not None
+            and request_user_message_id == round_user_message_id
+        )
+        if (not same_message and not same_retry_turn) or str(
             row["conversation_id"]
         ) != conversation_id:
             raise RetrievalError(
@@ -333,6 +496,7 @@ class LayeredRetrievalService:
         attachment_ids: list[str],
         project_id: str | None,
         use_knowledge_base: bool,
+        query: str = "",
     ) -> dict[RetrievalSourceLayer, dict[str, Any]]:
         """解析三层作用域：每层启用状态、已就绪文档与中文说明。"""
         layers: dict[RetrievalSourceLayer, dict[str, Any]] = {
@@ -359,6 +523,7 @@ class LayeredRetrievalService:
             },
         }
         # 聊天附件和学习项目文件只保留历史读模型，不能进入新检索轮次。
+        # Issue 12 明确不恢复附件上传或自动把历史附件加入知识库。
         layers[RetrievalSourceLayer.ATTACHMENT]["note"] = "聊天附件来源已退役。"
         layers[RetrievalSourceLayer.PROJECT]["note"] = "学习项目文件来源已退役。"
         if use_knowledge_base:
@@ -366,9 +531,25 @@ class LayeredRetrievalService:
                 status=RetrievalLayerStatus.NO_MATERIAL,
                 note="知识库暂无已就绪材料。",
             )
+            ready_document_ids = self._ready_documents(account_id, source="knowledge_base")
+            if not ready_document_ids:
+                status, note = self._unready_status(
+                    account_id,
+                    source="knowledge_base",
+                    fallback="知识库暂无已就绪材料。",
+                )
+                layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
+                    status=status, note=note
+                )
+            candidate_ids, candidate_files = self._knowledge_base_candidates(
+                account_id, ready_document_ids, query
+            )
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE][
                 "ready_document_ids"
-            ] = self._ready_documents(account_id, source="knowledge_base")
+            ] = candidate_ids
+            layers[RetrievalSourceLayer.KNOWLEDGE_BASE][
+                "candidate_files"
+            ] = candidate_files
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE]["stale"] = self._has_stale_documents(
                 account_id, source="knowledge_base"
             )
@@ -380,6 +561,36 @@ class LayeredRetrievalService:
                 if not layers[layer]["stale"]:
                     layers[layer]["note"] = None
         return layers
+
+    def _knowledge_base_candidates(
+        self, account_id: str, document_ids: list[str], query: str
+    ) -> tuple[list[str], list[dict[str, str]]]:
+        """按文件元数据选出有界候选，再交给片段检索。"""
+        metadata = self._repository.document_metadata(
+            account_id, document_ids, source="knowledge_base"
+        )
+        if len(metadata) <= KNOWLEDGE_BASE_CANDIDATE_LIMIT:
+            return [item["document_id"] for item in metadata], metadata
+
+        normalized = query.casefold()
+        terms = _filename_terms(query)
+        scored: list[tuple[int, int, dict[str, str]]] = []
+        for position, item in enumerate(metadata):
+            filename = item["filename"].casefold()
+            score = int(normalized and normalized in filename)
+            score += sum(1 for term in terms if term in filename)
+            scored.append((score, -position, item))
+        scored.sort(reverse=True)
+        matched = [item for item in scored if item[0] > 0]
+        selected_pool = matched or scored
+        selected = [
+            item for _, _, item in scored[:KNOWLEDGE_BASE_CANDIDATE_LIMIT]
+        ]
+        if matched:
+            selected = [
+                item for _, _, item in selected_pool[:KNOWLEDGE_BASE_CANDIDATE_LIMIT]
+            ]
+        return [item["document_id"] for item in selected], selected
 
     def _ready_documents(
         self,
@@ -521,18 +732,68 @@ class LayeredRetrievalService:
                     layer=layer,
                     status=status,
                     candidates=int(entry["candidates"]),
+                    candidate_files=[
+                        RetrievalCandidateFile(**item)
+                        for item in entry.get("candidate_files", [])
+                    ],
                     note=note,
                 )
             )
         return results
 
+    @staticmethod
+    def _project_decision(row: sqlite3.Row) -> RetrievalDecisionProjection:
+        """把数据库快照投影为稳定合同，不重新计算规则。"""
+        return RetrievalDecisionProjection(
+            decision_id=str(row["decision_id"]),
+            assistant_message_id=str(row["assistant_message_id"]),
+            user_message_id=(
+                str(row["user_message_id"])
+                if row["user_message_id"] is not None
+                else None
+            ),
+            conversation_id=str(row["conversation_id"]),
+            action=RetrievalDecisionAction(str(row["action"])),
+            reason=RetrievalDecisionReason(str(row["reason"])),
+            rules_version=str(row["rules_version"]),
+            capability_route=str(row["capability_route"]),
+            mode=str(row["mode"]),
+            query_fingerprint=str(row["query_fingerprint"]),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+        )
+
+    def _unready_status(
+        self,
+        account_id: str,
+        *,
+        source: str,
+        object_ids: list[str] | None = None,
+        project_id: str | None = None,
+        fallback: str,
+    ) -> tuple[RetrievalLayerStatus, str]:
+        statuses = self._repository.document_statuses(
+            account_id,
+            source=source,
+            object_ids=object_ids,
+            project_id=project_id,
+        )
+        if statuses & {"queued", "parsing", "processing"}:
+            return RetrievalLayerStatus.INDEX_PROCESSING, "材料正在处理或建立索引。"
+        if "error" in statuses:
+            return RetrievalLayerStatus.INDEX_CORRUPT, "材料索引损坏或处理失败，请重试。"
+        return RetrievalLayerStatus.NO_MATERIAL, fallback
+
     def _project_round(
-        self, row: sqlite3.Row, citations: list[sqlite3.Row]
+        self,
+        row: sqlite3.Row,
+        citations: list[sqlite3.Row],
+        *,
+        message_id: str | None = None,
     ) -> RetrievalRoundProjection:
         created_at = datetime.fromisoformat(str(row["created_at"]))
         return RetrievalRoundProjection(
             round_id=str(row["round_id"]),
-            message_id=str(row["message_id"]),
+            message_id=message_id or str(row["message_id"]),
             conversation_id=str(row["conversation_id"]),
             use_knowledge_base=bool(row["use_knowledge_base"]),
             index_version_id=(
@@ -671,6 +932,20 @@ def _merge_document_ids(*groups: list[str]) -> list[str]:
                 seen.add(document_id)
                 merged.append(document_id)
     return merged
+
+
+def _filename_terms(query: str) -> list[str]:
+    """提取文件名筛选用的确定性词项，不保存或记录原始请求。"""
+    terms = [token.casefold() for token in re.findall(r"[A-Za-z0-9_]+", query)]
+    for run in re.findall(r"[\u4e00-\u9fff]{2,}", query):
+        normalized = run.casefold()
+        terms.append(normalized)
+        terms.extend(
+            normalized[index : index + size]
+            for size in (2, 3, 4)
+            for index in range(max(0, len(normalized) - size + 1))
+        )
+    return list(dict.fromkeys(term for term in terms if term))
 
 
 def _loads_layers(value: str) -> list[dict[str, Any]]:
