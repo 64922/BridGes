@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -594,7 +594,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +656,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -1451,7 +1451,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1561,7 +1561,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1670,7 +1670,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1946,7 +1946,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -2144,7 +2144,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -2651,7 +2651,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -3420,7 +3420,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -3591,7 +3591,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -3957,7 +3957,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -4617,7 +4617,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -4889,7 +4889,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -5118,7 +5118,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -5621,7 +5621,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -8128,7 +8128,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8352,7 +8352,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8501,7 +8501,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8819,7 +8819,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8989,7 +8989,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9138,7 +9138,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9361,7 +9361,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -9592,7 +9592,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9682,7 +9682,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9781,7 +9781,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9871,7 +9871,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10550,7 +10550,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -10792,7 +10792,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10871,7 +10871,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11062,7 +11062,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11334,7 +11334,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11512,7 +11512,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11692,7 +11692,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11880,7 +11880,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11978,7 +11978,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12058,7 +12058,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -12279,7 +12279,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -12509,7 +12509,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13139,7 +13139,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13228,7 +13228,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13317,7 +13317,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13406,7 +13406,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13495,7 +13495,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13584,7 +13584,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13673,7 +13673,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13944,7 +13944,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14166,7 +14166,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14236,7 +14236,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14335,7 +14335,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14443,7 +14443,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14639,7 +14639,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14756,7 +14756,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14908,7 +14908,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14999,7 +14999,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15107,7 +15107,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15205,7 +15205,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15489,7 +15489,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15578,7 +15578,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -15729,7 +15729,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -16040,7 +16040,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16298,7 +16298,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16378,7 +16378,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16467,7 +16467,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16547,7 +16547,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -17198,7 +17198,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17445,7 +17445,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17543,7 +17543,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17632,7 +17632,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17721,7 +17721,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17905,7 +17905,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17985,7 +17985,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18074,7 +18074,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18154,7 +18154,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18322,7 +18322,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18411,7 +18411,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18562,7 +18562,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18632,7 +18632,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18799,7 +18799,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18858,7 +18858,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19300,7 +19300,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19487,7 +19487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19902,7 +19902,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -20118,7 +20118,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -20348,7 +20348,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -20574,7 +20574,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -21952,7 +21952,6 @@
           "learning"
         ],
         "summary": "Schedule Reviews",
-        "description": "Compute and persist review tasks for a mission.",
         "operationId": "schedule_reviews_learning_missions__mission_id__review_schedule_post",
         "parameters": [
           {
@@ -21982,25 +21981,15 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewSchedule"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -22019,7 +22008,6 @@
           "learning"
         ],
         "summary": "Get Review Schedule",
-        "description": "Get the latest review schedule for a mission.",
         "operationId": "get_review_schedule_learning_missions__mission_id__review_schedule_get",
         "parameters": [
           {
@@ -22049,25 +22037,15 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewSchedule"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -22088,7 +22066,6 @@
           "learning"
         ],
         "summary": "List Pending Review Tasks",
-        "description": "List pending review tasks for a mission, interleaved by concept.",
         "operationId": "list_pending_review_tasks_learning_missions__mission_id__review_tasks_get",
         "parameters": [
           {
@@ -22118,29 +22095,15 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReviewTask"
-                  },
-                  "title": "Response List Pending Review Tasks Learning Missions  Mission Id  Review Tasks Get"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -22161,7 +22124,6 @@
           "learning"
         ],
         "summary": "Get Review Task",
-        "description": "Get a review task by ID.",
         "operationId": "get_review_task_learning_review_tasks__task_id__get",
         "parameters": [
           {
@@ -22191,25 +22153,15 @@
           }
         ],
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewTask"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -22230,7 +22182,6 @@
           "learning"
         ],
         "summary": "Postpone Review Task",
-        "description": "Postpone a review task to a new due date.",
         "operationId": "postpone_review_task_learning_review_tasks__task_id__postpone_post",
         "parameters": [
           {
@@ -22259,46 +22210,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewTaskPostponeRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewTask"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Bad Request"
           },
           "422": {
             "description": "Validation Error",
@@ -22319,7 +22240,6 @@
           "learning"
         ],
         "summary": "Adjust Review Task",
-        "description": "Adjust a review task's due date or interval.",
         "operationId": "adjust_review_task_learning_review_tasks__task_id__adjust_post",
         "parameters": [
           {
@@ -22348,46 +22268,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewTaskAdjustRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewTask"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Bad Request"
           },
           "422": {
             "description": "Validation Error",
@@ -22408,7 +22298,6 @@
           "learning"
         ],
         "summary": "Cancel Review Task",
-        "description": "Cancel a review task and, if materialized, its workflow run.",
         "operationId": "cancel_review_task_learning_review_tasks__task_id__cancel_post",
         "parameters": [
           {
@@ -22437,46 +22326,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewTaskCancelRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReviewTask"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Bad Request"
           },
           "422": {
             "description": "Validation Error",
@@ -22497,7 +22356,6 @@
           "learning"
         ],
         "summary": "Complete Review Task",
-        "description": "Complete a review task and record the result as new learning evidence.",
         "operationId": "complete_review_task_learning_review_tasks__task_id__complete_post",
         "parameters": [
           {
@@ -22526,46 +22384,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReviewTaskCompleteRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LearningRecord"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Bad Request"
           },
           "422": {
             "description": "Validation Error",
@@ -22586,7 +22414,6 @@
           "learning"
         ],
         "summary": "Submit Review Task As Work Order",
-        "description": "Materialize a review task as a WorkOrder on the task stage.",
         "operationId": "submit_review_task_as_work_order_learning_review_tasks__task_id__work_order_post",
         "parameters": [
           {
@@ -22616,35 +22443,15 @@
           }
         ],
         "responses": {
-          "201": {
-            "description": "Successful Response",
+          "410": {
+            "description": "学习复习调度已退役。",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RunProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningError"
-                }
-              }
-            },
-            "description": "Bad Request"
           },
           "422": {
             "description": "Validation Error",
@@ -22733,7 +22540,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -23705,7 +23512,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -24438,7 +24245,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -24563,10 +24370,9 @@
     "/reminders/smtp": {
       "get": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Get Smtp Settings",
-        "description": "返回当前账户 SMTP 配置与验证状态（不含授权码正文）。",
         "operationId": "get_smtp_settings_reminders_smtp_get",
         "parameters": [
           {
@@ -24587,35 +24393,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmtpSettingsProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24631,10 +24417,9 @@
       },
       "put": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Save Smtp Code",
-        "description": "保存或替换当前账户 QQ 邮箱授权码并触发自发自收验证。",
         "operationId": "save_smtp_code_reminders_smtp_put",
         "parameters": [
           {
@@ -24654,66 +24439,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SmtpCodeSaveRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmtpSettingsProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24729,10 +24464,9 @@
       },
       "delete": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Delete Smtp Code",
-        "description": "删除当前账户授权码并复位验证状态（暂停依赖它的启用提醒）。",
         "operationId": "delete_smtp_code_reminders_smtp_delete",
         "parameters": [
           {
@@ -24753,45 +24487,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmtpSettingsProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24809,10 +24513,9 @@
     "/reminders/smtp/verify": {
       "post": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Verify Smtp",
-        "description": "用已保存的授权码重新执行自发自收验证。",
         "operationId": "verify_smtp_reminders_smtp_verify_post",
         "parameters": [
           {
@@ -24833,55 +24536,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/SmtpSettingsProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24899,10 +24562,9 @@
     "/reminders/settings": {
       "get": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Get Reminder Settings",
-        "description": "返回账户提醒设置（时区）。",
         "operationId": "get_reminder_settings_reminders_settings_get",
         "parameters": [
           {
@@ -24923,35 +24585,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderSettingsProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -24967,10 +24609,9 @@
       },
       "put": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Update Reminder Settings",
-        "description": "更新账户提醒时区。",
         "operationId": "update_reminder_settings_reminders_settings_put",
         "parameters": [
           {
@@ -24990,46 +24631,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReminderSettingsUpdateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderSettingsProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
           },
           "422": {
             "description": "Validation Error",
@@ -25047,10 +24658,9 @@
     "/reminders/parse": {
       "post": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Parse Reminder",
-        "description": "把自然语言解析为带时区结构化日程与邮件预览（不持久化）。",
         "operationId": "parse_reminder_reminders_parse_post",
         "parameters": [
           {
@@ -25070,56 +24680,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReminderParseRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ParsedReminderPreview"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -25137,10 +24707,9 @@
     "/reminders": {
       "post": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Create Reminder",
-        "description": "创建提醒（要求已验证 SMTP；预览内容经确定性复核后冻结）。",
         "operationId": "create_reminder_reminders_post",
         "parameters": [
           {
@@ -25160,86 +24729,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReminderCreateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -25255,10 +24754,9 @@
       },
       "get": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "List Reminders",
-        "description": "返回当前账户的全部提醒。",
         "operationId": "list_reminders_reminders_get",
         "parameters": [
           {
@@ -25279,29 +24777,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReminderProjection"
-                  },
-                  "title": "Response List Reminders Reminders Get"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
           },
           "422": {
             "description": "Validation Error",
@@ -25319,10 +24803,9 @@
     "/reminders/{reminder_id}": {
       "get": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Get Reminder",
-        "description": "返回单条提醒（跨账户 404）。",
         "operationId": "get_reminder_reminders__reminder_id__get",
         "parameters": [
           {
@@ -25352,35 +24835,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -25396,10 +24859,9 @@
       },
       "put": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Update Reminder",
-        "description": "编辑提醒（重置日程与冻结快照，保留投递记录）。",
         "operationId": "update_reminder_reminders__reminder_id__put",
         "parameters": [
           {
@@ -25428,66 +24890,16 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReminderUpdateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -25503,10 +24915,9 @@
       },
       "delete": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Cancel Reminder",
-        "description": "取消提醒（投递记录保留）。",
         "operationId": "cancel_reminder_reminders__reminder_id__delete",
         "parameters": [
           {
@@ -25536,45 +24947,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -25592,10 +24973,9 @@
     "/reminders/{reminder_id}/pause": {
       "post": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Pause Reminder",
-        "description": "暂停提醒。",
         "operationId": "pause_reminder_reminders__reminder_id__pause_post",
         "parameters": [
           {
@@ -25625,45 +25005,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -25681,10 +25031,9 @@
     "/reminders/{reminder_id}/resume": {
       "post": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Resume Reminder",
-        "description": "恢复已暂停的提醒（要求 SMTP 已验证）。",
         "operationId": "resume_reminder_reminders__reminder_id__resume_post",
         "parameters": [
           {
@@ -25714,45 +25063,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "422": {
             "description": "Validation Error",
@@ -25770,10 +25089,9 @@
     "/reminders/{reminder_id}/send-now": {
       "post": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "Send Reminder Now",
-        "description": "手动补发：立即发送当前提醒内容（不改变既有日程）。",
         "operationId": "send_reminder_now_reminders__reminder_id__send_now_post",
         "parameters": [
           {
@@ -25803,75 +25121,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ReminderDeliveryProjection"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Request"
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Conflict"
-          },
-          "502": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Bad Gateway"
-          },
-          "503": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Service Unavailable"
           },
           "422": {
             "description": "Validation Error",
@@ -25889,10 +25147,9 @@
     "/reminders/{reminder_id}/deliveries": {
       "get": {
         "tags": [
-          "reminders"
+          "reminders-retired"
         ],
         "summary": "List Reminder Deliveries",
-        "description": "返回一条提醒的投递记录（区分发送/失败/跳过/补发/手动重试）。",
         "operationId": "list_reminder_deliveries_reminders__reminder_id__deliveries_get",
         "parameters": [
           {
@@ -25922,39 +25179,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ReminderDeliveryProjection"
-                  },
-                  "title": "Response List Reminder Deliveries Reminders  Reminder Id  Deliveries Get"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AuthError"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "description": "Validation Error",
@@ -26104,7 +25337,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -26204,7 +25437,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "content": {
@@ -26214,7 +25447,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -26590,7 +25823,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "content": {
@@ -26600,7 +25833,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -26750,7 +25983,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -26850,7 +26083,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "content": {
@@ -26860,7 +26093,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -27147,7 +26380,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -27355,7 +26588,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "502": {
             "content": {
@@ -28223,7 +27456,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -28323,7 +27556,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "502": {
             "content": {
@@ -46091,50 +45324,6 @@
         "title": "PaperAssistElement",
         "description": "A structural element for the paper-assist genre contract (T027).\n\nPaper-assist elements make the system's assistance scope visible: it may\nsuggest structure, language, citation checks and argument improvements, but\nmust not fabricate data, experiments or author decisions."
       },
-      "ParsedReminderPreview": {
-        "properties": {
-          "raw_text": {
-            "type": "string",
-            "title": "Raw Text",
-            "description": "用户输入的自然语言原文（追溯用）。"
-          },
-          "schedule": {
-            "$ref": "#/components/schemas/ReminderSchedule",
-            "description": "带时区的结构化日程。"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject",
-            "description": "提醒主题（邮件主题）。"
-          },
-          "body_preview": {
-            "type": "string",
-            "title": "Body Preview",
-            "description": "确认后将要投递的邮件正文预览。"
-          },
-          "profile_usage": {
-            "$ref": "#/components/schemas/ReminderProfileUsage",
-            "description": "画像适配披露。"
-          },
-          "parsed_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Parsed At",
-            "description": "解析完成时间（UTC）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "raw_text",
-          "schedule",
-          "subject",
-          "body_preview",
-          "profile_usage",
-          "parsed_at"
-        ],
-        "title": "ParsedReminderPreview",
-        "description": "自然语言解析结果：结构化日程 + 简练邮件预览（未持久化）。\n\n页面展示时区、首次执行时间、重复规则、主题与邮件正文预览，用户\n确认后才调用创建接口持久化；预览内容与创建内容由同一确定性解析\n器与适配函数产生，保证所见即所存。"
-      },
       "PatchAction": {
         "type": "string",
         "enum": [
@@ -49269,524 +48458,6 @@
         "title": "ReleaseGateResult",
         "description": "Result of running the expression release gate over a draft."
       },
-      "ReminderCreateRequest": {
-        "properties": {
-          "raw_text": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Raw Text",
-            "description": "用户输入的自然语言原文。"
-          },
-          "schedule": {
-            "$ref": "#/components/schemas/ReminderSchedule",
-            "description": "确认后的结构化日程。"
-          },
-          "subject": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Subject",
-            "description": "确认后的提醒主题。"
-          },
-          "use_profile": {
-            "type": "boolean",
-            "title": "Use Profile",
-            "description": "是否启用确认过的画像措辞适配。",
-            "default": false
-          },
-          "profile_slice_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profile Slice Id",
-            "description": "预览返回的画像切片标识（use_profile 时必填）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "raw_text",
-          "schedule",
-          "subject"
-        ],
-        "title": "ReminderCreateRequest",
-        "description": "用户确认后的提醒创建请求（预览内容回传，服务端复核）。\n\n``schedule``/``subject``/``use_profile`` 必须与\n:meth:`parse` 返回的预览一致（服务端用同一确定性解析器复核\nraw_text）；``profile_slice_id`` 来自预览的画像切片标识，服务端\n校验归属后冻结。"
-      },
-      "ReminderDeliveryKind": {
-        "type": "string",
-        "enum": [
-          "scheduled",
-          "catch_up",
-          "manual_retry"
-        ],
-        "title": "ReminderDeliveryKind",
-        "description": "投递来源语义。\n\n- ``scheduled``：按计划正常投递；\n- ``catch_up``：恢复运行后的 24 小时有限补发（delayed=True）；\n- ``manual_retry``：用户手动补发。"
-      },
-      "ReminderDeliveryOutcome": {
-        "type": "string",
-        "enum": [
-          "sent",
-          "failed",
-          "skipped"
-        ],
-        "title": "ReminderDeliveryOutcome",
-        "description": "投递结果语义。\n\n- ``sent``：邮件已提交 SMTP 服务器；\n- ``failed``：投递失败，error_code/error_message 说明原因；\n- ``skipped``：跳过（24 小时补发窗口已过、已取消/已完成、无授权码）。"
-      },
-      "ReminderDeliveryProjection": {
-        "properties": {
-          "delivery_id": {
-            "type": "string",
-            "title": "Delivery Id",
-            "description": "投递记录标识。"
-          },
-          "reminder_id": {
-            "type": "string",
-            "title": "Reminder Id",
-            "description": "所属提醒标识。"
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ReminderDeliveryKind",
-            "description": "投递来源语义。"
-          },
-          "outcome": {
-            "$ref": "#/components/schemas/ReminderDeliveryOutcome",
-            "description": "投递结果语义。"
-          },
-          "scheduled_for": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Scheduled For",
-            "description": "本次计划执行时间（UTC）。"
-          },
-          "attempted_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attempted At",
-            "description": "实际尝试时间（UTC）。"
-          },
-          "delayed": {
-            "type": "boolean",
-            "title": "Delayed",
-            "description": "是否补发（延迟）标记。",
-            "default": false
-          },
-          "error_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Code",
-            "description": "稳定错误码。"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message",
-            "description": "可操作的中文错误说明。"
-          },
-          "message_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message Id",
-            "description": "SMTP 服务器接受的 Message-ID（成功时存在）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "delivery_id",
-          "reminder_id",
-          "kind",
-          "outcome",
-          "scheduled_for"
-        ],
-        "title": "ReminderDeliveryProjection",
-        "description": "一条投递记录；区分发送/失败/跳过/补发/手动重试。"
-      },
-      "ReminderParseRequest": {
-        "properties": {
-          "raw_text": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Raw Text",
-            "description": "自然语言提醒描述。"
-          },
-          "timezone": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Timezone",
-            "description": "账户时区标识（IANA）。"
-          },
-          "use_profile": {
-            "type": "boolean",
-            "title": "Use Profile",
-            "description": "是否启用画像措辞适配（预览会披露使用类别）。",
-            "default": false
-          }
-        },
-        "type": "object",
-        "required": [
-          "raw_text",
-          "timezone"
-        ],
-        "title": "ReminderParseRequest",
-        "description": "自然语言解析请求：只带原文、账户时区与画像开关。"
-      },
-      "ReminderProfileUsage": {
-        "properties": {
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled",
-            "description": "本次提醒是否启用画像适配。"
-          },
-          "categories": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Categories",
-            "description": "本次使用的画像类别中文标签。"
-          },
-          "item_count": {
-            "type": "integer",
-            "title": "Item Count",
-            "description": "实际使用的切片条数。",
-            "default": 0
-          },
-          "slice_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Slice Id",
-            "description": "冻结的画像切片标识（确认后持久化引用）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "enabled"
-        ],
-        "title": "ReminderProfileUsage",
-        "description": "本次提醒的画像适配披露：只含类别中文标签，不含记录正文。\n\n``categories`` 是本次使用的画像类别（如「表达习惯」「基本偏好」），\n``item_count`` 是实际注入措辞的切片条数；用户可在确认前关闭画像\n适配（use_profile=false），关闭后正文不再包含任何个性化措辞。"
-      },
-      "ReminderProjection": {
-        "properties": {
-          "reminder_id": {
-            "type": "string",
-            "title": "Reminder Id",
-            "description": "提醒标识。"
-          },
-          "qq_email": {
-            "type": "string",
-            "title": "Qq Email",
-            "description": "固定收件人/发件人（当前账户 QQ 邮箱）。"
-          },
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "账户时区标识。"
-          },
-          "raw_text": {
-            "type": "string",
-            "title": "Raw Text",
-            "description": "创建时的自然语言原文。"
-          },
-          "subject": {
-            "type": "string",
-            "title": "Subject",
-            "description": "提醒主题。"
-          },
-          "body": {
-            "type": "string",
-            "title": "Body",
-            "description": "冻结的邮件正文（确认时的快照）。"
-          },
-          "schedule": {
-            "$ref": "#/components/schemas/ReminderSchedule",
-            "description": "带时区的结构化日程。"
-          },
-          "status": {
-            "$ref": "#/components/schemas/ReminderStatus",
-            "description": "生命周期状态。"
-          },
-          "pause_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pause Reason",
-            "description": "暂停原因（暂停时存在，含授权失效原因）。"
-          },
-          "profile_usage": {
-            "$ref": "#/components/schemas/ReminderProfileUsage",
-            "description": "画像适配披露（冻结于确认时）。"
-          },
-          "next_run_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Run At",
-            "description": "下次计划执行时间（UTC）；一次性已完成时为 None。"
-          },
-          "next_retry_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Retry At",
-            "description": "临时失败后的下次退避重试时间（UTC）。"
-          },
-          "retry_count": {
-            "type": "integer",
-            "title": "Retry Count",
-            "description": "当前投递尝试的失败次数。",
-            "default": 0
-          },
-          "last_delivery": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ReminderDeliveryProjection"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "最近一次投递记录快照。"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "创建时间（UTC）。"
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "最近更新时间（UTC）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "reminder_id",
-          "qq_email",
-          "timezone",
-          "raw_text",
-          "subject",
-          "body",
-          "schedule",
-          "status",
-          "profile_usage",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ReminderProjection",
-        "description": "一条提醒的公开投影；不含授权码与画像记录正文。"
-      },
-      "ReminderRepeatRule": {
-        "type": "string",
-        "enum": [
-          "once",
-          "daily",
-          "weekdays",
-          "weekly_days",
-          "monthly_day"
-        ],
-        "title": "ReminderRepeatRule",
-        "description": "重复规则；参数见 :class:`ReminderSchedule` 的 repeat 载荷。\n\n- ``once``：一次性提醒，发送后完成；\n- ``daily``：每天同一本地时间；\n- ``weekdays``：工作日（周一至周五）同一本地时间；\n- ``weekly_days``：每周指定星期（repeat_weekdays 集合）；\n- ``monthly_day``：每月指定日（repeat_month_day，超出当月天数\n  自动收敛到月末）。"
-      },
-      "ReminderSchedule": {
-        "properties": {
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "IANA 时区标识（账户时区规则）。"
-          },
-          "first_run_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "First Run At",
-            "description": "首次执行时间（UTC）。"
-          },
-          "first_run_local": {
-            "type": "string",
-            "title": "First Run Local",
-            "description": "账户时区下的首次执行时间可读表示。"
-          },
-          "repeat": {
-            "$ref": "#/components/schemas/ReminderRepeatRule",
-            "description": "重复规则。"
-          },
-          "repeat_weekdays": {
-            "items": {
-              "type": "integer"
-            },
-            "type": "array",
-            "title": "Repeat Weekdays",
-            "description": "weekly_days 时的星期集合（1=周一 … 7=周日）。"
-          },
-          "repeat_month_day": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Repeat Month Day",
-            "description": "monthly_day 时的每月日期（1-31）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "timezone",
-          "first_run_at",
-          "first_run_local",
-          "repeat"
-        ],
-        "title": "ReminderSchedule",
-        "description": "带时区的结构化日程（解析产物与持久化快照共用）。\n\n``first_run_at`` 是 UTC 首次执行时间；``first_run_local`` 是同一\n时刻在账户时区下的可读表示，供页面展示与追溯。重复规则参数与\n规则联合使用，一次性提醒忽略规则参数。"
-      },
-      "ReminderSettingsProjection": {
-        "properties": {
-          "timezone": {
-            "type": "string",
-            "title": "Timezone",
-            "description": "账户时区标识（IANA）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "timezone"
-        ],
-        "title": "ReminderSettingsProjection",
-        "description": "账户提醒设置投影（当前只有时区）。"
-      },
-      "ReminderSettingsUpdateRequest": {
-        "properties": {
-          "timezone": {
-            "type": "string",
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Timezone",
-            "description": "IANA 时区标识，如 Asia/Shanghai。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "timezone"
-        ],
-        "title": "ReminderSettingsUpdateRequest",
-        "description": "更新账户提醒设置（时区）。"
-      },
-      "ReminderStatus": {
-        "type": "string",
-        "enum": [
-          "enabled",
-          "paused",
-          "completed",
-          "cancelled"
-        ],
-        "title": "ReminderStatus",
-        "description": "提醒生命周期状态。\n\n- ``enabled``：已启用，调度器按 next_run_at 投递；\n- ``paused``：已暂停（用户暂停或授权失效自动暂停），pause_reason\n  说明原因；恢复后从暂停时保留的 next_run_at 继续；\n- ``completed``：一次性提醒已成功投递（自然完成）；\n- ``cancelled``：用户已取消；不再投递，投递记录保留。"
-      },
-      "ReminderUpdateRequest": {
-        "properties": {
-          "raw_text": {
-            "type": "string",
-            "maxLength": 500,
-            "minLength": 1,
-            "title": "Raw Text",
-            "description": "编辑后的自然语言原文（追溯）。"
-          },
-          "schedule": {
-            "$ref": "#/components/schemas/ReminderSchedule",
-            "description": "编辑后的结构化日程。"
-          },
-          "subject": {
-            "type": "string",
-            "maxLength": 100,
-            "minLength": 1,
-            "title": "Subject",
-            "description": "编辑后的提醒主题。"
-          },
-          "use_profile": {
-            "type": "boolean",
-            "title": "Use Profile",
-            "description": "编辑后是否启用画像措辞适配。",
-            "default": false
-          },
-          "profile_slice_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profile Slice Id",
-            "description": "编辑后使用的画像切片标识。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "raw_text",
-          "schedule",
-          "subject"
-        ],
-        "title": "ReminderUpdateRequest",
-        "description": "编辑提醒：允许修改日程、主题与画像开关。\n\n编辑后从新的确认载荷重新冻结快照（同创建语义）；投递记录保留\n历史，不被编辑覆盖。"
-      },
       "RemovedPluginSelection": {
         "properties": {
           "kind": {
@@ -49993,6 +48664,45 @@
         ],
         "title": "RestorePreview",
         "description": "恢复预检结果：备份内容摘要与目标状态检查（供确认与失败原因）。"
+      },
+      "RetiredCapabilityError": {
+        "properties": {
+          "error": {
+            "type": "string",
+            "title": "Error",
+            "description": "稳定退役错误码。"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "中文退役说明。"
+          },
+          "replacement_path": {
+            "type": "string",
+            "title": "Replacement Path",
+            "description": "继续使用产品的替代路径。"
+          },
+          "endpoint": {
+            "type": "string",
+            "title": "Endpoint",
+            "description": "稳定兼容端点标识。"
+          },
+          "service_version": {
+            "type": "string",
+            "title": "Service Version",
+            "description": "产生该响应的服务版本。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "error",
+          "message",
+          "replacement_path",
+          "endpoint",
+          "service_version"
+        ],
+        "title": "RetiredCapabilityError",
+        "description": "稳定的 410 响应体，不回显账户、路径参数或请求正文。"
       },
       "RetrievalCandidate": {
         "properties": {
@@ -50707,331 +49417,6 @@
         ],
         "title": "ReviewRole",
         "description": "三签职责分离中的签名角色。"
-      },
-      "ReviewSchedule": {
-        "properties": {
-          "schedule_id": {
-            "type": "string",
-            "title": "Schedule Id",
-            "description": "Stable schedule identifier."
-          },
-          "mission_id": {
-            "type": "string",
-            "title": "Mission Id",
-            "description": "Mission the schedule serves."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "task_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Task Ids",
-            "description": "Tasks in this schedule."
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Version",
-            "description": "Optimistic concurrency version.",
-            "default": 1
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Creation timestamp."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last update timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "schedule_id",
-          "mission_id",
-          "owner_account_id",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ReviewSchedule",
-        "description": "Collection of pending review tasks for a learning mission."
-      },
-      "ReviewTask": {
-        "properties": {
-          "task_id": {
-            "type": "string",
-            "title": "Task Id",
-            "description": "Stable task identifier."
-          },
-          "mission_id": {
-            "type": "string",
-            "title": "Mission Id",
-            "description": "Mission this task belongs to."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "concept_id": {
-            "type": "string",
-            "title": "Concept Id",
-            "description": "Concept being reviewed."
-          },
-          "task_type": {
-            "$ref": "#/components/schemas/ReviewTaskType",
-            "description": "Spaced repetition or interleaved practice."
-          },
-          "status": {
-            "$ref": "#/components/schemas/ReviewTaskStatus",
-            "default": "scheduled"
-          },
-          "due_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Due At",
-            "description": "When the task is due."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable justification referencing records, state, forgetting evidence and the learning mission."
-          },
-          "source_record_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Source Record Ids",
-            "description": "Learning records that justify this scheduling decision."
-          },
-          "knowledge_state_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Knowledge State Id",
-            "description": "Knowledge-state snapshot at scheduling time."
-          },
-          "interval_days": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Interval Days",
-            "description": "Scheduled interval in days.",
-            "default": 1
-          },
-          "postponed_to": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Postponed To",
-            "description": "New due date when the task is postponed."
-          },
-          "cancellation_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cancellation Reason",
-            "description": "Why the task was cancelled."
-          },
-          "run_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Run Id",
-            "description": "Optional workflow run id if materialized as a WorkOrder."
-          },
-          "version": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "Version",
-            "description": "Optimistic concurrency version.",
-            "default": 1
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Creation timestamp."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last update timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "task_id",
-          "mission_id",
-          "owner_account_id",
-          "concept_id",
-          "task_type",
-          "due_at",
-          "reason",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ReviewTask",
-        "description": "A single spaced-repetition or interleaved-practice task.\n\nThe task is justified by learning records, a knowledge state, and the\nlearning mission. It can be postponed, adjusted, cancelled, or completed.\nCompleting a task creates a new learning record rather than overwriting the\nold knowledge state."
-      },
-      "ReviewTaskAdjustRequest": {
-        "properties": {
-          "new_due_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Due At",
-            "description": "New due date if any."
-          },
-          "new_interval_days": {
-            "anyOf": [
-              {
-                "type": "integer",
-                "minimum": 1.0
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "New Interval Days",
-            "description": "New interval in days if any."
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Reason",
-            "description": "Why the task is being adjusted."
-          }
-        },
-        "type": "object",
-        "required": [
-          "reason"
-        ],
-        "title": "ReviewTaskAdjustRequest",
-        "description": "Request to adjust the due date or interval of a review task."
-      },
-      "ReviewTaskCancelRequest": {
-        "properties": {
-          "reason": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Reason",
-            "description": "Why the task is being cancelled."
-          }
-        },
-        "type": "object",
-        "required": [
-          "reason"
-        ],
-        "title": "ReviewTaskCancelRequest",
-        "description": "Request to cancel a review task."
-      },
-      "ReviewTaskCompleteRequest": {
-        "properties": {
-          "response_text": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Response Text",
-            "description": "User's response during the review."
-          },
-          "evaluated_state": {
-            "$ref": "#/components/schemas/AnswerEvaluatedState",
-            "description": "Evaluated result."
-          },
-          "record_reason": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Record Reason",
-            "description": "Why this result counts as evidence."
-          }
-        },
-        "type": "object",
-        "required": [
-          "response_text",
-          "evaluated_state",
-          "record_reason"
-        ],
-        "title": "ReviewTaskCompleteRequest",
-        "description": "Request to complete a review task and record the result as evidence."
-      },
-      "ReviewTaskPostponeRequest": {
-        "properties": {
-          "new_due_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "New Due At",
-            "description": "New due date."
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 1,
-            "title": "Reason",
-            "description": "Why the task is being postponed."
-          }
-        },
-        "type": "object",
-        "required": [
-          "new_due_at",
-          "reason"
-        ],
-        "title": "ReviewTaskPostponeRequest",
-        "description": "Request to postpone a review task to a new due date."
-      },
-      "ReviewTaskStatus": {
-        "type": "string",
-        "enum": [
-          "scheduled",
-          "postponed",
-          "completed",
-          "cancelled"
-        ],
-        "title": "ReviewTaskStatus",
-        "description": "Lifecycle status of a scheduled review task."
-      },
-      "ReviewTaskType": {
-        "type": "string",
-        "enum": [
-          "spaced_repetition",
-          "interleaved_practice"
-        ],
-        "title": "ReviewTaskType",
-        "description": "Kind of review task: spaced repetition or interleaved practice."
       },
       "RevisionPatch": {
         "properties": {
@@ -53367,141 +51752,6 @@
         ],
         "title": "SliceStatus",
         "description": "Lifecycle status of a compiled memory slice bound to a run."
-      },
-      "SmtpAttemptState": {
-        "type": "string",
-        "enum": [
-          "smtp_connecting",
-          "mail_sent",
-          "waiting_receipt",
-          "verified",
-          "failed",
-          "superseded"
-        ],
-        "title": "SmtpAttemptState",
-        "description": "验证 attempt 的阶段状态机（Issue 10）。\n\n- ``smtp_connecting``：attempt 已创建，尚未完成 SMTP 发送；\n- ``mail_sent``：SMTP 已接受测试邮件，收件确认计时开始；\n- ``waiting_receipt``：正在有界退避轮询 IMAP 收件；\n- ``verified``：自发自收验证通过（终态，且账户 SMTP 终态已提交）；\n- ``failed``：验证失败（终态，error_code 说明原因）；\n- ``superseded``：已被新 attempt 取代或凭据已删除（终态，\n  迟到结果不得再提交账户 SMTP 状态）。\n\n只有当前 attempt（``reminder_settings.smtp_attempt_id`` 指向的）\n可以提交账户 SMTP 终态；旧 attempt 的迟到成功/失败一律失效。"
-      },
-      "SmtpCodeSaveRequest": {
-        "properties": {
-          "authorization_code": {
-            "type": "string",
-            "format": "password",
-            "title": "Authorization Code",
-            "description": "QQ 邮箱授权码（16 位字母数字组合），非 QQ 登录密码。",
-            "writeOnly": true
-          }
-        },
-        "type": "object",
-        "required": [
-          "authorization_code"
-        ],
-        "title": "SmtpCodeSaveRequest",
-        "description": "保存 QQ 邮箱授权码的请求；系统不接受 QQ 登录密码。"
-      },
-      "SmtpSettingsProjection": {
-        "properties": {
-          "status": {
-            "$ref": "#/components/schemas/SmtpStatus",
-            "description": "授权码保存与验证状态。"
-          },
-          "qq_email": {
-            "type": "string",
-            "title": "Qq Email",
-            "description": "当前账户注册的 QQ 邮箱（固定收发件人）。"
-          },
-          "verified_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verified At",
-            "description": "自发自收验证通过时间。"
-          },
-          "error_code": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Code",
-            "description": "稳定错误码。"
-          },
-          "error_message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error Message",
-            "description": "可操作的中文原因与重新验证路径。"
-          },
-          "attempt_state": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SmtpAttemptState"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "当前验证 attempt 的阶段（验证进行中时存在；终态为 None）。"
-          },
-          "attempt_deadline_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Attempt Deadline At",
-            "description": "收件确认截止时间（UTC）；等待收件时存在。"
-          },
-          "updated_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At",
-            "description": "最近一次配置或验证状态更新时间。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "status",
-          "qq_email"
-        ],
-        "title": "SmtpSettingsProjection",
-        "description": "账户 SMTP 配置投影；绝不包含授权码正文。\n\n``qq_email`` 是当前账户注册的 QQ 邮箱，系统只允许从该邮箱发往\n同一邮箱；页面展示此字段并禁止修改收件人。验证进行中时\n``attempt_state``/``attempt_deadline_at`` 提供细粒度进度与收件\n截止时间，页面据此持续轮询；attempt 终态后这两个字段为 None。"
-      },
-      "SmtpStatus": {
-        "type": "string",
-        "enum": [
-          "unconfigured",
-          "verifying",
-          "verified",
-          "failed"
-        ],
-        "title": "SmtpStatus",
-        "description": "账户 SMTP 授权码的验证状态。\n\n- ``unconfigured``：尚未保存授权码；\n- ``verifying``：授权码已保存，自发自收验证进行中（细粒度进度\n  见 ``SmtpSettingsProjection.attempt_state``）；\n- ``verified``：自发自收验证通过，可以启用邮件提醒；\n- ``failed``：验证失败或授权失效，error_code/error_message\n  说明原因并提供重新验证路径。"
       },
       "Source": {
         "properties": {

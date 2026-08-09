@@ -166,7 +166,7 @@ test.describe("Issue 38 — 浏览器缩放 100–200% 桌面路径", () => {
     await page.goto("/tasks");
     const checks: PageChecks = {
       controls: [page.getByTestId("main-content")],
-      targetControls: [page.getByRole("link", { name: "任务安排" })],
+      targetControls: [page.getByRole("heading", { name: "任务安排已退役" })],
     };
     await fullMatrix(page, checks);
   });

@@ -55,7 +55,6 @@ test.describe("Issue 12 — 固定顺序侧栏", () => {
       "新聊天",
       "本地知识库",
       "学习项目",
-      "任务安排",
       "插件",
       "用户画像",
       "最近对话",
@@ -182,13 +181,6 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
         emptyText: "当前账户还没有知识库材料",
       },
       { name: "学习项目", url: "/account/projects", heading: "学习项目" },
-      {
-        name: "任务安排",
-        url: "/tasks",
-        heading: "任务安排",
-        // Issue 33：任务安排已交付真实页面，空态为真实说明（未验证邮箱）
-        emptyText: "还没有提醒",
-      },
       {
         name: "插件",
         url: "/plugins",
@@ -350,7 +342,6 @@ test.describe("Issue 12 — 激活语义与键盘可达", () => {
       { role: "link", name: "新聊天", exact: true },
       { role: "link", name: "本地知识库" },
       { role: "link", name: "学习项目" },
-      { role: "link", name: "任务安排" },
       { role: "link", name: "插件" },
       { role: "link", name: "用户画像" },
       { role: "button", name: new RegExp(`账户菜单：${creds.username}`) },

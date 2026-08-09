@@ -88,26 +88,6 @@ const SECTIONS: ListSection[] = [
     ],
   },
   {
-    key: "tasks",
-    title: "任务安排",
-    icon: "tasks",
-    description: "本地提醒：到点后以简练内容发送到你的 QQ 邮箱。",
-    items: [
-      {
-        id: "t1",
-        title: "每周日晚复习本周学习记录",
-        subtitle: "每周日 20:00 · Asia/Shanghai",
-        badge: { status: "running", label: "已启用" },
-      },
-      {
-        id: "t2",
-        title: "论文开题报告初稿截止提醒",
-        subtitle: "2026-09-01 09:00 · 一次性",
-        badge: { status: "waiting", label: "待触发" },
-      },
-    ],
-  },
-  {
     key: "plugins",
     title: "插件",
     icon: "plugins",
@@ -156,6 +136,7 @@ const SECTIONS: ListSection[] = [
 export function ListTemplate() {
   const searchParams = useSearchParams();
   const sectionKey = searchParams.get("section") ?? "conversations";
+  const isRetiredTasks = sectionKey === "tasks";
   const section = SECTIONS.find((item) => item.key === sectionKey) ?? SECTIONS[0];
 
   const [state, setState] = useTemplateState("normal");
@@ -347,6 +328,32 @@ export function ListTemplate() {
       </ul>
     );
   };
+
+  if (isRetiredTasks) {
+    return (
+      <TemplateShell activeModule="tasks">
+        <div
+          style={{
+            width: "100%",
+            maxWidth: "var(--chat-column-width)",
+            margin: "0 auto",
+            padding: "var(--space-6)",
+          }}
+        >
+          <h1 style={{ fontSize: "var(--text-2xl)" }}>任务安排已退役</h1>
+          <p style={{ color: "var(--color-text-secondary)" }}>
+            学习任务、复习计划和邮件提醒已停止使用。
+          </p>
+          <p style={{ color: "var(--color-text-secondary)" }}>
+            请在学习模式聊天中继续，学习进度会保留在连续教学回合里。
+          </p>
+          <Link href="/" className="sc-button sc-button-primary">
+            返回聊天学习
+          </Link>
+        </div>
+      </TemplateShell>
+    );
+  }
 
   return (
     <TemplateShell activeModule={section.key}>

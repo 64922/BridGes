@@ -22,10 +22,10 @@ test.describe("Issue 07 — 注册页", () => {
     await expect(page.getByRole("link", { name: "直接登录" })).toBeVisible();
   });
 
-  test("注册页说明不发送验证码且邮件提醒需 SMTP 自发自收验证", async ({ page }) => {
+  test("注册页说明不发送验证码且 QQ 地址仅用于账户识别", async ({ page }) => {
     await page.goto("/register");
     await expect(page.getByText(/注册时不会发送验证码/)).toBeVisible();
-    await expect(page.getByText(/自发自收验证后，才能启用邮件提醒/)).toBeVisible();
+    await expect(page.getByText(/仅用于登录和账户识别/)).toBeVisible();
   });
 
   test("非法 QQ 邮箱与非法用户名给出字段级错误并移动焦点", async ({ page }) => {

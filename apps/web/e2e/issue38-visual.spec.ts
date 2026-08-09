@@ -34,7 +34,7 @@ function sidebarMask(page: Page): Locator[] {
 /** 任务安排页：SMTP 卡说明段落含当前账户 QQ 邮箱（每次注册不同，
  *  数字长度差异会改变段落换行从而偏移整个布局），遮罩该段落。 */
 function tasksMask(page: Page): Locator[] {
-  return [page.getByText(/收件人与发件人固定为你的 QQ 邮箱/)];
+  return [];
 }
 
 /**
@@ -109,7 +109,7 @@ test.describe("Issue 38 — 正式路由视觉回归", () => {
   test("任务安排页三视口", async ({ page }) => {
     const creds = uniqueCredentials("i38v-tasks");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await openStable(page, "/tasks", page.getByRole("heading", { name: "QQ 邮箱提醒设置" }));
+    await openStable(page, "/tasks", page.getByRole("heading", { name: "任务安排已退役" }));
     await expectScreenshots(page, "tasks", tasksMask(page));
   });
 

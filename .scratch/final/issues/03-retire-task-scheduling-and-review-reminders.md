@@ -1,6 +1,6 @@
 # 03 — 退役学习任务安排与复习提醒
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 
 ## What to build
@@ -56,3 +56,9 @@ Type: task
 
 - 已确认：学习进度保留在聊天教学状态中，不再维护独立的任务安排或提醒页面。
 - 已确认：失败时必须显式告知退役或取消失败，不伪造“已完成”“已发送”状态。
+
+## Answer
+
+- 已在 `codex-issue-03-retire-task-scheduling-review-reminders` 分支完成退役实现：旧学习任务、复习计划和提醒接口统一返回结构化 `410 Gone`，并记录稳定端点指标。
+- 启动、调度、恢复路径会幂等终止遗留提醒、清除专用 SMTP 凭据且不发送新提醒；前端入口和客户端合同已移除，旧深链显示退役说明并返回学习聊天入口。
+- 已补充接口、幂等清理、账户隔离、恢复一致性和前端退役测试；`COMPATIBILITY-GATE.md` 保持 `pending-runtime-evidence`，待真实发布流量观察后再关闭兼容窗口。
