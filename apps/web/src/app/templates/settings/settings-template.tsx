@@ -122,7 +122,7 @@ export function SettingsTemplate() {
             style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)", maxWidth: "24rem" }}
           >
             <FormField id="settings-username" label="用户名" value={username} onChange={setUsername} hint="可随时修改，大小写不敏感唯一。" required />
-            <FormField id="settings-qq" label="QQ 邮箱" type="email" value={qqEmail} onChange={setQqEmail} hint="用于登录与接收任务提醒。" required />
+            <FormField id="settings-qq" label="QQ 邮箱" type="email" value={qqEmail} onChange={setQqEmail} hint="用于登录和账户识别。" required />
             <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
               <Button type="submit" variant="primary" aria-label="保存个人资料">
                 保存

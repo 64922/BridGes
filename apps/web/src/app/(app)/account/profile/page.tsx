@@ -1,4 +1,4 @@
-import { ProfileCenter } from "@/components/account/profile/ProfileCenter";
+import { FourDimensionProfileCenter } from "@/components/account/profile/FourDimensionProfileCenter";
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
@@ -6,16 +6,15 @@ export const metadata = {
 };
 
 /**
- * 用户画像（Issue 25：数字分身画像中心与静态头像）。
+ * 用户画像（Issue 14：四维画像展开期用户页面）。
  *
- * 侧边栏「用户画像」进入的完整桌面页面：九类画像记录分区、每条记录的证据/
- * 时间/范围/敏感级别/状态、增改撤冻删与导出、版本历史抽屉、候选确认与静态
- * 头像管理。
+ * 默认页面只展示四类画像、内容和首次稳定记录时间，支持修改与撤回；头像由
+ * 个人资料页面负责，旧治理面在兼容期保留为后端只读能力。
  */
 export default function ProfileCenterPage() {
   return (
     <MainContent>
-      <ProfileCenter />
+      <FourDimensionProfileCenter />
     </MainContent>
   );
 }

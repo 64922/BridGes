@@ -88,26 +88,6 @@ const SECTIONS: ListSection[] = [
     ],
   },
   {
-    key: "tasks",
-    title: "任务安排",
-    icon: "tasks",
-    description: "本地提醒：到点后以简练内容发送到你的 QQ 邮箱。",
-    items: [
-      {
-        id: "t1",
-        title: "每周日晚复习本周学习记录",
-        subtitle: "每周日 20:00 · Asia/Shanghai",
-        badge: { status: "running", label: "已启用" },
-      },
-      {
-        id: "t2",
-        title: "论文开题报告初稿截止提醒",
-        subtitle: "2026-09-01 09:00 · 一次性",
-        badge: { status: "waiting", label: "待触发" },
-      },
-    ],
-  },
-  {
     key: "plugins",
     title: "插件",
     icon: "plugins",

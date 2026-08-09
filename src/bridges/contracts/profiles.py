@@ -34,6 +34,31 @@ class ProfileDimension(StrEnum):
     AUTHORIZATION_SCOPE = "authorization_scope"
 
 
+class FourDimension(StrEnum):
+    """扩展合同中的四个产品画像维度。
+
+    Expand/migrate 期间旧的 :class:`ProfileDimension` 仍可解码。新画像记录使用
+    独立枚举，避免旧治理维度成为新的写入目标。
+    """
+
+    ACADEMIC_STATUS = "academic_status"
+    KNOWLEDGE_INTEREST = "knowledge_interest"
+    HOBBY = "hobby"
+    STAGE_GOAL = "stage_goal"
+
+    @property
+    def label(self) -> str:
+        return FOUR_DIMENSION_LABELS[self]
+
+
+FOUR_DIMENSION_LABELS: dict[FourDimension, str] = {
+    FourDimension.ACADEMIC_STATUS: "学业情况",
+    FourDimension.KNOWLEDGE_INTEREST: "感兴趣的知识",
+    FourDimension.HOBBY: "兴趣爱好",
+    FourDimension.STAGE_GOAL: "阶段目标",
+}
+
+
 PROFILE_DIMENSION_LABELS: dict[ProfileDimension, str] = {
     ProfileDimension.BASIC_INFORMATION: "基本情况",
     ProfileDimension.STAGE_GOAL: "阶段目标",
@@ -157,6 +182,20 @@ class AssertionStatus(StrEnum):
     DELETED = "deleted"
 
 
+class FourDimensionRecordStatus(StrEnum):
+    """扩展四维画像记录的生命周期状态。"""
+
+    ACTIVE = "active"
+    WITHDRAWN = "withdrawn"
+
+
+class FourDimensionMigrationStatus(StrEnum):
+    """一次账户级确定性迁移尝试的结果。"""
+
+    COMPLETED = "completed"
+    RETRYABLE = "retryable"
+
+
 class SliceStatus(StrEnum):
     """Lifecycle status of a compiled memory slice bound to a run."""
 
@@ -175,7 +214,9 @@ class ProfileObservation(BaseModel):
         default=None,
         description="Project context when the observation belongs to a project.",
     )
-    source_type: ProfileSourceType = Field(description="How the observation originated.")
+    source_type: ProfileSourceType = Field(
+        description="How the observation originated."
+    )
     source_ref: str = Field(
         description="Reference to the source object (conversation, run, import, etc.)."
     )
@@ -183,7 +224,9 @@ class ProfileObservation(BaseModel):
         description="Specific span or event within the source (message id, turn, etc.)."
     )
     scene: str = Field(description="Scene or situation in which the signal occurred.")
-    purpose: str = Field(description="Declared purpose for which the observation was collected.")
+    purpose: str = Field(
+        description="Declared purpose for which the observation was collected."
+    )
     observed_content: str = Field(description="Literal or summarized observed content.")
     signal_kind: ProfileSignalKind = Field(description="Kind of signal.")
     extractor_and_version: str = Field(
@@ -205,7 +248,9 @@ class ProfileObservation(BaseModel):
         default="authz-1.0",
         description="Authorization policy version at collection time.",
     )
-    content_hash: str = Field(description="SHA-256 hash of observed_content and source metadata.")
+    content_hash: str = Field(
+        description="SHA-256 hash of observed_content and source metadata."
+    )
     status: ObservationStatus = Field(description="Lifecycle status.")
     created_at: datetime = Field(description="Creation timestamp.")
     updated_at: datetime = Field(description="Last update timestamp.")
@@ -215,16 +260,24 @@ class ProfileObservationCreateRequest(BaseModel):
     """Request to record a new profile observation."""
 
     owner_account_id: str = Field(description="Owning account identifier.")
-    project_id: str | None = Field(default=None, description="Optional project context.")
-    source_type: ProfileSourceType = Field(description="How the observation originated.")
+    project_id: str | None = Field(
+        default=None, description="Optional project context."
+    )
+    source_type: ProfileSourceType = Field(
+        description="How the observation originated."
+    )
     source_ref: str = Field(description="Reference to the source object.")
-    source_span_or_event: str = Field(description="Specific span or event within the source.")
+    source_span_or_event: str = Field(
+        description="Specific span or event within the source."
+    )
     scene: str = Field(description="Scene or situation.")
     purpose: str = Field(description="Declared purpose.")
     observed_content: str = Field(description="Observed content.")
     signal_kind: ProfileSignalKind = Field(description="Kind of signal.")
     extractor_and_version: str = Field(description="Extractor and version.")
-    model_rationale: str | None = Field(default=None, description="Extractor rationale.")
+    model_rationale: str | None = Field(
+        default=None, description="Extractor rationale."
+    )
     reliability_factors: list[str] = Field(
         default_factory=list, description="Reliability factors."
     )
@@ -259,7 +312,9 @@ class ProfileCandidate(BaseModel):
 
     candidate_id: str = Field(description="Stable candidate identifier.")
     owner_account_id: str = Field(description="Owning account identifier.")
-    canonical_dimension: str = Field(description="Profile dimension (e.g. 'expression_brevity').")
+    canonical_dimension: str = Field(
+        description="Profile dimension (e.g. 'expression_brevity')."
+    )
     value_or_rule: str = Field(description="Proposed value or rule.")
     applicable_scenes: list[str] = Field(
         default_factory=list,
@@ -317,7 +372,9 @@ class ProfileCandidateCreateRequest(BaseModel):
     evidence_summary: str = Field(
         default="", description="Structured evidence summary for the candidate."
     )
-    authorization_scope: str = Field(default="general", description="Authorization scope.")
+    authorization_scope: str = Field(
+        default="general", description="Authorization scope."
+    )
     promotion_policy_version: str = Field(default="promotion-1.0")
     sensitivity_class: ProfileSensitivityClass = Field(
         default=ProfileSensitivityClass.PREFERENCE,
@@ -366,6 +423,136 @@ class ProfileAssertion(BaseModel):
     )
     created_at: datetime = Field(description="Creation timestamp.")
     updated_at: datetime = Field(description="Last update timestamp.")
+
+
+class FourDimensionProfileRecord(BaseModel):
+    """一条扩展四维画像的内部记录合同。
+
+    ``source_record_id``、``source_version``、``content_hash`` 和 ``write_origin``
+    用于账户级回滚和审计；默认画像页面刻意不渲染这些内部字段。
+    """
+
+    record_id: str = Field(description="Stable four-dimension record identifier.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    dimension: FourDimension = Field(description="One of the four product dimensions.")
+    label: str = Field(description="Chinese display label for the dimension.")
+    content: str = Field(
+        min_length=1, max_length=1000, description="Confirmed record content."
+    )
+    first_stable_recorded_at: datetime = Field(
+        description="First time this record became stable; edits do not reset it."
+    )
+    updated_at: datetime = Field(description="Internal last-edit timestamp.")
+    version: int = Field(ge=1, description="Optimistic concurrency version.")
+    status: FourDimensionRecordStatus = Field(
+        description="Active or withdrawn tombstone."
+    )
+    source_record_id: str = Field(description="Internal legacy source identifier.")
+    source_version: int = Field(
+        ge=1, description="Legacy source version used for migration."
+    )
+    content_hash: str = Field(description="Internal SHA-256 content hash.")
+    write_origin: str = Field(description="Internal write origin: migration or user.")
+    migration_version: str = Field(
+        description="Expanded contract version used for migration."
+    )
+
+
+class FourDimensionProfileProjection(BaseModel):
+    """普通画像页面可见的四维记录投影。
+
+    来源引用、哈希、迁移版本和审计字段只保留在内部记录中，不进入普通 API
+    响应或模型上下文；版本号作为修改/撤回的乐观锁令牌保留。
+    """
+
+    record_id: str = Field(description="稳定的四维画像记录标识。")
+    dimension: FourDimension = Field(description="四个产品维度之一。")
+    label: str = Field(description="维度中文标签。")
+    content: str = Field(min_length=1, max_length=1000, description="画像记录内容。")
+    first_stable_recorded_at: datetime = Field(
+        description="首次稳定记录时间，修改不会重置。"
+    )
+    version: int = Field(ge=1, description="修改/撤回使用的乐观锁版本号。")
+    status: FourDimensionRecordStatus = Field(description="记录状态。")
+
+
+class FourDimensionProfileModifyRequest(BaseModel):
+    """修改已有四维记录的乐观锁请求。"""
+
+    content: str = Field(
+        min_length=1, max_length=1000, description="Replacement content."
+    )
+    version: int = Field(ge=1, description="Version read by the caller.")
+
+
+class FourDimensionProfileWithdrawRequest(BaseModel):
+    """撤回已有四维记录的乐观锁请求。"""
+
+    version: int = Field(ge=1, description="Version read by the caller.")
+
+
+class FourDimensionLearningRecord(BaseModel):
+    """旧知识状态记录交给教学域的内部交接合同。
+
+    此合同不会由四维画像 API 返回，也不能被当作画像记录使用。
+    """
+
+    record_id: str = Field(description="Stable internal teaching handoff id.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    source_record_id: str = Field(description="Legacy knowledge-state identifier.")
+    source_version: int = Field(ge=1, description="Legacy source version.")
+    content_hash: str = Field(description="Hash of the legacy evidence body.")
+    created_at: datetime = Field(description="Handoff creation time.")
+
+
+class FourDimensionLegacyRecord(BaseModel):
+    """无法安全映射的记录使用的内部不可变封存合同。"""
+
+    archive_id: str = Field(description="Stable legacy archive identifier.")
+    owner_account_id: str = Field(description="Owning account identifier.")
+    source_record_id: str = Field(description="Legacy source identifier.")
+    source_dimension: str = Field(description="Legacy source dimension.")
+    content: str = Field(
+        description="Archived body; never returned by the profile API."
+    )
+    content_hash: str = Field(description="Hash retained for migration audit.")
+    reason_code: str = Field(description="Deterministic reason for preserving legacy.")
+    created_at: datetime = Field(description="Archive creation time.")
+
+
+class FourDimensionMigrationReport(BaseModel):
+    """Account-scoped migration result without profile正文泄露."""
+
+    report_id: str = Field(description="Stable migration report identifier.")
+    owner_account_id: str = Field(description="Account migrated by this report.")
+    migration_version: str = Field(description="Migration contract version.")
+    status: FourDimensionMigrationStatus = Field(description="Migration outcome.")
+    four_dimension_migrated: int = Field(
+        ge=0, description="New four-dimension records created."
+    )
+    teaching_records_migrated: int = Field(
+        ge=0, description="Knowledge records handed to teaching."
+    )
+    legacy_preserved: int = Field(
+        ge=0, description="Records retained in the legacy archive."
+    )
+    skipped: int = Field(
+        ge=0, description="Already migrated or intentionally skipped records."
+    )
+    failed: int = Field(
+        ge=0, description="Records that failed deterministic migration."
+    )
+    stable_record_ids: list[str] = Field(
+        default_factory=list,
+        description="Stable target ids for audit tracing; never profile正文.",
+    )
+    failure_codes: list[str] = Field(
+        default_factory=list, description="Safe retry diagnostics."
+    )
+    retryable: bool = Field(
+        description="Whether the same account migration may be retried."
+    )
+    created_at: datetime = Field(description="Report creation time.")
 
 
 class ProfileSliceItem(BaseModel):
@@ -458,6 +645,11 @@ class ProfileSlice(BaseModel):
     compiled_policy_version: str = Field(
         default="slice-1.0",
         description="Version of the slice compilation policy used.",
+    length_budget: int = Field(
+        default=6,
+        ge=0,
+        description="Maximum number of profile items allowed in this slice.",
+    )
     )
     status: SliceStatus = Field(
         default=SliceStatus.ACTIVE,
@@ -568,7 +760,9 @@ class ManualAssertionCreateRequest(BaseModel):
     declarer is the owner, and every field is retained for audit.
     """
 
-    dimension: ProfileDimension = Field(description="One of the nine profile dimensions.")
+    dimension: ProfileDimension = Field(
+        description="One of the nine profile dimensions."
+    )
     value_or_rule: str = Field(
         description="The declared value or rule.",
         min_length=1,
@@ -709,7 +903,9 @@ class ProfileNotification(BaseModel):
     source_ref: str = Field(
         description="Reference to the source, e.g. '<conversation_id>:<message_id>'."
     )
-    source_text: str = Field(description="Source message text the notification refers to.")
+    source_text: str = Field(
+        description="Source message text the notification refers to."
+    )
     dimension: ProfileDimension | None = Field(
         default=None, description="Profile dimension the notification refers to."
     )
@@ -720,7 +916,9 @@ class ProfileNotification(BaseModel):
     candidate_id: str | None = Field(
         default=None, description="Target candidate, when proposed."
     )
-    recallable: bool = Field(default=False, description="Whether one-click recall applies.")
+    recallable: bool = Field(
+        default=False, description="Whether one-click recall applies."
+    )
     recalled_at: datetime | None = Field(
         default=None, description="When the record was recalled, if ever."
     )
@@ -728,7 +926,6 @@ class ProfileNotification(BaseModel):
         default=None, description="When the user marked the notification read."
     )
     created_at: datetime = Field(description="Creation timestamp.")
-
 
 
 class ProfileBatchCandidateDecisionRequest(BaseModel):
@@ -775,5 +972,3 @@ class ProfileBatchCandidateResult(BaseModel):
         default_factory=list,
         description="Failed candidate ids with a safe Chinese reason.",
     )
-
-

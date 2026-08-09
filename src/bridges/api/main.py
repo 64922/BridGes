@@ -123,7 +123,6 @@ from bridges.learning import (
     InMemoryLearningRepository,
     LearningPathService,
     LearningService,
-    ReviewSchedulingService,
     TeachingService,
 )
 from bridges.learning.api import router as learning_router
@@ -153,12 +152,17 @@ from bridges.persistence import (
     build_state_store,
 )
 from bridges.plugins.service import PluginService
-from bridges.profiles import InMemoryProfileRepository, ProfileService
+from bridges.profiles import (
+    FourDimensionProfileService,
+    InMemoryFourDimensionProfileRepository,
+    InMemoryProfileRepository,
+    ProfileService,
+    SqliteFourDimensionProfileRepository,
+)
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
-from bridges.reminder.service import VERIFY_WINDOW_SECONDS, ReminderService
-from bridges.reminder.smtp import QqMailGateway
+from bridges.retirement import CompatibilityMetrics, run_reminder_retirement
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.science import (
     ClaimEvidenceService,
@@ -194,20 +198,6 @@ from bridges.vault import (
 from bridges.video.service import VideoService
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
-
-
-def _qq_email_provider(
-    identity_service: IdentityService,
-) -> Callable[[str], str]:
-    """返回读取账户注册 QQ 邮箱的提供者（Issue 33 固定收发件人）。"""
-
-    def _provide(account_id: str) -> str:
-        account = identity_service.get_account(account_id)
-        if account is None:
-            return ""
-        return account.qq_email
-
-    return _provide
 
 
 def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
@@ -416,27 +406,6 @@ def _register_builtin_workflows(service: WorkflowService) -> None:
             WorkflowRunStatus.CANCELLED,
         ],
     )
-    # T024: review tasks can be materialized as timed workflow runs.
-    service.register_workflow(
-        name="review_task",
-        version="1",
-        nodes=[
-            {
-                "node_id": "review_prompt",
-                "node_name": "复习提示",
-                "human_gate": False,
-                "capability_name": "qwen_text_chat",
-                "capability_version": "1",
-            },
-        ],
-        terminal_states=[
-            WorkflowRunStatus.SUCCEEDED,
-            WorkflowRunStatus.BLOCKED,
-            WorkflowRunStatus.CANCELLED,
-        ],
-    )
-
-
 def _register_builtin_invalidation_resolvers(service: InvalidationService) -> None:
     """Register generic impact resolvers for cache, index, runs and vault capsules.
 
@@ -603,6 +572,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             "生产环境必须配置 BRIDGES_DATABASE_URL，不能使用进程内存储。"
         )
     app.state.state_store = state_store
+    app.state.compatibility_metrics = CompatibilityMetrics(state_store)
     app.state.persistence_mode = (
         "error"
         if app.state.persistence_error
@@ -822,11 +792,8 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     learning_repository = InMemoryLearningRepository()
     app.state.learning_service = LearningService(repository=learning_repository)
     app.state.teaching_service = TeachingService(repository=learning_repository)
-    review_scheduling_service = ReviewSchedulingService(repository=learning_repository)
-    app.state.review_scheduling_service = review_scheduling_service
     app.state.learning_path_service = LearningPathService(
         repository=learning_repository,
-        review_scheduler=review_scheduling_service,
     )
     # Issue 21：固定 DuckDuckGo 公网搜索；不读取账户 Key，也不把私有上下文
     # 传入客户端，搜索状态由聊天消息持久化并向桌面端公开。
@@ -871,6 +838,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             )
     app.state.smtp_credential_store = smtp_credential_store
 
+    # Issue 03：退役前先按账户幂等停止遗留提醒、结束 SMTP 验证并清除
+    # 专用授权码。报告只保存数量和状态；空环境也写入零迁移结果。
+    if app.state.bridges_database is not None:
+        app.state.reminder_retirement = run_reminder_retirement(
+            database=app.state.bridges_database,
+            credential_store=smtp_credential_store,
+            state_store=state_store,
+        )
+
     # T018/T020: attach the profile service. Candidate profiles cannot be
     # treated as stable facts until the user accepts them through the human
     # decision loop; accepted candidates are promoted to active assertions. At
@@ -889,6 +865,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
         observability_service=app.state.observability_service,
+    )
+    four_dimension_repository = (
+        SqliteFourDimensionProfileRepository(profile_database)
+        if profile_database is not None
+        else InMemoryFourDimensionProfileRepository()
+    )
+    app.state.four_dimension_profile_service = FourDimensionProfileService(
+        source_repository=profile_repository,
+        repository=four_dimension_repository,
     )
 
     # T020: register a profile-specific impact resolver so assertion deletions
@@ -1204,44 +1189,6 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             chat_repository=ConversationRepository(bridges_database),
             observability_service=app.state.observability_service,
         )
-        # Issue 33: QQ SMTP 任务提醒（ADR-0004/0013/0019）。授权码存
-        # 独立 smtp 命名空间凭据存储；收发件人固定为账户注册 QQ 邮箱；
-        # 邮件端点走配置项（测试/E2E 指向本地假邮件服务器）。
-        app.state.reminder_service = ReminderService(
-            database=bridges_database,
-            credential_store=smtp_credential_store,
-            observability_service=app.state.observability_service,
-            qq_email_provider=_qq_email_provider(
-                app.state.identity_service
-            ),
-            profile_service=getattr(app.state, "profile_service", None),
-            gateway=QqMailGateway(
-                smtp_host=(
-                    settings.smtp_host if settings is not None else "smtp.qq.com"
-                ),
-                smtp_port=settings.smtp_port if settings is not None else 465,
-                smtp_starttls=bool(settings and settings.smtp_starttls),
-                smtp_plain=bool(settings and settings.smtp_plain),
-                imap_host=(
-                    settings.imap_host if settings is not None else "imap.qq.com"
-                ),
-                imap_port=settings.imap_port if settings is not None else 993,
-                imap_plain=bool(settings and settings.imap_plain),
-            ),
-            # Issue 10: 收件确认窗口与受监督轮询间隔（默认 120s / 2s，
-            # 测试可通过环境变量收敛到短窗口）。
-            verify_window_seconds=(
-                settings.smtp_verify_window_seconds
-                if settings is not None
-                else VERIFY_WINDOW_SECONDS
-            ),
-            supervisor_tick_seconds=(
-                settings.smtp_verify_tick_seconds
-                if settings is not None
-                else 2.0
-            ),
-        )
-
     # Issue 37: 数据生命周期（导出/删除/备份/恢复）。导出只读业务表（不读
     # 凭据/会话）；删除与恢复会清除账户级外部凭据（QQ SMTP 授权码，恢复后
     # 需重新配置；账户 Qwen Key 已由 GQ-07 启动清退整体退役，不再参与）；

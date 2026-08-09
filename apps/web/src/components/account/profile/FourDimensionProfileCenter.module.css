@@ -1,0 +1,191 @@
+.page {
+  width: min(960px, 100%);
+  margin: 0 auto;
+  padding: 48px 28px 80px;
+  color: #f4f6f8;
+}
+
+.header {
+  max-width: 680px;
+  margin-bottom: 32px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: #91c8ba;
+  font-size: 13px;
+  letter-spacing: 0.12em;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(30px, 5vw, 44px);
+  letter-spacing: -0.03em;
+}
+
+.intro {
+  margin: 14px 0 0;
+  color: #aeb8c0;
+  line-height: 1.7;
+}
+
+.groups {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.group,
+.record {
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.group {
+  min-height: 180px;
+  padding: 20px;
+}
+
+.groupHeader,
+.actions,
+.dialogActions,
+.error {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.groupHeader h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.groupHeader span,
+.empty,
+.time {
+  color: #8f9ba3;
+  font-size: 13px;
+}
+
+.empty {
+  margin: 36px 0 0;
+}
+
+.records {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.record {
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.content {
+  margin: 0;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.time {
+  margin: 12px 0 0;
+}
+
+.actions {
+  justify-content: flex-start;
+  margin-top: 14px;
+}
+
+.actions button,
+.dialogActions button,
+.error button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  padding: 7px 13px;
+  color: #e8efee;
+  background: transparent;
+  cursor: pointer;
+}
+
+.actions button:hover,
+.dialogActions button:hover,
+.error button:hover {
+  border-color: #91c8ba;
+}
+
+.actions .withdraw {
+  color: #e8aaa0;
+}
+
+.state {
+  color: #aeb8c0;
+}
+
+.error {
+  margin-bottom: 18px;
+  border: 1px solid rgba(231, 151, 139, 0.45);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #f0b8ad;
+}
+
+.dialogBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(4, 8, 12, 0.7);
+}
+
+.dialog {
+  width: min(520px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 20px;
+  padding: 22px;
+  background: #172027;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.38);
+}
+
+.dialog h2 {
+  margin: 0 0 16px;
+  font-size: 20px;
+}
+
+.dialog textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 12px;
+  color: #f4f6f8;
+  background: rgba(0, 0, 0, 0.18);
+  font: inherit;
+  line-height: 1.6;
+}
+
+.dialogActions {
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+.dialogActions .primary {
+  border-color: #91c8ba;
+  color: #10211e;
+  background: #91c8ba;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 32px 18px 60px;
+  }
+
+  .groups {
+    grid-template-columns: 1fr;
+  }
+}

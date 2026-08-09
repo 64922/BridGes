@@ -123,7 +123,7 @@ export default function RegisterForm() {
               value={qqEmail}
               onChange={setQqEmail}
               error={fieldErrors.qqEmail}
-              hint="仅支持纯数字 QQ 号加 @qq.com。注册时不会发送验证码；之后在账户设置中配置 SMTP 授权码并完成自发自收验证后，才能启用邮件提醒。"
+              hint="仅支持纯数字 QQ 号加 @qq.com。该地址仅用于登录和账户识别，注册时不会发送验证码。"
               required
             />
             <PasswordField
