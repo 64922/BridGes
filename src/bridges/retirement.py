@@ -90,14 +90,22 @@ def raise_retired_capability(
     endpoint: str,
     error: str,
     replacement_path: str = _REPLACEMENT_PATH,
+    message: str = _RETIRED_MESSAGE,
 ) -> NoReturn:
     """记录一次兼容调用并抛出不带敏感输入的 410。"""
 
     probe = request.headers.get("x-bridges-compatibility-probe", "").lower() in _PROBE_HEADERS
     compatibility_metrics_for(request).record(endpoint, probe=probe)
+    observability = getattr(request.app.state, "observability_service", None)
+    if observability is not None:
+        observability.record_compatibility_410(
+            endpoint_id=endpoint,
+            service_version=COMPATIBILITY_SERVICE_VERSION,
+            traffic_class="probe" if probe else "real",
+        )
     detail = RetiredCapabilityError(
         error=error,
-        message=_RETIRED_MESSAGE,
+        message=message,
         replacement_path=replacement_path,
         endpoint=endpoint,
         service_version=COMPATIBILITY_SERVICE_VERSION,

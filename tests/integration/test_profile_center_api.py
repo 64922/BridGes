@@ -50,6 +50,7 @@ def _manual_assertion_payload(
     }
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像手动写入接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestManualAssertionAPI:
     def test_manual_create_requires_authentication(self, client: TestClient) -> None:
         response = client.post(
@@ -84,6 +85,7 @@ class TestManualAssertionAPI:
         assert response.status_code == 422
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像治理生命周期接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestProfileCenterLifecycleAPI:
     def test_withdraw_unfreeze_delete_round_trip(self, client: TestClient) -> None:
         _register(client)
@@ -177,6 +179,7 @@ class TestAvatarRemoveAPI:
         assert removed.status_code == 401
 
 
+@pytest.mark.skip(reason="Issue 16 已移除旧画像历史公共接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestAssertionHistoryAPI:
     def test_history_lists_versions_with_actors(self, client: TestClient) -> None:
         _register(client)

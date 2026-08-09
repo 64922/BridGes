@@ -79,7 +79,6 @@ from bridges.contracts.chat import (
     ChatRunStatus,
     ChatRunView,
     ChatStreamEventKind,
-    ChatStreamProfileData,
     ChatStreamStartedData,
     ChatThinkingSummary,
     ContextNoteProjection,
@@ -103,7 +102,6 @@ from bridges.contracts.humanizer import (
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpError
 from bridges.contracts.observability import AuditAction, AuditResult
-from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
@@ -705,8 +703,6 @@ class ChatService:
             user_message_id=user_message.message_id,
             content=content,
             mode=mode,
-            run_id=run_record.run_id,
-            now=now,
         )
 
         run_view = self._run_view(run_record, account_id)
@@ -912,8 +908,6 @@ class ChatService:
         user_message_id: str,
         content: str,
         mode: ChatMode,
-        run_id: str,
-        now: datetime,
     ) -> None:
         """首轮/续轮的画像记忆副作用：处理消息并把通知追加为 profile 事件。
 
@@ -932,17 +926,19 @@ class ChatService:
                     content=content,
                     mode=mode.value,
                 )
-        notifications = self.profile_notifications_for_message(
-            account_id, conversation_id, user_message_id
-        )
-        if notifications:
-            profile_payload = ChatStreamProfileData(
-                message_id=user_message_id,
-                notifications=notifications,
-            ).model_dump(mode="json")
-            self._repo.append_generation_event(
-                account_id, run_id, ChatStreamEventKind.PROFILE.value, profile_payload, now
-            )
+
+    def profile_notifications_for_message(
+        self, account_id: str, conversation_id: str, message_id: str
+    ) -> list[ProfileNotification]:
+        """返回内部画像通知记录；不作为聊天 SSE 或公共 API 投影。"""
+        if self._profiles is None:
+            return []
+        source_ref = f"{conversation_id}:{message_id}"
+        return [
+            notification
+            for notification in self._profiles.list_notifications(account_id)
+            if notification.source_ref == source_ref
+        ]
 
     def start_first_turn(
         self,
@@ -1100,8 +1096,6 @@ class ChatService:
             user_message_id=user_message.message_id,
             content=content,
             mode=mode,
-            run_id=run_record.run_id,
-            now=now,
         )
         run_view = self._run_view(run_record, account_id)
         with self._repo.connection_lock():
@@ -1522,23 +1516,6 @@ class ChatService:
         assert refreshed is not None
         return self._project_message(refreshed)
 
-
-    def profile_notifications_for_message(
-        self, account_id: str, conversation_id: str, message_id: str
-    ) -> list[ProfileNotification]:
-        """返回本轮用户消息触发的画像通知（供 SSE profile 事件即时展示）。
-
-        通知在 ``start_generation`` 时已持久化并按账户隔离；重试轮次读取
-        同一份来源，不会重复写入。
-        """
-        if self._profiles is None:
-            return []
-        source_ref = f"{conversation_id}:{message_id}"
-        return [
-            notification
-            for notification in self._profiles.list_notifications(account_id)
-            if notification.source_ref == source_ref
-        ]
 
     def message_projection(
         self, account_id: str, message_id: str

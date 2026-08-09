@@ -645,11 +645,11 @@ class ProfileSlice(BaseModel):
     compiled_policy_version: str = Field(
         default="slice-1.0",
         description="Version of the slice compilation policy used.",
+    )
     length_budget: int = Field(
         default=6,
         ge=0,
         description="Maximum number of profile items allowed in this slice.",
-    )
     )
     status: SliceStatus = Field(
         default=SliceStatus.ACTIVE,

@@ -87,6 +87,7 @@ def _compile_slice(client: TestClient, run_id: str) -> dict[str, Any]:
     return cast(dict[str, Any], response.json())
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像治理 API；四维画像与 410 契约由专门测试覆盖。")
 class TestAssertionGovernanceAPI:
     def test_freeze_assertion_excludes_it_from_new_slices(
         self, client: TestClient
@@ -224,6 +225,7 @@ class TestAssertionGovernanceAPI:
         assert body["assertions"][0]["value_or_rule"] is None
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像治理 API；四维画像与 410 契约由专门测试覆盖。")
 class TestGovernanceIsolationAPI:
     def test_cross_account_assertion_governance_is_denied(
         self, client: TestClient
