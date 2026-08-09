@@ -9,21 +9,23 @@ const MODES: { key: ChatMode; label: string }[] = [
 
 interface ModeToggleProps {
   value: ChatMode;
-  onChange: (mode: ChatMode) => void;
+  onChange?: (mode: ChatMode) => void;
+  locked?: boolean;
 }
 
 /**
- * 对话模式切换（日常陪伴 / 学习模式）。
+ * 对话模式选择与锁定展示（日常陪伴 / 学习模式）。
  *
- * 每个对话持久化一个当前模式（见 docs/adr/0022）；
- * 切换只影响后续消息，不重写历史回答。
+ * 空白会话允许首轮前选择；首条消息提交后只展示持久化模式，不再提供按钮。
  */
-export function ModeToggle({ value, onChange }: ModeToggleProps) {
+export function ModeToggle({ value, onChange, locked = false }: ModeToggleProps) {
+  const selectedLabel = MODES.find((mode) => mode.key === value)?.label ?? value;
   return (
     <div
       role="group"
       aria-label="对话模式"
       data-testid="mode-toggle"
+      data-locked={locked ? "true" : "false"}
       style={{
         display: "inline-flex",
         gap: "2px",
@@ -34,13 +36,28 @@ export function ModeToggle({ value, onChange }: ModeToggleProps) {
         flexShrink: 0,
       }}
     >
-      {MODES.map((mode) => (
+      {locked ? (
+        <span
+          data-testid="mode-display"
+          style={{
+            minHeight: "var(--target-size)",
+            display: "inline-flex",
+            alignItems: "center",
+            padding: "0.25rem 0.75rem",
+            color: "var(--color-text-secondary)",
+            fontSize: "var(--text-sm)",
+            fontWeight: 600,
+          }}
+        >
+          当前模式：{selectedLabel}
+        </span>
+      ) : MODES.map((mode) => (
         <button
           key={mode.key}
           type="button"
           aria-pressed={value === mode.key}
           data-mode={mode.key}
-          onClick={() => onChange(mode.key)}
+          onClick={() => onChange?.(mode.key)}
           style={{
             minHeight: "var(--target-size)",
             padding: "0.25rem 0.75rem",

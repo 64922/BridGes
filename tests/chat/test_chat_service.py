@@ -751,7 +751,7 @@ def test_restart_recovery_via_same_database_file(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Issue 14：对话双模式与思考摘要
+# Issue 05：首轮提交后锁定对话模式
 # ---------------------------------------------------------------------------
 
 
@@ -769,57 +769,37 @@ def test_create_conversation_supports_study_mode(service: ChatService) -> None:
     assert listing[0].mode == ChatMode.STUDY
 
 
-def test_switch_mode_writes_visible_event_and_keeps_history(service: ChatService) -> None:
+def test_switch_mode_is_rejected_after_contract_change(service: ChatService) -> None:
     created = service.create_conversation("alice")
-    _, assistant = _start(service, created.conversation_id, "先问一个陪伴问题")
-    service._gateway = _with_chunks(service, [StreamChunk(kind="delta", delta="陪伴回答")])
-    list(
-        service.stream_generation(
-            "alice", created.conversation_id, assistant.message_id, _context()
-        )
-    )
-
-    projection, event = service.set_conversation_mode(
-        "alice", created.conversation_id, ChatMode.STUDY
-    )
-    assert event is not None
-    assert event.from_mode == ChatMode.COMPANION
-    assert event.to_mode == ChatMode.STUDY
-    assert projection.mode == ChatMode.STUDY
-
-    # 既有消息、回答与引用不被重写
-    assert [(m.role, m.content) for m in projection.messages] == [
-        (ChatMessageRole.USER, "先问一个陪伴问题"),
-        (ChatMessageRole.ASSISTANT, "陪伴回答"),
-    ]
-    # 模式切换事件可见且按时间排序
-    assert [(e.from_mode, e.to_mode) for e in projection.mode_events] == [
-        (ChatMode.COMPANION, ChatMode.STUDY)
-    ]
+    with pytest.raises(ChatDomainError) as exc_info:
+        service.set_conversation_mode("alice", created.conversation_id, ChatMode.STUDY)
+    assert exc_info.value.code == "conversation_mode_switch_retired"
+    assert exc_info.value.status_code == 410
+    projection = service.get_conversation("alice", created.conversation_id)
+    assert projection is not None
+    assert projection.mode == ChatMode.COMPANION
+    assert projection.mode_events == []
 
 
-def test_switch_mode_affects_only_later_requests(service: ChatService) -> None:
-    """切换后后续生成使用学习模式角色合同，既有回答保持原样。"""
+def test_mode_switch_does_not_change_persisted_mode(service: ChatService) -> None:
     created = service.create_conversation("alice")
-    service.set_conversation_mode("alice", created.conversation_id, ChatMode.STUDY)
-    history = service._model_history("alice", created.conversation_id)
-    assert "学习模式" in history[0]["content"]
-    assert "因材施教" in history[0]["content"]
+    with pytest.raises(ChatDomainError):
+        service.set_conversation_mode("alice", created.conversation_id, ChatMode.STUDY)
+    projection = service.get_conversation("alice", created.conversation_id)
+    assert projection is not None and projection.mode == ChatMode.COMPANION
 
 
-def test_switch_mode_same_mode_is_idempotent(service: ChatService) -> None:
+def test_switch_mode_same_mode_is_also_retired(service: ChatService) -> None:
     created = service.create_conversation("alice")
-    _, event = service.set_conversation_mode(
-        "alice", created.conversation_id, ChatMode.COMPANION
-    )
-    assert event is None
-    assert service.get_conversation("alice", created.conversation_id).mode_events == []
+    with pytest.raises(ChatDomainError) as exc_info:
+        service.set_conversation_mode("alice", created.conversation_id, ChatMode.COMPANION)
+    assert exc_info.value.status_code == 410
 
 
-def test_switch_mode_unknown_conversation_is_404(service: ChatService) -> None:
+def test_switch_mode_unknown_conversation_is_still_retired(service: ChatService) -> None:
     with pytest.raises(ChatDomainError) as exc_info:
         service.set_conversation_mode("alice", "missing", ChatMode.STUDY)
-    assert exc_info.value.status_code == 404
+    assert exc_info.value.status_code == 410
 
 
 def test_done_message_carries_public_thinking_summary(service: ChatService) -> None:

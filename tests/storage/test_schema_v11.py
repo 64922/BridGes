@@ -60,3 +60,9 @@ def test_upgrade_from_v10_adds_search_projections_and_preserves_messages(
     assert str(row["content"]) == "存量消息"
     assert row["web_search"] is None
     assert row["arxiv_search"] is None
+    conversation = database.connection.execute(
+        "SELECT mode, mode_locked FROM conversations WHERE conversation_id = 'conv-1'"
+    ).fetchone()
+    assert conversation is not None
+    assert conversation["mode"] == "companion"
+    assert conversation["mode_locked"] == 1

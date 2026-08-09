@@ -1,6 +1,6 @@
 # 05 — 在首轮消息提交时锁定会话模式
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 
 ## What to build
@@ -55,3 +55,9 @@ Type: task
 
 - 已确认：每个会话只有一种模式；需要另一模式时新建会话。
 - 已确认：相同请求的网络重试必须幂等，不允许把模式冲突包装为新的会话或假成功。
+
+## Answer
+
+- 新增 `conversations.mode_locked` 迁移；首轮模式、用户消息、助手占位消息和生成任务在同一事务中提交并锁定，支持同键幂等重放、并发竞争和账户隔离。
+- 旧模式切换接口稳定返回 HTTP 410；观测只记录端点、版本、流量分类和状态码，不记录账户、会话或正文。前端首轮前可选模式，提交后只读展示；OpenAPI 与生成客户端已同步。
+- 验证通过：Issue 05 定向后端测试 82 passed；前端类型检查、单元测试、OpenAPI 同步测试和目标 E2E 均通过。完整回归通过 361 项、跳过 1 项后，在既有 `tests/closeout/test_arxiv_utf8.py` 因本机 Anaconda `_thread.start_joinable_thread` 环境错误中断。

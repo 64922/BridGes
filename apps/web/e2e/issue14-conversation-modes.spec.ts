@@ -6,8 +6,8 @@ import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
 /**
  * Issue 14 — 交付对话双模式与可折叠思考摘要。
  *
- * 覆盖：对话页输入区附近的「日常陪伴 / 学习模式」切换控件（无模型选择器）；
- * 切换写入可见事件且只影响后续消息、刷新后模式与切换历史保持；思考摘要
+ * 覆盖：对话页首轮前的「日常陪伴 / 学习模式」选择控件（无模型选择器）；
+ * 首轮提交后模式固定且刷新后保持；思考摘要
  * 生成中自动展开、完成后折叠为「已思考（用时 X 秒）」并可再次展开；断流
  * 失败保留摘要并显示中文状态；纯键盘切换/展开折叠/停止/重试；空白态默认
  * 日常陪伴且可先切学习模式再发送；学习项目页「进入学习对话」创建学习对话。
@@ -35,6 +35,7 @@ const ERROR_THINKING = {
 
 interface MockState {
   mode: "companion" | "study";
+  modeLocked: boolean;
   /** 递增序号：保证多次发送的消息 id 唯一（不破坏 React key） */
   seq: number;
   modeEvents: {
@@ -144,6 +145,7 @@ async function installMockChatApi(
 ) {
   const state: MockState = {
     mode: options.initialMode ?? "companion",
+    modeLocked: false,
     seq: 0,
     modeEvents: [],
     messages: [],
@@ -155,6 +157,7 @@ async function installMockChatApi(
     conversation_id: "mock-1",
     title: "测试对话",
     mode: state.mode,
+    mode_locked: state.modeLocked,
     created_at: NOW,
     updated_at: NOW,
     messages: state.messages,
@@ -175,26 +178,17 @@ async function installMockChatApi(
     });
   });
 
-  // 模式切换端点（Issue 14）
+  // 旧模式切换端点在兼容窗口内固定返回 410。
   await page.route("**/api/chat/conversations/mock-1/mode", async (route) => {
-    const body = JSON.parse(route.request().postData() ?? "{}");
-    const from = state.mode;
-    state.mode = body.mode === "study" ? "study" : "companion";
-    let event = null;
-    if (from !== state.mode) {
-      event = {
-        event_id: `ev-${state.modeEvents.length + 1}`,
-        conversation_id: "mock-1",
-        from_mode: from,
-        to_mode: state.mode,
-        created_at: NOW,
-      };
-      state.modeEvents.push(event);
-    }
     await route.fulfill({
-      status: 200,
+      status: 410,
       contentType: "application/json",
-      body: JSON.stringify({ conversation: history(), event }),
+      body: JSON.stringify({
+        detail: {
+          error: "conversation_mode_switch_retired",
+          message: "模式已在首条消息提交时锁定；请新建另一个会话以使用其他模式。",
+        },
+      }),
     });
   });
 
@@ -202,9 +196,65 @@ async function installMockChatApi(
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(history()) });
   });
 
+  await page.route("**/api/chat/first-turn", async (route) => {
+    const body = JSON.parse(route.request().postData() ?? "{}");
+    state.mode = body.mode === "study" ? "study" : "companion";
+    state.modeLocked = true;
+    state.seq += 1;
+    const userMessageId = `u-${state.seq}`;
+    const assistantMessageId = `a-${state.seq}`;
+    const fail = body.content.includes("断流");
+    const hang = body.content.includes("不要结束");
+    const terminal = fail ? "error" : hang ? "streaming" : "done";
+    const userMessage = {
+      message_id: userMessageId,
+      conversation_id: "mock-1",
+      role: "user",
+      attempt_number: 1,
+      status: "done",
+      content: body.content,
+      thinking: null,
+      error_code: null,
+      error_message: null,
+      duration_ms: null,
+      model_id: null,
+      run_lock_id: null,
+      created_at: NOW,
+      updated_at: NOW,
+    };
+    const assistantMessage = {
+      ...userMessage,
+      message_id: assistantMessageId,
+      role: "assistant",
+      content: "这是替身生成的回答。",
+      status: terminal,
+      thinking: fail ? ERROR_THINKING : DONE_THINKING,
+      error_code: fail ? "stream_interrupted" : null,
+      error_message: fail ? "连接中断或服务暂时不可用，请检查网络后重试。" : null,
+      duration_ms: fail ? 1234 : 3800,
+      model_id: terminal === "streaming" ? null : "qwen3.7-plus-2026-05-26",
+      run_lock_id: terminal === "streaming" ? null : "lock-mock",
+    };
+    state.messages.push(userMessage, assistantMessage);
+    eventStreams.set(
+      assistantMessageId,
+      sseBody({ fail, hang, userMessageId, assistantMessageId })
+    );
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        conversation: history(),
+        ...runCreated(`run-${assistantMessageId}`, 1, userMessage, assistantMessage),
+        idempotent_replay: false,
+      }),
+    });
+  });
+
   await page.route("**/api/chat/conversations/mock-1/messages", async (route) => {
     if (route.request().method() !== "POST") return;
     const body = JSON.parse(route.request().postData() ?? "{}");
+    state.modeLocked = true;
     state.seq += 1;
     const seq = state.seq;
     const userMessageId = `u-${seq}`;
@@ -301,20 +351,23 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await expect(page.getByRole("button", { name: /模型|极速/ })).toHaveCount(0);
   });
 
-  test("切换模式写入可见事件，刷新后模式与切换历史保持", async ({ page }) => {
+  test("首轮提交后模式固定，刷新后不再提供切换按钮", async ({ page }) => {
     await registerAndEnterHome(page);
     await installMockChatApi(page);
     await page.goto("/chat/mock-1");
 
-    // 切换为学习模式：可见事件出现在消息流
+    // 首轮前可以选择学习模式。
     await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).click();
-    await expect(page.getByTestId("mode-event")).toContainText("已切换为学习模式");
-    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
+    await page.getByTestId("composer").getByLabel("输入消息").fill("首轮学习问题");
+    await page.getByTestId("composer").getByRole("button", { name: "发送消息" }).click();
+    await expect(page.getByTestId("mode-toggle")).toHaveAttribute("data-locked", "true");
+    await expect(page.getByTestId("mode-display")).toContainText("学习模式");
+    await expect(page.getByTestId("mode-toggle").getByRole("button")).toHaveCount(0);
 
-    // 刷新后当前模式与切换历史正确恢复
+    // 刷新后仍显示持久化模式，且没有切换动作。
     await page.reload();
-    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
-    await expect(page.getByTestId("mode-event")).toContainText("已切换为学习模式");
+    await expect(page.getByTestId("mode-display")).toContainText("学习模式");
+    await expect(page.getByTestId("mode-toggle").getByRole("button")).toHaveCount(0);
   });
 
   test("思考摘要：生成中自动展开，完成后折叠为「已思考（用时 X 秒）」并可再次展开", async ({ page }) => {
@@ -368,15 +421,10 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await expect(summary).toContainText("连接中断或服务暂时不可用");
   });
 
-  test("纯键盘：切换模式、展开/折叠摘要、停止与重试", async ({ page }) => {
+  test("纯键盘：发送、展开/折叠摘要、停止与重试", async ({ page }) => {
     await registerAndEnterHome(page);
     await installMockChatApi(page);
     await page.goto("/chat/mock-1");
-
-    // 键盘切换模式：聚焦按钮 + Enter
-    await page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" }).focus();
-    await page.keyboard.press("Enter");
-    await expect(page.getByTestId("mode-event")).toContainText("已切换为学习模式");
 
     // 键盘发送 → 生成中出现停止入口 → Esc 停止
     await page.getByTestId("composer").getByLabel("输入消息").focus();
@@ -419,7 +467,8 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await page.getByTestId("composer").getByLabel("输入消息").fill("帮我规划学习");
     await page.getByTestId("composer").getByRole("button", { name: "发送消息" }).click();
     await page.waitForURL(/\/chat\/mock-1/);
-    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByTestId("mode-display")).toContainText("学习模式");
+    await expect(page.getByTestId("mode-toggle")).toHaveAttribute("data-locked", "true");
   });
 
   test("学习项目页「新建学习对话」创建默认学习模式对话", async ({ page }) => {
@@ -446,6 +495,8 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await expect(page.getByTestId("learning-project-new-chat")).toBeVisible();
     await page.getByTestId("learning-project-new-chat").click();
     await page.waitForURL(/\/chat\/mock-1/);
-    await expect(page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })).toHaveAttribute("aria-pressed", "true");
+    await expect(
+      page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })
+    ).toHaveAttribute("aria-pressed", "true");
   });
 });

@@ -30,7 +30,7 @@ import {
   retryChatRun,
   stopChatMessage,
   subscribeChatRunEvents,
-  switchChatMode,
+  startFirstTurn,
   type ChatConversationProjection,
   type ChatMessageProjection,
   type ChatAttachmentProjection,
@@ -170,6 +170,7 @@ export default function ChatConversationPage() {
   const conversationId = params.conversationId;
 
   const [conversation, setConversation] = useState<ChatConversationProjection | null>(null);
+  const [selectedMode, setSelectedMode] = useState<ChatMode>("companion");
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
@@ -206,6 +207,10 @@ export default function ChatConversationPage() {
   >([]);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
+  const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
+  const firstTurnRetryRef = useRef(false);
+  const modeLocked = conversation?.mode_locked ?? (conversation?.messages?.length ?? 0) > 0;
+  const currentMode: ChatMode = modeLocked ? conversation?.mode ?? selectedMode : selectedMode;
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
     // 不闪 loading，避免遮蔽 error 态的思考摘要。
@@ -214,6 +219,7 @@ export default function ChatConversationPage() {
     try {
       const projection = await getChatConversation(conversationId);
       setConversation(projection);
+      setSelectedMode(projection.mode);
       setPluginSelection(projection.plugin_selection ?? []);
       setRemovedSelections(projection.removed_selections ?? []);
       if ((projection.removed_selections ?? []).length > 0) {
@@ -235,6 +241,8 @@ export default function ChatConversationPage() {
   }, [conversationId]);
 
   useEffect(() => {
+    firstTurnIdempotencyKeyRef.current = null;
+    firstTurnRetryRef.current = false;
     setConversation(null);
     setActiveRun(null);
     setPendingUser(null);
@@ -644,37 +652,74 @@ export default function ChatConversationPage() {
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
       abortRef.current = controller;
+      const isFirstTurn =
+        firstTurnRetryRef.current ||
+        (conversation !== null &&
+          !modeLocked &&
+          (conversation.messages?.length ?? 0) === 0);
       try {
         // Issue 02：创建运行（消息已落库、运行已入队），立即订阅持久化事件
-        const run = await createChatRun(
-          conversationId,
-          text,
-          attachmentIds,
-          // Issue 20：本轮知识库开关（关闭后检索与引用不含知识库候选）
-          useKnowledgeBase,
-          // Issue 27：本轮画像使用开关（关闭后请求与披露均不含画像内容）
-          useProfile,
-          // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
-          skillId,
-          skillInput,
-          // Issue 31：图片生成/编辑载荷（图片对话框走真实消息流程）
-          image,
-          // Issue 32：文生视频载荷（视频对话框走真实消息流程）
-          video,
-          // Issue 36：对选中 MCP 插件的调用载荷（调用对话框走真实消息流程）
-          mcpCall
-        );
-        const runState = activeRunFromAssistant(run.assistant_message, "send");
+        let userMessage: ChatMessageProjection;
+        let assistantMessage: ChatMessageProjection;
+        let cursor: number;
+        if (isFirstTurn) {
+          const idempotencyKey =
+            firstTurnIdempotencyKeyRef.current ??
+            (firstTurnIdempotencyKeyRef.current = crypto.randomUUID());
+          const firstTurn = await startFirstTurn({
+            content: text,
+            idempotency_key: idempotencyKey,
+            conversation_id: conversationId,
+            mode: selectedMode,
+            attachment_ids: attachmentIds,
+            use_knowledge_base: useKnowledgeBase,
+            use_profile: useProfile,
+            ...(skillId !== undefined ? { skill_id: skillId } : {}),
+            ...(skillInput !== undefined
+              ? { skill_input: skillInput as HumanizerSkillInput }
+              : {}),
+            ...(image !== undefined ? { image } : {}),
+            ...(video !== undefined ? { video } : {}),
+            ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
+          });
+          setConversation(firstTurn.conversation);
+          setSelectedMode(firstTurn.conversation.mode);
+          userMessage = firstTurn.user_message;
+          assistantMessage = firstTurn.assistant_message;
+          cursor = firstTurn.cursor;
+          firstTurnRetryRef.current = true;
+        } else {
+          const run = await createChatRun(
+            conversationId,
+            text,
+            attachmentIds,
+            useKnowledgeBase,
+            useProfile,
+            skillId,
+            skillInput,
+            image,
+            video,
+            mcpCall
+          );
+          userMessage = run.user_message;
+          assistantMessage = run.assistant_message;
+          cursor = run.cursor;
+          setConversation((current) =>
+            current ? { ...current, mode_locked: true } : current
+          );
+        }
+        const runState = activeRunFromAssistant(assistantMessage, "send");
         activeRunRef.current = runState;
-        setPendingUser({ id: run.user_message.message_id, text });
+        setPendingUser({ id: userMessage.message_id, text });
         setActiveRun(runState);
         await subscribeWithRetry(
           conversationId,
-          run.assistant_message.message_id,
-          run.cursor,
+          assistantMessage.message_id,
+          cursor,
           handleStreamEvent("send", text),
           controller.signal
         );
+        firstTurnRetryRef.current = false;
         return true;
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") {
@@ -685,14 +730,22 @@ export default function ChatConversationPage() {
         setAnnouncement(`生成失败：${message}`);
         // 断流/内部错误时服务端已收敛消息状态：刷新展示可重试错误
         void load();
-        return true;
+        return false;
       } finally {
         abortRef.current = null;
         sendingRef.current = false;
         window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
       }
     },
-    [conversationId, handleStreamEvent, load, subscribeWithRetry]
+    [
+      conversation,
+      conversationId,
+      handleStreamEvent,
+      load,
+      modeLocked,
+      selectedMode,
+      subscribeWithRetry,
+    ]
   );
 
   /** Issue 28：提交人味化任务（真实消息流：任务契约随消息落库，可重试）。
@@ -1005,23 +1058,6 @@ export default function ChatConversationPage() {
     []
   );
 
-  // 模式切换：写入服务端并更新对话投影（只影响后续消息，历史不被重写）。
-  // 可见事件在消息流中渲染并自带 role=status 播报，页面级不再重复播报。
-  const changeMode = useCallback(
-    async (mode: ChatMode) => {
-      if (!conversation || conversation.mode === mode || loadState !== "ready") return;
-      try {
-        const result = await switchChatMode(conversation.conversation_id, mode);
-        setConversation(result.conversation);
-      } catch (error) {
-        setSendError({
-          message: error instanceof Error ? error.message : "切换模式失败，请稍后重试。",
-        });
-      }
-    },
-    [conversation, loadState]
-  );
-
   // 组装渲染消息：服务端历史 + 进行中的乐观消息 + 错误收敛后的终态渲染。
   // Issue 02：resume 恢复时权威历史已含该 streaming 消息（部分内容），
   // 由 ActiveRun 接管渲染，先从历史中移除同 messageId 项避免双份。
@@ -1029,9 +1065,15 @@ export default function ChatConversationPage() {
     ? buildThreadMessages(conversation.messages ?? [], conversation.mode_events ?? [])
     : [];
   const resumedMessageId = activeRun?.kind === "resume" ? activeRun.messageId : null;
-  const threadMessages = resumedMessageId
-    ? baseMessages.filter((item) => !("id" in item) || item.id !== resumedMessageId)
-    : [...baseMessages];
+  const activeSendMessageId = activeRun?.kind === "send" ? activeRun.messageId : null;
+  const activeSendUserMessageId = activeRun?.kind === "send" ? pendingUser?.id : null;
+  const threadMessages = baseMessages.filter(
+    (item) =>
+      !("id" in item) ||
+      (item.id !== resumedMessageId &&
+        item.id !== activeSendMessageId &&
+        item.id !== activeSendUserMessageId)
+  );
   if (activeRun) {
     const isError = activeRun.status === "error";
     const assistantItem: ChatMessageLike = {
@@ -1078,7 +1120,6 @@ export default function ChatConversationPage() {
   }
 
   const generating = activeRun !== null;
-  const currentMode: ChatMode = conversation?.mode ?? "companion";
 
   return (
     <AppShell>
@@ -1132,7 +1173,11 @@ export default function ChatConversationPage() {
               <div className={styles.composerWrap}>
                 <div className={styles.composerInner}>
                   <div className={styles.modeRow}>
-                    <ModeToggle value={currentMode} onChange={(mode) => void changeMode(mode)} />
+                    <ModeToggle
+                      value={currentMode}
+                      locked={modeLocked}
+                      onChange={modeLocked ? undefined : setSelectedMode}
+                    />
                   </div>
                   <Composer
                     onSend={(text, attachmentIds, _, useKnowledgeBase, useProfile) =>

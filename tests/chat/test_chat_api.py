@@ -213,7 +213,7 @@ def _start_executor_thread(sqlite_app: Any) -> tuple[threading.Event, threading.
 
 
 # ---------------------------------------------------------------------------
-# Issue 14：对话双模式
+# Issue 05：首轮提交后锁定对话模式
 # ---------------------------------------------------------------------------
 
 
@@ -224,11 +224,13 @@ def test_create_conversation_defaults_companion_and_supports_study(
     default = client.post("/chat/conversations", json={"title": "日常对话"})
     assert default.status_code == 201
     assert default.json()["mode"] == "companion"
+    assert default.json()["mode_locked"] is False
     assert default.json()["mode_events"] == []
 
     study = client.post("/chat/conversations", json={"title": "学习对话", "mode": "study"})
     assert study.status_code == 201
     assert study.json()["mode"] == "study"
+    assert study.json()["mode_locked"] is False
 
     listing = client.get("/chat/conversations").json()["conversations"]
     modes = {item["mode"] for item in listing}
@@ -275,76 +277,127 @@ def test_conversation_lifecycle_api_is_persistent_and_account_scoped(
     assert alice["id"]
 
 
-def test_switch_mode_writes_visible_event_and_persists_after_restart(
-    client: TestClient, sqlite_app: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    _register(client)
-    conversation_id = _create_conversation(client)
-    switched = client.post(
-        f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
-    )
-    assert switched.status_code == 200
-    body = switched.json()
-    assert body["conversation"]["mode"] == "study"
-    event = body["event"]
-    assert event is not None
-    assert event["from_mode"] == "companion"
-    assert event["to_mode"] == "study"
-
-    # 读取恢复：模式与切换历史完整
-    history = client.get(f"/chat/conversations/{conversation_id}").json()
-    assert history["mode"] == "study"
-    assert [(e["from_mode"], e["to_mode"]) for e in history["mode_events"]] == [
-        ("companion", "study")
-    ]
-
-    # 重启恢复：同一数据库重新打开后模式、切换历史与消息顺序正确
-    get_settings.cache_clear()
-    app2 = create_app()
-    client2 = TestClient(app2)
-    client2.cookies.set("bridges_session", client.cookies.get("bridges_session"))
-    restored = client2.get(f"/chat/conversations/{conversation_id}").json()
-    assert restored["mode"] == "study"
-    assert [(e["from_mode"], e["to_mode"]) for e in restored["mode_events"]] == [
-        ("companion", "study")
-    ]
-
-
-def test_switch_mode_same_mode_is_idempotent_without_event(
+def test_first_turn_locks_mode_atomically_and_replays_same_idempotency_key(
     client: TestClient, sqlite_app: Any
 ) -> None:
     _register(client)
     conversation_id = _create_conversation(client)
     first = client.post(
-        f"/chat/conversations/{conversation_id}/mode", json={"mode": "companion"}
+        "/chat/first-turn",
+        json={
+            "conversation_id": conversation_id,
+            "content": "首轮学习问题",
+            "idempotency_key": "issue05-first-turn-1",
+            "mode": "study",
+        },
     )
-    assert first.status_code == 200
-    assert first.json()["event"] is None
+    assert first.status_code == 201, first.text
+    body = first.json()
+    assert body["conversation"]["mode"] == "study"
+    assert body["conversation"]["mode_locked"] is True
+    assert body["conversation"]["mode_events"] == []
+    assert len(body["conversation"]["messages"]) == 2
+
+    replay = client.post(
+        "/chat/first-turn",
+        json={
+            "conversation_id": conversation_id,
+            "content": "首轮学习问题",
+            "idempotency_key": "issue05-first-turn-1",
+            "mode": "study",
+        },
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["idempotent_replay"] is True
+    assert replay.json()["conversation"]["conversation_id"] == conversation_id
+    assert len(replay.json()["conversation"]["messages"]) == 2
+
+    conflict = client.post(
+        "/chat/first-turn",
+        json={
+            "conversation_id": conversation_id,
+            "content": "不能切换到陪伴",
+            "idempotency_key": "issue05-first-turn-2",
+            "mode": "companion",
+        },
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"]["error"] == "conversation_mode_locked"
+
     history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assert history["mode"] == "study"
+    assert history["mode_locked"] is True
     assert history["mode_events"] == []
 
 
-def test_second_account_cannot_switch_mode_or_read_mode_events(
+def test_locked_mode_is_account_scoped(client: TestClient, sqlite_app: Any) -> None:
+    _register(client, "51")
+    conversation_id = _create_conversation(client)
+    first = client.post(
+        "/chat/first-turn",
+        json={
+            "conversation_id": conversation_id,
+            "content": "账户隔离学习问题",
+            "idempotency_key": "issue05-account-scope-1",
+            "mode": "study",
+        },
+    )
+    assert first.status_code == 201
+
+    bob = TestClient(sqlite_app)
+    _register(bob, "52")
+    assert bob.get(f"/chat/conversations/{conversation_id}").status_code == 404
+    blocked = bob.post(
+        "/chat/first-turn",
+        json={
+            "conversation_id": conversation_id,
+            "content": "不应读取其他账户模式",
+            "idempotency_key": "issue05-account-scope-2",
+            "mode": "companion",
+        },
+    )
+    assert blocked.status_code == 404
+    assert blocked.json()["detail"]["error"] == "conversation_not_found"
+
+
+def test_legacy_mode_switch_returns_410_and_records_privacy_safe_observation(
     client: TestClient, sqlite_app: Any
 ) -> None:
-    _register(client, "1")
+    _register(client)
     conversation_id = _create_conversation(client)
-    client.post(
+
+    response = client.post(
         f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
     )
+    assert response.status_code == 410
+    assert response.json()["detail"] == {
+        "error": "conversation_mode_switch_retired",
+        "message": "模式已在首条消息提交时锁定；请新建另一个会话以使用其他模式。",
+    }
 
-    bob_client = TestClient(sqlite_app)
-    _register(bob_client, "2")
-    # Bob 看不到 Alice 的对话，也不能切换其模式（404，不泄漏存在性）
-    assert (
-        bob_client.post(
-            f"/chat/conversations/{conversation_id}/mode", json={"mode": "study"}
-        ).status_code
-        == 404
+    probe = client.post(
+        f"/chat/conversations/{conversation_id}/mode",
+        json={"mode": "companion"},
+        headers={"X-Bridges-Compatibility-Probe": "1"},
     )
-    assert bob_client.get(f"/chat/conversations/{conversation_id}").status_code == 404
-    bob_list = bob_client.get("/chat/conversations").json()
-    assert bob_list["conversations"] == []
+    assert probe.status_code == 410
+    observations = sqlite_app.state.observability_service.compatibility_gate_snapshot()
+    assert observations == [
+        {
+            "endpoint_id": "chat.conversation_mode_switch",
+            "service_version": "0.1.0",
+            "traffic_class": "real",
+            "status_code": 410,
+            "count": 1,
+        },
+        {
+            "endpoint_id": "chat.conversation_mode_switch",
+            "service_version": "0.1.0",
+            "traffic_class": "probe",
+            "status_code": 410,
+            "count": 1,
+        },
+    ]
 
 
 # ---------------------------------------------------------------------------

@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 import math
 import secrets
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from collections.abc import Iterator
 from typing import Any
 
 from bridges.contracts.ai import ModelRunLock
@@ -26,6 +28,7 @@ class ConversationRecord:
     account_id: str
     title: str
     mode: str
+    mode_locked: bool
     pinned: bool
     project_id: str | None
     created_at: datetime
@@ -112,6 +115,10 @@ class MessageRecord:
     mcp_call: dict[str, Any] | None = None
 
 
+class ConversationModeLockConflict(StorageError):
+    """首条消息已由另一事务提交，不能再次创建首轮。"""
+
+
 def _parse_iso(value: str) -> datetime:
     return datetime.fromisoformat(value)
 
@@ -135,6 +142,12 @@ class ConversationRepository:
     def __init__(self, database: BridgesDatabase) -> None:
         self._db = database
 
+    @contextmanager
+    def connection_lock(self) -> Iterator[None]:
+        """串行化跨线程的复合读取，避免共享 SQLite 连接交错使用。"""
+        with self._db.snapshot_lock():
+            yield
+
     # -- conversations -----------------------------------------------------
 
     def create_conversation(
@@ -153,9 +166,9 @@ class ConversationRepository:
             with self._db.transaction():
                 self._db.scoped(account_id).execute(
                     "INSERT INTO conversations"
-                    "(conversation_id, account_id, title, mode, pinned, project_id,"
+                    "(conversation_id, account_id, title, mode, mode_locked, pinned, project_id,"
                     " plugin_selection, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)",
+                    " VALUES (?, ?, ?, ?, 0, 0, ?, ?, ?, ?)",
                     (
                         conversation_id,
                         account_id,
@@ -176,7 +189,7 @@ class ConversationRepository:
         self, account_id: str, conversation_id: str
     ) -> ConversationRecord | None:
         row = self._db.scoped(account_id).execute(
-            "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
+            "SELECT conversation_id, account_id, title, mode, mode_locked, pinned, project_id,"
             " plugin_selection, created_at, updated_at"
             " FROM conversations WHERE conversation_id = ? AND account_id = ?",
             (conversation_id, account_id),
@@ -187,7 +200,7 @@ class ConversationRepository:
 
     def list_conversations(self, account_id: str) -> list[ConversationRecord]:
         rows = self._db.scoped(account_id).execute(
-            "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
+            "SELECT conversation_id, account_id, title, mode, mode_locked, pinned, project_id,"
             " plugin_selection, created_at, updated_at FROM conversations"
             " WHERE account_id = ?"
             " ORDER BY pinned DESC, updated_at DESC, created_at DESC, conversation_id",
@@ -202,6 +215,7 @@ class ConversationRepository:
             account_id=str(row["account_id"]),
             title=str(row["title"]),
             mode=str(row["mode"]),
+            mode_locked=bool(row["mode_locked"]),
             pinned=bool(row["pinned"]),
             project_id=(str(row["project_id"]) if row["project_id"] is not None else None),
             created_at=_parse_iso(str(row["created_at"])),
@@ -285,49 +299,7 @@ class ConversationRepository:
                 (_iso(updated_at), conversation_id, account_id),
             )
 
-    def set_conversation_mode(
-        self, account_id: str, conversation_id: str, mode: str, updated_at: datetime
-    ) -> None:
-        """更新对话当前模式并刷新活动时间；切换只影响后续消息。"""
-        with self._db.transaction():
-            self._db.scoped(account_id).execute(
-                "UPDATE conversations SET mode = ?, updated_at = ?"
-                " WHERE conversation_id = ? AND account_id = ?",
-                (mode, _iso(updated_at), conversation_id, account_id),
-            )
-
     # -- mode events --------------------------------------------------------
-
-    def insert_mode_event(
-        self,
-        *,
-        event_id: str,
-        conversation_id: str,
-        account_id: str,
-        from_mode: str,
-        to_mode: str,
-        created_at: datetime,
-    ) -> None:
-        """写入一条可见模式切换事件（按 created_at 与消息同序渲染）。"""
-        try:
-            with self._db.transaction():
-                self._db.scoped(account_id).execute(
-                    "INSERT INTO mode_events"
-                    "(event_id, conversation_id, account_id, from_mode, to_mode,"
-                    " created_at) VALUES (?, ?, ?, ?, ?, ?)",
-                    (
-                        event_id,
-                        conversation_id,
-                        account_id,
-                        from_mode,
-                        to_mode,
-                        _iso(created_at),
-                    ),
-                )
-        except StorageError:
-            raise
-        except Exception as exc:  # noqa: BLE001
-            raise StorageError("保存模式切换事件失败，请稍后重试。") from exc
 
     def list_mode_events(
         self, account_id: str, conversation_id: str
@@ -1097,6 +1069,8 @@ class ConversationRepository:
         run_record: GenerationRunRecord,
         events: list[tuple[str, dict[str, Any]]],
         attachment_ids: list[str] | None = None,
+        *,
+        lock_mode: bool = False,
     ) -> None:
         """同一事务原子创建一轮消息与 queued 运行（Issue 02 纵向切片）。
 
@@ -1107,6 +1081,27 @@ class ConversationRepository:
         """
         try:
             with self._db.transaction():
+                if lock_mode:
+                    already_started = self._db.scoped(user_record.account_id).execute(
+                        "SELECT 1 FROM messages"
+                        " WHERE conversation_id = ? AND account_id = ? LIMIT 1",
+                        (user_record.conversation_id, user_record.account_id),
+                    ).fetchone()
+                    if already_started is not None:
+                        raise ConversationModeLockConflict(
+                            "首条消息已提交，不能重复创建会话首轮。"
+                        )
+                    locked = self._db.scoped(user_record.account_id).execute(
+                        "UPDATE conversations SET mode_locked = 1, updated_at = ?"
+                        " WHERE conversation_id = ? AND account_id = ? AND mode_locked = 0",
+                        (
+                            _iso(user_record.updated_at),
+                            user_record.conversation_id,
+                            user_record.account_id,
+                        ),
+                    )
+                    if locked.rowcount != 1:
+                        raise StorageError("对话不存在或模式已锁定。")
                 self._insert_turn_locked(
                     user_record, assistant_record, run_record, events, attachment_ids
                 )
@@ -1160,11 +1155,13 @@ class ConversationRepository:
                 # 作为首轮目标按冲突返回（幂等重放已在上面短路，因此
                 # 这里只可能是并发不同键双发）。
                 prebuilt = self._db.scoped(account_id).execute(
-                    "SELECT 1 FROM conversations"
+                    "SELECT mode, mode_locked FROM conversations"
                     " WHERE conversation_id = ? AND account_id = ?",
                     (conversation_id, account_id),
                 ).fetchone()
                 if prebuilt is not None:
+                    if bool(prebuilt["mode_locked"]) and str(prebuilt["mode"]) != mode:
+                        return conversation_id, False, True
                     already_started = self._db.scoped(account_id).execute(
                         "SELECT 1 FROM messages"
                         " WHERE conversation_id = ? AND account_id = ? LIMIT 1",
@@ -1173,7 +1170,7 @@ class ConversationRepository:
                     if already_started is not None:
                         return conversation_id, False, True
                     self._db.scoped(account_id).execute(
-                        "UPDATE conversations SET title = ?, mode = ?,"
+                        "UPDATE conversations SET title = ?, mode = ?, mode_locked = 1,"
                         " project_id = ?, plugin_selection = ?,"
                         " idempotency_key = ?, updated_at = ?"
                         " WHERE conversation_id = ? AND account_id = ?",
@@ -1193,9 +1190,9 @@ class ConversationRepository:
                 else:
                     self._db.scoped(account_id).execute(
                         "INSERT INTO conversations"
-                        "(conversation_id, account_id, title, mode, pinned, project_id,"
+                        "(conversation_id, account_id, title, mode, mode_locked, pinned, project_id,"
                         " plugin_selection, idempotency_key, created_at, updated_at)"
-                        " VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)",
+                        " VALUES (?, ?, ?, ?, 1, 0, ?, ?, ?, ?, ?)",
                         (
                             conversation_id,
                             account_id,

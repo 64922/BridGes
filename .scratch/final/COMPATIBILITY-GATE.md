@@ -32,6 +32,21 @@ Status: pending-runtime-evidence
 
 实现时应把仓库中实际存在的所有退役路径补入明细，不能只验证本表列出的代表项。
 
+## Issue 05 会话模式切换 410 观测契约
+
+旧路由 `POST /chat/conversations/{conversation_id}/mode` 在兼容窗口内固定返回
+`410 conversation_mode_switch_retired`，服务端版本使用 `0.1.0`。运行时只按下表
+维度计数，不记录账户、会话标识、请求正文或查询参数；`probe` 由
+`X-Bridges-Compatibility-Probe: 1` 标记，其余请求归入 `real`。
+
+| endpoint_id | service_version | traffic_class | status_code | count |
+| --- | --- | --- | ---: | ---: |
+| `chat.conversation_mode_switch` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `chat.conversation_mode_switch` | `0.1.0` | `probe` | 410 | 待运行时观测 |
+
+应用内 `ObservabilityService.compatibility_gate_snapshot()` 输出上述稳定字段，供发布
+代理填入真实运行窗口的计数与证据；单元测试只验证字段和隐私边界，不替代运行时门禁。
+
 ## 发布证据
 
 - 兼容版本：待填写
