@@ -1,5 +1,7 @@
 # BridGes 改进 PRD
 
+> 历史状态：本 PRD 已由 [`../final/PRD.md`](../final/PRD.md) 与 [`ADR-0026`](../../docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 取代。旧产品决策和 Issue 仅作实现背景与审计，不是当前合同。
+
 Status: approved
 
 ## Objective

@@ -3,6 +3,8 @@
 Status: approved
 Date: 2026-08-09
 
+权威契约与迁移门：[`docs/adr/0026-frozen-product-contracts-and-migration-gates.md`](../../docs/adr/0026-frozen-product-contracts-and-migration-gates.md)。本 PRD 记录最终产品合同；若历史 ADR 或旧计划与本文件冲突，以 ADR-0026 和本文件为准。
+
 ## 1. 目标
 
 把当前仍带有功能中心和手动工具选择痕迹的 BridGes，收敛为一个真正的聊天优先产品：

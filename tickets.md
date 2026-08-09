@@ -1,5 +1,7 @@
 # Tickets: 科教智能体成熟产品
 
+> 历史状态：本票据集及其旧产品规则已由 [`.scratch/final/README.md`](.scratch/final/README.md)、[`.scratch/final/PRD.md`](.scratch/final/PRD.md) 和 [`ADR-0026`](docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 取代。文件只读保留用于审计，不作为当前任务入口或实现依据。
+
 这些票据把[科教智能体成熟产品实现规格](.scratch/science-companion-plan/PRD.md)落实为可独立领取的纵向切片，并共同交付认证用户的科学项目任务生命周期。
 
 按**任务前沿**实施：任何票据的全部阻塞项完成后即可领取。每张票据使用一个新的上下文运行 `/implement`。票据 ID 一经分配永久稳定；标题可以澄清，但不得复用或重编号 ID。

@@ -78,8 +78,9 @@ BridGes start --profile development
 启动前必须先配置全局百炼运行凭据（`BRIDGES_QWEN_API_KEY` 环境变量或
 `BRIDGES_QWEN_API_KEY_FILE` 文件引用）；正式环境不读取 `.env`，不创建该文件。
 
-`start` 默认以生产 profile 同步启动构建后的 **Web、API、后台执行器与提醒
-调度器**四个进程。启动前会校验依赖与数据目录权限、获取数据目录单实例锁、
+`start` 默认以生产 profile 同步启动构建后的 **Web、API 与后台执行器**三个进程。
+旧提醒调度器仅属于退役兼容面，不得创建或发送新提醒；最终收缩由 ADR-0026 的
+兼容门控制。启动前会校验依赖与数据目录权限、获取数据目录单实例锁、
 执行数据库迁移，然后等待 API `/health/ready` 与 Web 就绪并输出本地电脑端
 访问地址。任一关键服务失败时整体非零退出并显示可操作中文错误；收到
 `Ctrl+C`（Windows 还支持 `Ctrl+Break`，容器内为 `SIGTERM`）后按顺序停止
@@ -90,7 +91,7 @@ BridGes start --profile development
 
 ```bash
 BridGes worker       # 后台执行器：周期性清理待删除对象与孤立文件
-BridGes scheduler    # 提醒调度器：提醒功能由后续版本交付，当前周期心跳
+BridGes scheduler    # 兼容期停用/清理组件：不创建或发送提醒
 ```
 
 ## 诊断、迁移与健康检查
@@ -111,8 +112,9 @@ curl http://127.0.0.1:8000/health/degraded
   不提供 Windows 原生安装包、自更新器或系统常驻服务。
 - 生产镜像使用标准 Python / Node.js，不依赖 Conda `agent`。
 - `environment.yml` 仅用于本地开发环境声明。
-- Web、API、后台执行器和提醒调度器在不同载体中均保持独立进程边界；统一
-  CLI 只是监管入口，容器路径由 Compose 编排同一组进程。
+- Web、API 和后台执行器在不同载体中均保持独立进程边界；统一 CLI 只是监管
+  入口，容器路径由 Compose 编排同一组进程。旧提醒调度器只在兼容期负责停用
+  和清理，不是当前产品能力。
 - Web 只承诺电脑端使用，不承诺手机、平板或移动浏览器访问。
 - 全局百炼运行凭据（`BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE`
   文件引用）是正式运行（development/production）的**必需配置**：缺失、为空
@@ -122,5 +124,5 @@ curl http://127.0.0.1:8000/health/degraded
   真实 Key。启动检查只验证必需值可读取，不发起可能计费的探测；Key 轮换后
   必须重启相关服务。
 - 普通账户不再有任何百炼密钥设置或账户能力探测；登录用户无需配置个人 Key
-  即可使用全部已登记 Qwen/Wan 能力。QQ SMTP 授权码仍是账户级凭据，通过
-  登录后的账户设置（提醒配置）设置与验证。
+  即可使用全部已登记 Qwen/Wan 能力。历史 QQ SMTP 授权码按 ADR-0026 幂等清除，
+  不再提供提醒配置或验证入口。

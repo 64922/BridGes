@@ -1,5 +1,7 @@
 # BridGes 执行 Issue 清单
 
+> 历史状态：本清单已由 [`.scratch/final/README.md`](.scratch/final/README.md) 和 [`ADR-0026`](docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 取代。旧 Issue、状态和相反产品规则只保留用于审计，不得领取或作为当前真相。
+
 > 状态：已获用户批准，等待代码代理按依赖认领执行。
 >
 > 主计划：[`BridGes项目改进计划书.md`](BridGes项目改进计划书.md)

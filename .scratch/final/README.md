@@ -4,6 +4,8 @@ Status: approved
 
 本目录是本轮产品改进的唯一执行入口。需求基线来自用户提供的《后端问题》和《前端问题》、配套截图、二十三项已确认产品决策，以及对当前代码、测试、领域文档和参考项目的只读审查。
 
+当前产品合同、领域词汇和 expand–migrate–contract 顺序由 [`ADR-0026`](../../docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 冻结；历史 ADR 与根级旧计划仅用于审计。
+
 旧的 bridges-improvement 任务和历史计划继续作为实现背景保留，但与本目录冲突时，以本目录的 PRD、Issue 01 产出的新 ADR 和更新后的领域词汇为准。
 
 需求到 Issue 的完整映射见 [TRACEABILITY.md](TRACEABILITY.md)，最终兼容收缩的运行证据模板见 [COMPATIBILITY-GATE.md](COMPATIBILITY-GATE.md)。
@@ -41,7 +43,7 @@ Issue 21 与 22 可并行交付新聊天页和既有会话页，但可能共用�
 
 | Issue | 标题 | 状态 |
 | --- | --- | --- |
-| [01](issues/01-freeze-product-contracts-and-migration-gates.md) | 冻结新版产品契约并建立迁移门 | ready-for-agent |
+| [01](issues/01-freeze-product-contracts-and-migration-gates.md) | 冻结新版产品契约并建立迁移门 | ready-for-human |
 | [02](issues/02-migrate-learning-projects-to-global-knowledge-base.md) | 将旧学习项目资料迁入全局知识库 | ready-for-agent |
 | [03](issues/03-retire-task-scheduling-and-review-reminders.md) | 安全退役任务安排、邮件提醒与旧复习调度 | ready-for-agent |
 | [04](issues/04-retire-user-skills-and-mcp-management.md) | 隔离并退役用户 SKILL/MCP 管理 | ready-for-agent |

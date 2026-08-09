@@ -3,6 +3,8 @@
 bridges.db 是单机权威数据库（ADR-0013），本文件回答一个问题：**「这张表谁说了算？」**
 ——schema 变更先找属主模块，跨域读取经属主 repository 的小接口，不新增直连。
 
+> 退役边界：`learning_projects`、聊天附件、用户扩展/MCP、提醒和旧画像治理表是 ADR-0026 规定的迁移兼容面。它们的属主只负责历史读取、停用、导出和清理；不得为退役能力新增写路径或用户入口。新文件与本地检索只归 `knowledge_base`/摄取与检索域所有。
+
 ## 纪律
 
 - **新代码禁止在 service 层直接 `.scoped().execute(...)`**；repository 层是唯一允许
@@ -18,20 +20,20 @@ bridges.db 是单机权威数据库（ADR-0013），本文件回答一个问题�
 | 表 | 属主 module | 属主仓库 / 说明 |
 |---|---|---|
 | `conversations` / `messages` / `mode_events` / `answer_feedback` / `model_run_locks` | `chat/` | `ConversationRepository`（`src/bridges/chat/repository.py`） |
-| `chat_attachments` / `chat_attachment_cancellations` | `chat/` | `AttachmentRepository`（`src/bridges/chat/attachments_repository.py`） |
+| `chat_attachments` / `chat_attachment_cancellations` | `chat/`（退役兼容） | `AttachmentRepository`（仅历史读取、原子清理与迁移；不接受新聊天附件） |
 | `retrieval_rounds` / `message_citations` | `retrieval/` | `RetrievalRepository` |
 | `index_active` / `index_versions` / `index_vectors` / `document_chunks`（含 `*_backup`） | `retrieval/`（读）＋ `ingestion/`（写） | 索引版本由摄取状态机写入，检索域经 `RetrievalRepository` 读取 |
 | `document_records` | `ingestion/`（写）＋ `retrieval/`（读） | 写路径在摄取状态机；检索域经 `RetrievalRepository` 的只读方法（就绪/重建/引用校验） |
 | `document_parse_cache` | `ingestion/` | 摄取解析缓存 |
 | `objects` / `accounts` | `storage/` | `BridgesObjectRepository`；跨域只读经 `object_status` / `object_metas`，删除标记经 `mark_pending_cleanup` |
 | `account_deletions` | `lifecycle/` | 账户删除编排（`lifecycle/deletion.py`） |
-| `learning_projects` | `learning_projects/` | 项目文件夹域 |
-| `skill_packages` / `account_skill_states` | `plugins/` | SKILL 插件中心 |
-| `mcp_servers` / `mcp_calls` | `mcp/` | MCP 插件管理 |
+| `learning_projects` | `learning_projects/`（退役兼容） | 历史项目迁移、只读引用与审计 |
+| `skill_packages` / `account_skill_states` | `plugins/`（退役兼容） | 扩展包隔离、清单导出与清理 |
+| `mcp_servers` / `mcp_calls` | `mcp/`（退役兼容） | MCP 清单停用、历史调用审计与清理 |
 | `image_assets` / `image_tasks` / `image_versions` | `image/` | 文生图资产管理 |
 | `video_assets` / `video_tasks` | `video/` | 文生视频资产管理 |
-| `reminders` / `reminder_settings` / `reminder_deliveries` | `reminder/` | 任务提醒 |
-| `profile_*`（断言/候选/观察/许可/切片/通知） | `profiles/` | 画像中心 |
+| `reminders` / `reminder_settings` / `reminder_deliveries` | `reminder/`（退役兼容） | 取消未来任务、保留历史导出、清除 SMTP 凭据 |
+| `profile_*`（断言/候选/观察/许可/切片/通知） | `profiles/` | 四维画像写入、最小切片与旧治理对象封存 |
 | `eval_*`（套件/用例/报告/盲评/运行锁） | `evaluation/` | A/B 科学评测 |
 | `task_claims` / `workflow_runs` | `workflows/` | 领取型任务契约 |
 | `schema_meta` | `storage/` | 数据库迁移元数据 |

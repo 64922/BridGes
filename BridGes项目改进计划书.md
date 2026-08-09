@@ -1,5 +1,7 @@
 # BridGes 项目改进计划书
 
+> 历史状态：本文件及其产品决策已由 [`.scratch/final/PRD.md`](.scratch/final/PRD.md) 与 [`ADR-0026`](docs/adr/0026-frozen-product-contracts-and-migration-gates.md) 取代。内容保留用于审计，不是当前产品合同、领域词汇或代理执行依据。
+
 > 状态：已完成产品与架构决策确认，作为后续 Issue 拆分与实现验收的主计划。
 >
 > 项目定位：面向长期科学学习、成长陪伴与科学表达的本地聊天优先 AI 应用。
