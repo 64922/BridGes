@@ -15,18 +15,13 @@ import {
 } from "@/components/bridges/MessageList";
 import { AppShell } from "@/components/layout/AppShell";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
-import { changeConversationLearningProject } from "@/lib/learning-projects";
 import {
-  ApiError,
-  deleteChatMessageAttachment,
   downloadChatAttachment,
   createChatRun,
   getChatConversation,
-  getLearningProject,
   isChatStreamEventOf,
   markProfileNotificationRead,
   recallProfileNotification as recallProfileNotificationApi,
-  retryAttachmentIngestion,
   retryChatRun,
   stopChatMessage,
   subscribeChatRunEvents,
@@ -57,12 +52,10 @@ import type {
   ChatStreamVideoData,
 } from "@/lib/api";
 import type {
-  ImageAssetProjection,
   ImageRequestPayload,
   ImageTaskKind,
   VideoRequestPayload,
 } from "@/lib/api";
-import { getImageAsset } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -101,13 +94,11 @@ interface ActiveRun {
   status: "streaming" | "error";
   errorText?: string;
 }
-
 /** 真实生命周期耗时（毫秒）→ 折叠标题秒数（与服务端投影换算一致）。 */
 function secondsOf(durationMs: number | null | undefined): number | null {
   if (durationMs === null || durationMs === undefined) return null;
   return Math.max(1, Math.round(durationMs / 1000));
 }
-
 /**
  * Issue 02：由助手消息投影构造进行中的 ActiveRun（创建响应/页面恢复共用）。
  * 发送/重试时创建响应即携带初始思考摘要与搜索投影，不再等待 started 事件；
@@ -144,7 +135,6 @@ function activeRunFromAssistant(
     mcpCallProcess: null,
   };
 }
-
 /**
  * 对话页：历史消息 + 流式回答 + 停止/重试 + 能力预检错误提示。
  *
@@ -165,8 +155,6 @@ export default function ChatConversationPage() {
   const [pendingUser, setPendingUser] = useState<{ id: string; text: string } | null>(null);
   const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
-  // 对话所属学习项目名称（Issue 19）：由 project_id 解析，仅供 chip 展示
-  const [projectName, setProjectName] = useState<string | null>(null);
   // Issue 26：本轮用户消息触发的画像通知（明确记忆/自动写入/候选/单次情绪）
   // Issue 28：文章人味化任务对话框（改写/生成两条路径）
   // Issue 29：生涯规划任务对话框（问题 + 画像开关）
@@ -174,7 +162,6 @@ export default function ChatConversationPage() {
   const [careerOpen, setCareerOpen] = useState(false);
   // Issue 31：图片生成/编辑任务对话框（生成页签 + 编辑页签）
   const [imageOpen, setImageOpen] = useState(false);
-  const [imageAssets, setImageAssets] = useState<ImageAssetProjection[]>([]);
   // Issue 32：视频生成任务对话框（单一生成页签，Wan 固定绑定）
   const [videoOpen, setVideoOpen] = useState(false);
   // Issue 36：对话级插件选择（随对话持久化；chip 持续显示；停用/卸载/
@@ -222,7 +209,6 @@ export default function ChatConversationPage() {
     setActiveRun(null);
     setPendingUser(null);
     setSendError(null);
-    setProjectName(null);
     void load();
   }, [load]);
 
@@ -269,60 +255,8 @@ export default function ChatConversationPage() {
     };
   }, [loadState]);
 
-  // 解析对话所属学习项目名称；项目已在别处删除（404）时清除 chip 并提示。
-  const projectId = conversation?.project_id ?? null;
-  useEffect(() => {
-    if (!projectId) {
-      setProjectName(null);
-      return;
-    }
-    let cancelled = false;
-    getLearningProject(projectId)
-      .then((detail) => {
-        if (!cancelled) setProjectName(detail.name);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        if (error instanceof ApiError && error.status === 404) {
-          setProjectName(null);
-          setConversation((current) =>
-            current ? { ...current, project_id: null } : current
-          );
-          setSendError({ message: "该学习项目已被删除，已清除对话的项目归属显示。" });
-        } else {
-          setProjectName(null);
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [projectId]);
-
   // Issue 36：解析选中插件的显示名（刷新/恢复历史对话后 chip 名称不丢）。
   // 只拉取列表接口的轻量投影；失败静默降级为显示 plugin_id。
-  // 变更学习项目归属：立即写入服务端（显式 null 表示移出），
-  // 仅更新本地 project_id 字段，避免用 PATCH 响应覆盖消息列表。
-  const changeLearningProject = useCallback(
-    async (project: { project_id: string; name: string } | null) => {
-      if (!conversation || loadState !== "ready") return;
-      try {
-        await changeConversationLearningProject(
-          conversation.conversation_id,
-          project?.project_id ?? null
-        );
-        setConversation((current) =>
-          current ? { ...current, project_id: project?.project_id ?? null } : current
-        );
-        setProjectName(project?.name ?? null);
-        setAnnouncement(project ? `已移入学习项目：${project.name}` : "已清除学习项目选择");
-      } catch (error) {
-        setSendError({
-          message: error instanceof Error ? error.message : "更新学习项目归属失败，请稍后重试。",
-        });
-      }
-    },
-    [conversation, loadState]
-  );
   /*
 
   // Issue 36：替换本对话插件选择（选择器确认后全量 PATCH；显式空数组
@@ -564,7 +498,6 @@ export default function ChatConversationPage() {
   const sendMessage = useCallback(
     async (
       text: string,
-      attachmentIds: string[] = [],
       useKnowledgeBase: boolean = true,
       useProfile: boolean = true,
       skillId?: string,
@@ -597,7 +530,6 @@ export default function ChatConversationPage() {
             idempotency_key: idempotencyKey,
             conversation_id: conversationId,
             mode: selectedMode,
-            attachment_ids: attachmentIds,
             use_knowledge_base: useKnowledgeBase,
             use_profile: useProfile,
             ...(skillId !== undefined ? { skill_id: skillId } : {}),
@@ -618,7 +550,6 @@ export default function ChatConversationPage() {
           const run = await createChatRun(
             conversationId,
             text,
-            attachmentIds,
             useKnowledgeBase,
             useProfile,
             skillId,
@@ -680,14 +611,10 @@ export default function ChatConversationPage() {
     async (
       content: string,
       skillInput: HumanizerSkillInput,
-      attachmentIds: string[],
       useKnowledgeBase: boolean
     ): Promise<boolean> => {
       return sendMessage(
         content,
-        attachmentIds,
-        // Issue 04：改写默认只检索当前消息附件；知识库仅当用户显式
-        // 勾选时开启。画像开关沿用既有默认。
         useKnowledgeBase,
         true,
         skillInput.skill_id,
@@ -700,7 +627,7 @@ export default function ChatConversationPage() {
   /** Issue 29：提交生涯规划任务（真实消息流；画像开关随本轮发送透传）。 */
   const handleCareerSubmit = useCallback(
     async (content: string, useProfile: boolean): Promise<boolean> => {
-      return sendMessage(content, [], true, useProfile);
+      return sendMessage(content, true, useProfile);
     },
     [sendMessage]
   );
@@ -711,20 +638,16 @@ export default function ChatConversationPage() {
     async (payload: {
       kind: ImageTaskKind;
       prompt: string;
-      sourceVersionId?: string;
       sourceObjectId?: string;
     }): Promise<boolean> => {
       const imagePayload: ImageRequestPayload = {
         kind: payload.kind,
         prompt: payload.prompt,
-        ...(payload.sourceVersionId
-          ? { source_version_id: payload.sourceVersionId }
-          : {}),
         ...(payload.sourceObjectId
           ? { source_object_id: payload.sourceObjectId }
           : {}),
       };
-      return sendMessage(payload.prompt, [], true, true, undefined, undefined, imagePayload);
+      return sendMessage(payload.prompt, true, true, undefined, undefined, imagePayload);
     },
     [sendMessage]
   );
@@ -737,7 +660,6 @@ export default function ChatConversationPage() {
       const target = invokeMcpTarget;
       const ok = await sendMessage(
         `调用 ${payload.mcp_id} 的 ${payload.tool} 工具`,
-        [],
         true,
         true,
         undefined,
@@ -767,43 +689,10 @@ export default function ChatConversationPage() {
   const handleVideoSubmit = useCallback(
     async (payload: { prompt: string }): Promise<boolean> => {
       const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
-      return sendMessage(payload.prompt, [], true, true, undefined, undefined, undefined, videoPayload);
+      return sendMessage(payload.prompt, true, true, undefined, undefined, undefined, videoPayload);
     },
     [sendMessage]
   );
-
-  // Issue 31：图片编辑对话框的可选来源——当前对话中已成功且未删除的
-  // 图片资产（打开对话框时按消息流收集一次；资产详情含版本链）。
-  useEffect(() => {
-    if (!imageOpen || !conversation) return;
-    let cancelled = false;
-    const assetIds = new Set<string>();
-    for (const message of conversation.messages ?? []) {
-      const image = message.image;
-      if (
-        image &&
-        image.status === "succeeded" &&
-        image.asset_id &&
-        !image.deleted
-      ) {
-        assetIds.add(image.asset_id);
-      }
-    }
-    Promise.all(
-      Array.from(assetIds).map((assetId) =>
-        getImageAsset(conversationId, assetId).catch(() => null)
-      )
-    ).then((results) => {
-      if (!cancelled) {
-        setImageAssets(
-          results.filter((result): result is ImageAssetProjection => result !== null)
-        );
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [imageOpen, conversation, conversationId]);
 
   const downloadAttachment = useCallback(
     async (attachment: ChatAttachmentProjection) => {
@@ -824,45 +713,13 @@ export default function ChatConversationPage() {
   );
 
   const skipTeachingQuestion = useCallback(() => {
-    void sendMessage("跳过这道理解检查，我想继续学习。", [], true);
+    void sendMessage("跳过这道理解检查，我想继续学习。", true);
   }, [sendMessage]);
 
   // Issue 08：目标确认阶段一键按初学者开始（发送固定确认指令）。
   const beginnerStartTeaching = useCallback(() => {
-    void sendMessage("按初学者开始", [], true);
+    void sendMessage("按初学者开始", true);
   }, [sendMessage]);
-
-  const deleteAttachment = useCallback(
-    async (messageId: string, attachment: ChatAttachmentProjection) => {
-      try {
-        await deleteChatMessageAttachment(conversationId, messageId, attachment.object_id);
-        setAnnouncement(`已删除附件：${attachment.original_filename}`);
-        await load(true);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "附件删除失败，请重试。";
-        setSendError({ message });
-        setAnnouncement(`附件删除失败：${message}`);
-      }
-    },
-    [conversationId, load]
-  );
-
-  /** 失败文档重新解析（Issue 17）：调用重试 API 并以服务端投影刷新对话。 */
-  const retryIngestion = useCallback(
-    async (objectId: string) => {
-      try {
-        await retryAttachmentIngestion(conversationId, objectId);
-        setAnnouncement("已重新加入解析队列");
-        await load(true);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "重新解析失败，请重试。";
-        setSendError({ message });
-        setAnnouncement(`重新解析失败：${message}`);
-        throw error;
-      }
-    },
-    [conversationId, load]
-  );
 
   const stop = useCallback(async () => {
     const run = activeRunRef.current;
@@ -1032,8 +889,7 @@ export default function ChatConversationPage() {
       // resume：恢复的进行中回答（历史项已移除，由本项接管渲染）
       threadMessages.push(assistantItem);
     }
-  }
-
+}
   const generating = activeRun !== null;
 
   return (
@@ -1065,10 +921,6 @@ export default function ChatConversationPage() {
                 onTeachingSkip={() => skipTeachingQuestion()}
                 onTeachingBeginnerStart={() => beginnerStartTeaching()}
                 onDownloadAttachment={(attachment) => void downloadAttachment(attachment)}
-                onDeleteAttachment={(messageId, attachment) =>
-                  void deleteAttachment(messageId, attachment)
-                }
-                onRetryIngestion={retryIngestion}
                 conversationId={conversationId}
                 tts={MEDIA_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
@@ -1094,18 +946,12 @@ export default function ChatConversationPage() {
                     />
                   </div>
                   <Composer
-                    onSend={(text, attachmentIds, _, useKnowledgeBase, useProfile) =>
-                      sendMessage(text, attachmentIds, useKnowledgeBase, useProfile)
+                    onSend={(text, _, useKnowledgeBase, useProfile) =>
+                      sendMessage(text, useKnowledgeBase, useProfile)
                     }
                     conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}
-                    learningProject={
-                      conversation?.project_id
-                        ? { project_id: conversation.project_id, name: projectName ?? "学习项目" }
-                        : null
-                    }
-                    onSelectLearningProject={(project) => void changeLearningProject(project)}
                     onOpenHumanizer={() => setHumanizerOpen(true)}
                     onOpenCareer={() => setCareerOpen(true)}
                     onOpenImage={() => setImageOpen(true)}
@@ -1123,7 +969,6 @@ export default function ChatConversationPage() {
       <HumanizerDialog
         open={humanizerOpen}
         onClose={() => setHumanizerOpen(false)}
-        conversationId={conversationId}
         onSubmit={handleHumanizerSubmit}
       />
       <CareerPlanningDialog
@@ -1135,8 +980,6 @@ export default function ChatConversationPage() {
       <ImageDialog
         open={imageOpen}
         onClose={() => setImageOpen(false)}
-        assets={imageAssets}
-        attachmentOptions={imageAttachmentOptions(threadMessages)}
         onSubmit={handleImageSubmit}
       />
       <VideoDialog
@@ -1146,29 +989,4 @@ export default function ChatConversationPage() {
       />
     </AppShell>
   );
-}
-
-/** Issue 31：从消息流收集图片附件作为编辑来源（本账户聊天附件对象）。 */
-function imageAttachmentOptions(
-  messages: (ChatMessageLike | { kind: string; event_id: string; to_mode: string })[]
-): {
-  key: string;
-  objectId: string;
-  label: string;
-  hint: string;
-}[] {
-  const options: { key: string; objectId: string; label: string; hint: string }[] = [];
-  for (const message of messages) {
-    if ("kind" in message || message.role !== "user") continue;
-    for (const attachment of message.attachments ?? []) {
-      if (!attachment.media_type.startsWith("image/")) continue;
-      options.push({
-        key: `object:${attachment.object_id}`,
-        objectId: attachment.object_id,
-        label: attachment.original_filename,
-        hint: attachment.media_type,
-      });
-    }
-  }
-  return options;
 }

@@ -5,15 +5,15 @@ import { useEffect, useState } from "react";
 import { Dialog } from "@/components/bridges/Dialog";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
-import type { ImageAssetProjection, ImageTaskKind } from "@/lib/api";
+import {
+  listKnowledgeBaseMaterials,
+  type ImageTaskKind,
+  type KnowledgeBaseMaterialProjection,
+} from "@/lib/api";
 
 interface ImageSourceOption {
   key: string;
-  /** 资产版本来源：assetId + versionId */
-  assetId?: string;
-  versionId?: string;
-  /** 聊天附件对象来源 */
-  objectId?: string;
+  objectId: string;
   label: string;
   hint: string;
 }
@@ -21,15 +21,10 @@ interface ImageSourceOption {
 interface ImageDialogProps {
   open: boolean;
   onClose: () => void;
-  /** 当前对话中可选的来源图片（本账户图片资产版本，含替代文本摘要）。 */
-  assets: ImageAssetProjection[];
-  /** 当前对话中可选的图片附件（本账户聊天附件对象）。 */
-  attachmentOptions: ImageSourceOption[];
   /** 提交：宿主执行真实发送（真实消息流）；返回是否成功。 */
   onSubmit: (payload: {
     kind: ImageTaskKind;
     prompt: string;
-    sourceVersionId?: string;
     sourceObjectId?: string;
   }) => Promise<boolean>;
 }
@@ -57,20 +52,23 @@ const labelStyle: React.CSSProperties = {
  * 图片生成/编辑任务对话框（Issue 31）。
  *
  * 生成页签：只收集提示词（尺寸固定 1024×1024，用户不可选——固定矩阵）。
- * 编辑页签：选择当前账户有权访问的来源图片（本对话图片资产版本或图片
- * 附件）+ 编辑指令。提交走真实消息流程（image 载荷创建异步任务），任务
- * 状态卡与资产卡在消息流中呈现，不在此处伪造任何图片结果。
+ * 编辑页签：选择当前账户知识库中已完成解析的图片材料 + 编辑指令。提交
+ * 走真实消息流程（image 载荷创建异步任务），任务状态卡与资产卡在消息流
+ * 中呈现，不在此处伪造任何图片结果。
  */
 export function ImageDialog({
   open,
   onClose,
-  assets,
-  attachmentOptions,
   onSubmit,
 }: ImageDialogProps) {
   const [tab, setTab] = useState<ImageTaskKind>("generate");
   const [prompt, setPrompt] = useState("");
   const [selectedKey, setSelectedKey] = useState<string>("");
+  const [knowledgeBaseMaterials, setKnowledgeBaseMaterials] = useState<
+    KnowledgeBaseMaterialProjection[]
+  >([]);
+  const [knowledgeBaseLoading, setKnowledgeBaseLoading] = useState(false);
+  const [knowledgeBaseError, setKnowledgeBaseError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -79,20 +77,23 @@ export function ImageDialog({
     if (!open) return;
     setFormError("");
     setSubmitting(false);
+    setSelectedKey("");
+    setKnowledgeBaseError("");
+    setKnowledgeBaseLoading(true);
+    void listKnowledgeBaseMaterials()
+      .then((materials) => setKnowledgeBaseMaterials(materials))
+      .catch(() => setKnowledgeBaseError("知识库图片加载失败，请稍后重试。"))
+      .finally(() => setKnowledgeBaseLoading(false));
   }, [open]);
 
-  const options: ImageSourceOption[] = [
-    ...assets.flatMap((asset) =>
-      (asset.versions ?? []).map((version) => ({
-        key: `asset:${asset.asset_id}:${version.version_id}`,
-        assetId: asset.asset_id,
-        versionId: version.version_id,
-        label: `图片资产 · 版本 ${version.created_at.slice(0, 16).replace("T", " ")}`,
-        hint: version.prompt.slice(0, 40) || "（无提示摘要）",
-      })),
-    ),
-    ...attachmentOptions,
-  ];
+  const options: ImageSourceOption[] = knowledgeBaseMaterials
+    .filter((material) => material.usable_for_chat && material.media_type.startsWith("image/"))
+    .map((material) => ({
+      key: `knowledge-base:${material.object_id}`,
+      objectId: material.object_id,
+      label: material.filename,
+      hint: `全局知识库 · ${material.media_type}`,
+    }));
 
   useEffect(() => {
     if (
@@ -123,7 +124,6 @@ export function ImageDialog({
       const accepted = await onSubmit({
         kind: tab,
         prompt: cleanPrompt,
-        sourceVersionId: selected?.assetId ? selected.versionId : undefined,
         sourceObjectId: selected?.objectId,
       });
       if (accepted === false) {
@@ -142,7 +142,7 @@ export function ImageDialog({
       open={open}
       onClose={onClose}
       title="图片生成与编辑"
-      description="固定使用 qwen-image-2.0-pro-2026-06-22 模型：输入画面描述生成图片，或选择当前账户有权访问的图片执行编辑；结果在对话中呈现，可查看版本、修改替代文本、下载与删除。"
+      description="固定使用 qwen-image-2.0-pro-2026-06-22 模型：输入画面描述生成图片，或选择当前账户知识库中的图片材料执行编辑；结果在对话中呈现，可查看版本、修改替代文本、下载与删除。"
     >
       <div style={{ display: "grid", gap: "var(--space-3)" }}>
         <div role="tablist" aria-label="任务类型" style={{ display: "flex", gap: "var(--space-2)" }}>
@@ -206,12 +206,26 @@ export function ImageDialog({
             <span id="image-source-label" style={labelStyle}>
               来源图片<span style={{ color: "var(--color-status-error)" }}>*</span>
             </span>
-            {options.length === 0 ? (
+            {knowledgeBaseLoading ? (
+              <p
+                role="status"
+                style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}
+              >
+                正在加载知识库图片…
+              </p>
+            ) : knowledgeBaseError ? (
+              <p
+                role="alert"
+                style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}
+              >
+                {knowledgeBaseError}
+              </p>
+            ) : options.length === 0 ? (
               <p
                 data-testid="image-source-empty"
                 style={{ margin: 0, fontSize: "var(--text-sm)", color: "var(--color-text-tertiary)" }}
               >
-                当前对话还没有可编辑的图片。请先切换到「生成图片」创建一张，或上传图片附件。
+                当前账户知识库中没有已就绪的图片，请先在知识库页面上传并等待解析完成。
               </p>
             ) : (
               <ul

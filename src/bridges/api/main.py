@@ -1113,6 +1113,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             registry=skill_registry,
             gateway=model_gateway,
             attachment_service=getattr(app.state, "chat_attachment_service", None),
+            knowledge_base_service=getattr(app.state, "knowledge_base_service", None),
             retrieval_service=getattr(app.state, "retrieval_service", None),
             web_search_service=getattr(app.state, "web_search_service", None),
             observability_service=app.state.observability_service,

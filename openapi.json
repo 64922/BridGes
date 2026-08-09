@@ -1392,7 +1392,7 @@
           "chat"
         ],
         "summary": "Create Conversation",
-        "description": "新建对话；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。\n``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），\n逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。",
+        "description": "新建对话；标题可选，缺省由首条消息自动推导。\n\n``mode`` 缺省为日常陪伴；历史学习项目会话仅通过读取接口兼容。\n``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），\n逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。",
         "operationId": "create_conversation_chat_conversations_post",
         "parameters": [
           {
@@ -1472,7 +1472,7 @@
           "chat"
         ],
         "summary": "Create First Turn",
-        "description": "原子创建新会话首轮（Issue 03）：同一事务创建会话、用户消息、\n助手占位与 queued 运行，返回完整投影。\n\n首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再\n导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御\n双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。\n``conversation_id`` 可选指定已预建的空会话（附件上传路径先建会话\n再发送），缺省在事务内新建会话；``mode``/``project_id``/\n``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。",
+        "description": "原子创建新会话首轮（Issue 03）：同一事务创建会话、用户消息、\n助手占位与 queued 运行，返回完整投影。\n\n首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再\n导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御\n双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。\n``conversation_id`` 可选指定已预建的空会话，缺省在事务内新建会话；``mode``/``project_id``/\n``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。",
         "operationId": "create_first_turn_chat_first_turn_post",
         "parameters": [
           {
@@ -1987,16 +1987,12 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ChatAttachmentProjection"
-                  },
-                  "title": "Response List Unbound Attachments Chat Conversations  Conversation Id  Attachments Get"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
@@ -2048,7 +2044,7 @@
           "chat"
         ],
         "summary": "Upload Attachment",
-        "description": "接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。\n\n上传成功即把对象入队摄取（Issue 17）：解析、分块与索引由后台\n执行器完成；不支持解析的类型不创建摄取记录，附件投影显示\"未索引\"。",
+        "description": "聊天附件上传已退役；文件必须先进入全局知识库。",
         "operationId": "upload_attachment_chat_conversations__conversation_id__attachments_post",
         "parameters": [
           {
@@ -2078,33 +2074,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            }
-          },
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatAttachmentProjection"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "400": {
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ChatError"
                 }
               }
-            },
-            "description": "Bad Request"
+            }
           },
           "401": {
             "content": {
@@ -2125,16 +2103,6 @@
               }
             },
             "description": "Not Found"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -2261,7 +2229,7 @@
           "chat"
         ],
         "summary": "Delete Message Attachment",
-        "description": "解除消息引用并按对象引用计数安全清理附件。",
+        "description": "聊天附件删除已退役；历史附件仅保留读取兼容。",
         "operationId": "delete_message_attachment_chat_conversations__conversation_id__messages__message_id__attachments__object_id__delete",
         "parameters": [
           {
@@ -2309,8 +2277,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "410": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -2361,7 +2336,7 @@
           "chat"
         ],
         "summary": "Cancel Attachment Upload",
-        "description": "按上传幂等标识取消未绑定项，覆盖客户端中止后的服务端竞态。",
+        "description": "聊天附件上传取消已退役。",
         "operationId": "cancel_attachment_upload_chat_conversations__conversation_id__attachments_by_upload__upload_id__delete",
         "parameters": [
           {
@@ -2400,8 +2375,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "410": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -2462,7 +2444,7 @@
           "chat"
         ],
         "summary": "Cancel Attachment",
-        "description": "删除尚未绑定消息的上传项，用于取消或移除待发送附件。",
+        "description": "聊天附件取消已退役。",
         "operationId": "cancel_attachment_chat_conversations__conversation_id__attachments__object_id__delete",
         "parameters": [
           {
@@ -2501,8 +2483,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "410": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatError"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -3696,7 +3685,7 @@
           "ingestion"
         ],
         "summary": "Retry Attachment Ingestion",
-        "description": "把失败文档重新入队；非失败状态幂等返回当前投影。",
+        "description": "聊天附件摄取重试已退役；知识库材料由知识库流程重建派生索引。",
         "operationId": "retry_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_retry_post",
         "parameters": [
           {
@@ -3735,12 +3724,14 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DocumentIngestionProjection"
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 410 Retry Attachment Ingestion Chat Conversations  Conversation Id  Attachments  Object Id  Ingestion Retry Post"
                 }
               }
             }
@@ -4812,7 +4803,7 @@
           "learning-projects"
         ],
         "summary": "Create Project",
-        "description": "新建学习项目；名称必填，描述可选。",
+        "description": "学习项目创建已退役；历史项目仍由只读投影读取。",
         "operationId": "create_project_learning_projects_post",
         "parameters": [
           {
@@ -4832,23 +4823,13 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LearningProjectCreateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "201": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LearningProjectSummary"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
@@ -4865,18 +4846,6 @@
             },
             "description": "Unauthorized"
           },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 422 Create Project Learning Projects Post"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -4888,6 +4857,16 @@
               }
             },
             "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       },
@@ -5063,7 +5042,7 @@
           "learning-projects"
         ],
         "summary": "Update Project",
-        "description": "更新项目名称或描述；字段缺省保持不变，显式 null 清空描述（名称显式 null 为 422）。",
+        "description": "学习项目更新已退役，避免触碰历史对象。",
         "operationId": "update_project_learning_projects__project_id__patch",
         "parameters": [
           {
@@ -5092,23 +5071,13 @@
             }
           }
         ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/LearningProjectUpdateRequest"
-              }
-            }
-          }
-        },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/LearningProjectSummary"
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
                 }
               }
             }
@@ -5125,30 +5094,6 @@
             },
             "description": "Unauthorized"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 404 Update Project Learning Projects  Project Id  Patch"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 422 Update Project Learning Projects  Project Id  Patch"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -5160,6 +5105,16 @@
               }
             },
             "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       },
@@ -5168,7 +5123,7 @@
           "learning-projects"
         ],
         "summary": "Delete Project",
-        "description": "删除项目；``keep`` 保留对话（解除归属），``delete`` 连同对话删除。",
+        "description": "学习项目删除已退役，物理清理必须走独立审计。",
         "operationId": "delete_project_learning_projects__project_id__delete",
         "parameters": [
           {
@@ -5178,20 +5133,6 @@
             "schema": {
               "type": "string",
               "title": "Project Id"
-            }
-          },
-          {
-            "name": "contents",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "enum": [
-                "keep",
-                "delete"
-              ],
-              "type": "string",
-              "default": "keep",
-              "title": "Contents"
             }
           },
           {
@@ -5212,8 +5153,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "410": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -5226,30 +5174,6 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 404 Delete Project Learning Projects  Project Id  Delete"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 409 Delete Project Learning Projects  Project Id  Delete"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "503": {
             "content": {
@@ -5282,7 +5206,7 @@
           "learning-projects"
         ],
         "summary": "Upload File",
-        "description": "接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。\n\n上传成功即入队摄取（source=project_file）：解析、分块与索引由后台\n执行器完成。同项目同名同内容的重复上传幂等复用——客户端安全重试\n同一上传只会得到已有文件的 200 投影，绝不重复摄取。",
+        "description": "项目文件上传已退役；不读取请求体，也不访问对象库。",
         "operationId": "upload_file_learning_projects__project_id__files_post",
         "parameters": [
           {
@@ -5312,35 +5236,15 @@
           }
         ],
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
               }
             }
-          },
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/LearningProjectFile"
-                }
-              }
-            },
-            "description": "Created"
-          },
-          "400": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 400 Upload File Learning Projects  Project Id  Files Post"
-                }
-              }
-            },
-            "description": "Bad Request"
           },
           "401": {
             "content": {
@@ -5353,30 +5257,6 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 404 Upload File Learning Projects  Project Id  Files Post"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "413": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 413 Upload File Learning Projects  Project Id  Files Post"
-                }
-              }
-            },
-            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -5604,7 +5484,7 @@
           "learning-projects"
         ],
         "summary": "Delete File",
-        "description": "级联删除项目文件与派生索引数据；被后台任务使用时返回 409。",
+        "description": "项目文件删除已退役，物理清理必须单独审计。",
         "operationId": "delete_file_learning_projects__project_id__files__object_id__delete",
         "parameters": [
           {
@@ -5643,8 +5523,15 @@
           }
         ],
         "responses": {
-          "204": {
-            "description": "Successful Response"
+          "410": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            }
           },
           "401": {
             "content": {
@@ -5657,30 +5544,6 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 404 Delete File Learning Projects  Project Id  Files  Object Id  Delete"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "409": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 409 Delete File Learning Projects  Project Id  Files  Object Id  Delete"
-                }
-              }
-            },
-            "description": "Conflict"
           },
           "503": {
             "content": {
@@ -29966,15 +29829,6 @@
             "title": "Plugin Selection",
             "description": "初始插件选择（可选，逐项校验可用）。"
           },
-          "attachment_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "title": "Attachment Ids",
-            "description": "已上传且待绑定到首条消息的对象标识（须属于指定会话）。"
-          },
           "use_knowledge_base": {
             "type": "boolean",
             "title": "Use Knowledge Base",
@@ -30044,6 +29898,7 @@
             "description": "对选中 MCP 插件的调用载荷（Issue 36）；与 SKILL/图片/视频载荷互斥。"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "content",
@@ -30102,15 +29957,6 @@
             "minLength": 1,
             "title": "Content",
             "description": "用户消息正文。"
-          },
-          "attachment_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 10,
-            "title": "Attachment Ids",
-            "description": "已上传且待绑定到本条消息的对象标识。"
           },
           "use_knowledge_base": {
             "type": "boolean",
@@ -30181,6 +30027,7 @@
             "description": "对选中 MCP 插件的调用载荷（Issue 36）；携带时本轮执行真实 MCP 调用而非普通回答，与 SKILL/图片/视频载荷互斥。"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "content"
@@ -38453,7 +38300,15 @@
             },
             "type": "array",
             "title": "Source Attachment Ids",
-            "description": "改写路径实际解析成功的当前消息附件（与消息绑定一致）。"
+            "description": "历史改写任务实际解析成功的聊天附件（只读兼容）。"
+          },
+          "source_knowledge_base_object_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Source Knowledge Base Object Ids",
+            "description": "改写路径实际解析成功的全局知识库材料对象标识。"
           }
         },
         "type": "object",
@@ -38461,7 +38316,7 @@
           "final_text"
         ],
         "title": "HumanizerOutputContract",
-        "description": "人味化输出合同：缺一不标记完成。\n\n五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、\nopen_questions 字段存在且可空列表已说明）才视为完成；软门状态\n（quality_status）与来源附件（source_attachment_ids）随输出持久化。"
+        "description": "人味化输出合同：缺一不标记完成。\n\n五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、\nopen_questions 字段存在且可空列表已说明）才视为完成；软门状态\n（quality_status）与来源标识随输出持久化。历史附件字段保留用于只读兼容，\n新任务使用 source_knowledge_base_object_ids。"
       },
       "HumanizerPath": {
         "type": "string",
@@ -38805,15 +38660,15 @@
               }
             ],
             "title": "Source Text",
-            "description": "改写路径的粘贴原文（与附件互斥或互补）。"
+            "description": "改写路径的粘贴原文（可与知识库材料互补）。"
           },
-          "attachment_ids": {
+          "knowledge_base_object_ids": {
             "items": {
               "type": "string"
             },
             "type": "array",
-            "title": "Attachment Ids",
-            "description": "改写路径引用的当前账户文件（对话附件）。"
+            "title": "Knowledge Base Object Ids",
+            "description": "改写路径引用的当前账户全局知识库材料对象标识。"
           },
           "source_label": {
             "anyOf": [
@@ -38828,13 +38683,14 @@
             "description": "来源显示名（文件名或用户粘贴说明）。"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "path",
           "genre"
         ],
         "title": "HumanizerTaskContract",
-        "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text 或附件；生成路径必带 topic。"
+        "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text 或知识库材料；生成路径必带 topic。"
       },
       "ImageAltTextSource": {
         "type": "string",
@@ -38982,18 +38838,6 @@
             "title": "Prompt",
             "description": "生成要求或编辑指令。"
           },
-          "source_version_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Source Version Id",
-            "description": "编辑来源版本标识（kind=edit 时可选其一）。"
-          },
           "source_object_id": {
             "anyOf": [
               {
@@ -39004,16 +38848,17 @@
               }
             ],
             "title": "Source Object Id",
-            "description": "编辑来源聊天附件对象标识（kind=edit 时可选其一）。"
+            "description": "编辑来源全局知识库图片对象标识（kind=edit 时可选）。"
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "kind",
           "prompt"
         ],
         "title": "ImageRequestPayload",
-        "description": "图片生成/编辑请求（Issue 31）。\n\n生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源\n（本账户图片资产版本 ``source_version_id`` 或本账户聊天附件对象\n``source_object_id``）。编辑来源归属在服务层校验，跨账户一律 404。\n请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。"
+        "description": "图片生成/编辑请求（Issue 31）。\n\n生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源\n（当前账户全局知识库图片材料 ``source_object_id``）。编辑来源归属\n在服务层校验，跨账户一律 404；历史 ``source_version_id`` 仅保留在\n投影和历史任务兼容模型中。\n请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。"
       },
       "ImageTaskKind": {
         "type": "string",
@@ -39050,7 +38895,7 @@
               }
             ],
             "title": "Source Version Id",
-            "description": "编辑来源版本标识（kind=edit 时存在）。"
+            "description": "历史编辑来源版本标识（新请求改用知识库材料）。"
           },
           "source_object_id": {
             "anyOf": [
@@ -39062,7 +38907,7 @@
               }
             ],
             "title": "Source Object Id",
-            "description": "编辑来源聊天附件对象标识（kind=edit 时存在）。"
+            "description": "编辑来源全局知识库图片对象标识（kind=edit 时存在）。"
           },
           "model_id": {
             "anyOf": [
@@ -41049,36 +40894,6 @@
         "title": "LearningProjectConversation",
         "description": "项目详情中的对话条目（不含消息正文）。"
       },
-      "LearningProjectCreateRequest": {
-        "properties": {
-          "name": {
-            "type": "string",
-            "maxLength": 120,
-            "minLength": 1,
-            "title": "Name",
-            "description": "项目名称。"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "可选项目描述。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "title": "LearningProjectCreateRequest",
-        "description": "新建学习项目请求；名称必填，描述可选。"
-      },
       "LearningProjectDetail": {
         "properties": {
           "project_id": {
@@ -41575,40 +41390,6 @@
         ],
         "title": "LearningProjectSummary",
         "description": "学习项目列表项（含对话与文件计数，不含具体内容）。"
-      },
-      "LearningProjectUpdateRequest": {
-        "properties": {
-          "name": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 120,
-                "minLength": 1
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Name",
-            "description": "新名称。"
-          },
-          "description": {
-            "anyOf": [
-              {
-                "type": "string",
-                "maxLength": 2000
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Description",
-            "description": "新描述；显式 null 表示清空。"
-          }
-        },
-        "type": "object",
-        "title": "LearningProjectUpdateRequest",
-        "description": "更新项目名称或描述；至少提供一个字段。\n\n字段缺省表示保持不变；``description`` 显式传 null 表示清空描述；\n``name`` 显式传 null 非法（名称永远不能为空），按 422 拒绝。"
       },
       "LearningRecord": {
         "properties": {

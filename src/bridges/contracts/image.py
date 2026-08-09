@@ -63,10 +63,10 @@ class ImageTaskProjection(BaseModel):
         description="用户提交的生成要求或编辑指令（用于追溯与前端展示）。"
     )
     source_version_id: str | None = Field(
-        default=None, description="编辑来源版本标识（kind=edit 时存在）。"
+        default=None, description="历史编辑来源版本标识（新请求改用知识库材料）。"
     )
     source_object_id: str | None = Field(
-        default=None, description="编辑来源聊天附件对象标识（kind=edit 时存在）。"
+        default=None, description="编辑来源全局知识库图片对象标识（kind=edit 时存在）。"
     )
     model_id: str | None = Field(
         default=None, description="实际使用的固定图片模型快照。"

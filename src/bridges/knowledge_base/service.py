@@ -127,6 +127,20 @@ class KnowledgeBaseService:
             ) from exc
         return projection, content
 
+    def download_for_capability(
+        self, account_id: str, object_id: str
+    ) -> tuple[KnowledgeBaseMaterialProjection, bytes]:
+        """读取已完成摄取且属于当前账户的能力输入材料。"""
+
+        projection = self.get_material(account_id, object_id)
+        if not projection.usable_for_chat:
+            raise KnowledgeBaseError(
+                "material_not_ready",
+                "该知识库材料尚未完成解析，暂不能作为能力输入。",
+                409,
+            )
+        return self.download(account_id, object_id)
+
     def retry(self, account_id: str, object_id: str) -> KnowledgeBaseMaterialProjection:
         """把失败材料重新入队（重置自动重试计数）；非失败状态幂等。"""
         self.get_material(account_id, object_id)

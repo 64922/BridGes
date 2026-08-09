@@ -80,3 +80,22 @@ Status: pending-runtime-evidence
 - 观察字段只包含 `real`、`probe` 与稳定路由标识；不包含账户、包名、服务器名或请求正文。
 - 迁移标记：schema `33`，`extension_retirement` 状态 `completed`。
 - 当前状态仍为 `pending-runtime-evidence`：本次仅有自动化探针证据，待真实部署流量观察完成后再改为 `passed`。
+
+## Issue 11 全局知识库唯一文件来源
+
+旧项目文件与聊天附件写入口在迁移阶段统一返回 HTTP 410；迁移闸门未通过时，
+入口先返回 HTTP 503 `migration_gate_blocked`，防止在未完成迁移的账户上进入收缩阶段。
+410 观测沿用 `compatibility_gate` 持久化命名空间，只记录稳定端点、服务版本、
+`real/probe` 分类与计数，不记录账户、对象、路径参数或请求正文。
+
+| endpoint_id | service_version | traffic_class | status_code | count |
+| --- | --- | --- | ---: | ---: |
+| `legacy.learning_projects.create/update/delete` | `0.1.0` | `real/probe` | 410 | 待运行时观测 |
+| `legacy.learning_project_files.upload/delete` | `0.1.0` | `real/probe` | 410 | 待运行时观测 |
+| `legacy.chat.conversations.create/update.project_association` | `0.1.0` | `real/probe` | 410 | 待运行时观测 |
+| `legacy.chat.attachments.upload/list_unbound/delete/cancel/cancel_upload` | `0.1.0` | `real/probe` | 410 | 待运行时观测 |
+| `legacy.chat.attachments.ingestion_retry` | `0.1.0` | `real/probe` | 410 | 待运行时观测 |
+
+收缩闸门 `contraction_gate_report()` 校验所有账户活跃 `project_file` 的迁移台账、
+目标知识库材料和失败状态；报告为 `blocked` 时不得进入 contract 阶段。原始项目
+对象、历史聊天附件、引用标签和备份恢复路径继续保留只读兼容语义。

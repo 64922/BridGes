@@ -11,7 +11,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from bridges.contracts.expression import Genre
 
@@ -90,8 +90,10 @@ class HumanizerTaskContract(BaseModel):
     """一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。
 
     与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。
-    改写路径必带 source_text 或附件；生成路径必带 topic。
+    改写路径必带 source_text 或知识库材料；生成路径必带 topic。
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     path: HumanizerPath = Field(description="改写或生成路径。")
     genre: Genre = Field(description="四体裁之一（科普文案/课程讲稿/科研汇报/论文写作）。")
@@ -111,10 +113,11 @@ class HumanizerTaskContract(BaseModel):
         default_factory=list, description="用户声明的硬约束（不得删减/必须保留等）。"
     )
     source_text: str | None = Field(
-        default=None, description="改写路径的粘贴原文（与附件互斥或互补）。"
+        default=None, description="改写路径的粘贴原文（可与知识库材料互补）。"
     )
-    attachment_ids: list[str] = Field(
-        default_factory=list, description="改写路径引用的当前账户文件（对话附件）。"
+    knowledge_base_object_ids: list[str] = Field(
+        default_factory=list,
+        description="改写路径引用的当前账户全局知识库材料对象标识。",
     )
     source_label: str | None = Field(
         default=None, description="来源显示名（文件名或用户粘贴说明）。"
@@ -205,7 +208,8 @@ class HumanizerOutputContract(BaseModel):
 
     五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、
     open_questions 字段存在且可空列表已说明）才视为完成；软门状态
-    （quality_status）与来源附件（source_attachment_ids）随输出持久化。
+    （quality_status）与来源标识随输出持久化。历史附件字段保留用于只读兼容，
+    新任务使用 source_knowledge_base_object_ids。
     """
 
     final_text: str = Field(description="最终文本。")
@@ -224,7 +228,11 @@ class HumanizerOutputContract(BaseModel):
     )
     source_attachment_ids: list[str] = Field(
         default_factory=list,
-        description="改写路径实际解析成功的当前消息附件（与消息绑定一致）。",
+        description="历史改写任务实际解析成功的聊天附件（只读兼容）。",
+    )
+    source_knowledge_base_object_ids: list[str] = Field(
+        default_factory=list,
+        description="改写路径实际解析成功的全局知识库材料对象标识。",
     )
 
     def completeness_gaps(self) -> list[str]:

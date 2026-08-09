@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Dialog } from "@/components/bridges/Dialog";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
-import { uploadChatAttachment } from "@/lib/api";
-import type { HumanizerSkillInput, HumanizerTaskContract } from "@/lib/api";
-import { formatFileType, formatSize } from "@/lib/format";
+import {
+  listKnowledgeBaseMaterials,
+  type HumanizerSkillInput,
+  type KnowledgeBaseMaterialProjection,
+} from "@/lib/api";
 
 /** 四类体裁（与 SKILL 体裁合同一一对应，不共用泛化模板）。 */
 export const HUMANIZER_GENRES: readonly { value: string; label: string; hint: string }[] = [
@@ -20,54 +22,30 @@ export const HUMANIZER_GENRES: readonly { value: string; label: string; hint: st
 interface HumanizerDialogProps {
   open: boolean;
   onClose: () => void;
-  /** 已存在的真实对话（对话页提供）；新聊天页不提供，用 ensureConversation 预建。 */
-  conversationId?: string;
-  /** 新聊天页的延迟建会话钩子（选择文件时预建空对话）。 */
-  ensureConversation?: () => Promise<string | undefined>;
   /** 提交：宿主执行真实发送（真实消息流，不伪造结果）；返回是否成功。
    *  ``useKnowledgeBase`` 为改写路径的显式知识库开关（默认关闭，只有
    *  用户明确勾选才补充检索全局知识库）。 */
   onSubmit: (
     content: string,
     skillInput: HumanizerSkillInput,
-    attachmentIds: string[],
     useKnowledgeBase: boolean
   ) => Promise<boolean>;
 }
 
-interface PickedFile {
-  id: string;
-  file: File;
-  filename: string;
-  uploadId: string;
-  objectId?: string;
-  status: "uploading" | "uploaded" | "error";
-  progress: number;
-  error?: string;
-}
-
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
-
-function newId(prefix: string): string {
-  return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
-}
-
 function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "上传失败，请重试。";
+  return error instanceof Error ? error.message : "操作失败，请重试。";
 }
 
 /**
  * 文章人味化任务对话框（Issue 28）。
  *
  * 两条路径（改写/生成）在同一对话框内选择：改写接受粘贴文本或当前账户
- * 文件，生成收集主题、受众、体裁、渠道与硬约束；提交走真实消息流程
+ * 全局知识库材料，生成收集主题、受众、体裁、渠道与硬约束；提交走真实消息流程
  * （任务契约随用户消息落库，重试沿用），不在此处伪造任何工具结果。
  */
 export function HumanizerDialog({
   open,
   onClose,
-  conversationId,
-  ensureConversation,
   onSubmit,
 }: HumanizerDialogProps) {
   const [path, setPath] = useState<HumanizerSkillInput["contract"]["path"]>("rewrite");
@@ -78,124 +56,47 @@ export function HumanizerDialog({
   const [channel, setChannel] = useState("");
   const [lengthTarget, setLengthTarget] = useState("");
   const [constraints, setConstraints] = useState("");
-  // Issue 04：改写路径默认只检索当前消息附件；只有用户明确开启知识库
-  // 时才允许补充全局知识库，且补充材料不得被当作「原文」。
+  // Issue 11：改写路径只接受粘贴文本或当前账户已授权的知识库材料。
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(false);
-  const [files, setFiles] = useState<PickedFile[]>([]);
+  const [knowledgeBaseMaterials, setKnowledgeBaseMaterials] = useState<
+    KnowledgeBaseMaterialProjection[]
+  >([]);
+  const [selectedKnowledgeBaseObjectIds, setSelectedKnowledgeBaseObjectIds] = useState<
+    string[]
+  >([]);
+  const [knowledgeBaseLoading, setKnowledgeBaseLoading] = useState(false);
+  const [knowledgeBaseError, setKnowledgeBaseError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const preparedConversationRef = useRef<string | undefined>(conversationId);
-
-  useEffect(() => {
-    preparedConversationRef.current = conversationId;
-  }, [conversationId]);
 
   // 关闭时清空表单（下次打开保持干净起点，任务输入不跨任务残留）
   useEffect(() => {
     if (!open) return;
     setFormError("");
     setSubmitting(false);
+    setSelectedKnowledgeBaseObjectIds([]);
+    setKnowledgeBaseError("");
+    setKnowledgeBaseLoading(true);
+    void listKnowledgeBaseMaterials()
+      .then((materials) => setKnowledgeBaseMaterials(materials))
+      .catch(() => setKnowledgeBaseError("知识库材料加载失败，请稍后重试。"))
+      .finally(() => setKnowledgeBaseLoading(false));
   }, [open]);
-
-  const resolveConversation = async (): Promise<string> => {
-    if (preparedConversationRef.current) return preparedConversationRef.current;
-    if (!ensureConversation) throw new Error("当前没有可用的对话，请稍后重试。");
-    const created = await ensureConversation();
-    if (!created) throw new Error("无法创建对话，请稍后重试。");
-    preparedConversationRef.current = created;
-    return created;
-  };
-
-  const startUpload = async (item: PickedFile): Promise<void> => {
-    setFiles((current) =>
-      current.map((candidate) =>
-        candidate.id === item.id ? { ...candidate, status: "uploading", progress: 0, error: undefined } : candidate
-      )
-    );
-    try {
-      const target = await resolveConversation();
-      const projection = await uploadChatAttachment(
-        target,
-        item.file,
-        item.uploadId,
-        (loaded, total) =>
-          setFiles((current) =>
-            current.map((candidate) =>
-              candidate.id === item.id
-                ? {
-                    ...candidate,
-                    progress: total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0,
-                  }
-                : candidate
-            )
-          )
-      );
-      setFiles((current) =>
-        current.map((candidate) =>
-          candidate.id === item.id ? { ...candidate, status: "uploaded", objectId: projection.object_id, progress: 100 } : candidate
-        )
-      );
-    } catch (error) {
-      setFiles((current) =>
-        current.map((candidate) =>
-          candidate.id === item.id ? { ...candidate, status: "error", error: errorMessage(error) } : candidate
-        )
-      );
-    }
-  };
-
-  const pickFiles = async (list: FileList | null) => {
-    if (!list) return;
-    setFormError("");
-    const picked = Array.from(list)
-      .filter((file) => file.size > 0)
-      .map((file) => ({
-        id: newId("humanizer-file"),
-        file,
-        filename: file.name,
-        uploadId: newId("upload"),
-        status: "uploading" as const,
-        progress: 0,
-        error: file.size > MAX_ATTACHMENT_BYTES ? "文件超过 10 MB 大小限制，请压缩后重试。" : undefined,
-      }));
-    if (picked.length === 0) {
-      setFormError("文件为空，无法上传。");
-      return;
-    }
-    setFiles((current) => [...current, ...picked]);
-    await Promise.all(picked.filter((item) => !item.error).map(startUpload));
-  };
-
-  const removeFile = (id: string) => {
-    setFiles((current) => current.filter((item) => item.id !== id));
-  };
 
   const buildContract = (): HumanizerSkillInput | null => {
     const hardConstraints = constraints
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
-    const attachmentIds = files
-      .filter((item) => item.status === "uploaded" && item.objectId)
-      .map((item) => item.objectId!);
     const hasSource = sourceText.trim().length > 0;
-    const hasFile = attachmentIds.length > 0;
+    const hasKnowledgeBaseSource = selectedKnowledgeBaseObjectIds.length > 0;
 
-    if (path === "rewrite" && !hasSource && !hasFile) {
-      setFormError("请粘贴要改写的原文，或选择当前账户的文件。");
+    if (path === "rewrite" && !hasSource && !hasKnowledgeBaseSource) {
+      setFormError("请粘贴要改写的原文，或选择当前账户已就绪的知识库材料。");
       return null;
     }
     if (path === "generate" && !topic.trim()) {
       setFormError("请填写要生成的文章主题。");
-      return null;
-    }
-    if (files.some((item) => item.status === "uploading")) {
-      setFormError("文件仍在上传，请等待完成或先移除。");
-      return null;
-    }
-    if (files.some((item) => item.status === "error")) {
-      setFormError("存在上传失败的文件，请移除后重试。");
       return null;
     }
     return {
@@ -205,7 +106,7 @@ export function HumanizerDialog({
         genre,
         ...(path === "generate" ? { topic: topic.trim() } : {}),
         ...(hasSource ? { source_text: sourceText.trim() } : {}),
-        ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
+        knowledge_base_object_ids: selectedKnowledgeBaseObjectIds,
         ...(audience.trim() ? { audience: audience.trim() } : {}),
         ...(channel.trim() ? { channel: channel.trim() } : {}),
         ...(lengthTarget.trim() ? { length_target: lengthTarget.trim() } : {}),
@@ -221,7 +122,7 @@ export function HumanizerDialog({
     const subject =
       input.contract.path === "generate"
         ? input.contract.topic ?? ""
-        : (input.contract.source_text?.slice(0, 30) ?? files[0]?.filename ?? "原文");
+        : (input.contract.source_text?.slice(0, 30) ?? "知识库材料");
     return input.contract.path === "generate"
       ? `文章人味化（${genreLabel}）：生成《${subject}》`
       : `文章人味化（${genreLabel}）：改写《${subject}》`;
@@ -237,7 +138,6 @@ export function HumanizerDialog({
       const accepted = await onSubmit(
         buildContent(input),
         input,
-        input.contract.attachment_ids ?? [],
         useKnowledgeBase
       );
       if (accepted === false) {
@@ -255,9 +155,9 @@ export function HumanizerDialog({
   const genreLabel = HUMANIZER_GENRES.find((item) => item.value === genre)?.label ?? "";
   const ready =
     path === "rewrite"
-      ? sourceText.trim().length > 0 || files.some((item) => item.status === "uploaded")
+      ? sourceText.trim().length > 0 || selectedKnowledgeBaseObjectIds.length > 0
       : topic.trim().length > 0;
-  const canSubmit = ready && !submitting && !files.some((item) => item.status === "uploading");
+  const canSubmit = ready && !submitting;
 
   const fieldStyle: React.CSSProperties = {
     width: "100%",
@@ -329,68 +229,82 @@ export function HumanizerDialog({
                 style={{ ...fieldStyle, resize: "vertical" }}
               />
             </div>
-            <div>
-              <label style={labelStyle}>或选择当前账户文件（PDF / Word / 文本）</label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf,.docx,.txt,.md,image/*"
-                multiple
-                hidden
-                data-testid="humanizer-file-input"
-                onChange={(event) => {
-                  void pickFiles(event.target.files);
-                  event.target.value = "";
-                }}
-              />
-              <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}>
-                <Icon name="uploadFile" size={16} aria-hidden />
-                选择文件
-              </Button>
-              {path === "rewrite" && (
-                <label
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "var(--space-2)",
-                    fontSize: "var(--text-sm)",
-                    color: "var(--color-text-secondary)",
-                  }}
+            <p style={{ margin: 0, color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+              文件输入已统一迁移到全局知识库；以下仅可选择当前账户已完成解析的材料。
+            </p>
+            <div
+              aria-label="选择全局知识库材料"
+              style={{
+                display: "grid",
+                gap: "var(--space-2)",
+                padding: "var(--space-3)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-surface-muted, #f7f7f7)",
+              }}
+            >
+              <strong style={{ fontSize: "var(--text-sm)" }}>全局知识库材料（可选）</strong>
+              {knowledgeBaseLoading && (
+                <span
+                  role="status"
+                  style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}
                 >
-                  <input
-                    type="checkbox"
-                    data-testid="humanizer-kb-toggle"
-                    checked={useKnowledgeBase}
-                    onChange={(event) => setUseKnowledgeBase(event.target.checked)}
-                  />
-                  补充检索全局知识库（可选；只以所选文件为改写原文，知识库材料仅作补充）
-                </label>
+                  正在加载可用材料…
+                </span>
               )}
-              {files.length > 0 && (
-                <ul
-                  role="list"
-                  data-testid="humanizer-file-list"
-                  style={{ margin: "var(--space-2) 0 0", padding: 0, listStyle: "none", display: "grid", gap: "var(--space-1)" }}
+              {knowledgeBaseError && (
+                <span
+                  role="alert"
+                  style={{ color: "var(--color-status-error)", fontSize: "var(--text-sm)" }}
                 >
-                  {files.map((item) => (
-                    <li key={item.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", fontSize: "var(--text-sm)" }}>
-                      <Icon name="documentPage" size={16} aria-hidden />
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.filename}</span>
-                      <span style={{ color: "var(--color-text-secondary)", whiteSpace: "nowrap" }}>
-                        {formatFileType(item.file.type, item.filename)} · {formatSize(item.file.size)} ·{" "}
-                        {item.status === "uploading"
-                          ? `上传中 ${item.progress}%`
-                          : item.status === "error"
-                            ? (item.error ?? "上传失败")
-                            : "已上传"}
-                      </span>
-                      <Button variant="secondary" size="sm" onClick={() => removeFile(item.id)}>
-                        移除
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
+                  {knowledgeBaseError}
+                </span>
               )}
+              {!knowledgeBaseLoading &&
+                !knowledgeBaseError &&
+                knowledgeBaseMaterials.filter((material) => material.usable_for_chat).length === 0 && (
+                  <span
+                    style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}
+                  >
+                    暂无已就绪材料，请先在知识库页面上传并等待解析完成。
+                  </span>
+                )}
+              {knowledgeBaseMaterials
+                .filter((material) => material.usable_for_chat)
+                .map((material) => (
+                  <label
+                    key={material.object_id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "var(--space-2)",
+                      fontSize: "var(--text-sm)",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedKnowledgeBaseObjectIds.includes(material.object_id)}
+                      onChange={(event) => {
+                        setSelectedKnowledgeBaseObjectIds((current) =>
+                          event.target.checked
+                            ? [...current, material.object_id]
+                            : current.filter((objectId) => objectId !== material.object_id)
+                        );
+                      }}
+                    />
+                    <span
+                      style={{
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                      }}
+                      title={material.filename}
+                    >
+                      {material.filename}
+                    </span>
+                  </label>
+                ))}
             </div>
           </>
         ) : (

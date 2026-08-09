@@ -7846,11 +7846,6 @@ export interface components {
              */
             plugin_selection?: components["schemas"]["ChatPluginSelectionItem"][];
             /**
-             * Attachment Ids
-             * @description 已上传且待绑定到首条消息的对象标识（须属于指定会话）。
-             */
-            attachment_ids?: string[];
-            /**
              * Use Knowledge Base
              * @description 首轮是否启用全局知识库层。
              * @default true
@@ -7924,11 +7919,6 @@ export interface components {
              * @description 用户消息正文。
              */
             content: string;
-            /**
-             * Attachment Ids
-             * @description 已上传且待绑定到本条消息的对象标识。
-             */
-            attachment_ids?: string[];
             /**
              * Use Knowledge Base
              * @description 本轮是否启用全局知识库层（可在发送前关闭）。
@@ -13023,7 +13013,8 @@ export interface components {
          *
          *     五项全部齐全（final_text 非空、edits 每项带理由、fact_check 非空、
          *     open_questions 字段存在且可空列表已说明）才视为完成；软门状态
-         *     （quality_status）与来源附件（source_attachment_ids）随输出持久化。
+         *     （quality_status）与来源标识随输出持久化。历史附件字段保留用于只读兼容，
+         *     新任务使用 source_knowledge_base_object_ids。
          */
         HumanizerOutputContract: {
             /**
@@ -13053,9 +13044,14 @@ export interface components {
             quality_status: components["schemas"]["HumanizerQualityStatus"];
             /**
              * Source Attachment Ids
-             * @description 改写路径实际解析成功的当前消息附件（与消息绑定一致）。
+             * @description 历史改写任务实际解析成功的聊天附件（只读兼容）。
              */
             source_attachment_ids?: string[];
+            /**
+             * Source Knowledge Base Object Ids
+             * @description 改写路径实际解析成功的全局知识库材料对象标识。
+             */
+            source_knowledge_base_object_ids?: string[];
         };
         /**
          * HumanizerPath
@@ -13262,14 +13258,14 @@ export interface components {
             hard_constraints?: string[];
             /**
              * Source Text
-             * @description 改写路径的粘贴原文（与附件互斥或互补）。
+             * @description 改写路径的粘贴原文（可与知识库材料互补）。
              */
             source_text?: string | null;
             /**
-             * Attachment Ids
-             * @description 改写路径引用的当前账户文件（对话附件）。
+             * Knowledge Base Object Ids
+             * @description 改写路径引用的当前账户全局知识库材料对象标识。
              */
-            attachment_ids?: string[];
+            knowledge_base_object_ids?: string[];
             /**
              * Source Label
              * @description 来源显示名（文件名或用户粘贴说明）。
@@ -13380,8 +13376,9 @@ export interface components {
          * @description 图片生成/编辑请求（Issue 31）。
          *
          *     生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源
-         *     （本账户图片资产版本 ``source_version_id`` 或本账户聊天附件对象
-         *     ``source_object_id``）。编辑来源归属在服务层校验，跨账户一律 404。
+         *     （当前账户全局知识库图片材料 ``source_object_id``）。编辑来源归属
+         *     在服务层校验，跨账户一律 404；历史 ``source_version_id`` 仅保留在
+         *     投影和历史任务兼容模型中。
          *     请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。
          */
         ImageRequestPayload: {
@@ -13393,13 +13390,8 @@ export interface components {
              */
             prompt: string;
             /**
-             * Source Version Id
-             * @description 编辑来源版本标识（kind=edit 时可选其一）。
-             */
-            source_version_id?: string | null;
-            /**
              * Source Object Id
-             * @description 编辑来源聊天附件对象标识（kind=edit 时可选其一）。
+             * @description 编辑来源全局知识库图片对象标识（kind=edit 时可选）。
              */
             source_object_id?: string | null;
         };
@@ -13431,12 +13423,12 @@ export interface components {
             prompt: string;
             /**
              * Source Version Id
-             * @description 编辑来源版本标识（kind=edit 时存在）。
+             * @description 历史编辑来源版本标识（新请求改用知识库材料）。
              */
             source_version_id?: string | null;
             /**
              * Source Object Id
-             * @description 编辑来源聊天附件对象标识（kind=edit 时存在）。
+             * @description 编辑来源全局知识库图片对象标识（kind=edit 时存在）。
              */
             source_object_id?: string | null;
             /**

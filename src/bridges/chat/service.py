@@ -25,7 +25,7 @@ from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.arxiv_mcp.service import ArxivSearchService
-from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
+from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
     ConversationModeLockConflict,
@@ -282,6 +282,13 @@ class ChatService:
         插件再建对话）；调用方负责逐项校验可用性，这里原样持久化。
         """
         self._ensure_extension_payload_allowed(plugin_selection=plugin_selection)
+        if project_id is not None:
+            raise ChatDomainError(
+                "legacy_file_source_retired",
+                "学习项目归属已退役，请使用全局知识库。",
+                410,
+            )
+        project_id = None
         now = datetime.now(UTC)
         conversation_id = secrets.token_urlsafe(16)
         self._repo.create_conversation(
@@ -680,13 +687,13 @@ class ChatService:
                 "上一轮回答仍在生成中，请先停止或等待完成。",
                 409,
             )
-        attachment_ids = self._validate_attachments(
-            account_id, conversation_id, attachment_ids
-        )
-        # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致——
-        # 不一致直接返回可理解错误，绝不静默回退（如用知识库材料冒充原文）。
-        self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
-
+        if attachment_ids:
+            raise ChatDomainError(
+                "legacy_file_source_retired",
+                "聊天附件已退役，请先将材料加入全局知识库。",
+                410,
+            )
+        attachment_ids = None
         mode = ChatMode(record.mode)
         (
             user_message,
@@ -743,30 +750,6 @@ class ChatService:
             self._project_message(assistant_message, run_view),
         )
 
-    def _validate_skill_attachment_consistency(
-        self,
-        skill_payload: dict[str, Any] | None,
-        attachment_ids: list[str],
-    ) -> None:
-        """Issue 04：技能任务契约引用的附件必须与消息绑定集合一致。
-
-        前端把附件 ID 同时放在请求顶层（绑定）与任务契约（技能读取），
-        两者必须逐一对齐；不一致说明提交链路丢字段（历史缺陷：首页
-        包装回调丢弃 ``attachmentIds``），直接返回可理解错误而非静默
-        继续——绝不出现「消息投影无附件但任务读取了文件」或反之。
-        """
-        if skill_payload is None:
-            return
-        contract_ids = list(
-            (skill_payload.get("contract") or {}).get("attachment_ids") or []
-        )
-        if set(contract_ids) != set(attachment_ids):
-            raise ChatDomainError(
-                "attachment_contract_mismatch",
-                "任务引用的附件与消息附加的附件不一致，请重新选择文件后重试。",
-                422,
-            )
-
     def _validate_turn_payloads(
         self,
         skill_id: str | None,
@@ -799,27 +782,6 @@ class ChatService:
             has_skill or image_payload is not None or video_payload is not None,
         )
         return skill_payload, image_payload, video_payload, mcp_call_payload
-
-    def _validate_attachments(
-        self,
-        account_id: str,
-        conversation_id: str,
-        attachment_ids: list[str] | None,
-    ) -> list[str]:
-        """校验附件归属：必须属于当前账户/会话且尚未绑定其他消息。"""
-        attachment_ids = list(attachment_ids or [])
-        if attachment_ids:
-            if self._attachments is None:
-                raise ChatDomainError(
-                    "attachments_unavailable", "附件服务未启用，请稍后重试。", 503
-                )
-            try:
-                self._attachments.validate_unbound(
-                    account_id, conversation_id, attachment_ids
-                )
-            except ChatAttachmentError as exc:
-                raise ChatDomainError(exc.code, exc.message, exc.status_code) from exc
-        return attachment_ids
 
     def _assemble_generation_records(
         self,
@@ -1008,6 +970,13 @@ class ChatService:
             skill_input=skill_input,
             mcp_call=mcp_call,
         )
+        if project_id is not None:
+            raise ChatDomainError(
+                "legacy_file_source_retired",
+                "学习项目归属已退役，请使用全局知识库。",
+                410,
+            )
+        project_id = None
         now = datetime.now(UTC)
         content = content.strip()
         if not content:
@@ -1033,12 +1002,13 @@ class ChatService:
                     "该会话模式已锁定，请新建另一个会话以使用其他模式。",
                     409,
                 )
-        with self._repo.connection_lock():
-            attachment_ids = self._validate_attachments(
-                account_id, conversation_id, attachment_ids
+        if attachment_ids:
+            raise ChatDomainError(
+                "legacy_file_source_retired",
+                "聊天附件已退役，请先将材料加入全局知识库。",
+                410,
             )
-        # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致。
-        self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
+        attachment_ids = None
         title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
         target_conversation_id = conversation_id or secrets.token_urlsafe(16)
         (

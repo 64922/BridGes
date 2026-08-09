@@ -188,12 +188,17 @@ class IngestionService:
         conversation_id: str | None = None,
         project_id: str | None = None,
     ) -> None:
-        """为已上传对象创建摄取记录（幂等；不支持的媒体类型不入队）。
+        """为全局知识库对象创建摄取记录（幂等；不支持的媒体类型不入队）。
 
-        ``conversation_id`` 为 None 时表示不绑定对话的材料：``project_id``
-        非空为学习项目文件（Issue 19，来源 ``project_file``），否则为全局
-        知识库材料（Issue 18，来源 ``knowledge_base``）。
+        两个历史参数保留用于读模型迁移，但不能再写入聊天附件或项目
+        文件来源；旧 API 应在进入本服务前返回 410。
         """
+        if conversation_id is not None or project_id is not None:
+            raise IngestionError(
+                "legacy_file_source_retired",
+                "聊天附件和项目文件已退役，请改用全局知识库。",
+                410,
+            )
         object_row = self._database.scoped(account_id).execute(
             "SELECT content_hash, media_type, original_filename FROM objects"
             " WHERE object_id = ? AND account_id = ? AND status = 'active'",
@@ -206,11 +211,7 @@ class IngestionService:
         if str(object_row["media_type"]) not in SUPPORTED_MEDIA_TYPES:
             return
         now = _now()
-        source = (
-            "chat_attachment"
-            if conversation_id is not None
-            else ("project_file" if project_id is not None else "knowledge_base")
-        )
+        source = "knowledge_base"
         try:
             with self._database.transaction():
                 self._database.scoped(account_id).execute(

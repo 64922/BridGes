@@ -49,8 +49,6 @@ export function NewChatHome() {
   const [prefill, setPrefill] = useState<{ text: string; nonce: number } | null>(null);
   // 新聊天默认日常陪伴；用户可切为学习模式后发送（Issue 14，ADR-0022）
   const [mode, setMode] = useState<ChatMode>("companion");
-  // 选中的学习项目（Issue 19）：本地状态，发送创建对话时写入 project_id
-  const [learningProject, setLearningProject] = useState<{ project_id: string; name: string } | null>(null);
   // 递增计数器保证每次建议卡点击都触发预填（同毫秒点击不会丢）
   const prefillCounter = useRef(0);
   // 预建空会话（Composer 选择附件上传时才创建，作为附件归属上下文）
@@ -90,7 +88,6 @@ export function NewChatHome() {
    *  全部经同一命令提交，成功后导航到会话页并刷新侧栏最近列表。 */
   const submitFirstTurn = async (options: {
     content: string;
-    attachmentIds?: string[];
     conversationId?: string;
     useKnowledgeBase?: boolean;
     useProfile?: boolean;
@@ -112,8 +109,6 @@ export function NewChatHome() {
         idempotency_key: idempotencyKeyRef.current,
         conversation_id: options.conversationId,
         mode,
-        project_id: learningProject?.project_id,
-        attachment_ids: options.attachmentIds ?? [],
         // Issue 04：人味化改写默认关闭知识库（只有用户显式勾选才开启）；
         // 普通消息沿用既有默认开启语义。
         use_knowledge_base: options.useKnowledgeBase ?? true,
@@ -160,15 +155,11 @@ export function NewChatHome() {
   const handleImageSubmit = async (payload: {
     kind: ImageTaskKind;
     prompt: string;
-    sourceVersionId?: string;
     sourceObjectId?: string;
   }): Promise<boolean> => {
     const imagePayload: ImageRequestPayload = {
       kind: payload.kind,
       prompt: payload.prompt,
-      ...(payload.sourceVersionId
-        ? { source_version_id: payload.sourceVersionId }
-        : {}),
       ...(payload.sourceObjectId
         ? { source_object_id: payload.sourceObjectId }
         : {}),
@@ -186,14 +177,10 @@ export function NewChatHome() {
   const handleHumanizerSubmit = async (
     content: string,
     skillInput: HumanizerSkillInput,
-    attachmentIds: string[],
     useKnowledgeBase: boolean
   ): Promise<boolean> => {
-    // Issue 04：附件 ID 与知识库开关随首轮请求一并提交——附件绑定到
-    // 首条消息（不再被丢弃），改写默认只检索当前消息附件。
     return submitFirstTurn({
       content,
-      attachmentIds,
       conversationId: preparedConversationRef.current,
       useKnowledgeBase,
       skillId: skillInput.skill_id,
@@ -203,14 +190,11 @@ export function NewChatHome() {
 
   const handleSend = async (
     text: string,
-    attachmentIds: string[] = [],
     preparedConversationId?: string
   ): Promise<boolean> => {
-    // 附件路径：已预建的会话作为首轮目标（附件归属该校验），
-    // 项目归属/插件选择随首轮请求由服务端写入该会话。
+    // 新消息不再携带聊天附件或学习项目归属。
     return submitFirstTurn({
       content: text,
-      attachmentIds,
       conversationId: preparedConversationId ?? preparedConversationRef.current,
     });
   };
@@ -243,8 +227,6 @@ export function NewChatHome() {
                 generating={sending}
                 onStop={() => setSending(false)}
                 prefill={prefill}
-                learningProject={learningProject}
-                onSelectLearningProject={setLearningProject}
                 onOpenHumanizer={() => setHumanizerOpen(true)}
                 onOpenCareer={() => setCareerOpen(true)}
                 onOpenImage={() => setImageOpen(true)}
@@ -273,7 +255,6 @@ export function NewChatHome() {
       <HumanizerDialog
         open={humanizerOpen}
         onClose={() => setHumanizerOpen(false)}
-        ensureConversation={ensureConversation}
         onSubmit={handleHumanizerSubmit}
       />
       <CareerPlanningDialog
@@ -285,8 +266,6 @@ export function NewChatHome() {
       <ImageDialog
         open={imageOpen}
         onClose={() => setImageOpen(false)}
-        assets={[]}
-        attachmentOptions={[]}
         onSubmit={handleImageSubmit}
       />
       <VideoDialog

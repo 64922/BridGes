@@ -10,9 +10,12 @@ from bridges.chat.repository import ConversationRepository
 from bridges.contracts.chat import ChatMode
 from bridges.ingestion.embedding import DeterministicEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
-from bridges.ingestion.service import IngestionService
+from bridges.ingestion.service import IngestionService, parser_version_for
 from bridges.knowledge_base.service import KnowledgeBaseService
-from bridges.learning_projects.service import LearningProjectService
+from bridges.learning_projects.service import (
+    LearningProjectError,
+    LearningProjectService,
+)
 from bridges.learning_projects.migration import ProjectMigrationService
 
 
@@ -44,7 +47,23 @@ def _project_file(storage, projects, ingestion, account_id: str, name: str, cont
     stored = storage["repository"].create_object(
         account_id, "笔记.txt", content, media_type="text/plain"
     )
-    ingestion.enqueue(account_id, stored.object_id, project_id=project.project_id)
+    now = datetime.now(UTC).isoformat(timespec="seconds")
+    storage["database"].scoped(account_id).execute(
+        "INSERT INTO document_records"
+        " (document_id, account_id, object_id, conversation_id, content_hash,"
+        "  parser_version, status, source, project_id, created_at, updated_at)"
+        " VALUES (?, ?, ?, NULL, ?, ?, 'ready', 'project_file', ?, ?, ?)",
+        (
+            f"doc-{stored.object_id}",
+            account_id,
+            stored.object_id,
+            stored.content_hash,
+            parser_version_for(stored.media_type),
+            project.project_id,
+            now,
+            now,
+        ),
+    )
     return project.project_id, stored.object_id
 
 
@@ -134,11 +153,9 @@ def test_migration_deduplicates_same_account_content_and_detaches_conversations(
 def test_failed_migration_keeps_source_and_is_retryable(storage):
     projects, _, migration, _, ingestion = _services(storage)
     account_id = storage["account_a"]
-    project_id = projects.create_project(account_id, "失败项目", None).project_id
-    stored = storage["repository"].create_object(
-        account_id, "坏文件.txt", b"\xff\xfe", media_type="text/plain"
+    _, stored_object_id = _project_file(
+        storage, projects, ingestion, account_id, "失败项目", b"\xff\xfe"
     )
-    ingestion.enqueue(account_id, stored.object_id, project_id=project_id)
     migration.start(account_id)
 
     failed = migration.process_pending(account_id=account_id)
@@ -151,7 +168,7 @@ def test_failed_migration_keeps_source_and_is_retryable(storage):
     assert row is not None and row["status"] == "failed"
     assert row["failure_stage"] in {"source", "target", "index"}
     assert row["failure_reason"]
-    assert storage["repository"].get_content(account_id, stored.object_id) == b"\xff\xfe"
+    assert storage["repository"].get_content(account_id, stored_object_id) == b"\xff\xfe"
     assert storage["database"].scoped(account_id).execute(
         "SELECT COUNT(*) AS count FROM document_records"
         " WHERE account_id = ? AND source = 'knowledge_base'",
@@ -217,7 +234,7 @@ def test_deleted_target_tombstone_blocks_recreation(storage):
     assert tombstone is not None
 
 
-def test_migration_is_account_scoped_and_freezes_project_file_writes(storage):
+def test_migration_is_account_scoped_and_retires_project_file_writes(storage):
     projects, _, migration, _, ingestion = _services(storage)
     account_a = storage["account_a"]
     account_b = storage["account_b"]
@@ -227,8 +244,9 @@ def test_migration_is_account_scoped_and_freezes_project_file_writes(storage):
     _project_file(storage, projects, ingestion, account_b, "B 的项目", b"B")
     migration.start(account_a)
 
-    with pytest.raises(Exception) as excinfo:
+    with pytest.raises(LearningProjectError) as excinfo:
         projects.upload_file(account_a, project_id, b"new", "new.txt")
-    assert "迁移" in str(excinfo.value)
+    assert excinfo.value.status_code == 410
+    assert excinfo.value.code == "legacy_file_source_retired"
     status = migration.get_status(account_b)
     assert status is None

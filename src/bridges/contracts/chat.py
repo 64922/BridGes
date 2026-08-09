@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.contracts.career import (
@@ -477,10 +477,9 @@ class ChatMessageCreateRequest(BaseModel):
     审计与上下文说明均不含任何画像切片，回答不个性化。
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     content: str = Field(min_length=1, max_length=4000, description="用户消息正文。")
-    attachment_ids: list[str] = Field(
-        default_factory=list, max_length=10, description="已上传且待绑定到本条消息的对象标识。"
-    )
     use_knowledge_base: bool = Field(
         default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
     )
@@ -523,6 +522,8 @@ class ChatFirstTurnRequest(BaseModel):
     依赖跳转前的 PATCH 往返。载荷互斥与校验语义同发送消息。
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     content: str = Field(min_length=1, max_length=4000, description="首条用户消息正文。")
     idempotency_key: str = Field(
         min_length=8,
@@ -542,11 +543,6 @@ class ChatFirstTurnRequest(BaseModel):
         default_factory=list,
         max_length=20,
         description="初始插件选择（可选，逐项校验可用）。",
-    )
-    attachment_ids: list[str] = Field(
-        default_factory=list,
-        max_length=10,
-        description="已上传且待绑定到首条消息的对象标识（须属于指定会话）。",
     )
     use_knowledge_base: bool = Field(
         default=True, description="首轮是否启用全局知识库层。"
@@ -614,20 +610,20 @@ class ImageRequestPayload(BaseModel):
     """图片生成/编辑请求（Issue 31）。
 
     生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源
-    （本账户图片资产版本 ``source_version_id`` 或本账户聊天附件对象
-    ``source_object_id``）。编辑来源归属在服务层校验，跨账户一律 404。
+    （当前账户全局知识库图片材料 ``source_object_id``）。编辑来源归属
+    在服务层校验，跨账户一律 404；历史 ``source_version_id`` 仅保留在
+    投影和历史任务兼容模型中。
     请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     kind: ImageTaskKind = Field(description="生成或编辑。")
     prompt: str = Field(
         min_length=1, max_length=2000, description="生成要求或编辑指令。"
     )
-    source_version_id: str | None = Field(
-        default=None, description="编辑来源版本标识（kind=edit 时可选其一）。"
-    )
     source_object_id: str | None = Field(
-        default=None, description="编辑来源聊天附件对象标识（kind=edit 时可选其一）。"
+        default=None, description="编辑来源全局知识库图片对象标识（kind=edit 时可选）。"
     )
 
 
