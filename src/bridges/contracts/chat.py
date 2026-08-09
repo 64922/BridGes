@@ -442,8 +442,6 @@ class ChatMessageCreateRequest(BaseModel):
 
     ``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用
     均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。
-    ``use_profile`` 为画像使用开关（Issue 27）：关闭后本轮模型请求、
-    审计与上下文说明均不含任何画像切片，回答不个性化。
     """
 
     content: str = Field(min_length=1, max_length=4000, description="用户消息正文。")
@@ -452,9 +450,6 @@ class ChatMessageCreateRequest(BaseModel):
     )
     use_knowledge_base: bool = Field(
         default=True, description="本轮是否启用全局知识库层（可在发送前关闭）。"
-    )
-    use_profile: bool = Field(
-        default=True, description="本轮是否使用画像切片（可在发送前关闭）。"
     )
     skill_id: str | None = Field(
         default=None,
@@ -519,9 +514,6 @@ class ChatFirstTurnRequest(BaseModel):
     )
     use_knowledge_base: bool = Field(
         default=True, description="首轮是否启用全局知识库层。"
-    )
-    use_profile: bool = Field(
-        default=True, description="首轮是否使用画像切片（可在发送前关闭）。"
     )
     skill_id: str | None = Field(
         default=None,

@@ -109,6 +109,7 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
+from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection
@@ -181,6 +182,7 @@ class ChatService:
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
+        four_dimension_profile_service: FourDimensionProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
@@ -202,6 +204,7 @@ class ChatService:
         self._teaching = teaching_service or TeachingTurnService()
         #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
         self._profiles = profile_service
+        self._four_dimension_profiles = four_dimension_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 内置 bridges-humanizer SKILL 编排（Issue 28）；未挂载时携带
@@ -233,6 +236,7 @@ class ChatService:
             arxiv_search_service=self._arxiv_search,
             teaching_service=self._teaching,
             profile_service=self._profiles,
+            four_dimension_profile_service=self._four_dimension_profiles,
             observability_service=self._observability,
             humanizer_service=self._humanizer,
             career_planner_service=self._career_planner,
@@ -917,7 +921,8 @@ class ChatService:
         Issue 02：画像通知作为 profile 事件随运行持久化（started 之后），
         订阅者从游标回放即可即时展示，重开页面不重复下发。
         """
-        if self._profiles is not None:
+        # 生产聊天只使用四维读取链路；旧九维自动写入仅由历史单元测试显式挂载。
+        if self._four_dimension_profiles is None and self._profiles is not None:
             with contextlib.suppress(Exception):  # noqa: BLE001 - 辅助路径静默降级
                 self._profiles.process_conversation_message(
                     account_id,

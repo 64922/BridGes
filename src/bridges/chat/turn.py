@@ -103,6 +103,7 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
+from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
@@ -1126,6 +1127,7 @@ class TurnOrchestrator:
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
+        four_dimension_profile_service: FourDimensionProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
@@ -1146,6 +1148,7 @@ class TurnOrchestrator:
         self._teaching = teaching_service or TeachingTurnService()
         #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
         self._profiles = profile_service
+        self._four_dimension_profiles = four_dimension_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 内置 bridges-humanizer SKILL 编排（Issue 28）。
@@ -3950,7 +3953,8 @@ class TurnOrchestrator:
         )
         # 画像服务未挂载（退化环境）时无画像能力：不披露、不审计，聊天
         # 行为与旧版一致（thinking 不追加画像说明）。
-        if self._profiles is None:
+        profile_service = self._four_dimension_profiles or self._profiles
+        if profile_service is None:
             return None, None, []
         if not use_profile:
             self._audit_slice_usage(
@@ -3979,7 +3983,7 @@ class TurnOrchestrator:
                 [],
             )
         try:
-            profile_slice = self._profiles.compile_chat_slice(
+            profile_slice = profile_service.compile_chat_slice(
                 account_id,
                 mode=mode.value,
                 run_id=assistant_message_id,

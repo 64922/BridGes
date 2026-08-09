@@ -624,7 +624,6 @@ export default function ChatConversationPage() {
       text: string,
       attachmentIds: string[] = [],
       useKnowledgeBase: boolean = true,
-      useProfile: boolean = true,
       skillId?: string,
       skillInput?: unknown,
       image?: ImageRequestPayload,
@@ -656,7 +655,6 @@ export default function ChatConversationPage() {
             mode: selectedMode,
             attachment_ids: attachmentIds,
             use_knowledge_base: useKnowledgeBase,
-            use_profile: useProfile,
             ...(skillId !== undefined ? { skill_id: skillId } : {}),
             ...(skillInput !== undefined
               ? { skill_input: skillInput as HumanizerSkillInput }
@@ -677,7 +675,6 @@ export default function ChatConversationPage() {
             text,
             attachmentIds,
             useKnowledgeBase,
-            useProfile,
             skillId,
             skillInput,
             image,
@@ -746,7 +743,6 @@ export default function ChatConversationPage() {
         // Issue 04：改写默认只检索当前消息附件；知识库仅当用户显式
         // 勾选时开启。画像开关沿用既有默认。
         useKnowledgeBase,
-        true,
         skillInput.skill_id,
         skillInput
       );
@@ -754,10 +750,10 @@ export default function ChatConversationPage() {
     [sendMessage]
   );
 
-  /** Issue 29：提交生涯规划任务（真实消息流；画像开关随本轮发送透传）。 */
+  /** Issue 29：提交生涯规划任务（真实消息流）。 */
   const handleCareerSubmit = useCallback(
-    async (content: string, useProfile: boolean): Promise<boolean> => {
-      return sendMessage(content, [], true, useProfile);
+    async (content: string): Promise<boolean> => {
+      return sendMessage(content, [], true);
     },
     [sendMessage]
   );
@@ -781,7 +777,7 @@ export default function ChatConversationPage() {
           ? { source_object_id: payload.sourceObjectId }
           : {}),
       };
-      return sendMessage(payload.prompt, [], true, true, undefined, undefined, imagePayload);
+      return sendMessage(payload.prompt, [], true, undefined, undefined, imagePayload);
     },
     [sendMessage]
   );
@@ -794,7 +790,6 @@ export default function ChatConversationPage() {
       const ok = await sendMessage(
         `调用 ${payload.mcp_id} 的 ${payload.tool} 工具`,
         [],
-        true,
         true,
         undefined,
         undefined,
@@ -835,7 +830,7 @@ export default function ChatConversationPage() {
   const handleVideoSubmit = useCallback(
     async (payload: { prompt: string }): Promise<boolean> => {
       const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
-      return sendMessage(payload.prompt, [], true, true, undefined, undefined, undefined, videoPayload);
+      return sendMessage(payload.prompt, [], true, undefined, undefined, undefined, videoPayload);
     },
     [sendMessage]
   );
@@ -1132,8 +1127,8 @@ export default function ChatConversationPage() {
                     />
                   </div>
                   <Composer
-                    onSend={(text, attachmentIds, _, useKnowledgeBase, useProfile) =>
-                      sendMessage(text, attachmentIds, useKnowledgeBase, useProfile)
+                    onSend={(text, attachmentIds, _, useKnowledgeBase) =>
+                      sendMessage(text, attachmentIds, useKnowledgeBase)
                     }
                     conversationId={conversationId}
                     generating={generating}

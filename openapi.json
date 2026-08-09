@@ -2553,7 +2553,7 @@
           "chat"
         ],
         "summary": "Send Message",
-        "description": "发送用户消息：同事务创建消息与 queued 生成运行，立即返回。\n\nIssue 02：HTTP 不再拥有生成生命周期——生成由后台执行器按租约领取\n执行，事件持久化到运行游标；客户端以返回的 ``run_id``/``cursor``\n订阅 ``GET .../events`` 恢复进度，断开/刷新/切换会话都不改变运行。\n主对话与图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）。\n``use_knowledge_base=false``（Issue 20）：本轮检索与引用不含知识库\n候选；``use_profile=false``（Issue 27）：本轮请求、审计与上下文说明\n均不含任何画像切片（开关随运行快照落库，重试沿用）。",
+        "description": "发送用户消息：同事务创建消息与 queued 生成运行，立即返回。\n\nIssue 02：HTTP 不再拥有生成生命周期——生成由后台执行器按租约领取\n执行，事件持久化到运行游标；客户端以返回的 ``run_id``/``cursor``\n订阅 ``GET .../events`` 恢复进度，断开/刷新/切换会话都不改变运行。\n主对话与图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）。\n``use_knowledge_base=false``（Issue 20）：本轮检索与引用不含知识库",
         "operationId": "send_message_chat_conversations__conversation_id__messages_post",
         "parameters": [
           {
@@ -11979,7 +11979,7 @@
           "profiles"
         ],
         "summary": "List Four Dimension Records",
-        "description": "List active four-dimension records for the current account.",
+        "description": "列出当前账户的活动四维画像记录。",
         "operationId": "list_four_dimension_records_profiles_four_dimensions_get",
         "parameters": [
           {
@@ -12043,7 +12043,7 @@
           "profiles"
         ],
         "summary": "Modify Four Dimension Record",
-        "description": "Modify one existing record without resetting its stable timestamp.",
+        "description": "修改一条已有记录，且不重置首次稳定记录时间。",
         "operationId": "modify_four_dimension_record_profiles_four_dimensions__record_id__patch",
         "parameters": [
           {
@@ -12142,7 +12142,7 @@
           "profiles"
         ],
         "summary": "Withdraw Four Dimension Record",
-        "description": "Withdraw one record while retaining its internal tombstone.",
+        "description": "撤回一条记录，同时保留内部撤回账本。",
         "operationId": "withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post",
         "parameters": [
           {
@@ -31021,12 +31021,6 @@
             "description": "首轮是否启用全局知识库层。",
             "default": true
           },
-          "use_profile": {
-            "type": "boolean",
-            "title": "Use Profile",
-            "description": "首轮是否使用画像切片（可在发送前关闭）。",
-            "default": true
-          },
           "skill_id": {
             "anyOf": [
               {
@@ -31158,12 +31152,6 @@
             "description": "本轮是否启用全局知识库层（可在发送前关闭）。",
             "default": true
           },
-          "use_profile": {
-            "type": "boolean",
-            "title": "Use Profile",
-            "description": "本轮是否使用画像切片（可在发送前关闭）。",
-            "default": true
-          },
           "skill_id": {
             "anyOf": [
               {
@@ -31226,7 +31214,7 @@
           "content"
         ],
         "title": "ChatMessageCreateRequest",
-        "description": "发送一条用户消息。\n\n``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用\n均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。\n``use_profile`` 为画像使用开关（Issue 27）：关闭后本轮模型请求、\n审计与上下文说明均不含任何画像切片，回答不个性化。"
+        "description": "发送一条用户消息。\n\n``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用\n均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。"
       },
       "ChatMessageProjection": {
         "properties": {

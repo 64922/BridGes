@@ -7,6 +7,8 @@ from bridges.profiles.adapters import (
 from bridges.profiles.ports import ProfileRepository
 from bridges.profiles.service import ProfileService
 from bridges.profiles.four_dimensions import (
+    FourDimensionContractGate,
+    FourDimensionMigrationGateError,
     FourDimensionProfileError,
     FourDimensionProfileRepository,
     FourDimensionProfileService,
@@ -20,6 +22,8 @@ __all__ = [
     "ProfileService",
     "ProfileError",
     "FourDimensionProfileError",
+    "FourDimensionContractGate",
+    "FourDimensionMigrationGateError",
     "FourDimensionProfileRepository",
     "FourDimensionProfileService",
     "InMemoryFourDimensionProfileRepository",

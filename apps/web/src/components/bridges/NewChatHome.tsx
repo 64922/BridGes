@@ -106,7 +106,6 @@ export function NewChatHome() {
     attachmentIds?: string[];
     conversationId?: string;
     useKnowledgeBase?: boolean;
-    useProfile?: boolean;
     skillId?: string;
     skillInput?: HumanizerSkillInput;
     image?: ImageRequestPayload;
@@ -131,7 +130,6 @@ export function NewChatHome() {
         // Issue 04：人味化改写默认关闭知识库（只有用户显式勾选才开启）；
         // 普通消息沿用既有默认开启语义。
         use_knowledge_base: options.useKnowledgeBase ?? true,
-        use_profile: options.useProfile ?? true,
         ...(options.skillId !== undefined ? { skill_id: options.skillId } : {}),
         ...(options.skillInput !== undefined ? { skill_input: options.skillInput } : {}),
         ...(options.image !== undefined ? { image: options.image } : {}),
@@ -162,12 +160,11 @@ export function NewChatHome() {
     }
   };
 
-  /** Issue 29：首页提交生涯规划任务（真实消息流；画像开关语义与 Composer 一致）。 */
+  /** Issue 29：首页提交生涯规划任务（真实消息流）。 */
   const handleCareerSubmit = async (
-    content: string,
-    useProfile: boolean
+    content: string
   ): Promise<boolean> => {
-    return submitFirstTurn({ content, useProfile });
+    return submitFirstTurn({ content });
   };
 
   /** Issue 31：首页提交图片任务（image 载荷随首轮落库，任务异步执行）。 */
