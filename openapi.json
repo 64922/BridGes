@@ -1868,7 +1868,7 @@
           "chat"
         ],
         "summary": "Switch Conversation Mode",
-        "description": "切换对话模式（日常陪伴/学习模式）。\n\n写入可见模式切换事件，只影响切换后的消息；既有消息、回答与引用\n不被重写。相同模式幂等返回当前投影。",
+        "description": "兼容窗口内拒绝旧模式切换请求，并记录隐私安全的 410 观测。",
         "operationId": "switch_conversation_mode_chat_conversations__conversation_id__mode_post",
         "parameters": [
           {
@@ -1908,12 +1908,12 @@
           }
         },
         "responses": {
-          "200": {
+          "410": {
             "description": "Successful Response",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ChatModeSwitchResponse"
+                  "$ref": "#/components/schemas/ChatError"
                 }
               }
             }
@@ -1928,26 +1928,6 @@
             },
             "description": "Unauthorized"
           },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ChatError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          },
           "503": {
             "content": {
               "application/json": {
@@ -1957,6 +1937,16 @@
               }
             },
             "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -29227,6 +29217,12 @@
             "description": "对话当前模式。",
             "default": "companion"
           },
+          "mode_locked": {
+            "type": "boolean",
+            "title": "Mode Locked",
+            "description": "首条用户消息提交后是否已锁定当前模式。",
+            "default": false
+          },
           "pinned": {
             "type": "boolean",
             "title": "Pinned",
@@ -29298,7 +29294,7 @@
             },
             "type": "array",
             "title": "Mode Events",
-            "description": "按时间排序的可见模式切换事件。"
+            "description": "按时间排序的历史只读模式事件。"
           }
         },
         "type": "object",
@@ -29308,7 +29304,7 @@
           "updated_at"
         ],
         "title": "ChatConversationProjection",
-        "description": "单个对话的完整投影（含消息历史与模式切换事件）。"
+        "description": "单个对话的完整只读投影（含消息历史与历史模式事件）。"
       },
       "ChatConversationSummary": {
         "properties": {
@@ -29327,6 +29323,12 @@
             "$ref": "#/components/schemas/ChatMode",
             "description": "对话当前模式。",
             "default": "companion"
+          },
+          "mode_locked": {
+            "type": "boolean",
+            "title": "Mode Locked",
+            "description": "首条用户消息提交后是否已锁定当前模式。",
+            "default": false
           },
           "pinned": {
             "type": "boolean",
@@ -30140,7 +30142,7 @@
           "created_at"
         ],
         "title": "ChatModeEventProjection",
-        "description": "可见的模式切换事件（写入消息流，只影响后续消息）。"
+        "description": "历史模式切换事件的只读投影；迁移与兼容窗口不再写入新事件。"
       },
       "ChatModeSwitchRequest": {
         "properties": {
@@ -30154,32 +30156,7 @@
           "mode"
         ],
         "title": "ChatModeSwitchRequest",
-        "description": "切换对话模式的请求。切换只影响后续消息，不重写历史回答。"
-      },
-      "ChatModeSwitchResponse": {
-        "properties": {
-          "conversation": {
-            "$ref": "#/components/schemas/ChatConversationProjection",
-            "description": "切换后的对话投影。"
-          },
-          "event": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ChatModeEventProjection"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "本次写入的可见事件；相同模式幂等切换时为 None。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "conversation"
-        ],
-        "title": "ChatModeSwitchResponse",
-        "description": "模式切换结果：切换后的对话投影与本次可见事件。"
+        "description": "兼容窗口内的旧切换请求；接口已退役，服务端返回 HTTP 410。"
       },
       "ChatPluginSelectionItem": {
         "properties": {

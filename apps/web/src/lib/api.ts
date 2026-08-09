@@ -97,7 +97,6 @@ export type IndexContractProjection = components["schemas"]["IndexContractProjec
 export type ChatStreamDoneData = components["schemas"]["ChatStreamDoneData"];
 export type ChatMode = components["schemas"]["ChatMode"];
 export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
-export type ChatModeSwitchResponse = components["schemas"]["ChatModeSwitchResponse"];
 export type ChatThinkingSummary = components["schemas"]["ChatThinkingSummary"];
 export type ArxivSearchProjection = components["schemas"]["ArxivSearchProjection"];
 export type ArxivPaperProjection = components["schemas"]["ArxivPaperProjection"];
@@ -974,24 +973,6 @@ export async function deleteChatConversation(conversationId: string): Promise<vo
     credentials: "same-origin",
   });
   if (!res.ok) throw await parseApiError(res);
-}
-
-/** 切换对话模式（日常陪伴/学习模式）；返回切换后的对话与本次可见事件。 */
-export async function switchChatMode(
-  conversationId: string,
-  mode: ChatMode
-): Promise<ChatModeSwitchResponse> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/mode`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify({ mode }),
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
 }
 
 export async function getChatConversation(

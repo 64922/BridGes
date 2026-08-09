@@ -298,6 +298,10 @@ class ChatConversationSummary(BaseModel):
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
+    mode_locked: bool = Field(
+        default=False,
+        description="首条用户消息提交后是否已锁定当前模式。",
+    )
     pinned: bool = Field(default=False, description="是否置顶。")
     project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
     legacy_project_name: str | None = Field(
@@ -309,7 +313,7 @@ class ChatConversationSummary(BaseModel):
 
 
 class ChatModeEventProjection(BaseModel):
-    """可见的模式切换事件（写入消息流，只影响后续消息）。"""
+    """历史模式切换事件的只读投影；迁移与兼容窗口不再写入新事件。"""
 
     event_id: str = Field(description="稳定事件标识。")
     conversation_id: str = Field(description="所属对话标识。")
@@ -325,11 +329,15 @@ class ChatConversationListProjection(BaseModel):
 
 
 class ChatConversationProjection(BaseModel):
-    """单个对话的完整投影（含消息历史与模式切换事件）。"""
+    """单个对话的完整只读投影（含消息历史与历史模式事件）。"""
 
     conversation_id: str = Field(description="稳定对话标识。")
     title: str = Field(default="", description="对话标题。")
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
+    mode_locked: bool = Field(
+        default=False,
+        description="首条用户消息提交后是否已锁定当前模式。",
+    )
     pinned: bool = Field(default=False, description="是否置顶。")
     project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
     legacy_project_name: str | None = Field(
@@ -348,7 +356,7 @@ class ChatConversationProjection(BaseModel):
     updated_at: datetime = Field(description="最近活动时间。")
     messages: list[ChatMessageProjection] = Field(default_factory=list)
     mode_events: list[ChatModeEventProjection] = Field(
-        default_factory=list, description="按时间排序的可见模式切换事件。"
+        default_factory=list, description="按时间排序的历史只读模式事件。"
     )
 
 
@@ -398,18 +406,9 @@ class ChatConversationUpdateRequest(BaseModel):
 
 
 class ChatModeSwitchRequest(BaseModel):
-    """切换对话模式的请求。切换只影响后续消息，不重写历史回答。"""
+    """兼容窗口内的旧切换请求；接口已退役，服务端返回 HTTP 410。"""
 
     mode: ChatMode = Field(description="目标模式。")
-
-
-class ChatModeSwitchResponse(BaseModel):
-    """模式切换结果：切换后的对话投影与本次可见事件。"""
-
-    conversation: ChatConversationProjection = Field(description="切换后的对话投影。")
-    event: ChatModeEventProjection | None = Field(
-        default=None, description="本次写入的可见事件；相同模式幂等切换时为 None。"
-    )
 
 
 class McpCallRequestPayload(BaseModel):

@@ -20,6 +20,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from bridges import __version__
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
@@ -27,6 +28,7 @@ from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import (
+    ConversationModeLockConflict,
     ConversationRecord,
     ConversationRepository,
     GenerationEventRecord,
@@ -300,6 +302,7 @@ class ChatService:
             conversation_id,
             title=(title or "").strip(),
             mode=mode,
+            mode_locked=False,
             pinned=False,
             project_id=project_id,
             plugin_selection=list(plugin_selection or []),
@@ -311,52 +314,26 @@ class ChatService:
         )
 
     def set_conversation_mode(
-        self, account_id: str, conversation_id: str, mode: ChatMode
-    ) -> tuple[ChatConversationProjection, ChatModeEventProjection | None]:
-        """切换对话模式：写入可见事件，只影响后续消息，不重写历史回答。
-
-        相同模式切换幂等：不写事件，直接返回当前投影。跨账户访问返回
-        ``conversation_not_found``，不泄漏存在性。
-        """
-        record = self._repo.get_conversation(account_id, conversation_id)
-        if record is None:
-            raise ChatDomainError(
-                "conversation_not_found", "对话不存在或没有访问权限。", 404
+        self,
+        account_id: str,
+        conversation_id: str,
+        mode: ChatMode,
+        *,
+        traffic_class: str = "real",
+    ) -> None:
+        """兼容窗口内拒绝旧模式切换写请求。"""
+        del account_id, conversation_id, mode
+        if self._observability is not None:
+            self._observability.record_compatibility_410(
+                endpoint_id="chat.conversation_mode_switch",
+                service_version=__version__,
+                traffic_class=traffic_class,
             )
-        current = ChatMode(record.mode)
-        event: ChatModeEventProjection | None = None
-        now = datetime.now(UTC)
-        if current != mode:
-            event = ChatModeEventProjection(
-                event_id=secrets.token_urlsafe(16),
-                conversation_id=conversation_id,
-                from_mode=current,
-                to_mode=mode,
-                created_at=now,
-            )
-            self._repo.insert_mode_event(
-                event_id=event.event_id,
-                conversation_id=conversation_id,
-                account_id=account_id,
-                from_mode=event.from_mode.value,
-                to_mode=event.to_mode.value,
-                created_at=now,
-            )
-            self._repo.set_conversation_mode(
-                account_id, conversation_id, mode.value, now
-            )
-        return self._project_conversation(
-            account_id,
-            conversation_id,
-            title=record.title,
-            mode=mode,
-            pinned=record.pinned,
-            project_id=record.project_id,
-            created_at=record.created_at,
-            updated_at=now if current != mode else record.updated_at,
-            messages=self._repo.list_messages(account_id, conversation_id),
-            mode_events=self._repo.list_mode_events(account_id, conversation_id),
-        ), event
+        raise ChatDomainError(
+            "conversation_mode_switch_retired",
+            "模式已在首条消息提交时锁定；请新建另一个会话以使用其他模式。",
+            410,
+        )
 
     def list_conversations(self, account_id: str) -> ChatConversationListProjection:
         records = self._repo.list_conversations(account_id)
@@ -372,6 +349,7 @@ class ChatService:
                     conversation_id=record.conversation_id,
                     title=record.title,
                     mode=ChatMode(record.mode),
+                    mode_locked=record.mode_locked,
                     pinned=record.pinned,
                     project_id=record.project_id,
                     legacy_project_name=record.legacy_project_name,
@@ -451,6 +429,7 @@ class ChatService:
             conversation_id,
             title=record.title,
             mode=ChatMode(record.mode),
+            mode_locked=record.mode_locked,
             pinned=record.pinned,
             project_id=record.project_id,
             plugin_selection=valid_selection,
@@ -476,6 +455,7 @@ class ChatService:
             record.conversation_id,
             title=record.title,
             mode=ChatMode(record.mode),
+            mode_locked=record.mode_locked,
             pinned=record.pinned,
             project_id=record.project_id,
             plugin_selection=resolution.valid,
@@ -627,6 +607,7 @@ class ChatService:
             record.conversation_id,
             title=record.title,
             mode=ChatMode(record.mode),
+            mode_locked=record.mode_locked,
             pinned=record.pinned,
             project_id=record.project_id,
             plugin_selection=resolution.valid,
@@ -725,13 +706,21 @@ class ChatService:
             use_profile=use_profile,
             now=now,
         )
-        self._repo.insert_generation_turn(
-            user_message,
-            assistant_message,
-            run_record,
-            [(ChatStreamEventKind.STARTED.value, started_payload)],
-            attachment_ids or None,
-        )
+        try:
+            self._repo.insert_generation_turn(
+                user_message,
+                assistant_message,
+                run_record,
+                [(ChatStreamEventKind.STARTED.value, started_payload)],
+                attachment_ids or None,
+                lock_mode=not record.mode_locked,
+            )
+        except ConversationModeLockConflict as exc:
+            raise ChatDomainError(
+                "conversation_mode_locked",
+                "该会话模式已锁定，请继续使用当前模式或新建会话。",
+                409,
+            ) from exc
         self._repo.touch_conversation(account_id, conversation_id, now)
 
         if not record.title:
@@ -1031,14 +1020,23 @@ class ChatService:
         # 同键重放（含预建会话路径）必须 200 返回既有数据，不能被 409
         # 短路；并发不同键双发同一预建会话由事务内检查拦截。
         if conversation_id is not None:
-            record = self._repo.get_conversation(account_id, conversation_id)
+            # 共享 SQLite 连接不能在其他线程提交首轮原子事务时并发读取。
+            with self._repo.connection_lock():
+                record = self._repo.get_conversation(account_id, conversation_id)
             if record is None:
                 raise ChatDomainError(
                     "conversation_not_found", "对话不存在或没有访问权限。", 404
                 )
-        attachment_ids = self._validate_attachments(
-            account_id, conversation_id, attachment_ids
-        )
+            if record.mode_locked and record.mode != mode.value:
+                raise ChatDomainError(
+                    "conversation_mode_locked",
+                    "该会话模式已锁定，请新建另一个会话以使用其他模式。",
+                    409,
+                )
+        with self._repo.connection_lock():
+            attachment_ids = self._validate_attachments(
+                account_id, conversation_id, attachment_ids
+            )
         # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致。
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
         title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
@@ -1081,6 +1079,14 @@ class ChatService:
             attachment_ids=attachment_ids or None,
         )
         if conflict_not_empty:
+            with self._repo.connection_lock():
+                record = self._repo.get_conversation(account_id, target_conversation_id)
+            if record is not None and record.mode != mode.value:
+                raise ChatDomainError(
+                    "conversation_mode_locked",
+                    "该会话模式已锁定，请新建另一个会话以使用其他模式。",
+                    409,
+                )
             raise ChatDomainError(
                 "conversation_not_empty",
                 "该对话已有消息，不能作为首轮发送目标。",
@@ -1089,7 +1095,8 @@ class ChatService:
         if not created:
             # 幂等命中：返回已存在数据，不执行任何首轮副作用（消息已
             # 落库、profile 事件已随原首轮持久化）。
-            conversation = self.get_conversation(account_id, created_id)
+            with self._repo.connection_lock():
+                conversation = self.get_conversation(account_id, created_id)
             user_projection = next(
                 (m for m in conversation.messages if m.role == ChatMessageRole.USER),
                 None,
@@ -1131,7 +1138,8 @@ class ChatService:
             now=now,
         )
         run_view = self._run_view(run_record, account_id)
-        conversation = self.get_conversation(account_id, created_id)
+        with self._repo.connection_lock():
+            conversation = self.get_conversation(account_id, created_id)
         return ChatFirstTurnResponse(
             conversation=conversation,
             run_id=run_record.run_id,
@@ -1189,7 +1197,8 @@ class ChatService:
         if message.status != ChatMessageStatus.STREAMING:
             return self._project_message(message)
 
-        run = self._repo.get_run_by_message(account_id, message_id)
+        with self._repo.connection_lock():
+            run = self._repo.get_run_by_message(account_id, message_id)
         if run is not None and run.status in {
             ChatRunStatus.QUEUED.value,
             ChatRunStatus.RUNNING.value,
@@ -1774,13 +1783,15 @@ class ChatService:
         self, account_id: str, run_id: str, after_seq: int
     ) -> list[GenerationEventRecord]:
         """按游标读取运行上的持久化事件（SSE 订阅回放；账户隔离）。"""
-        return self._repo.list_generation_events(account_id, run_id, after_seq)
+        with self._repo.connection_lock():
+            return self._repo.list_generation_events(account_id, run_id, after_seq)
 
     def generation_run(
         self, account_id: str, run_id: str
     ) -> GenerationRunRecord | None:
         """按账户读取运行记录（订阅端点判断终态；跨账户返回 None）。"""
-        return self._repo.get_generation_run(account_id, run_id)
+        with self._repo.connection_lock():
+            return self._repo.get_generation_run(account_id, run_id)
 
     def performance_summary(
         self, account_id: str, since: datetime | None = None
@@ -1934,11 +1945,13 @@ class ChatService:
         plugin_selection: list[ChatPluginSelectionItem] | None = None,
         removed_selections: list[RemovedPluginSelection] | None = None,
         run_views: dict[str, ChatRunView] | None = None,
+        mode_locked: bool = False,
     ) -> ChatConversationProjection:
         return ChatConversationProjection(
             conversation_id=conversation_id,
             title=title,
             mode=mode,
+            mode_locked=mode_locked,
             pinned=pinned,
             project_id=project_id,
             legacy_project_name=self._repo.legacy_project_name(

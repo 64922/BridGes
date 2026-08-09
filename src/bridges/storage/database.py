@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import threading
 from collections.abc import Iterator
@@ -16,8 +17,10 @@ from typing import Any
 
 from bridges.storage.errors import StorageError
 
+logger = logging.getLogger(__name__)
+
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 33
+SCHEMA_VERSION = 34
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1677,7 +1680,97 @@ MIGRATIONS: dict[int, list[str]] = {
         ON CONFLICT(retirement_id) DO UPDATE SET
             status = excluded.status,
             updated_at = excluded.updated_at
+        """,
+    # Issue 14：四维画像 expand/migrate 投影。旧画像表、旧枚举和旧读写
+    # 路径保留；新表只承载四维目标、教学域内部交接、legacy 封存与无正文
+    # 迁移报告，所有账户域查询由仓库层通过 scoped() 强制隔离。
         """
+        CREATE TABLE profile_four_dimension_records (
+            record_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            dimension TEXT NOT NULL,
+            label TEXT NOT NULL,
+            content TEXT NOT NULL,
+            first_stable_recorded_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'active',
+            source_record_id TEXT NOT NULL,
+            source_version INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            write_origin TEXT NOT NULL,
+            migration_version TEXT NOT NULL,
+            UNIQUE (account_id, source_record_id, dimension)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_account
+        ON profile_four_dimension_records(account_id, dimension, first_stable_recorded_at)
+        """,
+        """
+        CREATE TABLE profile_four_dimension_learning_records (
+            record_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            source_record_id TEXT NOT NULL,
+            source_version INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, source_record_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_learning_account
+        ON profile_four_dimension_learning_records(account_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE profile_four_dimension_legacy (
+            archive_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            source_record_id TEXT NOT NULL,
+            source_dimension TEXT NOT NULL,
+            content TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            reason_code TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, source_record_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_legacy_account
+        ON profile_four_dimension_legacy(account_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE profile_four_dimension_migrations (
+            report_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            migration_version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            four_dimension_migrated INTEGER NOT NULL,
+            teaching_records_migrated INTEGER NOT NULL,
+            legacy_preserved INTEGER NOT NULL,
+            skipped INTEGER NOT NULL,
+            failed INTEGER NOT NULL,
+            stable_record_ids_json TEXT NOT NULL DEFAULT '[]',
+            failure_codes_json TEXT NOT NULL DEFAULT '[]',
+            retryable INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_migrations_account
+        ON profile_four_dimension_migrations(account_id, created_at DESC)
+        """,
+    # Issue 05：模式在首条用户消息提交时锁定。新建空会话保留
+    # mode_locked=0；升级时所有存量会话保留当前 mode 并标记已锁定，历史
+    # mode_events 只读保留，后续写路径不再产生新的模式事件。
+    ],
+    34: [
+        """
+        ALTER TABLE conversations ADD COLUMN mode_locked INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        UPDATE conversations SET mode_locked = 1
+        """,
     ],
 }
 
@@ -1769,6 +1862,8 @@ class BridgesDatabase:
                 if current == SCHEMA_VERSION:
                     return current
                 for version in range(current + 1, SCHEMA_VERSION + 1):
+                    if version == 34:
+                        self._validate_conversation_modes_for_lock()
                     for statement in MIGRATIONS[version]:
                         self._connection.execute(statement)
                 # 升级路径：版本行已存在（旧版本号），必须覆盖而非新增，
@@ -1783,6 +1878,25 @@ class BridgesDatabase:
             raise StorageError(
                 "数据库文件已损坏或不是有效的 SQLite 数据库，请检查数据目录。"
             ) from exc
+
+    def _validate_conversation_modes_for_lock(self) -> None:
+        """拒绝非法历史模式，避免迁移时猜测人格合同。"""
+        rows = self._connection.execute(
+            "SELECT DISTINCT mode FROM conversations"
+        ).fetchall()
+        invalid_modes = sorted(
+            str(row["mode"])
+            for row in rows
+            if str(row["mode"]) not in {"companion", "study"}
+        )
+        if invalid_modes:
+            logger.error(
+                "conversation_mode_migration_failed",
+                extra={"invalid_mode_count": len(invalid_modes)},
+            )
+            raise StorageError(
+                "会话模式迁移失败：发现非法历史模式，请先修复数据后重试。"
+            )
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -1917,4 +2031,7 @@ class ScopedConnection:
     ) -> sqlite3.Cursor:
         """在账户作用域内执行一条 SQL；写入必须包在 ``transaction()`` 中。"""
         self._assert_account_bound(sql)
-        return self._db.connection.execute(sql, params)
+        # SQLite 连接在应用内共享；串行化 execute，避免读请求与提交事务并发触发
+        # sqlite3.InterfaceError。事务内部可重入此锁。
+        with self._db.snapshot_lock():
+            return self._db.connection.execute(sql, params)

@@ -41,7 +41,6 @@ from bridges.contracts.chat import (
     ChatMessageCreateRequest,
     ChatMessageProjection,
     ChatModeSwitchRequest,
-    ChatModeSwitchResponse,
     ChatRunStartedResponse,
     ChatRunStatus,
     ChatStopResponse,
@@ -548,11 +547,11 @@ def delete_conversation(
 
 @router.post(
     "/conversations/{conversation_id}/mode",
-    response_model=ChatModeSwitchResponse,
+    status_code=status.HTTP_410_GONE,
+    response_model=None,
     responses={
+        status.HTTP_410_GONE: {"model": ChatError},
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
-        status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ChatError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
     },
 )
@@ -561,19 +560,22 @@ def switch_conversation_mode(
     body: ChatModeSwitchRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
-) -> ChatModeSwitchResponse:
-    """切换对话模式（日常陪伴/学习模式）。
-
-    写入可见模式切换事件，只影响切换后的消息；既有消息、回答与引用
-    不被重写。相同模式幂等返回当前投影。
-    """
+    request: Request,
+) -> None:
+    """兼容窗口内拒绝旧模式切换请求，并记录隐私安全的 410 观测。"""
     try:
-        conversation, event = service.set_conversation_mode(
-            subject.account_id, conversation_id, body.mode
+        service.set_conversation_mode(
+            subject.account_id,
+            conversation_id,
+            body.mode,
+            traffic_class=(
+                "probe"
+                if request.headers.get("X-Bridges-Compatibility-Probe") == "1"
+                else "real"
+            ),
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
-    return ChatModeSwitchResponse(conversation=conversation, event=event)
 
 
 @router.get(

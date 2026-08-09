@@ -14,6 +14,7 @@ from bridges.storage import (
     EncryptedFileObjectStore,
     StorageError,
 )
+from bridges.storage.database import MIGRATIONS
 
 
 def _schema_version(database: Path) -> int:
@@ -49,6 +50,11 @@ def test_first_startup_transactionally_creates_versioned_sqlite_database(
         for row in connection.execute("PRAGMA table_info(messages)")
     }
     assert "thinking" in columns
+    conversation_columns = {
+        str(row[1])
+        for row in connection.execute("PRAGMA table_info(conversations)")
+    }
+    assert "mode_locked" in conversation_columns
     # foreign_keys 是连接级设置，必须通过数据库自己的连接确认已启用。
     assert int(database.connection.execute("PRAGMA foreign_keys").fetchone()[0]) == 1
 
@@ -107,6 +113,45 @@ def test_sqlite_database_corruption_reports_chinese_without_path(
     message = str(exc_info.value)
     assert "数据库" in message
     assert str(tmp_path) not in message
+
+
+def test_invalid_legacy_conversation_mode_fails_migration_explicitly(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "bridges.db"
+    with sqlite3.connect(path) as connection:
+        connection.execute(
+            "CREATE TABLE schema_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        for version in range(1, 34):
+            for statement in MIGRATIONS[version]:
+                connection.execute(statement)
+        connection.execute(
+            "INSERT INTO accounts(account_id, email, created_at)"
+            " VALUES ('legacy-account', 'legacy@example.com', '2026-08-01T00:00:00Z')"
+        )
+        connection.execute(
+            "INSERT INTO conversations"
+            " (conversation_id, account_id, title, mode, created_at, updated_at)"
+            " VALUES ('legacy-conversation', 'legacy-account', '旧会话', 'unknown',"
+            " '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z')"
+        )
+        connection.execute(
+            "INSERT INTO schema_meta(key, value) VALUES ('version', '33')"
+        )
+
+    with pytest.raises(StorageError, match="非法历史模式"):
+        BridgesDatabase(path).initialize()
+
+    with sqlite3.connect(path) as connection:
+        version = connection.execute(
+            "SELECT value FROM schema_meta WHERE key = 'version'"
+        ).fetchone()
+        columns = {
+            str(row[1]) for row in connection.execute("PRAGMA table_info(conversations)")
+        }
+    assert version == ("33",)
+    assert "mode_locked" not in columns
 
 
 def test_sqlite_foreign_keys_enforced_for_object_accounts(tmp_path: Path) -> None:

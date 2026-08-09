@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import threading
 from typing import Any
 
 from bridges.contracts.observability import (
@@ -27,6 +28,40 @@ class ObservabilityService:
 
     def __init__(self, audit_logger: AuditEventLogger | None = None) -> None:
         self._audit = audit_logger or AuditEventLogger()
+        self._compatibility_observations: dict[tuple[str, str, str, int], int] = {}
+        self._compatibility_observations_lock = threading.Lock()
+
+    def record_compatibility_410(
+        self,
+        *,
+        endpoint_id: str,
+        service_version: str,
+        traffic_class: str,
+        status_code: int = 410,
+    ) -> None:
+        """记录兼容窗口 410 计数，不携带账户、对象或请求正文。"""
+        if traffic_class not in {"real", "probe"}:
+            raise ValueError("traffic_class 必须是 real 或 probe。")
+        key = (endpoint_id, service_version, traffic_class, status_code)
+        with self._compatibility_observations_lock:
+            self._compatibility_observations[key] = (
+                self._compatibility_observations.get(key, 0) + 1
+            )
+
+    def compatibility_gate_snapshot(self) -> list[dict[str, str | int]]:
+        """返回可写入 COMPATIBILITY-GATE.md 的稳定路由级观察摘要。"""
+        with self._compatibility_observations_lock:
+            observations = list(self._compatibility_observations.items())
+        return [
+            {
+                "endpoint_id": endpoint_id,
+                "service_version": service_version,
+                "traffic_class": traffic_class,
+                "status_code": status_code,
+                "count": count,
+            }
+            for (endpoint_id, service_version, traffic_class, status_code), count in observations
+        ]
 
     # Audit
 

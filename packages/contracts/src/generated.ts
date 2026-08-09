@@ -444,10 +444,7 @@ export interface paths {
         put?: never;
         /**
          * Switch Conversation Mode
-         * @description 切换对话模式（日常陪伴/学习模式）。
-         *
-         *     写入可见模式切换事件，只影响切换后的消息；既有消息、回答与引用
-         *     不被重写。相同模式幂等返回当前投影。
+         * @description 兼容窗口内拒绝旧模式切换请求，并记录隐私安全的 410 观测。
          */
         post: operations["switch_conversation_mode_chat_conversations__conversation_id__mode_post"];
         delete?: never;
@@ -7499,7 +7496,7 @@ export interface components {
         };
         /**
          * ChatConversationProjection
-         * @description 单个对话的完整投影（含消息历史与模式切换事件）。
+         * @description 单个对话的完整只读投影（含消息历史与历史模式事件）。
          */
         ChatConversationProjection: {
             /**
@@ -7518,6 +7515,12 @@ export interface components {
              * @default companion
              */
             mode: components["schemas"]["ChatMode"];
+            /**
+             * Mode Locked
+             * @description 首条用户消息提交后是否已锁定当前模式。
+             * @default false
+             */
+            mode_locked: boolean;
             /**
              * Pinned
              * @description 是否置顶。
@@ -7560,7 +7563,7 @@ export interface components {
             messages?: components["schemas"]["ChatMessageProjection"][];
             /**
              * Mode Events
-             * @description 按时间排序的可见模式切换事件。
+             * @description 按时间排序的历史只读模式事件。
              */
             mode_events?: components["schemas"]["ChatModeEventProjection"][];
         };
@@ -7585,6 +7588,12 @@ export interface components {
              * @default companion
              */
             mode: components["schemas"]["ChatMode"];
+            /**
+             * Mode Locked
+             * @description 首条用户消息提交后是否已锁定当前模式。
+             * @default false
+             */
+            mode_locked: boolean;
             /**
              * Pinned
              * @description 是否置顶。
@@ -7985,7 +7994,7 @@ export interface components {
         ChatMode: "companion" | "study";
         /**
          * ChatModeEventProjection
-         * @description 可见的模式切换事件（写入消息流，只影响后续消息）。
+         * @description 历史模式切换事件的只读投影；迁移与兼容窗口不再写入新事件。
          */
         ChatModeEventProjection: {
             /**
@@ -8011,21 +8020,11 @@ export interface components {
         };
         /**
          * ChatModeSwitchRequest
-         * @description 切换对话模式的请求。切换只影响后续消息，不重写历史回答。
+         * @description 兼容窗口内的旧切换请求；接口已退役，服务端返回 HTTP 410。
          */
         ChatModeSwitchRequest: {
             /** @description 目标模式。 */
             mode: components["schemas"]["ChatMode"];
-        };
-        /**
-         * ChatModeSwitchResponse
-         * @description 模式切换结果：切换后的对话投影与本次可见事件。
-         */
-        ChatModeSwitchResponse: {
-            /** @description 切换后的对话投影。 */
-            conversation: components["schemas"]["ChatConversationProjection"];
-            /** @description 本次写入的可见事件；相同模式幂等切换时为 None。 */
-            event?: components["schemas"]["ChatModeEventProjection"] | null;
         };
         /**
          * ChatPluginSelectionItem
@@ -24643,15 +24642,6 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatModeSwitchResponse"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -24661,8 +24651,8 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Not Found */
-            404: {
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -24670,13 +24660,13 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ChatError"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Service Unavailable */
