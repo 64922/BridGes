@@ -15,6 +15,8 @@ from bridges.contracts.profiles import (
     ProfileSensitivityClass,
 )
 from bridges.profiles import (
+    FourDimensionContractGate,
+    FourDimensionMigrationGateError,
     FourDimensionProfileError,
     FourDimensionProfileService,
     InMemoryFourDimensionProfileRepository,
@@ -215,6 +217,78 @@ def test_invalid_migration_rolls_back_target_records(
     assert report.status == "retryable"
     assert report.failed == 1
     assert service.list_records("account-alice") == []
+
+
+def test_four_dimension_slice_reads_current_records_and_respects_withdrawal(
+    old_repository: InMemoryProfileRepository,
+    service: FourDimensionProfileService,
+) -> None:
+    account_id = "account-alice"
+    old_repository.save_assertion(
+        _old_assertion(account_id, "old-goal", "stage_goal", "当前学习目标")
+    )
+    service.migrate_account(account_id)
+
+    first = service.compile_chat_slice(
+        account_id, mode="companion", run_id="run-1"
+    )
+    assert [item.value_or_rule for item in first.included_items] == ["当前学习目标"]
+
+    record = service.list_records(account_id)[0]
+    edited = service.modify_record(
+        account_id,
+        record.record_id,
+        FourDimensionProfileModifyRequest(content="修改后的目标", version=record.version),
+    )
+    second = service.compile_chat_slice(
+        account_id, mode="companion", run_id="run-2"
+    )
+    assert [item.value_or_rule for item in second.included_items] == ["修改后的目标"]
+
+    service.withdraw_record(account_id, edited.record_id, edited.version)
+    third = service.compile_chat_slice(
+        account_id, mode="companion", run_id="run-3"
+    )
+    assert third.included_items == []
+
+
+def test_contract_gate_blocks_old_writers_and_is_idempotent(
+    old_repository: InMemoryProfileRepository,
+    service: FourDimensionProfileService,
+) -> None:
+    account_id = "account-alice"
+    old_repository.save_assertion(
+        _old_assertion(account_id, "old-goal", "stage_goal", "当前学习目标")
+    )
+    gate = FourDimensionContractGate(service)
+
+    blocked = gate.preflight(
+        account_id,
+        legacy_write_callers=["legacy-chat-writer"],
+        backup_id="backup-before-check",
+    )
+    assert blocked.can_contract is False
+    assert blocked.legacy_write_callers == ("legacy-chat-writer",)
+
+    with pytest.raises(FourDimensionMigrationGateError, match="旧画像写入调用方"):
+        gate.contract(
+            account_id,
+            backup=lambda: "backup-should-not-be-created",
+            legacy_write_callers=["legacy-chat-writer"],
+        )
+
+    calls = 0
+
+    def backup() -> str:
+        nonlocal calls
+        calls += 1
+        return "backup-16"
+
+    result = gate.contract(account_id, backup=backup)
+    repeated = gate.contract(account_id, backup=backup)
+    assert result == repeated
+    assert calls == 1
+    assert gate.legacy_writes_stopped is True
 
 
 def test_api_exposes_read_modify_withdraw_but_not_manual_create() -> None:

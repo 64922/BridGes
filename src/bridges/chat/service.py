@@ -116,6 +116,7 @@ from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
+from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
@@ -203,6 +204,7 @@ class ChatService:
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
         automatic_profile_service: AutomaticProfileService | None = None,
+        four_dimension_profile_service: FourDimensionProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
@@ -227,6 +229,7 @@ class ChatService:
         self._profiles = profile_service
         #: Issue 15：默认自动抽取；启用后不再走旧的画像写入通知路径。
         self._automatic_profiles = automatic_profile_service
+        self._four_dimension_profiles = four_dimension_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 内置 bridges-humanizer SKILL 编排（Issue 28）；未挂载时携带
@@ -264,6 +267,7 @@ class ChatService:
             teaching_service=self._teaching,
             profile_service=self._profiles,
             automatic_profile_service=self._automatic_profiles,
+            four_dimension_profile_service=self._four_dimension_profiles,
             observability_service=self._observability,
             humanizer_service=self._humanizer,
             career_planner_service=self._career_planner,
@@ -1150,7 +1154,7 @@ class ChatService:
                     run_id=run_id,
                     mode=mode.value,
                 )
-        elif self._profiles is not None:
+        elif self._four_dimension_profiles is None and self._profiles is not None:
             with contextlib.suppress(Exception):  # noqa: BLE001 - 辅助路径静默降级
                 self._profiles.process_conversation_message(
                     account_id,

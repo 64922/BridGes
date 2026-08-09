@@ -393,7 +393,6 @@ def create_first_turn(
                 else None
             ),
             use_knowledge_base=body.use_knowledge_base,
-            use_profile=body.use_profile,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -731,8 +730,6 @@ async def send_message(
     订阅 ``GET .../events`` 恢复进度，断开/刷新/切换会话都不改变运行。
     主对话与图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）。
     ``use_knowledge_base=false``（Issue 20）：本轮检索与引用不含知识库
-    候选；``use_profile=false``（Issue 27）：本轮请求、审计与上下文说明
-    均不含任何画像切片（开关随运行快照落库，重试沿用）。
     """
     _reject_retired_extension_fields(
         body.model_fields_set,
@@ -764,7 +761,6 @@ async def send_message(
                 else None
             ),
             use_knowledge_base=body.use_knowledge_base,
-            use_profile=body.use_profile,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
@@ -1031,18 +1027,12 @@ async def retry_message(
     # 画像使用开关同样沿用旧尝试轮次的披露快照（Issue 27）：用户发送前
     # 的关闭选择不因重试被静默改变；无快照时回退默认开启。
     previous_message = service.message_projection(subject.account_id, message_id)
-    use_profile = (
-        previous_message.context_note.profile_enabled
-        if previous_message is not None and previous_message.context_note is not None
-        else True
-    )
     try:
         user_message, assistant_message = service.retry_generation(
             subject.account_id,
             conversation_id,
             message_id,
             use_knowledge_base=use_knowledge_base,
-            use_profile=use_profile,
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc

@@ -159,6 +159,7 @@ from bridges.persistence import (
 from bridges.plugins.service import PluginService
 from bridges.profiles import (
     AutomaticProfileService,
+    FourDimensionContractGate,
     FourDimensionProfileService,
     GatewayAutomaticProfileExtractor,
     InMemoryAutomaticProfileRepository,
@@ -903,6 +904,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         source_repository=profile_repository,
         repository=four_dimension_repository,
     )
+    app.state.four_dimension_contract_gate = FourDimensionContractGate(
+        app.state.four_dimension_profile_service
+    )
 
     # T020: register a profile-specific impact resolver so assertion deletions
     # produce scope-correct memory-slice downstreams in addition to the generic
@@ -1191,6 +1195,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             profile_service=getattr(app.state, "profile_service", None),
+            four_dimension_profile_service=getattr(
+                app.state, "four_dimension_profile_service", None
+            ),
             observability_service=app.state.observability_service,
             humanizer_service=app.state.humanizer_service,
             career_planner_service=app.state.career_planner_service,

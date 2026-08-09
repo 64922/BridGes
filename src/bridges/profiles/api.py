@@ -63,7 +63,7 @@ async def list_four_dimension_records(
     service: FourDimensionProfileServiceDep,
     subject: SubjectDep,
 ) -> list[FourDimensionProfileRecord]:
-    """List active four-dimension records for the current account."""
+    """列出当前账户的活动四维画像记录。"""
     return service.list_records(subject.account_id)
 
 
@@ -83,7 +83,7 @@ async def modify_four_dimension_record(
     record_id: str,
     request: FourDimensionProfileModifyRequest,
 ) -> FourDimensionProfileRecord:
-    """Modify one existing record without resetting its stable timestamp."""
+    """修改一条已有记录，且不重置首次稳定记录时间。"""
     try:
         return service.modify_record(subject.account_id, record_id, request)
     except FourDimensionProfileError as exc:
@@ -106,7 +106,7 @@ async def withdraw_four_dimension_record(
     record_id: str,
     request: FourDimensionProfileWithdrawRequest,
 ) -> FourDimensionProfileRecord:
-    """Withdraw one record while retaining its internal tombstone."""
+    """撤回一条记录，同时保留内部撤回账本。"""
     try:
         return service.withdraw_record(subject.account_id, record_id, request.version)
     except FourDimensionProfileError as exc:

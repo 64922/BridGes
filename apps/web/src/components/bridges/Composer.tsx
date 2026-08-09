@@ -22,8 +22,7 @@ interface ComposerProps {
   onSend: (
     text: string,
     preparedConversationId?: string,
-    useKnowledgeBase?: boolean,
-    useProfile?: boolean
+    useKnowledgeBase?: boolean
   ) => Promise<boolean> | boolean | void;
   /** 已存在的真实对话；用于发送消息与听写。 */
   conversationId?: string;
@@ -86,9 +85,6 @@ export function Composer({
   // Issue 20：本轮是否启用全局知识库层（发送前可关闭；关闭后本轮请求、
   // 检索记录与引用均不含知识库候选）。
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
-  // Issue 27：本轮是否使用画像切片（发送前可关闭；关闭后模型请求、
-  // 审计与上下文说明均不含任何画像内容）。
-  const [useProfile, setUseProfile] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -133,8 +129,7 @@ export function Composer({
       const accepted = await onSend(
         text.trim(),
         conversationId ?? preparedConversationRef.current,
-        useKnowledgeBase,
-        useProfile
+        useKnowledgeBase
       );
       if (accepted === false) return;
       setText("");
@@ -593,63 +588,6 @@ export function Composer({
                 borderRadius: "50%",
                 backgroundColor: "#FFFFFF",
                 transform: useKnowledgeBase ? "translateX(10px)" : "translateX(0)",
-                transition: "transform 150ms ease",
-              }}
-            />
-          </span>
-        </button>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={useProfile}
-          data-testid="profile-usage"
-          onClick={() => setUseProfile((value) => !value)}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-1)",
-            padding: "2px var(--space-2)",
-            borderRadius: "999px",
-            border: `1px solid ${
-              useProfile ? "var(--color-accent-primary)" : "var(--color-border)"
-            }`,
-            backgroundColor: useProfile
-              ? "var(--color-accent-primary-soft)"
-              : "var(--color-bg-secondary)",
-            fontSize: "var(--text-xs)",
-            color: useProfile
-              ? "var(--color-accent-primary)"
-              : "var(--color-text-tertiary)",
-            cursor: "pointer",
-            font: "inherit",
-            minHeight: "var(--target-size)",
-          }}
-          title={useProfile ? "本轮将使用你的画像切片，点击关闭" : "点击开启本轮画像使用"}
-        >
-          <Icon name="profile" size={13} aria-hidden />
-          使用画像
-          <span
-            aria-hidden="true"
-            style={{
-              display: "inline-block",
-              width: 24,
-              height: 14,
-              borderRadius: 999,
-              padding: 2,
-              backgroundColor: useProfile
-                ? "var(--color-accent-primary)"
-                : "var(--color-border-strong)",
-              transition: "background-color 150ms ease",
-            }}
-          >
-            <span
-              style={{
-                display: "block",
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                backgroundColor: "#FFFFFF",
-                transform: useProfile ? "translateX(10px)" : "translateX(0)",
                 transition: "transform 150ms ease",
               }}
             />

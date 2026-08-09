@@ -12,8 +12,9 @@ import secrets
 from abc import ABC, abstractmethod
 from collections.abc import Iterator
 from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Callable, Iterable, Literal
 
 from bridges.contracts.profiles import (
     AssertionStatus,
@@ -25,19 +26,143 @@ from bridges.contracts.profiles import (
     FourDimensionProfileModifyRequest,
     FourDimensionProfileRecord,
     FourDimensionRecordStatus,
+    ProfileSensitivityClass,
     ProfileAssertion,
     ProfileDimension,
-    ProfileSensitivityClass,
+    ProfileSlice,
+    ProfileSliceItem,
 )
 from bridges.profiles.adapters import ProfileError
 from bridges.profiles.ports import ProfileRepository
 from bridges.storage.database import BridgesDatabase
 
 MIGRATION_VERSION = "profile-four-dimensions-v1"
+_MAX_SLICE_ITEMS_PER_DIMENSION = 2
+_MAX_SLICE_ITEMS_TOTAL = 6
+_CHAT_MODE_DIMENSIONS: dict[str, frozenset[FourDimension]] = {
+    "companion": frozenset(
+        {
+            FourDimension.ACADEMIC_STATUS,
+            FourDimension.KNOWLEDGE_INTEREST,
+            FourDimension.HOBBY,
+            FourDimension.STAGE_GOAL,
+        }
+    ),
+    "study": frozenset(
+        {
+            FourDimension.ACADEMIC_STATUS,
+            FourDimension.KNOWLEDGE_INTEREST,
+            FourDimension.STAGE_GOAL,
+        }
+    ),
+    "reminder": frozenset(
+        {
+            FourDimension.ACADEMIC_STATUS,
+            FourDimension.HOBBY,
+            FourDimension.STAGE_GOAL,
+        }
+    ),
+}
 
 
 class FourDimensionProfileError(ProfileError):
-    """四维画像合同使用的安全领域错误。"""
+    """四维画像领域错误。"""
+
+
+@dataclass(frozen=True)
+class FourDimensionMigrationPreflight:
+    """收缩前的账户级硬门检查结果。"""
+
+    account_id: str
+    migration_version: str
+    legacy_record_count: int
+    unprocessed_legacy_count: int
+    legacy_write_callers: tuple[str, ...]
+    backup_id: str | None
+    can_contract: bool
+
+
+class FourDimensionMigrationGateError(FourDimensionProfileError):
+    """迁移门未满足时阻止收缩。"""
+
+
+class FourDimensionContractGate:
+    """执行四维迁移的预检、停写和幂等收缩门。"""
+
+    def __init__(self, service: "FourDimensionProfileService") -> None:
+        self._service = service
+        self._legacy_writes_stopped = False
+        self._contracted_accounts: dict[str, FourDimensionMigrationPreflight] = {}
+
+    @property
+    def legacy_writes_stopped(self) -> bool:
+        return self._legacy_writes_stopped
+
+    def preflight(
+        self,
+        account_id: str,
+        *,
+        legacy_write_callers: Iterable[str] = (),
+        backup_id: str | None = None,
+    ) -> FourDimensionMigrationPreflight:
+        """清点旧记录和写调用方；任何未处理项都会阻止收缩。"""
+        callers = tuple(sorted({caller for caller in legacy_write_callers if caller}))
+        legacy_records = self._service.list_legacy_records(account_id)
+        source_records = self._service._source_repository.list_assertions(account_id)  # noqa: SLF001
+        unprocessed = sum(
+            1
+            for source in source_records
+            if _classify(source)[0] == "legacy"
+            and not any(
+                record.source_record_id == source.assertion_id
+                for record in legacy_records
+            )
+        )
+        result = FourDimensionMigrationPreflight(
+            account_id=account_id,
+            migration_version=MIGRATION_VERSION,
+            legacy_record_count=len(legacy_records),
+            unprocessed_legacy_count=unprocessed,
+            legacy_write_callers=callers,
+            backup_id=backup_id,
+            can_contract=not callers and unprocessed == 0 and backup_id is not None,
+        )
+        return result
+
+    def contract(
+        self,
+        account_id: str,
+        *,
+        backup: Callable[[], str],
+        legacy_write_callers: Iterable[str] = (),
+    ) -> FourDimensionMigrationPreflight:
+        """先备份、再停写和迁移；重复调用返回同一收缩结果。"""
+        existing = self._contracted_accounts.get(account_id)
+        if existing is not None:
+            return existing
+        initial = self.preflight(
+            account_id,
+            legacy_write_callers=legacy_write_callers,
+            backup_id="preflight-ready",
+        )
+        if initial.legacy_write_callers:
+            raise FourDimensionMigrationGateError("仍有旧画像写入调用方")
+        backup_id = backup()
+        if not backup_id:
+            raise FourDimensionMigrationGateError("备份未返回可追踪标识")
+        self._legacy_writes_stopped = True
+        report = self._service.migrate_account(account_id)
+        if report.retryable:
+            raise FourDimensionMigrationGateError("四维迁移失败，收缩阶段已阻止")
+        result = self.preflight(
+            account_id,
+            legacy_write_callers=legacy_write_callers,
+            backup_id=backup_id,
+        )
+        if not result.can_contract:
+            raise FourDimensionMigrationGateError("迁移后仍存在未封存的 legacy 记录")
+        self._contracted_accounts[account_id] = result
+        return result
 
 
 class FourDimensionProfileRepository(ABC):
@@ -516,6 +641,47 @@ _HOBBY_TERMS = frozenset(
 )
 
 
+_KNOWLEDGE_TERMS = _KNOWLEDGE_TERMS | frozenset(
+    {
+        "data",
+        "analysis",
+        "visualization",
+        "programming",
+        "physics",
+        "math",
+        "science",
+        "knowledge",
+        "learning",
+        "study",
+        "\u6570\u636e",
+        "\u5206\u6790",
+        "\u53ef\u89c6\u5316",
+        "\u79d1\u5b66",
+        "\u5b66\u4e60",
+        "\u884c\u4e1a",
+        "\u91d1\u878d",
+    }
+)
+_HOBBY_TERMS = _HOBBY_TERMS | frozenset(
+    {
+        "running",
+        "travel",
+        "music",
+        "painting",
+        "drawing",
+        "photography",
+        "games",
+        "cooking",
+        "hobby",
+        "\u8dd1\u6b65",
+        "\u65c5\u884c",
+        "\u97f3\u4e50",
+        "\u7ed8\u753b",
+        "\u6444\u5f71",
+    }
+)
+
+
 def _content_hash(source: ProfileAssertion) -> str:
     payload = "|".join(
         [source.assertion_id, str(source.version), source.canonical_dimension, source.value_or_rule]
@@ -583,6 +749,49 @@ class FourDimensionProfileService:
     def transaction(self) -> AbstractContextManager[None]:
         """为自动画像批量提交暴露四维记录的事务边界。"""
         return self._repository.transaction()
+
+    def compile_chat_slice(
+        self,
+        account_id: str,
+        *,
+        mode: str,
+        run_id: str,
+        project_id: str | None = None,
+    ) -> ProfileSlice:
+        """按当前活动四维记录编译本轮最小切片，不读取旧九维正文。"""
+        allowed = _CHAT_MODE_DIMENSIONS.get(mode, frozenset())
+        per_dimension: dict[FourDimension, int] = {}
+        included: list[ProfileSliceItem] = []
+        for record in self._repository.list_records(account_id):
+            if record.dimension not in allowed:
+                continue
+            count = per_dimension.get(record.dimension, 0)
+            if count >= _MAX_SLICE_ITEMS_PER_DIMENSION:
+                continue
+            if len(included) >= _MAX_SLICE_ITEMS_TOTAL:
+                break
+            included.append(
+                ProfileSliceItem(
+                    assertion_id=record.record_id,
+                    dimension=record.dimension.value,
+                    value_or_rule=record.content,
+                    inclusion_reason="active_four_dimension_record",
+                    sensitivity_class=ProfileSensitivityClass.PREFERENCE,
+                )
+            )
+            per_dimension[record.dimension] = count + 1
+        return ProfileSlice(
+            slice_id=_stable_id("slice", account_id, run_id, mode),
+            owner_account_id=account_id,
+            run_id=run_id,
+            purpose="chat",
+            project_id=project_id,
+            included_items=included,
+            sensitivity_classes_allowed=[ProfileSensitivityClass.PREFERENCE],
+            compiled_policy_version=MIGRATION_VERSION,
+            length_budget=_MAX_SLICE_ITEMS_TOTAL,
+            compiled_at=datetime.now(UTC),
+        )
 
     def get_record(self, account_id: str, record_id: str) -> FourDimensionProfileRecord:
         return self._repository.get_record(account_id, record_id)

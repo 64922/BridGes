@@ -1144,13 +1144,11 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
  * 事件持久化到运行游标；随后以返回的 ``run_id``/``cursor`` 订阅
  * ``subscribeChatRunEvents`` 恢复进度。断开/刷新/切换会话都不改变运行。
  * ``useKnowledgeBase``（Issue 20）：本轮是否启用全局知识库层。
- * ``useProfile``（Issue 27）：本轮是否使用画像切片。
  */
 export async function createChatRun(
   conversationId: string,
   content: string,
   useKnowledgeBase: boolean = true,
-  useProfile: boolean = true,
   skillId?: string,
   skillInput?: unknown,
   image?: ImageRequestPayload,
@@ -1164,7 +1162,6 @@ export async function createChatRun(
     body: JSON.stringify({
       content,
       use_knowledge_base: useKnowledgeBase,
-      use_profile: useProfile,
       // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
       ...(skillId !== undefined ? { skill_id: skillId } : {}),
       ...(skillInput !== undefined ? { skill_input: skillInput } : {}),

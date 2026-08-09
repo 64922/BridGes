@@ -109,6 +109,7 @@ from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
+from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
@@ -1219,6 +1220,7 @@ class TurnOrchestrator:
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
         automatic_profile_service: AutomaticProfileService | None = None,
+        four_dimension_profile_service: FourDimensionProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
@@ -1241,6 +1243,7 @@ class TurnOrchestrator:
         self._profiles = profile_service
         #: Issue 15：新写入的四维画像通过独立服务编译；旧服务只作兼容。
         self._automatic_profiles = automatic_profile_service
+        self._four_dimension_profiles = four_dimension_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 内置 bridges-humanizer SKILL 编排（Issue 28）。
@@ -4371,8 +4374,12 @@ class TurnOrchestrator:
         )
         # 画像服务未挂载（退化环境）时无画像能力：不披露、不审计，聊天
         # 行为与旧版一致（thinking 不追加画像说明）。
-        profile_source = self._automatic_profiles or self._profiles
-        if profile_source is None:
+        profile_service = (
+            self._four_dimension_profiles
+            or self._automatic_profiles
+            or self._profiles
+        )
+        if profile_service is None:
             return None, None, []
         if not use_profile:
             self._audit_slice_usage(
@@ -4401,11 +4408,18 @@ class TurnOrchestrator:
                 [],
             )
         try:
-            current_messages = self._repo.list_messages(account_id, conversation_id)
-            current_user_message = owner_user_message(
-                current_messages, assistant_message_id
-            )
-            if self._automatic_profiles is not None:
+            if self._four_dimension_profiles is not None:
+                profile_slice = self._four_dimension_profiles.compile_chat_slice(
+                    account_id,
+                    mode=mode.value,
+                    run_id=assistant_message_id,
+                    project_id=conversation_id,
+                )
+            elif self._automatic_profiles is not None:
+                current_messages = self._repo.list_messages(account_id, conversation_id)
+                current_user_message = owner_user_message(
+                    current_messages, assistant_message_id
+                )
                 profile_slice = self._automatic_profiles.compile_chat_slice(
                     account_id,
                     mode=mode.value,
@@ -4425,7 +4439,11 @@ class TurnOrchestrator:
                     run_id=assistant_message_id,
                     project_id=conversation_id,
                 )
-            if self._automatic_profiles is not None and self._profiles is not None:
+            if (
+                self._four_dimension_profiles is None
+                and self._automatic_profiles is not None
+                and self._profiles is not None
+            ):
                 # Issue 14 的旧画像只读兼容：新消息只写四维记录，但尚未
                 # 迁移的合法旧断言仍可作为切片来源，且共享本轮长度预算。
                 legacy_slice = self._profiles.compile_chat_slice(

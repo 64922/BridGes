@@ -577,8 +577,6 @@ export interface paths {
          *     订阅 ``GET .../events`` 恢复进度，断开/刷新/切换会话都不改变运行。
          *     主对话与图片/视频任务提交不检查账户凭据或探测快照（GQ-02/GQ-04）。
          *     ``use_knowledge_base=false``（Issue 20）：本轮检索与引用不含知识库
-         *     候选；``use_profile=false``（Issue 27）：本轮请求、审计与上下文说明
-         *     均不含任何画像切片（开关随运行快照落库，重试沿用）。
          */
         post: operations["send_message_chat_conversations__conversation_id__messages_post"];
         delete?: never;
@@ -2535,7 +2533,7 @@ export interface paths {
         };
         /**
          * List Four Dimension Records
-         * @description List active four-dimension records for the current account.
+         * @description 列出当前账户的活动四维画像记录。
          */
         get: operations["list_four_dimension_records_profiles_four_dimensions_get"];
         put?: never;
@@ -2561,7 +2559,7 @@ export interface paths {
         head?: never;
         /**
          * Modify Four Dimension Record
-         * @description Modify one existing record without resetting its stable timestamp.
+         * @description 修改一条已有记录，且不重置首次稳定记录时间。
          */
         patch: operations["modify_four_dimension_record_profiles_four_dimensions__record_id__patch"];
         trace?: never;
@@ -2577,7 +2575,7 @@ export interface paths {
         put?: never;
         /**
          * Withdraw Four Dimension Record
-         * @description Withdraw one record while retaining its internal tombstone.
+         * @description 撤回一条记录，同时保留内部撤回账本。
          */
         post: operations["withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post"];
         delete?: never;
@@ -7776,12 +7774,6 @@ export interface components {
              */
             use_knowledge_base: boolean;
             /**
-             * Use Profile
-             * @description 首轮是否使用画像切片（可在发送前关闭）。
-             * @default true
-             */
-            use_profile: boolean;
-            /**
              * Skill Id
              * @description 内置 SKILL 注册标识（Issue 28）；携带时首轮走 SKILL 编排。
              */
@@ -7834,8 +7826,6 @@ export interface components {
          *
          *     ``use_knowledge_base`` 为本轮开关：关闭后本轮请求、检索记录与引用
          *     均不包含全局知识库候选；当前明确附加的文件仍视为本轮授权。
-         *     ``use_profile`` 为画像使用开关（Issue 27）：关闭后本轮模型请求、
-         *     审计与上下文说明均不含任何画像切片，回答不个性化。
          */
         ChatMessageCreateRequest: {
             /**
@@ -7849,12 +7839,6 @@ export interface components {
              * @default true
              */
             use_knowledge_base: boolean;
-            /**
-             * Use Profile
-             * @description 本轮是否使用画像切片（可在发送前关闭）。
-             * @default true
-             */
-            use_profile: boolean;
             /**
              * Skill Id
              * @description 内置 SKILL 注册标识（Issue 28）；携带时本轮走 SKILL 编排而非普通回答。

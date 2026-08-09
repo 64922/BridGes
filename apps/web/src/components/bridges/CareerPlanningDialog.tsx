@@ -14,7 +14,7 @@ interface CareerPlanningDialogProps {
   /** 新聊天页的延迟建会话钩子（提交前预建空对话）。 */
   ensureConversation?: () => Promise<string | undefined>;
   /** 提交：宿主执行真实发送（真实消息流，不伪造结果）；返回是否成功。 */
-  onSubmit: (content: string, useProfile: boolean) => Promise<boolean>;
+  onSubmit: (content: string) => Promise<boolean>;
 }
 
 /**
@@ -33,7 +33,6 @@ export function CareerPlanningDialog({
   onSubmit,
 }: CareerPlanningDialogProps) {
   const [question, setQuestion] = useState("");
-  const [useProfile, setUseProfile] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState("");
 
@@ -54,7 +53,7 @@ export function CareerPlanningDialog({
     setSubmitting(true);
     setFormError("");
     try {
-      const accepted = await onSubmit(content, useProfile);
+      const accepted = await onSubmit(content);
       if (accepted === false) {
         setSubmitting(false);
         return;
@@ -110,47 +109,6 @@ export function CareerPlanningDialog({
           <p style={{ margin: "var(--space-1) 0 0", fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
             可以说明你的阶段、目标、已有基础与约束；规划结果只基于你授权的信息。
           </p>
-        </div>
-
-        <div
-          role="group"
-          aria-labelledby="career-profile-label"
-          style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}
-        >
-          <button
-            type="button"
-            role="switch"
-            aria-checked={useProfile}
-            data-testid="career-use-profile"
-            onClick={() => setUseProfile((value) => !value)}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: "var(--space-2)",
-              padding: "var(--space-1) var(--space-2)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius-md)",
-              background: "transparent",
-              cursor: "pointer",
-              fontSize: "var(--text-sm)",
-              color: "var(--color-text-primary)",
-            }}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 14,
-                height: 14,
-                borderRadius: "50%",
-                border: "2px solid var(--color-border-strong)",
-                backgroundColor: useProfile ? "var(--color-accent-primary)" : "transparent",
-              }}
-            />
-            <span id="career-profile-label">本轮使用我的画像记录</span>
-          </button>
-          <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-            {useProfile ? "只使用你已授权的最小切片" : "关闭后回答不基于任何画像信息"}
-          </span>
         </div>
 
         {formError && (

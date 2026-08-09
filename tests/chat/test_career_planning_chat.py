@@ -223,6 +223,7 @@ def _seed_assertion(
             source_note="测试播种",
         ),
     )
+    sqlite_app.state.four_dimension_profile_service.migrate_account(account_id)
     return assertion.assertion_id
 
 
@@ -257,13 +258,11 @@ def _parse_sse(text: str) -> list[tuple[str, dict[str, Any]]]:
     return events
 
 
-def _send_career(
-    client: TestClient, conversation_id: str, *, use_profile: bool = True
-) -> dict[str, Any]:
+def _send_career(client: TestClient, conversation_id: str) -> dict[str, Any]:
     """Issue 02：发送生涯规划消息 → 创建响应（运行已入队，无 SSE 流）。"""
     response = client.post(
         f"/chat/conversations/{conversation_id}/messages",
-        json={"content": _CAREER_INTENT, "use_profile": use_profile},
+        json={"content": _CAREER_INTENT},
     )
     assert response.status_code == 200, response.text
     return response.json()
@@ -417,31 +416,31 @@ def test_career_uses_minimal_authorized_profile_slice(
     assert career["profile_used"] is True
 
 
-def test_career_with_profile_disabled_uses_nothing(
+def test_career_always_uses_the_current_four_dimension_slice(
     sqlite_app: Any, client: TestClient,
     generation_helpers: dict[str, Any],
 ) -> None:
-    """发送前关闭画像：请求、披露与规划投影均不含画像内容。"""
+    """画像使用由服务端按四维合同决定，不再提供逐消息开关。"""
     account = _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
     _seed_assertion(sqlite_app, account["id"], "interest_preference", "喜欢数据分析与可视化。")
 
-    created = _send_career(client, conversation_id, use_profile=False)
+    created = _send_career(client, conversation_id)
     generation_helpers["drive"](sqlite_app)
     done_data = generation_helpers["subscribe"](
         client, conversation_id, created["assistant_message"]["message_id"]
     )[-1][1]
     message = done_data["message"]
     context_note = message["context_note"]
-    assert context_note["state"] == "off"
-    assert context_note["profile_item_count"] == 0
+    assert context_note["state"] == "ready"
+    assert context_note["profile_item_count"] == 1
     payload_text = json.dumps(adapter.requests[0], ensure_ascii=False)
-    assert "喜欢数据分析与可视化" not in payload_text
+    assert "喜欢数据分析与可视化" in payload_text
     career = message["career_planning"]
-    assert career["profile_enabled"] is False
-    assert career["profile_used"] is False
+    assert career["profile_enabled"] is True
+    assert career["profile_used"] is True
 
 
 def test_career_without_profile_has_empty_disclosure(

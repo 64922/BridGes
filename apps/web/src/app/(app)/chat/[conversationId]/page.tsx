@@ -481,7 +481,6 @@ export default function ChatConversationPage() {
     async (
       text: string,
       useKnowledgeBase: boolean = true,
-      useProfile: boolean = true,
       skillId?: string,
       skillInput?: unknown,
       video?: VideoRequestPayload,
@@ -511,7 +510,6 @@ export default function ChatConversationPage() {
             conversation_id: conversationId,
             mode: selectedMode,
             use_knowledge_base: useKnowledgeBase,
-            use_profile: useProfile,
             ...(skillId !== undefined ? { skill_id: skillId } : {}),
             ...(skillInput !== undefined
               ? { skill_input: skillInput as HumanizerSkillInput }
@@ -530,7 +528,6 @@ export default function ChatConversationPage() {
             conversationId,
             text,
             useKnowledgeBase,
-            useProfile,
             skillId,
             skillInput,
             undefined,
@@ -595,7 +592,6 @@ export default function ChatConversationPage() {
       return sendMessage(
         content,
         useKnowledgeBase,
-        true,
         skillInput.skill_id,
         skillInput
       );
@@ -603,10 +599,10 @@ export default function ChatConversationPage() {
     [sendMessage]
   );
 
-  /** Issue 29：提交生涯规划任务（真实消息流；画像开关随本轮发送透传）。 */
+  /** Issue 29：提交生涯规划任务（真实消息流）。 */
   const handleCareerSubmit = useCallback(
-    async (content: string, useProfile: boolean): Promise<boolean> => {
-      return sendMessage(content, true, useProfile);
+    async (content: string): Promise<boolean> => {
+      return sendMessage(content, true);
     },
     [sendMessage]
   );
@@ -619,7 +615,6 @@ export default function ChatConversationPage() {
       const target = invokeMcpTarget;
       const ok = await sendMessage(
         `调用 ${payload.mcp_id} 的 ${payload.tool} 工具`,
-        true,
         true,
         undefined,
         undefined,
@@ -647,7 +642,7 @@ export default function ChatConversationPage() {
   const handleVideoSubmit = useCallback(
     async (payload: { prompt: string }): Promise<boolean> => {
       const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
-      return sendMessage(payload.prompt, true, true, undefined, undefined, undefined, videoPayload);
+      return sendMessage(payload.prompt, true, undefined, undefined, videoPayload);
     },
     [sendMessage]
   );
@@ -873,8 +868,8 @@ export default function ChatConversationPage() {
                     />
                   </div>
                   <Composer
-                    onSend={(text, _, useKnowledgeBase, useProfile) =>
-                      sendMessage(text, useKnowledgeBase, useProfile)
+                    onSend={(text, _, useKnowledgeBase) =>
+                      sendMessage(text, useKnowledgeBase)
                     }
                     conversationId={conversationId}
                     generating={generating}
