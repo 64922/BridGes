@@ -23,6 +23,25 @@ class HumanizerPath(StrEnum):
     GENERATE = "generate"
 
 
+class HumanizerRouteSource(StrEnum):
+    """人味化任务的入口来源。"""
+
+    EXPLICIT_SKILL = "explicit_skill"
+    NATURAL_LANGUAGE = "natural_language"
+
+
+class HumanizerRouteDecision(BaseModel):
+    """自然语言路由的不可变快照。"""
+
+    source: HumanizerRouteSource = Field(description="任务进入人味化能力的来源。")
+    version: str = Field(description="路由规则版本。")
+    reason: str = Field(description="命中的中文意图说明。")
+    external_evidence_requested: bool = Field(
+        default=False,
+        description="用户是否明确要求补充或核验外部事实；默认不联网。",
+    )
+
+
 class FactLockKind(StrEnum):
     """文本级事实锁类别（对应 Issue 28 受保护的信息集合）。"""
 
@@ -90,7 +109,7 @@ class HumanizerTaskContract(BaseModel):
     """一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。
 
     与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。
-    改写路径必带 source_text 或知识库材料；生成路径必带 topic。
+    改写路径必带 source_text、知识库引用或历史兼容附件；生成路径必带 topic。
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -122,6 +141,10 @@ class HumanizerTaskContract(BaseModel):
     source_label: str | None = Field(
         default=None, description="来源显示名（文件名或用户粘贴说明）。"
     )
+    knowledge_base_reference: str | None = Field(
+        default=None,
+        description="用户明确引用的当前账户知识库文档名；为空时不得泛化检索。",
+    )
 
 
 class HumanizerSkillInput(BaseModel):
@@ -131,6 +154,9 @@ class HumanizerSkillInput(BaseModel):
     contract: HumanizerTaskContract = Field(description="本次人味化任务契约。")
     version: str | None = Field(
         default=None, description="请求声明版本；空则使用注册的默认版本。"
+    )
+    route: HumanizerRouteDecision | None = Field(
+        default=None, description="进入能力前保存的路由决策快照。"
     )
 
 

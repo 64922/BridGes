@@ -56,6 +56,7 @@ from bridges.skills.humanizer.genre_rules import (
     check_genre,
     genre_rule_set,
 )
+from bridges.skills.humanizer.intent import HUMANIZER_ROUTE_VERSION
 from bridges.skills.registry import SkillRegistry
 from bridges.web_search.service import WebSearchService
 
@@ -179,6 +180,16 @@ class HumanizerService:
 
     def resolve_skill(self, skill_input: HumanizerSkillInput) -> str:
         """校验 SKILL 载荷：标识必须已注册为内置只读能力，版本固定。"""
+        if (
+            skill_input.route is not None
+            and skill_input.route.source.value == "natural_language"
+            and skill_input.route.version != HUMANIZER_ROUTE_VERSION
+        ):
+            raise HumanizerError(
+                "humanizer_route_version_conflict",
+                "自然语言人味化路由版本不受支持，请重新发送任务。",
+                retryable=False,
+            )
         manifest = self._registry.get(skill_input.skill_id)
         if skill_input.version is not None and skill_input.version != manifest.version:
             raise HumanizerError(
@@ -204,9 +215,9 @@ class HumanizerService:
         """执行一条人味化任务：yield 过程事件，最后 yield 结果事件。
 
         Issue 07：模型产出正文后立即 yield 草稿事件（聊天服务持久化
-        消息正文，软检查只更新状态不删草稿）；体裁等软门至多触发一次
-        有预算的定向修复，仍未完全通过时交付当前最佳正文与具体警告；
-        事实锁等硬门才阻止把文本标为最终稿（投影附冲突项与恢复方式）。
+        消息正文，软检查只更新状态不删草稿）；自然语言路由只做一次
+        结构化生成并执行确定性复核，仍未完全通过时交付当前最佳正文与
+        具体警告；旧显式 SKILL 继续保留既有的一次定向修复兼容行为。
         """
         skill_version = self.resolve_skill(skill_input)
         contract = skill_input.contract
@@ -300,7 +311,8 @@ class HumanizerService:
             )
             repair_attempts = 0
             if (
-                checkpoint.genre_check
+                not self._is_natural_language_route(skill_input)
+                and checkpoint.genre_check
                 and not checkpoint.genre_check.passed
                 and not checkpoint.fact_lock_check.blocking_conflicts
             ):
@@ -364,6 +376,11 @@ class HumanizerService:
             )
             yield HumanizerRunEvent(kind=HumanizerRunKind.RESULT, result=failed)
 
+    @staticmethod
+    def _is_natural_language_route(skill_input: HumanizerSkillInput) -> bool:
+        route = skill_input.route
+        return route is not None and route.source.value == "natural_language"
+
     # ------------------------------------------------------------------
     # 来源解析
     # ------------------------------------------------------------------
@@ -413,6 +430,33 @@ class HumanizerService:
                     preserved=True,
                 )
             )
+        retrieval_citations = list(getattr(retrieval_round, "citations", []) or [])
+        if contract.knowledge_base_reference:
+            expected = contract.knowledge_base_reference.strip().casefold()
+            matching = [
+                citation
+                for citation in retrieval_citations
+                if str(getattr(citation, "filename", "")).strip().casefold() == expected
+            ]
+            if not matching:
+                raise HumanizerError(
+                    "knowledge_base_reference_unreadable",
+                    f"知识库文档「{contract.knowledge_base_reference}」不可读或没有访问权限，"
+                    "请确认文档已上传到当前账户知识库后重试。",
+                    retryable=True,
+                )
+            if len(matching) > 1:
+                raise HumanizerError(
+                    "knowledge_base_reference_ambiguous",
+                    f"知识库文档「{contract.knowledge_base_reference}」存在多个同名材料，"
+                    "请改用唯一文件名后重试。",
+                    retryable=True,
+                )
+            for citation in matching:
+                snippet = str(getattr(citation, "snippet", "")).strip()
+                if snippet:
+                    source_parts.append(snippet)
+                    label_parts.append(contract.knowledge_base_reference)
         if not source_parts:
             raise HumanizerError(
                 "empty_source",
@@ -423,7 +467,15 @@ class HumanizerService:
         # 仅在显式开启补充检索（retrieval_round 非空）时，检索轮次引用
         # 才进入改写证据合同——知识库材料仅作补充，绝不替代原文。
         # 联网/arXiv 仅在明确触发时进入引用清单（模型只可引用清单内材料）。
-        for citation in self._citations_from(retrieval_round):
+        retrieval_references = self._citations_from(retrieval_round)
+        if contract.knowledge_base_reference:
+            expected = contract.knowledge_base_reference.strip().casefold()
+            retrieval_references = [
+                reference
+                for reference in retrieval_references
+                if (reference.label or "").strip().casefold() == expected
+            ]
+        for citation in retrieval_references:
             references.append(citation)
         for item in self._citations_from_web(web_search_projection):
             references.append(item)

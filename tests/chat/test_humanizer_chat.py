@@ -566,3 +566,92 @@ def test_rewrite_explicit_knowledge_base_runs_retrieval(
     retrieval = [s for s in stages if s["stage"] == "local_retrieval"]
     assert retrieval and retrieval[0]["status"] in ("active", "done")
     assert events[-1][0] == "done"
+
+
+def test_natural_language_message_uses_the_existing_humanizer_lifecycle(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    """普通聊天消息自动路由，并保存可重试的路由/合同快照。"""
+    _register(client)
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": (
+                "请帮我润色这篇科普文章，面向高中生，长度不超过 800 字，"
+                "数字不能改：光合作用是植物把光能转化为化学能的过程。"
+            )
+        },
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    skill = created["user_message"]["skill"]
+    assert skill["skill_id"] == "bridges-humanizer"
+    assert skill["route"]["source"] == "natural_language"
+    assert skill["route"]["version"] == "humanizer-route-v1"
+    assert skill["contract"]["audience"] == "高中生"
+    assert skill["contract"]["length_target"] == "不超过 800 字"
+    assert skill["contract"]["source_text"].startswith("光合作用")
+
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "done"
+    assert events[-1][1]["message"]["humanizer"]["output"]["final_text"]
+    assert adapter.calls == 1
+
+
+def test_natural_language_route_without_source_does_not_call_model(
+    sqlite_app: Any, client: TestClient, generation_helpers: dict[str, Any]
+) -> None:
+    _register(client)
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "请帮我润色这篇文章，面向普通读者。"},
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    assert created["user_message"]["skill"]["contract"]["source_text"] is None
+
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created["assistant_message"]["message_id"]
+    )
+    assert events[-1][0] == "error"
+    assert events[-1][1]["error"]["code"] == "empty_source"
+    assert adapter.calls == 0
+
+
+def test_natural_language_first_turn_is_idempotent(
+    sqlite_app: Any, client: TestClient
+) -> None:
+    _register(client)
+    _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
+    payload = {
+        "content": "给我润色这篇文章：光合作用是植物把光能转化为化学能。",
+        "idempotency_key": "natural-humanizer-first-turn-1",
+    }
+
+    first = client.post("/chat/first-turn", json=payload)
+    second = client.post("/chat/first-turn", json=payload)
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 200, second.text
+    first_body = first.json()
+    second_body = second.json()
+    assert second_body["idempotent_replay"] is True
+    assert (
+        second_body["user_message"]["message_id"]
+        == first_body["user_message"]["message_id"]
+    )
+    assert second_body["user_message"]["skill"]["route"]["source"] == (
+        "natural_language"
+    )

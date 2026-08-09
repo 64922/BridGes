@@ -27,6 +27,8 @@ from bridges.contracts.humanizer import (
     HumanizerProcessState,
     HumanizerQualityStatus,
     HumanizerResultStatus,
+    HumanizerRouteDecision,
+    HumanizerRouteSource,
     HumanizerSkillInput,
     HumanizerTaskContract,
 )
@@ -393,6 +395,24 @@ def test_unknown_skill_rejected() -> None:
     assert getattr(exc_info.value, "code", "") == "skill_not_found"
 
 
+def test_unknown_natural_language_route_version_is_rejected() -> None:
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    skill_input = _rewrite_input().model_copy(
+        update={
+            "route": HumanizerRouteDecision(
+                source=HumanizerRouteSource.NATURAL_LANGUAGE,
+                version="humanizer-route-v0",
+                reason="测试未知版本",
+            )
+        }
+    )
+
+    with pytest.raises(Exception) as exc_info:
+        service.resolve_skill(skill_input)
+
+    assert getattr(exc_info.value, "code", "") == "humanizer_route_version_conflict"
+
+
 def test_added_citation_without_evidence_is_unverified() -> None:
     final_with_new_cite = (
         _COMPLIANT_FINAL.replace(
@@ -519,6 +539,26 @@ def test_soft_gate_repairs_once_and_succeeds() -> None:
     assert result.output.quality_status == HumanizerQualityStatus.OK
     assert result.repair_attempts == 1
     assert adapter.calls == 2  # 初始产出 + 一次修复，绝无第二次循环
+
+
+def test_natural_language_route_generates_at_most_once() -> None:
+    route = HumanizerRouteDecision(
+        source=HumanizerRouteSource.NATURAL_LANGUAGE,
+        version="humanizer-route-v1",
+        reason="测试自然语言路由",
+    )
+    adapter = _ProgrammableStructuredAdapter(
+        sequence=[_bad_genre_output(), _good_output()]
+    )
+    _, result = _run(
+        service := _make_service(adapter),
+        _rewrite_input().model_copy(update={"route": route}),
+        budget=_budget(),
+    )
+
+    assert result.status == HumanizerResultStatus.NEEDS_HUMAN
+    assert result.repair_attempts == 0
+    assert adapter.calls == 1
 
 
 def test_soft_gate_repair_failure_delivers_original_draft() -> None:
@@ -659,3 +699,108 @@ def test_fact_lock_conflict_message_includes_recovery_path() -> None:
     # 硬门不执行软门修复：修复只在无硬门冲突时触发
     drafts = [e.draft_text for e in events if e.kind == "draft"]
     assert drafts  # 草稿仍在（不删除），但结果卡明确停止交付
+
+
+def test_explicit_knowledge_base_reference_uses_matching_account_citation() -> None:
+    """自然语言引用知识库时只把同名账户材料切片送入人味化服务。"""
+    service = _make_service(_ProgrammableStructuredAdapter(output=_good_output()))
+    skill_input = HumanizerSkillInput(
+        skill_id="bridges-humanizer",
+        contract=HumanizerTaskContract(
+            path=HumanizerPath.REWRITE,
+            genre=Genre.POPULAR_SCIENCE,
+            knowledge_base_reference="实验报告.md",
+        ),
+    )
+    retrieval_round = SimpleNamespace(
+        citations=[
+            SimpleNamespace(
+                filename="实验报告.md",
+                page_number=1,
+                section_title="摘要",
+                snippet=_SOURCE,
+            ),
+            SimpleNamespace(
+                filename="无关材料.md",
+                page_number=1,
+                section_title="正文",
+                snippet="不应进入本次任务的材料。",
+            ),
+        ]
+    )
+
+    events = list(
+        service.run_task(
+            "acc-test",
+            "conv-test",
+            "msg-test",
+            skill_input,
+            _run_context(),
+            retrieval_round=retrieval_round,
+        )
+    )
+    result = next(event.result for event in events if event.kind == "result")
+    assert result is not None
+    assert result.status == HumanizerResultStatus.DONE
+    assert result.references
+    assert any(reference.label == "实验报告.md" for reference in result.references)
+
+
+def test_unreadable_knowledge_base_reference_fails_before_model_call() -> None:
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    service = _make_service(adapter)
+    skill_input = HumanizerSkillInput(
+        skill_id="bridges-humanizer",
+        contract=HumanizerTaskContract(
+            path=HumanizerPath.REWRITE,
+            genre=Genre.POPULAR_SCIENCE,
+            knowledge_base_reference="另一账户.md",
+        ),
+    )
+
+    events = list(
+        service.run_task(
+            "acc-test",
+            "conv-test",
+            "msg-test",
+            skill_input,
+            _run_context(),
+            retrieval_round=SimpleNamespace(citations=[]),
+        )
+    )
+    result = next(event.result for event in events if event.kind == "result")
+    assert result is not None
+    assert result.error_code == "knowledge_base_reference_unreadable"
+    assert adapter.calls == 0
+
+
+def test_ambiguous_knowledge_base_reference_fails_before_model_call() -> None:
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    service = _make_service(adapter)
+    skill_input = HumanizerSkillInput(
+        skill_id="bridges-humanizer",
+        contract=HumanizerTaskContract(
+            path=HumanizerPath.REWRITE,
+            genre=Genre.POPULAR_SCIENCE,
+            knowledge_base_reference="实验报告.md",
+        ),
+    )
+    citations = [
+        SimpleNamespace(filename="实验报告.md", snippet="第一份材料。"),
+        SimpleNamespace(filename="实验报告.md", snippet="第二份材料。"),
+    ]
+
+    events = list(
+        service.run_task(
+            "acc-test",
+            "conv-test",
+            "msg-test",
+            skill_input,
+            _run_context(),
+            retrieval_round=SimpleNamespace(citations=citations),
+        )
+    )
+    result = next(event.result for event in events if event.kind == "result")
+    assert result is not None
+    assert result.error_code == "knowledge_base_reference_ambiguous"
+    assert adapter.calls == 0
