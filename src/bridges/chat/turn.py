@@ -76,6 +76,7 @@ from bridges.contracts.chat import (
 )
 from bridges.contracts.humanizer import (
     HumanizerResultStatus,
+    HumanizerRouteSource,
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
@@ -2672,13 +2673,23 @@ class TurnOrchestrator:
             yield self._stage_event(
                 assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
             )
-        # Spec AC8：可引用来源经本地/联网证据合同呈现。联网与 arXiv 按
-        # 既有触发器（明确要求/时效/核查等）决定是否执行；结果投影传入
-        # 人味化编排，只可引用清单内材料，新增引用一律标记未核实。
+        # Spec AC8：可引用来源经本地/联网证据合同呈现。自然语言人味化
+        # 默认不进入公网或 arXiv planner，只有用户明确要求补充/核验
+        # 外部事实时才复用既有触发器；结果投影只可引用清单内材料。
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
         public_search_entered = False
-        if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
+        route = skill_input.route
+        allow_public_search = (
+            route is None
+            or route.source != HumanizerRouteSource.NATURAL_LANGUAGE
+            or route.external_evidence_requested
+        )
+        if (
+            allow_public_search
+            and not stop_event.is_set()
+            and budget.enter(RunStage.PUBLIC_SEARCH)
+        ):
             public_search_entered = True
             yield self._stage_event(
                 assistant_message_id, RunStage.PUBLIC_SEARCH, "active"

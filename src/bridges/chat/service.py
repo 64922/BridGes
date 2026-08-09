@@ -113,6 +113,7 @@ from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
+from bridges.skills.humanizer.intent import route_humanizer_message
 from bridges.web_search.contracts import WebSearchProjection
 from bridges.web_search.service import WebSearchService
 
@@ -637,6 +638,18 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
+        skill_id, skill_input, use_knowledge_base = (
+            self._apply_natural_language_humanizer_route(
+                content,
+                skill_id=skill_id,
+                skill_input=skill_input,
+                image=image,
+                video=video,
+                mcp_call=mcp_call,
+                attachment_ids=attachment_ids,
+                use_knowledge_base=use_knowledge_base,
+            )
+        )
         skill_payload, image_payload, video_payload, mcp_call_payload = (
             self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
         )
@@ -713,6 +726,44 @@ class ChatService:
         return (
             self._project_message(user_message),
             self._project_message(assistant_message, run_view),
+        )
+
+    def _apply_natural_language_humanizer_route(
+        self,
+        content: str,
+        *,
+        skill_id: str | None,
+        skill_input: dict[str, Any] | None,
+        image: dict[str, Any] | None,
+        video: dict[str, Any] | None,
+        mcp_call: dict[str, Any] | None,
+        attachment_ids: list[str] | None,
+        use_knowledge_base: bool,
+    ) -> tuple[str | None, dict[str, Any] | None, bool]:
+        """把普通消息编译为既有人味化 SKILL 载荷。
+
+        只有未携带旧载荷或其他能力载荷时才尝试路由；显式 SKILL 仍按
+        兼容合同校验。自然语言路由不接受聊天附件，避免把历史附件或
+        未经知识库迁移的文件偷偷重新送入模型。
+        """
+        if any(
+            payload is not None
+            for payload in (skill_id, skill_input, image, video, mcp_call)
+        ):
+            return skill_id, skill_input, use_knowledge_base
+        routed = route_humanizer_message(content)
+        if routed is None:
+            return skill_id, skill_input, use_knowledge_base
+        if attachment_ids:
+            raise ChatDomainError(
+                "humanizer_attachment_not_supported",
+                "自然语言人味化不接收聊天附件，请先把原文件上传到当前账户知识库后再引用。",
+                422,
+            )
+        return (
+            routed.skill_input.skill_id,
+            routed.skill_input.model_dump(mode="json"),
+            routed.use_knowledge_base,
         )
 
     def _validate_skill_attachment_consistency(
@@ -978,6 +1029,18 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
+        skill_id, skill_input, use_knowledge_base = (
+            self._apply_natural_language_humanizer_route(
+                content,
+                skill_id=skill_id,
+                skill_input=skill_input,
+                image=image,
+                video=video,
+                mcp_call=mcp_call,
+                attachment_ids=attachment_ids,
+                use_knowledge_base=use_knowledge_base,
+            )
+        )
         skill_payload, image_payload, video_payload, mcp_call_payload = (
             self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
         )
@@ -1302,6 +1365,17 @@ class ChatService:
             raise ChatDomainError(
                 "not_retryable_message", "找不到该助手消息对应的用户消息。", 400
             )
+        if owner.skill:
+            try:
+                owner_skill = HumanizerSkillInput.model_validate(owner.skill)
+            except ValidationError:
+                owner_skill = None
+            if owner_skill is not None and owner_skill.contract.attachment_ids:
+                raise ChatDomainError(
+                    "historical_attachment_not_retryable",
+                    "历史聊天附件不能作为人味化重试输入，请先把原文件上传到当前账户知识库后再重试。",
+                    422,
+                )
         max_attempt = max(
             (m.attempt_number for m in attempt_group(existing, owner.message_id)),
             default=0,
