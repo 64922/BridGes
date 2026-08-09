@@ -1637,6 +1637,46 @@ MIGRATIONS: dict[int, list[str]] = {
             reason TEXT NOT NULL,
             UNIQUE (account_id, source_document_id)
         )
+        """,
+        """
+        UPDATE skill_packages
+        SET status = 'disabled',
+            failure_reason = COALESCE(failure_reason, 'user extensions retired'),
+            updated_at = datetime('now')
+        WHERE status <> 'disabled'
+        """,
+        """
+        UPDATE mcp_servers
+        SET status = 'disabled',
+            enabled = 0,
+            failure_reason = COALESCE(failure_reason, 'user extensions retired'),
+            updated_at = datetime('now')
+        WHERE status <> 'disabled' OR enabled <> 0
+        """,
+        """
+        UPDATE conversations SET plugin_selection = NULL
+        WHERE plugin_selection IS NOT NULL
+        """,
+        """
+        UPDATE mcp_calls
+        SET status = 'failed',
+            error_code = 'user_extensions_retired',
+            error_message = 'user extensions retired'
+        WHERE status IN ('pending', 'running', 'claimed', 'sensitive_pending', 'awaiting_confirmation')
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS extension_retirement (
+            retirement_id INTEGER PRIMARY KEY CHECK (retirement_id = 1),
+            status TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        INSERT INTO extension_retirement(retirement_id, status, updated_at)
+        VALUES (1, 'completed', datetime('now'))
+        ON CONFLICT(retirement_id) DO UPDATE SET
+            status = excluded.status,
+            updated_at = excluded.updated_at
         """
     ],
 }

@@ -355,8 +355,8 @@ def test_unregistered_skill_rejected(
             },
         },
     )
-    assert response.status_code == 404, response.text
-    assert response.json()["detail"]["error"] == "skill_not_found"
+    assert response.status_code == 410, response.text
+    assert response.json()["detail"]["error"] == "user_extensions_retired"
 
 
 def test_invalid_skill_payload_rejected(

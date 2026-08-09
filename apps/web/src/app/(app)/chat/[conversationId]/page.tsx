@@ -46,9 +46,6 @@ import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
 import { ImageDialog } from "@/components/bridges/ImageDialog";
 import { VideoDialog } from "@/components/bridges/VideoDialog";
-import { PluginPickerDialog } from "@/components/bridges/PluginPickerDialog";
-import { McpInvokeDialog } from "@/components/bridges/McpInvokeDialog";
-import { McpCallCard } from "@/components/bridges/McpCallCard";
 import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import type {
@@ -60,21 +57,12 @@ import type {
   ChatStreamVideoData,
 } from "@/lib/api";
 import type {
-  ChatPluginSelectionItem,
   ImageAssetProjection,
   ImageRequestPayload,
   ImageTaskKind,
-  McpCallRequestPayload,
   VideoRequestPayload,
 } from "@/lib/api";
-import {
-  approveMessageMcpConfirmation,
-  denyMessageMcpConfirmation,
-  getImageAsset,
-  listMcpServers,
-  listPlugins,
-  updateChatConversation,
-} from "@/lib/api";
+import { getImageAsset } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -190,17 +178,7 @@ export default function ChatConversationPage() {
   const [videoOpen, setVideoOpen] = useState(false);
   // Issue 36：对话级插件选择（随对话持久化；chip 持续显示；停用/卸载/
   // 撤权后由服务端清洗并随投影解释影响）
-  const [pluginSelection, setPluginSelection] = useState<ChatPluginSelectionItem[]>([]);
-  const [pluginNames, setPluginNames] = useState<Record<string, string>>({});
-  const [removedSelections, setRemovedSelections] = useState<
-    { kind: "skill" | "mcp"; plugin_id: string; name: string; reason: string }[]
-  >([]);
-  const [pluginPickerOpen, setPluginPickerOpen] = useState(false);
   // Issue 36：MCP 调用对话框目标（选中插件 chip「调用」按钮打开）
-  const [invokeMcpTarget, setInvokeMcpTarget] = useState<{
-    mcp_id: string;
-    name: string;
-  } | null>(null);
   const [profileNotifications, setProfileNotifications] = useState<
     ProfileNotification[]
   >([]);
@@ -214,8 +192,6 @@ export default function ChatConversationPage() {
     try {
       const projection = await getChatConversation(conversationId);
       setConversation(projection);
-      setPluginSelection(projection.plugin_selection ?? []);
-      setRemovedSelections(projection.removed_selections ?? []);
       if ((projection.removed_selections ?? []).length > 0) {
         setAnnouncement(
           `已移除失效插件：${(projection.removed_selections ?? [])
@@ -317,39 +293,6 @@ export default function ChatConversationPage() {
 
   // Issue 36：解析选中插件的显示名（刷新/恢复历史对话后 chip 名称不丢）。
   // 只拉取列表接口的轻量投影；失败静默降级为显示 plugin_id。
-  useEffect(() => {
-    if (pluginSelection.length === 0) {
-      setPluginNames({});
-      return;
-    }
-    let cancelled = false;
-    Promise.all([listPlugins(), listMcpServers()])
-      .then(([plugins, mcp]) => {
-        if (cancelled) return;
-        const names: Record<string, string> = {};
-        for (const item of plugins.builtin ?? []) {
-          if (pluginSelection.some((s) => s.kind === "skill" && s.plugin_id === item.skill_id)) {
-            names[`skill:${item.skill_id}`] = item.name;
-          }
-        }
-        for (const item of plugins.user ?? []) {
-          if (pluginSelection.some((s) => s.kind === "skill" && s.plugin_id === item.plugin_id)) {
-            names[`skill:${item.plugin_id}`] = item.name;
-          }
-        }
-        for (const server of mcp.servers ?? []) {
-          if (pluginSelection.some((s) => s.kind === "mcp" && s.plugin_id === server.mcp_id)) {
-            names[`mcp:${server.mcp_id}`] = server.name;
-          }
-        }
-        setPluginNames(names);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [pluginSelection]);
-
   // 变更学习项目归属：立即写入服务端（显式 null 表示移出），
   // 仅更新本地 project_id 字段，避免用 PATCH 响应覆盖消息列表。
   const changeLearningProject = useCallback(
@@ -373,24 +316,10 @@ export default function ChatConversationPage() {
     },
     [conversation, loadState]
   );
+  /*
 
   // Issue 36：替换本对话插件选择（选择器确认后全量 PATCH；显式空数组
   // 清空）。只更新本地 plugin_selection 字段，避免用 PATCH 响应覆盖消息列表。
-  const changePlugins = useCallback(
-    async (
-      selection: ChatPluginSelectionItem[],
-      names?: Record<string, string>
-    ) => {
-      if (!conversation || loadState !== "ready") return;
-      try {
-        const projection = await updateChatConversation(
-          conversation.conversation_id,
-          { pluginSelection: selection }
-        );
-        setPluginSelection(projection.plugin_selection ?? selection);
-        setRemovedSelections(projection.removed_selections ?? []);
-        if (names) setPluginNames((current) => ({ ...current, ...names }));
-        setAnnouncement(
           selection.length > 0
             ? `已选择 ${selection.length} 个插件`
             : "已清除插件选择"
@@ -401,9 +330,7 @@ export default function ChatConversationPage() {
         });
       }
     },
-    [conversation, loadState]
-  );
-
+  */
   const handleStreamEvent = useCallback(
     (kind: ActiveRun["kind"], text: string) =>
       (event: ChatStreamEvent) => {
@@ -752,6 +679,7 @@ export default function ChatConversationPage() {
 
   /** Issue 36：提交对选中 MCP 插件的调用（真实消息流：mcp_call 载荷
    *  走服务端选中校验与 invoke，结果卡在消息流中呈现，不伪造结果）。 */
+  /*
   const handleMcpInvokeSubmit = useCallback(
     async (payload: McpCallRequestPayload): Promise<boolean> => {
       const target = invokeMcpTarget;
@@ -775,27 +703,15 @@ export default function ChatConversationPage() {
   /** Issue 36：消息内 MCP 敏感操作确认（approve/deny 走 chat 域路由，
    *  结果写回消息投影；确认后刷新权威历史呈现最终结果）。 */
   const confirmMessageMcp = useCallback(
-    async (messageId: string, confirmationId: string, action: "approve" | "deny") => {
-      if (action === "approve") {
-        await approveMessageMcpConfirmation(
-          conversationId,
-          messageId,
-          confirmationId
-        );
-      } else {
-        await denyMessageMcpConfirmation(
-          conversationId,
-          messageId,
-          confirmationId
-        );
-      }
-      void load(true);
+    async () => {
+      setSendError({ message: "MCP 调用已退役，历史调用仅供查看。" });
     },
-    [conversationId, load]
+    []
   );
 
   /** Issue 32：提交文生视频任务（真实消息流：video 载荷创建异步任务，
    *  状态卡与资产卡在消息流中呈现，不在此处伪造视频结果）。 */
+  void confirmMessageMcp;
   const handleVideoSubmit = useCallback(
     async (payload: { prompt: string }): Promise<boolean> => {
       const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
@@ -1117,7 +1033,6 @@ export default function ChatConversationPage() {
                 tts={MEDIA_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
                 announcement={announcement}
-                onConfirmMcpCall={confirmMessageMcp}
               />
               {profileNotifications.length > 0 && (
                 <ChatProfileNotificationCards
@@ -1154,26 +1069,6 @@ export default function ChatConversationPage() {
                     onOpenVideo={() => setVideoOpen(true)}
                     video={MEDIA_ALWAYS_AVAILABLE}
                     asr={MEDIA_ALWAYS_AVAILABLE}
-                    pluginSelection={pluginSelection}
-                    pluginNames={pluginNames}
-                    onSelectPlugins={() => setPluginPickerOpen(true)}
-                    onRemovePlugin={(kind, pluginId) => {
-                      void changePlugins(
-                        pluginSelection.filter(
-                          (item) => !(item.kind === kind && item.plugin_id === pluginId)
-                        )
-                      );
-                    }}
-                    onInvokeMcp={(mcpId) => {
-                      const target = pluginSelection.find(
-                        (item) => item.kind === "mcp" && item.plugin_id === mcpId
-                      );
-                      if (!target) return;
-                      setInvokeMcpTarget({
-                        mcp_id: mcpId,
-                        name: pluginNames[`mcp:${mcpId}`] ?? mcpId,
-                      });
-                    }}
                   />
                 </div>
               </div>
@@ -1204,20 +1099,6 @@ export default function ChatConversationPage() {
         open={videoOpen}
         onClose={() => setVideoOpen(false)}
         onSubmit={handleVideoSubmit}
-      />
-      <PluginPickerDialog
-        open={pluginPickerOpen}
-        onClose={() => setPluginPickerOpen(false)}
-        selected={pluginSelection}
-        removedSelections={removedSelections}
-        onSelect={changePlugins}
-      />
-      <McpInvokeDialog
-        open={invokeMcpTarget !== null}
-        server={invokeMcpTarget}
-        onClose={() => setInvokeMcpTarget(null)}
-        selected={pluginSelection}
-        onSubmit={handleMcpInvokeSubmit}
       />
     </AppShell>
   );

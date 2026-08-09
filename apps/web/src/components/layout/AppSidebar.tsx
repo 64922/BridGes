@@ -38,7 +38,7 @@ interface SidebarModule {
 const SIDEBAR_MODULES: SidebarModule[] = [
   { label: "本地知识库", icon: "knowledgeBase", href: "/knowledge-base" },
   { label: "学习项目", icon: "learningProject", href: "/account/projects" },
-  { label: "插件", icon: "plugins", href: "/plugins" },
+  { label: "任务安排", icon: "tasks", href: "/tasks" },
   { label: "用户画像", icon: "profile", href: "/account/profile" },
 ];
 
@@ -106,7 +106,7 @@ const iconOnlyStyle: React.CSSProperties = {
  * 普通用户全局侧栏（Issue 12，ChatGPT 桌面结构启发、BridGes 原创视觉）。
  *
  * 自上而下固定顺序：BridGes Logo（进入新聊天）、搜索、收起侧边栏、新聊天、
- * 本地知识库、学习项目、插件、用户画像、最近对话（真实数据）、
+ * 本地知识库、学习项目、任务安排、插件、用户画像、最近对话（真实数据）、
  * 底部账户菜单（Issue 08）。收起后侧栏完全隐藏，内容区左上角保留
  * 「展开侧边栏 + 新聊天」恢复入口；状态持久化在 localStorage，刷新与
  * 路由切换后保持（无闪烁由根布局内联脚本 + data-sidebar-collapsed 规则保证）。

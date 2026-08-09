@@ -1,32 +1,24 @@
-import { McpCenter } from "@/components/mcp/McpCenter";
-import { PluginCenter } from "@/components/plugins/PluginCenter";
+import Link from "next/link";
+
 import { MainContent } from "@/components/layout/MainContent";
 
 export const metadata = {
-  title: "插件 — BridGes",
+  title: "能力管理已退役 - BridGes",
 };
 
-/**
- * 插件（Issue 34/35）：SKILL 插件中心 + MCP 插件中心。
- *
- * - SKILL：内置插件（PDF / Documents / bridges-humanizer）随应用发布、
- *   版本固定、只读不可卸载，账户可启停并真实演示；用户可上传声明式
- *   SKILL 包，安装前完成安全闭锁检查与内容预览确认。
- * - MCP：按账户安装固定版本 + 完整性锁定的 MCP 安装描述，安装前逐项
- *   预览权限清单；受限进程运行、敏感操作再次确认、撤权/启停/卸载。
- */
-export default function PluginsPage() {
+export default function RetiredPluginsPage() {
   return (
     <MainContent>
-      <section
-        aria-labelledby="plugins-title"
-        style={{ maxWidth: "52rem", marginInline: "auto" }}
-      >
-        <h1 id="plugins-title" className="sc-section-title">
-          插件
+      <section aria-labelledby="plugins-retired-title" style={{ maxWidth: "52rem", marginInline: "auto" }}>
+        <h1 id="plugins-retired-title" className="sc-section-title">
+          能力管理已退役
         </h1>
-        <PluginCenter />
-        <McpCenter />
+        <p>用户上传、安装、启停和调用 SKILL、插件与通用 MCP 已停止。</p>
+        <p>内置能力会随应用版本自动适用；论文检索仍可在聊天中直接使用。</p>
+        <nav aria-label="继续使用 BridGes" style={{ display: "flex", gap: "var(--space-3)" }}>
+          <Link href="/templates/chat">返回聊天</Link>
+          <Link href="/templates/list?section=knowledge">打开知识库</Link>
+        </nav>
       </section>
     </MainContent>
   );

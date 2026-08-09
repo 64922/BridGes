@@ -174,12 +174,20 @@ class McpService:
         # 固定路径不可被本地进程预置符号链接（目录本身也可能被伪装）。
         self._command_workdir = tempfile.mkdtemp(prefix="bridges-mcp-cmd-")
 
+    def _ensure_not_retired(self) -> None:
+        raise McpError(
+            "user_extensions_retired",
+            "用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
+            status_code=410,
+        )
+
     # ------------------------------------------------------------------
     # 安装检查与安装
     # ------------------------------------------------------------------
 
     def check(self, filename: str, content: bytes) -> McpCheckResult:
         """安装前检查：纯函数，不落库、不落对象（取消无残留）。"""
+        self._ensure_not_retired()
         if not filename.lower().endswith((".yaml", ".yml")):
             raise McpError(
                 "invalid_descriptor",
@@ -190,6 +198,7 @@ class McpService:
 
     def install(self, account_id: str, filename: str, content: bytes) -> McpServerProjection:
         """确认安装：重跑安全闭锁，锁定描述哈希后按账户持久化并审计。"""
+        self._ensure_not_retired()
         if not filename.lower().endswith((".yaml", ".yml")):
             raise McpError(
                 "invalid_descriptor",
@@ -342,6 +351,7 @@ class McpService:
         ]
 
     def set_enabled(self, account_id: str, mcp_id: str, enabled: bool) -> None:
+        self._ensure_not_retired()
         row = self._require_server(account_id, mcp_id)
         if row[10] == McpStatus.FAILED.value and enabled:
             raise McpError(
@@ -367,6 +377,7 @@ class McpService:
         )
 
     def uninstall(self, account_id: str, mcp_id: str) -> None:
+        self._ensure_not_retired()
         row = self._require_server(account_id, mcp_id)
         scoped = self._database.scoped(account_id)
         scoped.execute(
@@ -388,6 +399,7 @@ class McpService:
         self, account_id: str, mcp_id: str, manifest: McpPermissionManifest
     ) -> McpServerProjection:
         """撤权：以新清单替换；移除敏感权限时终止仍依赖该权限的运行。"""
+        self._ensure_not_retired()
         row = self._require_server(account_id, mcp_id)
         reasons: list[str] = []
         validate_permissions(manifest, reasons)
@@ -440,6 +452,7 @@ class McpService:
 
     def invoke(self, account_id: str, mcp_id: str, request: McpCallRequest) -> McpCallResult:
         """执行一次真实调用；只接收清单声明的数据切片。"""
+        self._ensure_not_retired()
         row = self._require_server(account_id, mcp_id)
         if row[10] == McpStatus.FAILED.value:
             raise McpError(
@@ -569,10 +582,12 @@ class McpService:
 
     def approve(self, account_id: str, mcp_id: str, confirmation_id: str) -> McpCallResult:
         """确认敏感操作后恢复调用（确认仅对本次调用有效）。"""
+        self._ensure_not_retired()
         return self._resolve_confirmation(account_id, mcp_id, confirmation_id, approved=True)
 
     def deny(self, account_id: str, mcp_id: str, confirmation_id: str) -> McpCallResult:
         """拒绝敏感操作：调用安全终止，不执行任何操作。"""
+        self._ensure_not_retired()
         return self._resolve_confirmation(account_id, mcp_id, confirmation_id, approved=False)
 
     def _resolve_confirmation(

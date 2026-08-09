@@ -935,8 +935,7 @@ export async function listChatConversations(): Promise<ChatConversationListProje
 export async function createChatConversation(
   title?: string,
   mode: ChatMode = "companion",
-  projectId?: string,
-  pluginSelection?: ChatPluginSelectionItem[]
+  projectId?: string
 ): Promise<ChatConversationProjection> {
   const res = await fetch(`${API_BASE}/chat/conversations`, {
     method: "POST",
@@ -946,7 +945,6 @@ export async function createChatConversation(
       title: title ?? null,
       mode,
       project_id: projectId ?? null,
-      plugin_selection: pluginSelection ?? [],
     }),
   });
   if (!res.ok) throw await parseApiError(res);
@@ -955,14 +953,11 @@ export async function createChatConversation(
 
 export async function updateChatConversation(
   conversationId: string,
-  update: { title?: string; pinned?: boolean; pluginSelection?: ChatPluginSelectionItem[] | null }
+  update: { title?: string; pinned?: boolean }
 ): Promise<ChatConversationProjection> {
   const body: Record<string, unknown> = {};
   if (update.title !== undefined) body.title = update.title;
   if (update.pinned !== undefined) body.pinned = update.pinned;
-  if ("pluginSelection" in update) {
-    body.plugin_selection = update.pluginSelection ?? [];
-  }
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

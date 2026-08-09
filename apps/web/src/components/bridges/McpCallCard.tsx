@@ -140,7 +140,7 @@ export function McpCallCard({ call, messageId, onConfirm }: McpCallCardProps) {
           {call.error_message}
         </p>
       )}
-      {pending && call.confirmation && (
+      {pending && call.confirmation && onConfirm && (
         <div
           data-testid="mcp-call-confirmation"
           style={{

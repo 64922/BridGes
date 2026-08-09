@@ -56,6 +56,7 @@ from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.ingestion.service import IngestionError, IngestionService
 from bridges.learning_projects import LearningProjectError, LearningProjectService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
+from bridges.retirement import record_compatibility_observation
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -171,6 +172,31 @@ def _handle_domain_error(exc: ChatDomainError) -> HTTPException:
     return _error(exc.status_code, exc.code, exc.message)
 
 
+def _reject_retired_extension_fields(
+    fields: set[str],
+    *,
+    request: Request | None = None,
+    endpoint: str = "legacy.chat.extensions.write",
+    plugin_selection: object = None,
+    skill_id: str | None = None,
+    skill_input: object = None,
+    mcp_call: object = None,
+) -> None:
+    """在任何会话或消息写入前拦截旧扩展载荷。"""
+    uses_plugin_selection = "plugin_selection" in fields or bool(plugin_selection)
+    uses_mcp = "mcp_call" in fields or mcp_call is not None
+    uses_unknown_skill = skill_id not in {None, "bridges-humanizer"}
+    uses_skill_input_without_builtin = skill_input is not None and skill_id != "bridges-humanizer"
+    if uses_plugin_selection or uses_mcp or uses_unknown_skill or uses_skill_input_without_builtin:
+        if request is not None:
+            record_compatibility_observation(request, endpoint)
+        raise _error(
+            status.HTTP_410_GONE,
+            "user_extensions_retired",
+            "用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
+        )
+
+
 def _sse_frame(event_kind: str, payload: dict[str, Any]) -> str:
     """按持久化事件记录编码 SSE 帧（kind 即事件名）。"""
     data = json.dumps(payload, ensure_ascii=False)
@@ -248,6 +274,7 @@ def list_conversations(
     },
 )
 def create_conversation(
+    request: Request,
     body: ChatCreateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
@@ -260,6 +287,12 @@ def create_conversation(
     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
     逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
     """
+    _reject_retired_extension_fields(
+        body.model_fields_set,
+        request=request,
+        endpoint="legacy.chat.conversations.create",
+        plugin_selection=body.plugin_selection,
+    )
     try:
         if body.project_id is not None:
             try:
@@ -316,6 +349,7 @@ def create_conversation(
     },
 )
 def create_first_turn(
+    request: Request,
     body: ChatFirstTurnRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
@@ -333,6 +367,15 @@ def create_first_turn(
     再发送），缺省在事务内新建会话；``mode``/``project_id``/
     ``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。
     """
+    _reject_retired_extension_fields(
+        body.model_fields_set,
+        request=request,
+        endpoint="legacy.chat.first-turn.create",
+        plugin_selection=body.plugin_selection,
+        skill_id=body.skill_id,
+        skill_input=body.skill_input,
+        mcp_call=body.mcp_call,
+    )
     try:
         if body.project_id is not None:
             try:
@@ -407,6 +450,7 @@ def create_first_turn(
 )
 def update_conversation(
     conversation_id: str,
+    request: Request,
     body: ChatConversationUpdateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
@@ -422,6 +466,12 @@ def update_conversation(
     已安装且启用，停用/卸载/撤权项 422 拒绝并说明原因（读取路径的
     失效清洗在投影层完成并解释影响）。
     """
+    _reject_retired_extension_fields(
+        body.model_fields_set,
+        request=request,
+        endpoint="legacy.chat.conversations.update",
+        plugin_selection=body.plugin_selection,
+    )
     try:
         # 插件选择先做纯校验（validate_items 不写库）：422 拒绝发生在
         # 一切写入之前；通过后再按项目归属（事务内）→ 插件选择（事务内）
@@ -794,6 +844,7 @@ def cancel_attachment(
 )
 async def send_message(
     conversation_id: str,
+    request: Request,
     body: ChatMessageCreateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
@@ -808,6 +859,14 @@ async def send_message(
     候选；``use_profile=false``（Issue 27）：本轮请求、审计与上下文说明
     均不含任何画像切片（开关随运行快照落库，重试沿用）。
     """
+    _reject_retired_extension_fields(
+        body.model_fields_set,
+        request=request,
+        endpoint="legacy.chat.messages.send",
+        skill_id=body.skill_id,
+        skill_input=body.skill_input,
+        mcp_call=body.mcp_call,
+    )
     try:
         user_message, assistant_message = service.start_generation(
             subject.account_id,
@@ -937,6 +996,7 @@ def _mcp_confirmation_route(
     conversation_id: str,
     message_id: str,
     confirmation_id: str,
+    request: Request,
     service: ChatServiceDep,
     subject: SubjectDep,
     denied: bool,
@@ -946,6 +1006,12 @@ def _mcp_confirmation_route(
     只允许确认本人消息上真实挂起的敏感调用；结果写回消息 mcp_call 列，
     刷新/恢复历史对话不丢失（Verification 4：MCP 拒权与确认覆盖）。
     """
+    _reject_retired_extension_fields(
+        {"mcp_call"},
+        request=request,
+        endpoint="legacy.chat.mcp.confirmation",
+        mcp_call={},
+    )
     try:
         if denied:
             return service.deny_mcp_confirmation(
@@ -973,12 +1039,13 @@ def approve_message_mcp_confirmation(
     conversation_id: str,
     message_id: str,
     confirmation_id: str,
+    request: Request,
     service: ChatServiceDep,
     subject: SubjectDep,
 ) -> ChatMessageProjection:
     """确认消息内 MCP 调用的敏感操作（仅本次调用有效）。"""
     return _mcp_confirmation_route(
-        conversation_id, message_id, confirmation_id, service, subject, denied=False
+        conversation_id, message_id, confirmation_id, request, service, subject, denied=False
     )
 
 
@@ -997,12 +1064,13 @@ def deny_message_mcp_confirmation(
     conversation_id: str,
     message_id: str,
     confirmation_id: str,
+    request: Request,
     service: ChatServiceDep,
     subject: SubjectDep,
 ) -> ChatMessageProjection:
     """拒绝消息内 MCP 调用的敏感操作（调用安全终止并落库 denied）。"""
     return _mcp_confirmation_route(
-        conversation_id, message_id, confirmation_id, service, subject, denied=True
+        conversation_id, message_id, confirmation_id, request, service, subject, denied=True
     )
 
 

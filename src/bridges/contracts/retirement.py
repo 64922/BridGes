@@ -13,6 +13,7 @@ class RetiredCapabilityError(BaseModel):
     replacement_path: str = Field(description="继续使用产品的替代路径。")
     endpoint: str = Field(description="稳定兼容端点标识。")
     service_version: str = Field(description="产生该响应的服务版本。")
+    traffic_class: str = Field(default="real", description="real 或 probe")
 
 
 __all__ = ["RetiredCapabilityError"]
