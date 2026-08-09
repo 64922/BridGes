@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1541,6 +1541,103 @@ MIGRATIONS: dict[int, list[str]] = {
             SELECT RAISE(ABORT, 'bound 状态必须携带 message_id');
         END
         """,
+    ],
+    # Issue 02：学习项目文件迁移台账。旧 project_file 记录和对象不删除，
+    # 迁移记录保存稳定来源、目标知识库记录、摄取版本、状态与失败原因；
+    # 对话解除项目归属前保存一份只读关联审计。目标删除墓碑按来源文件
+    # 持久化，阻止重跑、恢复或迟到任务重新创建目标。
+    33: [
+        """
+        CREATE TABLE learning_project_migration_runs (
+            run_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            status TEXT NOT NULL
+                CHECK (status IN ('running', 'completed', 'failed')),
+            compatibility_window TEXT NOT NULL DEFAULT 'issue-02-v1',
+            total_bytes INTEGER NOT NULL DEFAULT 0,
+            completed_bytes INTEGER NOT NULL DEFAULT 0,
+            started_at TEXT NOT NULL,
+            completed_at TEXT,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_learning_project_migration_runs_status
+        ON learning_project_migration_runs(account_id, status)
+        """,
+        """
+        CREATE TABLE learning_project_migrations (
+            migration_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            source_document_id TEXT NOT NULL,
+            source_object_id TEXT NOT NULL,
+            source_filename TEXT NOT NULL,
+            source_media_type TEXT NOT NULL,
+            source_content_hash TEXT NOT NULL,
+            source_content_length INTEGER NOT NULL,
+            source_created_at TEXT NOT NULL,
+            target_document_id TEXT,
+            target_object_id TEXT,
+            target_filename TEXT,
+            ingestion_version TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN (
+                    'pending', 'processing', 'waiting_ingestion', 'completed',
+                    'failed', 'source_deleted', 'target_deleted'
+                )),
+            failure_stage TEXT,
+            failure_reason TEXT,
+            retry_count INTEGER NOT NULL DEFAULT 0,
+            last_attempt_at TEXT,
+            completed_at TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, source_document_id),
+            UNIQUE (account_id, source_object_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_learning_project_migrations_run_status
+        ON learning_project_migrations(account_id, run_id, status)
+        """,
+        """
+        CREATE INDEX idx_learning_project_migrations_target
+        ON learning_project_migrations(account_id, target_object_id)
+        """,
+        """
+        CREATE TABLE learning_project_migration_conversations (
+            audit_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            project_id TEXT NOT NULL,
+            project_name TEXT NOT NULL,
+            detached_at TEXT NOT NULL,
+            UNIQUE (account_id, conversation_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_learning_project_migration_conversations_account
+        ON learning_project_migration_conversations(account_id, project_id)
+        """,
+        """
+        CREATE TABLE learning_project_migration_tombstones (
+            tombstone_id TEXT PRIMARY KEY,
+            migration_id TEXT NOT NULL,
+            account_id TEXT NOT NULL,
+            source_document_id TEXT NOT NULL,
+            source_content_hash TEXT NOT NULL,
+            target_document_id TEXT,
+            target_object_id TEXT,
+            deleted_at TEXT NOT NULL,
+            reason TEXT NOT NULL,
+            UNIQUE (account_id, source_document_id)
+        )
+        """
     ],
 }
 

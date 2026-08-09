@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -594,7 +594,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +656,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -1451,7 +1451,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1561,7 +1561,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1670,7 +1670,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1946,7 +1946,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -2144,7 +2144,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -2651,7 +2651,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -3420,7 +3420,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -3591,7 +3591,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -3957,7 +3957,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -4548,6 +4548,274 @@
         }
       }
     },
+    "/learning-projects/migration": {
+      "post": {
+        "tags": [
+          "learning-project-migration"
+        ],
+        "summary": "Start Migration",
+        "description": "启动当前账户的可恢复迁移；重复调用只返回已有运行。",
+        "operationId": "start_migration_learning_projects_migration_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectMigrationSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Start Migration Learning Projects Migration Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 409 Start Migration Learning Projects Migration Post"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Start Migration Learning Projects Migration Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "learning-project-migration"
+        ],
+        "summary": "Get Migration",
+        "description": "读取当前账户的机器可读迁移报告。",
+        "operationId": "get_migration_learning_projects_migration_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectMigrationSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Get Migration Learning Projects Migration Get"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Get Migration Learning Projects Migration Get"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Get Migration Learning Projects Migration Get"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/learning-projects/migration/retry": {
+      "post": {
+        "tags": [
+          "learning-project-migration"
+        ],
+        "summary": "Retry Migration",
+        "description": "重新排入失败项；不会复活已删除的源或目标。",
+        "operationId": "retry_migration_learning_projects_migration_retry_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearningProjectMigrationRetryRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearningProjectMigrationSummary"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 401 Retry Migration Learning Projects Migration Retry Post"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 404 Retry Migration Learning Projects Migration Retry Post"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 422 Retry Migration Learning Projects Migration Retry Post"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response 503 Retry Migration Learning Projects Migration Retry Post"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        }
+      }
+    },
     "/learning-projects": {
       "post": {
         "tags": [
@@ -4617,7 +4885,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -4889,7 +5157,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -5118,7 +5386,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -5621,7 +5889,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -8128,7 +8396,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8352,7 +8620,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8501,7 +8769,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8819,7 +9087,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8989,7 +9257,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9138,7 +9406,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9361,7 +9629,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -9592,7 +9860,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9682,7 +9950,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9781,7 +10049,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9871,7 +10139,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10550,7 +10818,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -10792,7 +11060,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10871,7 +11139,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11062,7 +11330,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11334,7 +11602,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11512,7 +11780,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11692,7 +11960,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11880,7 +12148,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11978,7 +12246,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12058,7 +12326,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -12279,7 +12547,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -12509,7 +12777,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13139,7 +13407,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13228,7 +13496,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13317,7 +13585,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13406,7 +13674,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13495,7 +13763,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13584,7 +13852,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13673,7 +13941,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -13944,7 +14212,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14166,7 +14434,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14236,7 +14504,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14335,7 +14603,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14443,7 +14711,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14639,7 +14907,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14756,7 +15024,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14908,7 +15176,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14999,7 +15267,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15107,7 +15375,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15205,7 +15473,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15489,7 +15757,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15578,7 +15846,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -15729,7 +15997,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -16040,7 +16308,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16298,7 +16566,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16378,7 +16646,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16467,7 +16735,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16547,7 +16815,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -17198,7 +17466,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17445,7 +17713,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17543,7 +17811,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17632,7 +17900,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17721,7 +17989,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17905,7 +18173,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17985,7 +18253,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18074,7 +18342,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18154,7 +18422,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18322,7 +18590,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18411,7 +18679,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18562,7 +18830,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18632,7 +18900,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18799,7 +19067,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18858,7 +19126,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19300,7 +19568,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19487,7 +19755,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19902,7 +20170,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -20118,7 +20386,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -20348,7 +20616,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -20574,7 +20842,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -22733,7 +23001,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -23705,7 +23973,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -24438,7 +24706,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -26104,7 +26372,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -26204,7 +26472,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "content": {
@@ -26214,7 +26482,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -26590,7 +26858,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "content": {
@@ -26600,7 +26868,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -26750,7 +27018,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -26850,7 +27118,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "content": {
@@ -26860,7 +27128,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -27147,7 +27415,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -27355,7 +27623,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "502": {
             "content": {
@@ -28223,7 +28491,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -28323,7 +28591,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "502": {
             "content": {
@@ -31500,6 +31768,18 @@
             "title": "Project Id",
             "description": "所属学习项目标识（可选）。"
           },
+          "legacy_project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legacy Project Name",
+            "description": "迁移前的历史学习项目名称快照。"
+          },
           "plugin_selection": {
             "items": {
               "$ref": "#/components/schemas/ChatPluginSelectionItem"
@@ -31588,6 +31868,18 @@
             ],
             "title": "Project Id",
             "description": "所属学习项目标识（可选）。"
+          },
+          "legacy_project_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Legacy Project Name",
+            "description": "迁移前的历史学习项目名称快照。"
           },
           "message_count": {
             "type": "integer",
@@ -42856,6 +43148,317 @@
         "title": "LearningProjectListProjection",
         "description": "当前账户的学习项目列表，按最近更新倒序。"
       },
+      "LearningProjectMigrationConversation": {
+        "properties": {
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id",
+            "description": "历史对话标识。"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "历史学习项目标识。"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name",
+            "description": "迁移时的项目名称快照。"
+          },
+          "detached_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Detached At",
+            "description": "解除运行时项目归属的时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "conversation_id",
+          "project_id",
+          "project_name",
+          "detached_at"
+        ],
+        "title": "LearningProjectMigrationConversation",
+        "description": "解除项目归属前保存的历史对话关联。"
+      },
+      "LearningProjectMigrationItem": {
+        "properties": {
+          "migration_id": {
+            "type": "string",
+            "title": "Migration Id",
+            "description": "稳定迁移审计标识。"
+          },
+          "source_document_id": {
+            "type": "string",
+            "title": "Source Document Id",
+            "description": "旧项目摄取记录标识。"
+          },
+          "source_object_id": {
+            "type": "string",
+            "title": "Source Object Id",
+            "description": "旧项目原始对象标识。"
+          },
+          "project_id": {
+            "type": "string",
+            "title": "Project Id",
+            "description": "旧学习项目标识。"
+          },
+          "project_name": {
+            "type": "string",
+            "title": "Project Name",
+            "description": "迁移时的项目名称快照。"
+          },
+          "filename": {
+            "type": "string",
+            "title": "Filename",
+            "description": "旧文件原始文件名。"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "description": "旧对象内容 SHA-256。"
+          },
+          "content_length": {
+            "type": "integer",
+            "title": "Content Length",
+            "description": "旧对象字节数。"
+          },
+          "target_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Document Id",
+            "description": "目标知识库文档标识。"
+          },
+          "target_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Object Id",
+            "description": "目标知识库对象标识。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectMigrationStatus",
+            "description": "当前迁移状态。"
+          },
+          "failure_stage": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Stage",
+            "description": "失败阶段。"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason",
+            "description": "可重试失败原因。"
+          },
+          "retry_count": {
+            "type": "integer",
+            "title": "Retry Count",
+            "description": "迁移重试次数。",
+            "default": 0
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "迁移审计创建时间。"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近迁移更新时间。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "migration_id",
+          "source_document_id",
+          "source_object_id",
+          "project_id",
+          "project_name",
+          "filename",
+          "content_hash",
+          "content_length",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "LearningProjectMigrationItem",
+        "description": "一个旧项目文件的迁移审计投影。"
+      },
+      "LearningProjectMigrationRetryRequest": {
+        "properties": {
+          "source_document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Document Id",
+            "description": "可选的源文件标识；缺省时重试账户内所有失败项。"
+          }
+        },
+        "type": "object",
+        "title": "LearningProjectMigrationRetryRequest",
+        "description": "迁移失败项的手动重试请求。"
+      },
+      "LearningProjectMigrationSummary": {
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "title": "Run Id",
+            "description": "账户级迁移运行标识。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ProjectMigrationRunStatus",
+            "description": "运行终态或进行中状态。"
+          },
+          "total_files": {
+            "type": "integer",
+            "title": "Total Files",
+            "description": "纳管的旧项目文件数。"
+          },
+          "pending_files": {
+            "type": "integer",
+            "title": "Pending Files",
+            "description": "尚未处理的文件数。"
+          },
+          "processing_files": {
+            "type": "integer",
+            "title": "Processing Files",
+            "description": "处理中或等待摄取的文件数。"
+          },
+          "completed_files": {
+            "type": "integer",
+            "title": "Completed Files",
+            "description": "已完成并校验的文件数。"
+          },
+          "failed_files": {
+            "type": "integer",
+            "title": "Failed Files",
+            "description": "可重试失败的文件数。"
+          },
+          "source_deleted_files": {
+            "type": "integer",
+            "title": "Source Deleted Files",
+            "description": "源文件已撤回或删除的文件数。"
+          },
+          "target_deleted_files": {
+            "type": "integer",
+            "title": "Target Deleted Files",
+            "description": "目标被删除、由墓碑阻止复活的文件数。"
+          },
+          "total_bytes": {
+            "type": "integer",
+            "title": "Total Bytes",
+            "description": "旧文件总字节数。"
+          },
+          "completed_bytes": {
+            "type": "integer",
+            "title": "Completed Bytes",
+            "description": "已完成迁移的字节数。"
+          },
+          "failure_count": {
+            "type": "integer",
+            "title": "Failure Count",
+            "description": "失败与被阻止项目总数。"
+          },
+          "detached_conversation_count": {
+            "type": "integer",
+            "title": "Detached Conversation Count",
+            "description": "已解除项目归属的历史对话数。"
+          },
+          "compatibility_window": {
+            "type": "string",
+            "title": "Compatibility Window",
+            "description": "旧入口只读兼容窗口版本。"
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "迁移开始时间。"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At",
+            "description": "迁移完成时间。"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/LearningProjectMigrationItem"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "逐文件迁移摘要。"
+          },
+          "conversations": {
+            "items": {
+              "$ref": "#/components/schemas/LearningProjectMigrationConversation"
+            },
+            "type": "array",
+            "title": "Conversations",
+            "description": "历史对话解除归属审计。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "run_id",
+          "status",
+          "total_files",
+          "pending_files",
+          "processing_files",
+          "completed_files",
+          "failed_files",
+          "source_deleted_files",
+          "target_deleted_files",
+          "total_bytes",
+          "completed_bytes",
+          "failure_count",
+          "detached_conversation_count",
+          "compatibility_window",
+          "started_at"
+        ],
+        "title": "LearningProjectMigrationSummary",
+        "description": "账户级迁移摘要，可供机器读取、恢复与发布闸门使用。"
+      },
       "LearningProjectSummary": {
         "properties": {
           "project_id": {
@@ -48424,6 +49027,30 @@
         "type": "object",
         "title": "ProjectListProjection",
         "description": "Collection of projects visible to the current subject."
+      },
+      "ProjectMigrationRunStatus": {
+        "type": "string",
+        "enum": [
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "ProjectMigrationRunStatus",
+        "description": "账户级迁移运行状态。"
+      },
+      "ProjectMigrationStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "processing",
+          "waiting_ingestion",
+          "completed",
+          "failed",
+          "source_deleted",
+          "target_deleted"
+        ],
+        "title": "ProjectMigrationStatus",
+        "description": "单个来源文件的可审计迁移状态。"
       },
       "ProjectRole": {
         "type": "string",

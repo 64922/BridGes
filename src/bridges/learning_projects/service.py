@@ -36,6 +36,7 @@ from bridges.ingestion.service import (
     IngestionError,
     IngestionService,
 )
+from bridges.learning_projects.migration import project_writes_frozen
 from bridges.storage.database import BridgesDatabase, ScopedConnection
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import (
@@ -126,6 +127,7 @@ class LearningProjectService:
     def create_project(
         self, account_id: str, name: str, description: str | None
     ) -> LearningProjectSummary:
+        self._ensure_project_writes_enabled(account_id)
         """新建学习项目并返回摘要投影。"""
         normalized_name = name.strip()
         if not normalized_name:
@@ -184,6 +186,13 @@ class LearningProjectService:
             raise _project_not_found()
         return self._record_from_row(row)
 
+    def ensure_project_assignment_allowed(
+        self, account_id: str, project_id: str
+    ) -> None:
+        """校验旧项目仍可被读取，但迁移后不可建立新的项目归属。"""
+        self.get_project(account_id, project_id)
+        self._ensure_project_writes_enabled(account_id)
+
     def get_detail(self, account_id: str, project_id: str) -> LearningProjectDetail:
         """返回项目详情：项目本身 + 归属对话（与最近会话同一排序）。"""
         record = self.get_project(account_id, project_id)
@@ -220,6 +229,7 @@ class LearningProjectService:
         name: str | _Unset = UNSET,
         description: str | None | _Unset = UNSET,
     ) -> LearningProjectSummary:
+        self._ensure_project_writes_enabled(account_id)
         """更新名称或描述（显式 None 清空描述）；写入即刷新 updated_at。"""
         self.get_project(account_id, project_id)
         assignments: list[str] = []
@@ -254,6 +264,7 @@ class LearningProjectService:
         *,
         contents: Literal["keep", "delete"],
     ) -> None:
+        self._ensure_project_writes_enabled(account_id)
         """删除项目；``keep`` 保留对话（解除归属），``delete`` 连同对话删除。
 
         数据库级联在单个事务内完成：``transaction()`` 不支持嵌套，因此这里
@@ -326,6 +337,7 @@ class LearningProjectService:
             raise LearningProjectError("invalid_title", "对话标题不能为空。", 422)
         if not isinstance(project_id, _Unset) and project_id is not None:
             self.get_project(account_id, project_id)
+            self._ensure_project_writes_enabled(account_id)
         assignments: list[str] = []
         values: list[object] = []
         if normalized_title is not None and normalized_title != record.title:
@@ -360,6 +372,7 @@ class LearningProjectService:
     def upload_file(
         self, account_id: str, project_id: str, data: bytes, filename: str
     ) -> tuple[LearningProjectFile, bool]:
+        self._ensure_project_writes_enabled(account_id)
         """上传一份项目文件并入队摄取；返回投影与是否为新建记录。"""
         self.get_project(account_id, project_id)
         try:
@@ -441,6 +454,7 @@ class LearningProjectService:
         return self._file_from_projection(projection), content
 
     def delete_file(self, account_id: str, project_id: str, object_id: str) -> None:
+        self._ensure_project_writes_enabled(account_id)
         """级联删除项目文件及其派生索引数据；处理中冲突由摄取服务保证。"""
         try:
             self._ingestion.delete_project_material(account_id, project_id, object_id)
@@ -450,6 +464,14 @@ class LearningProjectService:
     # ------------------------------------------------------------------
     # 内部工具
     # ------------------------------------------------------------------
+
+    def _ensure_project_writes_enabled(self, account_id: str) -> None:
+        if project_writes_frozen(self._database, account_id):
+            raise LearningProjectError(
+                "project_files_frozen",
+                "学习项目已进入迁移兼容窗口，请改用全局知识库；历史项目仅支持读取。",
+                409,
+            )
 
     def _get_summary(self, account_id: str, project_id: str) -> LearningProjectSummary:
         rows = self._database.scoped(account_id).execute(

@@ -142,6 +142,10 @@ export type LearningProjectSummary = components["schemas"]["LearningProjectSumma
 export type LearningProjectDetail = components["schemas"]["LearningProjectDetail"];
 export type LearningProjectConversation = components["schemas"]["LearningProjectConversation"];
 export type LearningProjectFile = components["schemas"]["LearningProjectFile"];
+export type LearningProjectMigrationSummary =
+  components["schemas"]["LearningProjectMigrationSummary"];
+export type LearningProjectMigrationItem =
+  components["schemas"]["LearningProjectMigrationItem"];
 export type WorkbenchPackRecord = components["schemas"]["WorkbenchPackRecord"];
 export type ReviewAttestation = components["schemas"]["ReviewAttestation"];
 export type SemanticDiff = components["schemas"]["SemanticDiff"];
@@ -1640,6 +1644,40 @@ export async function deleteLearningProjectFile(
     { method: "DELETE", credentials: "same-origin" }
   );
   if (!res.ok) throw await parseApiError(res);
+}
+
+/** 读取当前账户的学习项目迁移报告；未启动时返回 404。 */
+export async function getLearningProjectMigration(): Promise<LearningProjectMigrationSummary> {
+  const res = await fetch(`${API_BASE}/learning-projects/migration`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 启动可恢复的学习项目迁移。 */
+export async function startLearningProjectMigration(): Promise<LearningProjectMigrationSummary> {
+  const res = await fetch(`${API_BASE}/learning-projects/migration`, {
+    method: "POST",
+    credentials: "same-origin",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+/** 重试失败的迁移项；未指定文件时重试账户内全部失败项。 */
+export async function retryLearningProjectMigration(
+  sourceDocumentId?: string
+): Promise<LearningProjectMigrationSummary> {
+  const res = await fetch(`${API_BASE}/learning-projects/migration/retry`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
+    body: JSON.stringify({ source_document_id: sourceDocumentId ?? null }),
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
 }
 
 /**

@@ -300,6 +300,9 @@ class ChatConversationSummary(BaseModel):
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
     pinned: bool = Field(default=False, description="是否置顶。")
     project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
+    legacy_project_name: str | None = Field(
+        default=None, description="迁移前的历史学习项目名称快照。"
+    )
     message_count: int = Field(default=0, description="消息条数（含所有尝试）。")
     created_at: datetime = Field(description="创建时间。")
     updated_at: datetime = Field(description="最近活动时间。")
@@ -329,6 +332,9 @@ class ChatConversationProjection(BaseModel):
     mode: ChatMode = Field(default=ChatMode.COMPANION, description="对话当前模式。")
     pinned: bool = Field(default=False, description="是否置顶。")
     project_id: str | None = Field(default=None, description="所属学习项目标识（可选）。")
+    legacy_project_name: str | None = Field(
+        default=None, description="迁移前的历史学习项目名称快照。"
+    )
     plugin_selection: list[ChatPluginSelectionItem] = Field(
         default_factory=list,
         description="本对话选中的有效插件（Issue 36）：SKILL 与 MCP 的"

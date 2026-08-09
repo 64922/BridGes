@@ -50,6 +50,7 @@ from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
 from bridges.ingestion.service import IngestionService
+from bridges.learning_projects.migration import ProjectMigrationService
 from bridges.observability.service import ObservabilityService
 from bridges.persistence import (
     PersistenceError,
@@ -77,6 +78,7 @@ class BackgroundExecutor:
         self._repository: BridgesObjectRepository | None = None
         self._database: BridgesDatabase | None = None
         self._ingestion: IngestionService | None = None
+        self._project_migration: ProjectMigrationService | None = None
         self._image: ImageService | None = None
         self._video: VideoService | None = None
         self._deletion: DeletionService | None = None
@@ -158,6 +160,11 @@ class BackgroundExecutor:
                 object_repository=repository,
                 embedding=embedding,
                 index=VersionedIndex(self._database, embedding),
+            )
+            self._project_migration = ProjectMigrationService(
+                database=self._database,
+                object_repository=repository,
+                ingestion_service=self._ingestion,
             )
         except (StorageError, PersistenceError, ValueError) as exc:
             self._idle_reason = f"error: {exc}"
@@ -394,6 +401,11 @@ class BackgroundExecutor:
                 summaries.append(ingestion.process_pending())
             except Exception as exc:  # noqa: BLE001 - 摄取失败记录但不退出循环
                 summaries.append(f"worker: 摄取处理出错：{exc}")
+        if self._project_migration is not None:
+            try:
+                summaries.append(str(self._project_migration.process_pending()))
+            except Exception as exc:  # noqa: BLE001 - 单账户迁移失败不应停止其他 worker
+                summaries.append(f"worker: 学习项目迁移出错：{exc}")
         if image is not None:
             try:
                 summaries.append(image.process_pending())

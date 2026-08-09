@@ -25,12 +25,15 @@ import {
   deleteLearningProjectFile,
   downloadLearningProjectFile,
   getLearningProject,
+  getLearningProjectMigration,
   listLearningProjectFiles,
+  retryLearningProjectMigration,
   updateLearningProject,
   uploadLearningProjectFile,
   type LearningProjectConversation,
   type LearningProjectDetail,
   type LearningProjectFile,
+  type LearningProjectMigrationSummary,
 } from "@/lib/api";
 import { LEARNING_PROJECTS_CHANGED_EVENT, changeConversationLearningProject } from "@/lib/learning-projects";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
@@ -83,6 +86,8 @@ export default function ProjectDetailPageClient() {
   const router = useRouter();
 
   const [detail, setDetail] = useState<LearningProjectDetail | null>(null);
+  const [migration, setMigration] = useState<LearningProjectMigrationSummary | null>(null);
+  const [migrationLoaded, setMigrationLoaded] = useState(false);
   const [files, setFiles] = useState<LearningProjectFile[] | null>(null);
   const [loadFailure, setLoadFailure] = useState<LoadFailure>(null);
   const [filesError, setFilesError] = useState("");
@@ -129,15 +134,30 @@ export default function ProjectDetailPageClient() {
     [projectId]
   );
 
+  const reloadMigration = useCallback(async () => {
+    try {
+      setMigration(await getLearningProjectMigration());
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setMigration(null);
+      }
+    } finally {
+      setMigrationLoaded(true);
+    }
+  }, []);
+
   useEffect(() => {
     setDetail(null);
     setFiles(null);
+    setMigration(null);
+    setMigrationLoaded(false);
     setLoadFailure(null);
     void (async () => {
       const ok = await reloadDetail();
       if (ok) await reloadFiles(false);
     })();
-  }, [reloadDetail, reloadFiles]);
+    void reloadMigration();
+  }, [reloadDetail, reloadFiles, reloadMigration]);
 
   // 文件处于等待/解析/恢复中时轮询，稳定后自动停止；卸载时清理计时器。
   const needsPolling = useMemo(
@@ -371,7 +391,7 @@ export default function ProjectDetailPageClient() {
     },
   ];
 
-  if (detail === null && !loadFailure) {
+  if ((detail === null || !migrationLoaded) && !loadFailure) {
     return (
       <MainContent>
         <StateBlock kind="loading" title="正在加载学习项目" description="读取项目详情、对话与文件。" />
@@ -421,6 +441,113 @@ export default function ProjectDetailPageClient() {
           actionLabel="重试"
           onAction={() => void reloadDetail()}
         />
+      </MainContent>
+    );
+  }
+
+  if (migration) {
+    const migrationItems = (migration.items ?? []).filter(
+      (item) => item.project_id === projectId
+    );
+    const migrationConversations = (migration.conversations ?? []).filter(
+      (conversation) => conversation.project_id === projectId
+    );
+    const statusLabel =
+      migration.status === "completed"
+        ? "已完成"
+        : migration.status === "failed"
+          ? "存在失败项"
+          : "处理中";
+    return (
+      <MainContent>
+        <section
+          data-testid="learning-project-migration-view"
+          aria-labelledby="learning-project-migration-title"
+          style={{ maxWidth: "52rem", marginInline: "auto", padding: "0 var(--space-4)" }}
+        >
+          <p style={{ marginBottom: "var(--space-3)" }}>
+            <Link href="/account/projects" style={{ color: "var(--color-text-secondary)" }}>
+              返回学习项目列表
+            </Link>
+          </p>
+          <h1 id="learning-project-migration-title" className="sc-section-title">
+            {detail.name}：资料迁移状态
+          </h1>
+          <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+            旧项目已进入只读兼容窗口。资料会迁移到你的全局知识库，原文、对话和失败原因均保留可审计记录。
+          </p>
+          <div
+            style={{
+              marginTop: "var(--space-4)",
+              padding: "var(--space-4)",
+              borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-border)",
+              backgroundColor: "var(--color-surface)",
+            }}
+          >
+            <p style={{ margin: 0, fontWeight: 600 }}>迁移{statusLabel}</p>
+            <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+              已完成 {migration.completed_files}/{migration.total_files} 个文件，失败 {migration.failed_files} 个；历史对话 {migration.detached_conversation_count} 个。
+            </p>
+            {migration.failed_files > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  const next = await retryLearningProjectMigration();
+                  setMigration(next);
+                }}
+                style={{ marginTop: "var(--space-3)" }}
+              >
+                重试失败项
+              </Button>
+            )}
+          </div>
+          <p style={{ marginTop: "var(--space-4)" }}>
+            <Link href="/knowledge-base" style={{ color: "var(--color-accent-primary)" }}>
+              打开全局知识库
+            </Link>
+          </p>
+          <h2 style={{ marginTop: "var(--space-8)", fontSize: "var(--text-base)" }}>文件迁移明细</h2>
+          <ul role="list" style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
+            {migrationItems.map((item) => (
+              <li
+                key={item.migration_id}
+                style={{
+                  padding: "var(--space-3) var(--space-4)",
+                  border: "1px solid var(--color-border)",
+                  borderRadius: "var(--radius-md)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-3)" }}>
+                  <span>{item.filename}</span>
+                  <span style={{ color: item.status === "failed" ? "var(--color-status-error)" : "var(--color-text-secondary)" }}>
+                    {item.status}
+                  </span>
+                </div>
+                {item.failure_reason && (
+                  <p role="alert" style={{ margin: "var(--space-2) 0 0", color: "var(--color-status-error)", fontSize: "var(--text-sm)" }}>
+                    {item.failure_reason}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          {migrationConversations.length > 0 && (
+            <>
+              <h2 style={{ marginTop: "var(--space-8)", fontSize: "var(--text-base)" }}>历史对话</h2>
+              <ul role="list">
+                {migrationConversations.map((conversation) => (
+                  <li key={conversation.conversation_id}>
+                    <Link href={`/chat/${conversation.conversation_id}`}>
+                      {conversation.project_name} · {conversation.conversation_id}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
       </MainContent>
     );
   }
