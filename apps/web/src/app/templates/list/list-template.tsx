@@ -181,6 +181,19 @@ export function ListTemplate() {
   }, [items, query]);
 
   const renderBody = () => {
+    if (sectionKey === "plugins") {
+      return (
+        <section aria-labelledby="retired-extensions-title">
+          <h2 id="retired-extensions-title">能力管理已退役</h2>
+          <p>用户上传、安装、启停和调用 SKILL、插件与通用 MCP 已停止。</p>
+          <p>内置能力会随应用版本自动适用；论文检索仍可在聊天中直接使用。</p>
+          <nav aria-label="继续使用 BridGes" style={{ display: "flex", gap: "var(--space-3)" }}>
+            <Link href="/templates/chat">返回聊天</Link>
+            <Link href="/templates/list?section=knowledge">打开知识库</Link>
+          </nav>
+        </section>
+      );
+    }
     if (state === "loading") {
       return <StateBlock kind="loading" title={`正在加载${section.title}…`} />;
     }

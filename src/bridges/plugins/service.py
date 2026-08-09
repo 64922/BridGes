@@ -104,6 +104,12 @@ class PluginService:
         self._registry = skill_registry
         self._checker = checker or PluginPackageChecker()
         self._clock = clock or (lambda: datetime.now(UTC))
+    def _ensure_not_retired(self) -> None:
+        raise PluginError(
+            "user_extensions_retired",
+            "用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
+            status_code=410,
+        )
 
     # ------------------------------------------------------------------
     # 内置清单与账户状态
@@ -150,6 +156,7 @@ class PluginService:
 
     def check_package(self, filename: str, content: bytes) -> PluginCheckResult:
         """安装前检查：纯函数，不落库、不落对象（取消无残留）。"""
+        self._ensure_not_retired()
         if not filename.lower().endswith(".zip"):
             raise PluginError(
                 "unsupported_package",
@@ -162,6 +169,7 @@ class PluginService:
         self, account_id: str, filename: str, content: bytes
     ) -> UserPluginProjection:
         """确认安装：重跑安全闭锁，通过后按账户持久化并审计。"""
+        self._ensure_not_retired()
         if not filename.lower().endswith(".zip"):
             raise PluginError(
                 "unsupported_package",
@@ -304,6 +312,7 @@ class PluginService:
         self, account_id: str, plugin_id: str, enabled: bool
     ) -> None:
         """启用/停用插件（内置与用户包统一入口）。"""
+        self._ensure_not_retired()
         manifest = self._find_builtin(plugin_id)
         scoped = self._database.scoped(account_id)
         if manifest is not None:
@@ -359,6 +368,7 @@ class PluginService:
 
     def uninstall(self, account_id: str, plugin_id: str) -> None:
         """卸载用户包：删除记录与对象（待清理回收），内置包拒绝。"""
+        self._ensure_not_retired()
         if self._find_builtin(plugin_id) is not None:
             raise PluginError(
                 "builtin_not_mutable",
@@ -400,6 +410,7 @@ class PluginService:
         self, account_id: str, skill_id: str, filename: str, content: bytes
     ) -> PluginDemoProjection:
         """内置 PDF/Documents 的演示：对附件执行真实解析并返回统计。"""
+        self._ensure_not_retired()
         manifest = self._find_builtin(skill_id)
         if manifest is None or manifest.demo_kind != "parse":
             raise PluginError(

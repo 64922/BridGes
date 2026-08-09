@@ -20,7 +20,6 @@ import {
   transcribeDictation,
   uploadChatAttachment,
 } from "@/lib/api";
-import type { ChatPluginSelectionItem } from "@/lib/api";
 import { Menu } from "./Menu";
 import type { CapabilityAvailability } from "./chat/ReadAloudControls";
 import styles from "./chat/chat.module.css";
@@ -59,15 +58,10 @@ interface ComposerProps {
   /** 「选择学习项目」入口；选择/清除后回调（传 null 表示清除）。 */
   onSelectLearningProject?: (project: { project_id: string; name: string } | null) => void;
   /** Issue 36：当前对话选中的插件（随对话持久化；chip 持续显示）。 */
-  pluginSelection?: ChatPluginSelectionItem[];
   /** Issue 36：选中插件的显示名映射（key = `${kind}:${plugin_id}`）。 */
-  pluginNames?: Record<string, string>;
   /** Issue 36：「选择已启用插件」入口（打开真实选择器）。 */
-  onSelectPlugins?: () => void;
   /** Issue 36：移除单个插件选择（chip 清除按钮；PATCH 持久化）。 */
-  onRemovePlugin?: (kind: "skill" | "mcp", pluginId: string) => void;
   /** Issue 36：对选中 MCP 插件发起调用（chip「调用」按钮）。 */
-  onInvokeMcp?: (mcpId: string) => void;
   /** Issue 28：打开「文章人味化」任务对话框（由宿主渲染对话框）。 */
   onOpenHumanizer?: () => void;
   /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
@@ -113,11 +107,6 @@ export function Composer({
   prefill = null,
   learningProject = null,
   onSelectLearningProject,
-  pluginSelection = [],
-  pluginNames = {},
-  onSelectPlugins,
-  onRemovePlugin,
-  onInvokeMcp,
   onOpenHumanizer,
   onOpenCareer,
   onOpenImage,
@@ -126,6 +115,12 @@ export function Composer({
   video = { available: true },
   asr = { available: true },
 }: ComposerProps) {
+  // 用户扩展已退役：保留旧渲染分支以兼容历史快照，但不再提供选择或调用入口。
+  const pluginSelection: never[] = [];
+  const pluginNames: Record<string, string> = {};
+  const onSelectPlugins = undefined;
+  const onRemovePlugin = undefined;
+  const onInvokeMcp = undefined;
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。

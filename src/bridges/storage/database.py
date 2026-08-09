@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1540,6 +1540,49 @@ MIGRATIONS: dict[int, list[str]] = {
         BEGIN
             SELECT RAISE(ABORT, 'bound 状态必须携带 message_id');
         END
+        """,
+    ],
+    # Issue 04：用户 SKILL、插件与通用 MCP 进入不可执行的退役状态；历史元数据保留。
+    33: [
+        """
+        UPDATE skill_packages
+        SET status = 'disabled',
+            failure_reason = COALESCE(failure_reason, '用户扩展已退役，不再执行。'),
+            updated_at = datetime('now')
+        WHERE status <> 'disabled'
+        """,
+        """
+        UPDATE mcp_servers
+        SET status = 'disabled',
+            enabled = 0,
+            failure_reason = COALESCE(failure_reason, '用户扩展已退役，不再执行。'),
+            updated_at = datetime('now')
+        WHERE status <> 'disabled' OR enabled <> 0
+        """,
+        """
+        UPDATE conversations SET plugin_selection = NULL
+        WHERE plugin_selection IS NOT NULL
+        """,
+        """
+        UPDATE mcp_calls
+        SET status = 'failed',
+            error_code = 'user_extensions_retired',
+            error_message = '用户扩展已退役，不再执行。'
+        WHERE status IN ('pending', 'running', 'claimed', 'sensitive_pending', 'awaiting_confirmation')
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS extension_retirement (
+            retirement_id INTEGER PRIMARY KEY CHECK (retirement_id = 1),
+            status TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+        """,
+        """
+        INSERT INTO extension_retirement(retirement_id, status, updated_at)
+        VALUES (1, 'completed', datetime('now'))
+        ON CONFLICT(retirement_id) DO UPDATE SET
+            status = excluded.status,
+            updated_at = excluded.updated_at
         """,
     ],
 }

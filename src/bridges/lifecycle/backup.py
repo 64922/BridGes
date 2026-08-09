@@ -45,12 +45,14 @@ from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.credentials.store import CredentialStorePort
 from bridges.identity.service import IdentityService
 from bridges.lifecycle.catalog import global_stats
+from bridges.mcp.runtime import McpRuntime
 from bridges.observability.service import ObservabilityService
 from bridges.persistence import SqliteStateStore
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.object_store import EncryptedFileObjectStore
 from bridges.storage.repository import BridgesObjectRepository
+from bridges.retirement import retire_user_extensions
 
 #: 备份容器魔数与格式版本（增量演进：低版本程序拒绝高版本备份）。
 BACKUP_MAGIC = b"BRIDGESBACKUP1\n"
@@ -112,6 +114,7 @@ class BackupService:
         smtp_credential_store: CredentialStorePort,
         observability_service: ObservabilityService,
         state_store: SqliteStateStore | None = None,
+        mcp_runtime: McpRuntime | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
@@ -122,6 +125,7 @@ class BackupService:
         # 状态存储与 bridges.db 共用同一 SQLite 文件（多连接）：恢复的原子
         # 替换需要先关闭其连接，替换后再重开，否则 Windows 上文件被占用。
         self._state_store = state_store
+        self._mcp_runtime = mcp_runtime
 
     # ------------------------------------------------------------------
     # 创建备份
@@ -460,6 +464,8 @@ class BackupService:
         previous_identity = self._identity.export_accounts_for_backup()
         try:
             with self._database.snapshot_lock():
+                if self._mcp_runtime is not None:
+                    self._mcp_runtime.stop_all()
                 # 关闭全部连接（WAL 先合并进主文件），改名旧文件为新文件腾位；
                 # 状态存储与 bridges.db 共用文件，一并关闭避免文件占用。
                 self._database.connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
@@ -476,6 +482,7 @@ class BackupService:
                     shutil.move(str(staging / OBJECTS_PREFIX), str(objects_path))
                 self._database.reopen()
                 self._database.initialize()
+                retire_user_extensions(self._database, runtime=self._mcp_runtime)
                 if self._state_store is not None:
                     self._state_store.reopen()
         except OSError as exc:

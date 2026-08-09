@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { Composer } from "@/components/bridges/Composer";
-import { PluginPickerDialog } from "@/components/bridges/PluginPickerDialog";
 import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
@@ -20,13 +19,11 @@ import type {
 } from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
 import { AppShell } from "@/components/layout/AppShell";
-import { pluginHumanizerKey } from "@/lib/chat-flow";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
   ApiError,
   createChatConversation,
   startFirstTurn,
-  type ChatPluginSelectionItem,
 } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -87,18 +84,8 @@ export function NewChatHome() {
   const [videoOpen, setVideoOpen] = useState(false);
   // Issue 36：新聊天首页暂存的插件选择（随首轮写入会话；chip 与
   // 真实选择器共用，随对话持久化；停用/卸载/撤权由服务端清洗解释）。
-  const [pluginSelection, setPluginSelection] = useState<ChatPluginSelectionItem[]>([]);
-  const [pluginNames, setPluginNames] = useState<Record<string, string>>({});
-  const [pluginPickerOpen, setPluginPickerOpen] = useState(false);
-
   // Issue 34：插件页「在聊天中使用 humanizer」意图——消费即删除，
   // 防止刷新或 StrictMode 双触发重复打开。
-  useEffect(() => {
-    if (!sessionStorage.getItem(pluginHumanizerKey())) return;
-    sessionStorage.removeItem(pluginHumanizerKey());
-    setHumanizerOpen(true);
-  }, []);
-
   /** Issue 03：原子首轮统一入口——普通消息/生涯规划/图片/视频/人味化
    *  全部经同一命令提交，成功后导航到会话页并刷新侧栏最近列表。 */
   const submitFirstTurn = async (options: {
@@ -126,7 +113,6 @@ export function NewChatHome() {
         conversation_id: options.conversationId,
         mode,
         project_id: learningProject?.project_id,
-        plugin_selection: pluginSelection,
         attachment_ids: options.attachmentIds ?? [],
         // Issue 04：人味化改写默认关闭知识库（只有用户显式勾选才开启）；
         // 普通消息沿用既有默认开启语义。
@@ -263,16 +249,6 @@ export function NewChatHome() {
                 onOpenCareer={() => setCareerOpen(true)}
                 onOpenImage={() => setImageOpen(true)}
                 onOpenVideo={() => setVideoOpen(true)}
-                pluginSelection={pluginSelection}
-                pluginNames={pluginNames}
-                onSelectPlugins={() => setPluginPickerOpen(true)}
-                onRemovePlugin={(kind, pluginId) => {
-                  setPluginSelection((current) =>
-                    current.filter(
-                      (item) => !(item.kind === kind && item.plugin_id === pluginId)
-                    )
-                  );
-                }}
               />
               {sending && (
                 <p role="status" className={styles.blankStateNote}>
@@ -317,15 +293,6 @@ export function NewChatHome() {
         open={videoOpen}
         onClose={() => setVideoOpen(false)}
         onSubmit={handleVideoSubmit}
-      />
-      <PluginPickerDialog
-        open={pluginPickerOpen}
-        onClose={() => setPluginPickerOpen(false)}
-        selected={pluginSelection}
-        onSelect={(selection, names) => {
-          setPluginSelection(selection);
-          setPluginNames(names);
-        }}
       />
     </AppShell>
   );

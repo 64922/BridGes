@@ -42,6 +42,7 @@ from bridges.api import (
     science,
     scope,
     search,
+    skills,
     sharing,
     sync,
     vault,
@@ -67,6 +68,7 @@ from bridges.chat import (
 from bridges.chat.run_executor import GenerationRunExecutor
 from bridges.chat.selections import ChatSelectionsService
 from bridges.config import Settings, get_settings
+from bridges.retirement import CompatibilityObserver, retire_user_extensions
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -574,6 +576,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         version=__version__,
         description="长期科学学习与表达伙伴 API",
     )
+    app.state.compatibility_observer = CompatibilityObserver()
 
     # T008: load the unified runtime configuration. All carriers (manual,
     # unified CLI, Docker, Podman) resolve the same schema and secret rules.
@@ -1083,6 +1086,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             # Issue 34：SKILL 插件中心。内置包随应用发布（humanizer 条目
             # 与 SKILL 注册表同源），用户包经安全闭锁后按账户安装到对象库
             # 与 skill_packages 表；启停/卸载/演示全部账户作用域并写审计。
+            mcp_pid_dir = Path(cast(SqliteStateStore, state_store).path).parent / "mcp-pids"
+            mcp_runtime = McpRuntime(pid_dir=mcp_pid_dir)
+            retire_user_extensions(bridges_database, runtime=mcp_runtime)
             app.state.plugin_service = PluginService(
                 database=bridges_database,
                 object_repository=object_repository,
@@ -1094,12 +1100,11 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             # 目录用于重启后回收异常退出遗留的孤儿进程（AC3 重启恢复合法配置，
             # 不继承僵尸进程）；关闭时停止全部进程。
             # isinstance 收窄在联合类型上不保留：显式 cast。
-            mcp_pid_dir = Path(cast(SqliteStateStore, state_store).path).parent / "mcp-pids"
             mcp_service = McpService(
                 database=bridges_database,
                 object_repository=object_repository,
                 observability_service=app.state.observability_service,
-                runtime=McpRuntime(pid_dir=mcp_pid_dir),
+                runtime=mcp_runtime,
                 scope_enforcer=app.state.scope_enforcer,
             )
             # 应用启动：回收上次异常退出遗留的孤儿 MCP 进程（pid 文件兜底）。
@@ -1279,6 +1284,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             # 挂载条件保证 state_store 是 SqliteStateStore（bridges.db 与
             # 状态存储共用同一文件，恢复需重开其连接）。
             state_store=cast(SqliteStateStore, state_store),
+            mcp_runtime=mcp_runtime,
         )
 
     # T040/T046: register the built-in domain packs as candidates and attach the
@@ -1611,6 +1617,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(reminder_router)
     app.include_router(plugins_router)
     app.include_router(mcp_router)
+    app.include_router(skills.router)
     app.include_router(data_router)
 
     @app.get("/health/live", response_model=HealthProjection)

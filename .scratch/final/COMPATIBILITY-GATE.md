@@ -43,3 +43,11 @@ Status: pending-runtime-evidence
 - 发布负责人复核：待填写
 
 所有通过条件满足后，将 `Status` 改为 `passed`，并在 Issue 24 的 Comments 中引用本报告及证据。任何非零真实调用、缺失计数器或不完整观察周期都会使门禁保持 `pending-runtime-evidence`。
+## Issue 04 运行时观察接入
+
+- `service_version`: `0.1.0`
+- 观察接口：`GET /compatibility/observations`
+- 旧路由标识：`legacy.plugins.list/check/install/enable/disable/uninstall/demo`；`legacy.mcp.list/check/install/enable/disable/permissions/uninstall/invoke/confirmation.approve/confirmation.deny/calls`
+- 观察字段只包含 `real`、`probe` 与稳定路由标识；不包含账户、包名、服务器名或请求正文。
+- 迁移标记：schema `33`，`extension_retirement` 状态 `completed`。
+- 当前状态仍为 `pending-runtime-evidence`：本次仅有自动化探针证据，待真实部署流量观察完成后再改为 `passed`。

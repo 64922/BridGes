@@ -39,7 +39,6 @@ const SIDEBAR_MODULES: SidebarModule[] = [
   { label: "本地知识库", icon: "knowledgeBase", href: "/knowledge-base" },
   { label: "学习项目", icon: "learningProject", href: "/account/projects" },
   { label: "任务安排", icon: "tasks", href: "/tasks" },
-  { label: "插件", icon: "plugins", href: "/plugins" },
   { label: "用户画像", icon: "profile", href: "/account/profile" },
 ];
 

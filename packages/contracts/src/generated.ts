@@ -5496,18 +5496,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/plugins": {
+    "/skills": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /**
-         * List Plugins
-         * @description 返回内置插件（含当前账户启停状态）与当前账户用户包列表。
-         */
-        get: operations["list_plugins_plugins_get"];
+        /** List Builtin Skills */
+        get: operations["list_builtin_skills_skills_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -5516,347 +5513,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/plugins/check": {
+    "/compatibility/observations": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        get?: never;
-        put?: never;
-        /**
-         * Check Package
-         * @description 安装前检查：安全闭锁 + 内容清单预览；纯检查，无副作用。
-         */
-        post: operations["check_package_plugins_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plugins/install": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Install Package
-         * @description 确认安装：重跑安全闭锁，通过后按账户持久化并审计。
-         */
-        post: operations["install_package_plugins_install_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plugins/{plugin_id}/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Enable Plugin
-         * @description 启用插件（内置与用户包统一入口）。
-         */
-        post: operations["enable_plugin_plugins__plugin_id__enable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plugins/{plugin_id}/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Disable Plugin
-         * @description 停用插件（内置与用户包统一入口）。
-         *
-         *     停用后插件立即从「可用集合」（选择器/工具调用）消失；对话中已选
-         *     择的该项在读取/发送时被清洗并解释影响（Issue 36 AC7：立即从可用
-         *     集合移除并解释影响）——「选择随对话持久化」保留用户未主动清除的
-         *     选择，重新启用后恢复属持久化语义。
-         */
-        post: operations["disable_plugin_plugins__plugin_id__disable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plugins/{plugin_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Uninstall Plugin
-         * @description 卸载用户包（内置插件拒绝，只能停用）。
-         */
-        delete: operations["uninstall_plugin_plugins__plugin_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/plugins/builtin/{skill_id}/demo": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Demo Builtin
-         * @description 内置 PDF/Documents 演示：对附件执行真实解析并返回统计与预览。
-         */
-        post: operations["demo_builtin_plugins_builtin__skill_id__demo_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Mcp Servers
-         * @description 返回当前账户的全部 MCP 服务器与真实调用统计。
-         */
-        get: operations["list_mcp_servers_mcp_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Descriptor
-         * @description 安装前检查：安全闭锁 + 权限清单预览；纯检查，无副作用。
-         */
-        post: operations["check_descriptor_mcp_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/install": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Install Descriptor
-         * @description 确认安装：重跑安全闭锁，锁定描述哈希后按账户持久化并审计。
-         */
-        post: operations["install_descriptor_mcp_install_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/enable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Enable Mcp
-         * @description 启用 MCP（恢复调用能力，进程惰性启动）。
-         */
-        post: operations["enable_mcp_mcp__mcp_id__enable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/disable": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Disable Mcp
-         * @description 停用 MCP：停止新调用并终止运行中的进程。
-         */
-        post: operations["disable_mcp_mcp__mcp_id__disable_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/permissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        /**
-         * Revoke Permissions
-         * @description 撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。
-         *
-         *     撤权成功后把该 MCP 从当前账户全部会话的插件选择中移除（Issue 36
-         *     AC7：撤权后立即从可用集合移除）——此前对话对旧权限清单的选择授权
-         *     不再成立，需重新选择后才能再次调用。
-         */
-        put: operations["revoke_permissions_mcp__mcp_id__permissions_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        /**
-         * Uninstall Mcp
-         * @description 卸载 MCP：停止进程、删除记录与描述对象。
-         */
-        delete: operations["uninstall_mcp_mcp__mcp_id__delete"];
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/invoke": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Invoke Mcp
-         * @description 执行一次真实调用；敏感操作挂起返回确认载荷（前端弹窗）。
-         */
-        post: operations["invoke_mcp_mcp__mcp_id__invoke_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/confirmations/{confirmation_id}/approve": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Approve Confirmation
-         * @description 确认敏感操作：仅对本次调用有效，不扩展成永久授权。
-         */
-        post: operations["approve_confirmation_mcp__mcp_id__confirmations__confirmation_id__approve_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/confirmations/{confirmation_id}/deny": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Deny Confirmation
-         * @description 拒绝敏感操作：调用安全终止，不执行任何操作。
-         */
-        post: operations["deny_confirmation_mcp__mcp_id__confirmations__confirmation_id__deny_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/mcp/{mcp_id}/calls": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Mcp Calls
-         * @description 返回最近调用记录（真实次数/最近结果/失败原因，不含正文）。
-         */
-        get: operations["list_mcp_calls_mcp__mcp_id__calls_get"];
+        /** Compatibility Observations */
+        get: operations["compatibility_observations_compatibility_observations_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -7077,68 +6742,6 @@ export interface components {
              * @default pixel
              */
             unit: string;
-        };
-        /**
-         * BuiltinPluginProjection
-         * @description 插件页展示的内置包：固定清单 + 当前账户启停状态。
-         */
-        BuiltinPluginProjection: {
-            /**
-             * Skill Id
-             * @description 稳定注册标识。
-             */
-            skill_id: string;
-            /**
-             * Name
-             * @description 显示名。
-             */
-            name: string;
-            /**
-             * Version
-             * @description 固定版本。
-             */
-            version: string;
-            /**
-             * Description
-             * @description 能力说明。
-             */
-            description: string;
-            /**
-             * Source
-             * @description 来源说明。
-             */
-            source: string;
-            /**
-             * License
-             * @description 许可证声明。
-             */
-            license: string;
-            /**
-             * Capabilities
-             * @description 能力清单。
-             */
-            capabilities?: string[];
-            /**
-             * Data Categories
-             * @description 将接收的数据类别。
-             */
-            data_categories?: string[];
-            /**
-             * Read Only
-             * @description 内置只读标记。
-             * @default true
-             */
-            read_only: boolean;
-            /**
-             * Enabled
-             * @description 当前账户是否启用。
-             */
-            enabled: boolean;
-            /**
-             * Demo Kind
-             * @description 演示方式：parse 或 chat。
-             */
-            demo_kind?: string | null;
         };
         /**
          * CandidateDecision
@@ -15557,80 +15160,6 @@ export interface components {
             updated_at: string;
         };
         /**
-         * McpCallRecord
-         * @description 插件中心展示的一次真实调用记录（不含输入与正文）。
-         */
-        McpCallRecord: {
-            /**
-             * Call Id
-             * @description 调用记录标识。
-             */
-            call_id: string;
-            /**
-             * Mcp Id
-             * @description 被调用的 MCP 标识。
-             */
-            mcp_id: string;
-            /**
-             * Tool
-             * @description 工具名。
-             */
-            tool: string;
-            /**
-             * Status
-             * @description success/failed/denied。
-             */
-            status: string;
-            /**
-             * Error Code
-             * @description 失败分类码。
-             */
-            error_code?: string | null;
-            /**
-             * Error Message
-             * @description 可操作的中文提示。
-             */
-            error_message?: string | null;
-            /**
-             * Latency Ms
-             * @description 调用耗时（毫秒）。
-             * @default 0
-             */
-            latency_ms: number;
-            /**
-             * Sensitive Ops
-             * @description 本调用内完成的敏感操作数。
-             * @default 0
-             */
-            sensitive_ops: number;
-            /**
-             * Created At
-             * Format: date-time
-             * @description 调用时间。
-             */
-            created_at?: string;
-        };
-        /**
-         * McpCallRequest
-         * @description 一次真实 MCP 调用请求。
-         */
-        McpCallRequest: {
-            /**
-             * Tool
-             * @description 要调用的 MCP 服务器工具名。
-             */
-            tool: string;
-            /**
-             * Input
-             * @description 工具入参（不含秘密）。
-             */
-            input?: {
-                [key: string]: unknown;
-            };
-            /** @description 授权数据切片。 */
-            data_slice?: components["schemas"]["McpDataSlice"];
-        };
-        /**
          * McpCallRequestPayload
          * @description 聊天内对选中 MCP 插件的真实调用载荷（Issue 36）。
          *
@@ -15661,97 +15190,11 @@ export interface components {
             data_slice?: components["schemas"]["McpDataSlice"];
         };
         /**
-         * McpCallResult
-         * @description 一次调用的结果：成功 / 失败 / 敏感操作挂起待确认。
-         */
-        McpCallResult: {
-            /**
-             * Status
-             * @description success/failed/sensitive_pending。
-             */
-            status: string;
-            /**
-             * Result
-             * @description 服务器返回结果（成功时）。
-             */
-            result?: unknown | null;
-            /** @description 敏感挂起时的确认载荷（202）。 */
-            confirmation?: components["schemas"]["McpSensitiveConfirmation"] | null;
-            /**
-             * Error Code
-             * @description 失败分类码。
-             */
-            error_code?: string | null;
-            /**
-             * Error Message
-             * @description 可操作的中文提示。
-             */
-            error_message?: string | null;
-        };
-        /**
          * McpCallStatus
          * @description 消息内 MCP 调用结果的状态机（Issue 36）。
          * @enum {string}
          */
         McpCallStatus: "loading" | "succeeded" | "failed" | "sensitive_pending" | "denied";
-        /**
-         * McpCheckResult
-         * @description 一次安装检查的结果：通过时携带清单，拒绝时携带具体原因。
-         */
-        McpCheckResult: {
-            /**
-             * Ok
-             * @description 检查是否通过。
-             */
-            ok: boolean;
-            /**
-             * Mcp Id
-             * @description 声明的 MCP 标识。
-             */
-            mcp_id?: string | null;
-            /**
-             * Name
-             * @description 声明的显示名。
-             */
-            name?: string | null;
-            /**
-             * Version
-             * @description 声明的固定版本。
-             */
-            version?: string | null;
-            /**
-             * Description
-             * @description 声明的能力说明。
-             */
-            description?: string | null;
-            /**
-             * Source
-             * @description 声明的来源。
-             */
-            source?: string | null;
-            /**
-             * Integrity
-             * @description 声明的完整性信息。
-             */
-            integrity?: string | null;
-            /**
-             * Command
-             * @description 声明的启动命令。
-             */
-            command?: string[];
-            /** @description 声明的权限清单（仅检查通过时非空）。 */
-            permissions?: components["schemas"]["McpPermissionManifest"] | null;
-            /**
-             * Integrity Sha256
-             * @description 安装锁定的描述原文哈希（检查通过时计算）。
-             */
-            integrity_sha256?: string | null;
-            /**
-             * Rejected Reasons
-             * @description 拒绝原因（具体中文，逐条可操作）。
-             */
-            rejected_reasons?: string[];
-        };
         /**
          * McpDataSlice
          * @description 每次调用只接收当前消息明确授权的最小数据切片。
@@ -15772,53 +15215,6 @@ export interface components {
              * @description 当前消息明确授权的附件片段。
              */
             attachments?: components["schemas"]["McpAttachmentSlice"][];
-        };
-        /**
-         * McpListProjection
-         * @description MCP 分区完整呈现：当前账户全部 MCP 服务器与真实统计。
-         */
-        McpListProjection: {
-            /**
-             * Servers
-             * @description 当前账户的 MCP 服务器列表。
-             */
-            servers?: components["schemas"]["McpServerProjection"][];
-        };
-        /**
-         * McpPermissionManifest
-         * @description MCP 安装前可审计的权限声明；空集合即默认拒绝。
-         */
-        McpPermissionManifest: {
-            /**
-             * Network Domains
-             * @description 允许访问的 HTTPS 网络域名（不含路径与协议）。
-             */
-            network_domains?: string[];
-            /**
-             * Filesystem Read
-             * @description 允许读取的本地绝对目录列表。
-             */
-            filesystem_read?: string[];
-            /**
-             * Filesystem Write
-             * @description 允许写入的本地绝对目录列表（敏感操作）。
-             */
-            filesystem_write?: string[];
-            /**
-             * External Commands
-             * @description 允许执行的受控外部命令程序名列表（敏感操作）。
-             */
-            external_commands?: string[];
-            /**
-             * Data Categories
-             * @description 每次调用将接收的数据类别（受控集合）。
-             */
-            data_categories?: string[];
-            /**
-             * Sensitive Operations
-             * @description 声明的敏感操作类别（受控集合）。
-             */
-            sensitive_operations?: components["schemas"]["McpSensitiveKind"][];
         };
         /**
          * McpSensitiveConfirmation
@@ -15870,105 +15266,6 @@ export interface components {
          * @enum {string}
          */
         McpSensitiveKind: "write_file" | "run_command" | "send_external";
-        /**
-         * McpServerProjection
-         * @description MCP 卡展示：固定清单 + 运行状态 + 真实调用统计。
-         */
-        McpServerProjection: {
-            /**
-             * Mcp Id
-             * @description 稳定标识。
-             */
-            mcp_id: string;
-            /**
-             * Name
-             * @description 显示名。
-             */
-            name: string;
-            /**
-             * Version
-             * @description 固定版本。
-             */
-            version: string;
-            /**
-             * Description
-             * @description 能力说明。
-             */
-            description?: string | null;
-            /**
-             * Source
-             * @description 来源。
-             */
-            source: string;
-            /**
-             * Integrity
-             * @description 完整性声明。
-             */
-            integrity?: string | null;
-            /**
-             * Command
-             * @description 启动命令。
-             */
-            command?: string[];
-            /** @description 权限清单（预览/撤权）。 */
-            permissions: components["schemas"]["McpPermissionManifest"];
-            /** @description 运行状态。 */
-            status: components["schemas"]["McpStatus"];
-            /**
-             * Enabled
-             * @description 当前账户是否启用。
-             */
-            enabled: boolean;
-            /**
-             * Failure Reason
-             * @description 失败原因（中文）。
-             */
-            failure_reason?: string | null;
-            /**
-             * Installed At
-             * Format: date-time
-             * @description 安装时间。
-             */
-            installed_at?: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description 最近状态变更时间。
-             */
-            updated_at?: string;
-            /**
-             * Call Count
-             * @description 真实调用次数。
-             * @default 0
-             */
-            call_count: number;
-            /**
-             * Last Call Status
-             * @description 最近一次调用结果。
-             */
-            last_call_status?: string | null;
-            /**
-             * Last Call Error
-             * @description 最近失败原因（中文）。
-             */
-            last_call_error?: string | null;
-            /**
-             * Last Call At
-             * @description 最近调用时间。
-             */
-            last_call_at?: string | null;
-        };
-        /**
-         * McpStatus
-         * @description MCP 运行状态机。
-         *
-         *     starting 是进程启动中的瞬时态；healthy 表示配置合法、进程可惰性
-         *     启动并接受调用；disabled 是用户停用（不再启动）；failed 是启动
-         *     失败、进程崩溃或描述校验不匹配（带失败原因）；stopped 是撤权后
-         *     终止的停止态。卸载后记录删除，不再展示。
-         * @enum {string}
-         */
-        McpStatus: "starting" | "healthy" | "disabled" | "failed" | "stopped";
         /**
          * MediaAssetKind
          * @description Kind of derived media asset.
@@ -17159,190 +16456,6 @@ export interface components {
              */
             updated_at: string;
         };
-        /**
-         * PluginCheckResult
-         * @description 一次安装检查的结果：通过时携带清单与声明，拒绝时携带具体原因。
-         */
-        PluginCheckResult: {
-            /**
-             * Ok
-             * @description 检查是否通过。
-             */
-            ok: boolean;
-            /**
-             * Skill Id
-             * @description 声明或推断的插件标识。
-             */
-            skill_id?: string | null;
-            /**
-             * Name
-             * @description 声明或推断的显示名。
-             */
-            name?: string | null;
-            /**
-             * Version
-             * @description SKILL.md 声明的固定版本。
-             */
-            version?: string | null;
-            /**
-             * Description
-             * @description 声明的能力说明（可选）。
-             */
-            description?: string | null;
-            /**
-             * Source
-             * @description 声明的来源（可选）。
-             */
-            source?: string | null;
-            /**
-             * License
-             * @description 声明的许可证（可选）。
-             */
-            license?: string | null;
-            /**
-             * Capabilities
-             * @description 声明的能力清单（可选）。
-             */
-            capabilities?: string[];
-            /**
-             * Data Categories
-             * @description 声明将接收的数据类别（可选）。
-             */
-            data_categories?: string[];
-            /**
-             * Files
-             * @description 内容清单（仅检查通过时非空）。
-             */
-            files?: components["schemas"]["PluginFileEntry"][];
-            /**
-             * File Count
-             * @description 包内文件总数（不含目录）。
-             * @default 0
-             */
-            file_count: number;
-            /**
-             * Total Bytes
-             * @description 包内文件解压后总大小。
-             * @default 0
-             */
-            total_bytes: number;
-            /**
-             * Rejected Reasons
-             * @description 拒绝原因（具体中文，逐条可操作）。
-             */
-            rejected_reasons?: string[];
-        };
-        /**
-         * PluginDemoProjection
-         * @description 内置能力演示结果：真实解析的统计与预览片段，不含全文。
-         */
-        PluginDemoProjection: {
-            /**
-             * Skill Id
-             * @description 演示的内置插件标识。
-             */
-            skill_id: string;
-            /**
-             * Name
-             * @description 插件显示名。
-             */
-            name: string;
-            /**
-             * Version
-             * @description 固定版本。
-             */
-            version: string;
-            /**
-             * Filename
-             * @description 演示的附件文件名。
-             */
-            filename: string;
-            /**
-             * Parser Version
-             * @description 实际使用的解析器版本标识。
-             */
-            parser_version: string;
-            /**
-             * Pages
-             * @description 解析页数（非分页类型为 0）。
-             * @default 0
-             */
-            pages: number;
-            /**
-             * Sections
-             * @description 解析章节数。
-             * @default 0
-             */
-            sections: number;
-            /**
-             * Char Count
-             * @description 解析文本字符数。
-             * @default 0
-             */
-            char_count: number;
-            /**
-             * Preview
-             * @description 文本预览片段（最多 500 字符）。
-             * @default
-             */
-            preview: string;
-            /**
-             * Media Type
-             * @description 识别到的媒体类型。
-             * @default
-             */
-            media_type: string;
-        };
-        /**
-         * PluginFileEntry
-         * @description 安装检查内容清单中的一条文件记录。
-         */
-        PluginFileEntry: {
-            /**
-             * Path
-             * @description 包内相对路径（正斜杠）。
-             */
-            path: string;
-            /**
-             * Size
-             * @description 文件大小（字节）。
-             */
-            size: number;
-            /** @description 文件类别（SKILL.md/参考/模板/资源）。 */
-            kind: components["schemas"]["PluginFileKind"];
-        };
-        /**
-         * PluginFileKind
-         * @description 包内文件类别（内容清单展示用）。
-         * @enum {string}
-         */
-        PluginFileKind: "skill_md" | "reference" | "template" | "resource";
-        /**
-         * PluginListProjection
-         * @description 插件中心完整呈现：内置（含账户启停）+ 用户包（含失败态）。
-         */
-        PluginListProjection: {
-            /**
-             * Builtin
-             * @description 内置只读插件（随应用发布）。
-             */
-            builtin?: components["schemas"]["BuiltinPluginProjection"][];
-            /**
-             * User
-             * @description 当前账户的用户包（含安装失败记录）。
-             */
-            user?: components["schemas"]["UserPluginProjection"][];
-        };
-        /**
-         * PluginStatus
-         * @description 用户包的安装状态机。
-         *
-         *     installed 与 disabled 是运行注册表中的有效状态；install_failed 是
-         *     可恢复的失败态——同一插件标识重新安装成功后即退出，绝不让失败记录
-         *     冒充已安装包进入运行注册表。
-         * @enum {string}
-         */
-        PluginStatus: "installed" | "disabled" | "install_failed";
         /**
          * PopularScienceElement
          * @description A structural element required by the popular-science genre contract.
@@ -23529,99 +22642,6 @@ export interface components {
          * @enum {string}
          */
         UserFeedbackTarget: "current_version" | "candidate_preference" | "learning_record" | "fact_review";
-        /**
-         * UserPluginProjection
-         * @description 插件页展示的用户包：安装状态、固定版本与失败原因。
-         */
-        UserPluginProjection: {
-            /**
-             * Package Id
-             * @description 安装记录标识。
-             */
-            package_id: string;
-            /**
-             * Plugin Id
-             * @description 插件标识（包内声明）。
-             */
-            plugin_id: string;
-            /**
-             * Name
-             * @description 显示名。
-             */
-            name: string;
-            /**
-             * Version
-             * @description 安装时的固定版本。
-             */
-            version: string;
-            /**
-             * Description
-             * @description 能力说明。
-             */
-            description?: string | null;
-            /**
-             * Source
-             * @description 来源说明。
-             */
-            source?: string | null;
-            /**
-             * License
-             * @description 许可证声明。
-             */
-            license?: string | null;
-            /**
-             * Capabilities
-             * @description 能力清单。
-             */
-            capabilities?: string[];
-            /**
-             * Data Categories
-             * @description 将接收的数据类别。
-             */
-            data_categories?: string[];
-            /** @description 安装状态。 */
-            status: components["schemas"]["PluginStatus"];
-            /**
-             * Enabled
-             * @description 当前是否启用。
-             * @default true
-             */
-            enabled: boolean;
-            /**
-             * Object Id
-             * @description 包内容对象标识（账户隔离存储）。
-             */
-            object_id?: string | null;
-            /**
-             * File Count
-             * @description 包内文件数。
-             * @default 0
-             */
-            file_count: number;
-            /**
-             * Content Length
-             * @description 包压缩后大小。
-             * @default 0
-             */
-            content_length: number;
-            /**
-             * Failure Reason
-             * @description 安装失败的具体原因（中文）。
-             */
-            failure_reason?: string | null;
-            /**
-             * Installed At
-             * Format: date-time
-             * @description 安装时间。
-             */
-            installed_at?: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description 最近状态变更时间。
-             */
-            updated_at?: string;
-        };
         /** ValidationError */
         ValidationError: {
             /** Location */
@@ -24818,7 +23838,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -24860,7 +23880,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25078,7 +24098,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Request Entity Too Large */
+            /** @description Content Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -25213,7 +24233,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25264,7 +24284,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25753,7 +24773,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -25833,7 +24853,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26033,7 +25053,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26097,7 +25117,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -26235,7 +25255,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Request Entity Too Large */
+            /** @description Content Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -26565,7 +25585,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -27029,7 +26049,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -27127,7 +26147,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -27429,7 +26449,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Request Entity Too Large */
+            /** @description Content Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -27900,7 +26920,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -28115,7 +27135,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -28269,7 +27289,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Request Entity Too Large */
+            /** @description Content Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -28499,7 +27519,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30376,7 +29396,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30482,7 +29502,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30617,7 +29637,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30784,7 +29804,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30892,7 +29912,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -30987,7 +30007,7 @@ export interface operations {
                     "application/json": components["schemas"]["VaultError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31166,7 +30186,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31279,7 +30299,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31341,7 +30361,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31405,7 +30425,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31467,7 +30487,7 @@ export interface operations {
                     "application/json": components["schemas"]["SharingError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -31921,7 +30941,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32038,7 +31058,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32089,7 +31109,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32266,7 +31286,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32381,7 +31401,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32547,7 +31567,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32662,7 +31682,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32725,7 +31745,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32786,7 +31806,7 @@ export interface operations {
                     "application/json": components["schemas"]["InstitutionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -32879,7 +31899,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33023,7 +32043,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33129,7 +32149,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33486,7 +32506,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33541,7 +32561,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33596,7 +32616,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33651,7 +32671,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33706,7 +32726,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33761,7 +32781,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33816,7 +32836,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -33991,7 +33011,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34133,7 +33153,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34177,7 +33197,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProfileError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34241,7 +33261,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34306,7 +33326,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34423,7 +33443,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34489,7 +33509,7 @@ export interface operations {
                     "application/json": components["schemas"]["WorkflowErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34592,7 +33612,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34643,7 +33663,7 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34710,7 +33730,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34771,7 +33791,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -34940,7 +33960,7 @@ export interface operations {
                     "application/json": components["schemas"]["EvaluationErrorResponse"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35037,7 +34057,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35130,7 +34150,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35287,7 +34307,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35447,7 +34467,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35500,7 +34520,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35555,7 +34575,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -35650,7 +34670,7 @@ export interface operations {
                     "application/json": components["schemas"]["SourceError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36012,7 +35032,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36169,7 +35189,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36225,7 +35245,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36280,7 +35300,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36335,7 +35355,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36443,7 +35463,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36496,7 +35516,7 @@ export interface operations {
                     "application/json": components["schemas"]["ExpressionError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36551,7 +35571,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36604,7 +35624,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36710,7 +35730,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36765,7 +35785,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36862,7 +35882,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -36906,7 +35926,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37010,7 +36030,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37043,7 +36063,7 @@ export interface operations {
                     "application/json": components["schemas"]["SpecValidationResult"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37305,7 +36325,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37405,7 +36425,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37668,7 +36688,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37846,7 +36866,7 @@ export interface operations {
                     "application/json": components["schemas"]["MediaError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -37976,7 +36996,7 @@ export interface operations {
                     "application/json": components["schemas"]["LearningError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -38064,7 +37084,7 @@ export interface operations {
                     "application/json": components["schemas"]["LearningError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -39347,7 +38367,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Request Entity Too Large */
+            /** @description Content Too Large */
             413: {
                 headers: {
                     [name: string]: unknown;
@@ -39952,7 +38972,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -40406,7 +39426,7 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -41470,14 +40490,12 @@ export interface operations {
             };
         };
     };
-    list_plugins_plugins_get: {
+    list_builtin_skills_skills_get: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -41487,46 +40505,19 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PluginListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    }[];
                 };
             };
         };
     };
-    check_package_plugins_check_post: {
+    compatibility_observations_compatibility_observations_get: {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
+            cookie?: never;
         };
         requestBody?: never;
         responses: {
@@ -41536,1131 +40527,9 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PluginCheckResult"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    install_package_plugins_install_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["UserPluginProjection"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    enable_plugin_plugins__plugin_id__enable_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plugin_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    disable_plugin_plugins__plugin_id__disable_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plugin_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    uninstall_plugin_plugins__plugin_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                plugin_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    demo_builtin_plugins_builtin__skill_id__demo_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                skill_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["PluginDemoProjection"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    list_mcp_servers_mcp_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    check_descriptor_mcp_check_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpCheckResult"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    install_descriptor_mcp_install_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpServerProjection"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Request Entity Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    enable_mcp_mcp__mcp_id__enable_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    disable_mcp_mcp__mcp_id__disable_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    revoke_permissions_mcp__mcp_id__permissions_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["McpPermissionManifest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpServerProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    uninstall_mcp_mcp__mcp_id__delete: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpListProjection"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    invoke_mcp_mcp__mcp_id__invoke_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["McpCallRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpCallResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Bad Gateway */
-            502: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    approve_confirmation_mcp__mcp_id__confirmations__confirmation_id__approve_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-                confirmation_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpCallResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    deny_confirmation_mcp__mcp_id__confirmations__confirmation_id__deny_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-                confirmation_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpCallResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-        };
-    };
-    list_mcp_calls_mcp__mcp_id__calls_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                mcp_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["McpCallRecord"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-            /** @description Service Unavailable */
-            503: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["AuthError"];
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -43053,7 +40922,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -43124,7 +40993,7 @@ export interface operations {
                     "application/json": components["schemas"]["AuthError"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Content */
             422: {
                 headers: {
                     [name: string]: unknown;

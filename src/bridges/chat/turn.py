@@ -890,6 +890,8 @@ def skill_input_from(owner: MessageRecord | None) -> HumanizerSkillInput | None:
     """从用户消息的 SKILL 载荷快照还原任务契约（重试沿用同一份输入）。"""
     if owner is None or not owner.skill:
         return None
+    if owner.skill.get("status") in {"failed", "retired"}:
+        return None
     try:
         return HumanizerSkillInput.model_validate(owner.skill)
     except ValidationError:
@@ -1238,6 +1240,27 @@ class TurnOrchestrator:
                 )
             )
             if owner_skill is not None:
+                if owner_skill.skill_id != "bridges-humanizer":
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code="user_extensions_retired",
+                        error_message="用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=failed_thinking(thinking, "user_extensions_retired"),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code="user_extensions_retired",
+                        error_message="用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
+                    )
+                    return
                 if self._humanizer is None:
                     finalize_message(
                         self._repo,

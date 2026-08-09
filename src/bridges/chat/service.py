@@ -242,6 +242,26 @@ class ChatService:
             mcp_service=self._mcp,
         )
 
+    def _ensure_extension_payload_allowed(
+        self,
+        *,
+        plugin_selection: list[ChatPluginSelectionItem] | None = None,
+        skill_id: str | None = None,
+        skill_input: dict[str, Any] | None = None,
+        mcp_call: dict[str, Any] | None = None,
+    ) -> None:
+        if (
+            plugin_selection
+            or mcp_call is not None
+            or skill_id not in {None, "bridges-humanizer"}
+            or (skill_input is not None and skill_id != "bridges-humanizer")
+        ):
+            raise ChatDomainError(
+                "user_extensions_retired",
+                "用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
+                410,
+            )
+
     # ------------------------------------------------------------------
     # 对话
     # ------------------------------------------------------------------
@@ -259,6 +279,7 @@ class ChatService:
         ``plugin_selection`` 为新对话的初始插件选择（新聊天首页先选
         插件再建对话）；调用方负责逐项校验可用性，这里原样持久化。
         """
+        self._ensure_extension_payload_allowed(plugin_selection=plugin_selection)
         now = datetime.now(UTC)
         conversation_id = secrets.token_urlsafe(16)
         self._repo.create_conversation(
@@ -375,6 +396,7 @@ class ChatService:
         可用性（已停用/已卸载/撤权项 422 拒绝并说明原因，不静默清洗
         用户意图）；读取路径的失效清洗由 ``get_conversation`` 负责。
         """
+        self._ensure_extension_payload_allowed(plugin_selection=plugin_selection)
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
@@ -652,6 +674,11 @@ class ChatService:
         载荷互斥，携带时本轮执行真实 MCP 调用而非普通回答。目标 MCP
         必须被本对话选中（选择器持久化），否则流式阶段拒绝。
         """
+        self._ensure_extension_payload_allowed(
+            skill_id=skill_id,
+            skill_input=skill_input,
+            mcp_call=mcp_call,
+        )
         now = datetime.now(UTC)
         content = content.strip()
         if not content:
@@ -985,6 +1012,12 @@ class ChatService:
         事务内新建。``mode``/``project_id``/``plugin_selection`` 随首轮
         写入会话。失败不留任何会话/消息（整事务回滚），不产生空草稿。
         """
+        self._ensure_extension_payload_allowed(
+            plugin_selection=plugin_selection,
+            skill_id=skill_id,
+            skill_input=skill_input,
+            mcp_call=mcp_call,
+        )
         now = datetime.now(UTC)
         content = content.strip()
         if not content:
@@ -1432,6 +1465,7 @@ class ChatService:
         只允许确认本人消息上真实挂起的敏感调用；结果写回消息 mcp_call
         列（终态后也可更新），刷新/恢复历史对话不丢失。
         """
+        self._ensure_extension_payload_allowed(mcp_call={})
         return self._resolve_mcp_confirmation(
             account_id, conversation_id, message_id, confirmation_id, denied=False
         )
@@ -1440,6 +1474,7 @@ class ChatService:
         self, account_id: str, conversation_id: str, message_id: str, confirmation_id: str
     ) -> ChatMessageProjection:
         """聊天内敏感操作拒绝（deny）：调用安全终止并落库 denied 终态。"""
+        self._ensure_extension_payload_allowed(mcp_call={})
         return self._resolve_mcp_confirmation(
             account_id, conversation_id, message_id, confirmation_id, denied=True
         )

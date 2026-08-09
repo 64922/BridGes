@@ -28,7 +28,6 @@ export const SIDEBAR_MODULES: SidebarModule[] = [
   { key: "knowledge", label: "本地知识库", icon: "knowledgeBase", href: "/templates/list?section=knowledge" },
   { key: "projects", label: "学习项目", icon: "learningProject", href: "/templates/list?section=projects" },
   { key: "tasks", label: "任务安排", icon: "tasks", href: "/templates/list?section=tasks" },
-  { key: "plugins", label: "插件", icon: "plugins", href: "/templates/list?section=plugins" },
   { key: "profile", label: "用户画像", icon: "profile", href: "/templates/list?section=profile" },
 ];
 
