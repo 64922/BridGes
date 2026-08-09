@@ -8341,6 +8341,8 @@ export interface components {
             thinking?: components["schemas"]["ChatThinkingSummary"] | null;
             /** @description 本条助手消息绑定的分层检索轮次（Issue 20）；无轮次为 None。 */
             retrieval?: components["schemas"]["RetrievalRoundProjection"] | null;
+            /** @description 本轮全局知识库检索决策（Issue 12）；跳过也会持久化。 */
+            retrieval_decision?: components["schemas"]["RetrievalDecisionProjection"] | null;
             /** @description 本条助手消息绑定的公网搜索状态与真实引用（Issue 21）。 */
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description 本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。 */
@@ -19530,13 +19532,76 @@ export interface components {
              * @description 该层去重后的候选数。
              * @default 0
              */
-            candidates: number;
+             candidates: number;
+            /** @description 候选文件元数据摘要；不包含文件正文。 */
+            candidate_files?: components["schemas"]["RetrievalCandidateFile"][];
             /**
              * Note
              * @description 面向用户的中文说明。
              */
             note?: string | null;
         };
+        /**
+         * RetrievalCandidateFile
+         * @description 两阶段检索第一阶段选出的文件摘要。
+         */
+        RetrievalCandidateFile: {
+            /** @description 稳定索引文档身份。 */
+            document_id: string;
+            /** @description 稳定对象身份；用于授权校验。 */
+            object_id: string;
+            /** @description 用户可理解的文件名。 */
+            filename: string;
+            /** @description 文件媒体类型。 */
+            media_type: string;
+        };
+        /**
+         * RetrievalDecisionAction
+         * @description 全局知识库是否进入本轮证据编排。
+         * @enum {string}
+         */
+        RetrievalDecisionAction: "retrieve" | "skip";
+        /**
+         * RetrievalDecisionProjection
+         * @description 一轮聊天在任何索引副作用前形成的可恢复检索决策。
+         */
+        RetrievalDecisionProjection: {
+            /** @description 稳定决策标识；重试同一用户回合时复用。 */
+            decision_id: string;
+            /** @description 首次绑定的助手消息标识。 */
+            assistant_message_id: string;
+            /** @description 触发决策的用户消息标识。 */
+            user_message_id?: string | null;
+            /** @description 所属对话标识。 */
+            conversation_id: string;
+            /** @description retrieve 或 skip。 */
+            action: components["schemas"]["RetrievalDecisionAction"];
+            /** @description 确定性决策原因。 */
+            reason: components["schemas"]["RetrievalDecisionReason"];
+            /** @description 决策规则版本；只影响新回合。 */
+            rules_version: string;
+            /** @description 能力路由快照，不是模型输出。 */
+            capability_route: string;
+            /** @description 决策时锁定的对话模式。 */
+            mode: string;
+            /** @description 用户请求的不可逆指纹，不保存原文。 */
+            query_fingerprint: string;
+            /** @description 决策形成时间。 */
+            created_at: string;
+        };
+        /**
+         * RetrievalDecisionReason
+         * @description 检索决策的稳定原因枚举。
+         * @enum {string}
+         */
+        RetrievalDecisionReason:
+            | "explicit_knowledge_base"
+            | "uploaded_material"
+            | "study_explanation"
+            | "knowledge_base_required"
+            | "user_disabled"
+            | "specialized_capability"
+            | "companion_default";
         /**
          * RetrievalLayerStatus
          * @description 单层检索的对外状态。
@@ -19547,7 +19612,7 @@ export interface components {
          *     - ``ok``：完成检索（候选数可为 0，配合整体充足性呈现）。
          * @enum {string}
          */
-        RetrievalLayerStatus: "disabled" | "no_material" | "index_unavailable" | "ok";
+        RetrievalLayerStatus: "disabled" | "no_material" | "index_unavailable" | "index_processing" | "index_corrupt" | "timeout" | "ok";
         /**
          * RetrievalRoundProjection
          * @description 一轮检索的完整投影（绑定一条助手消息，刷新/重启后保持稳定）。

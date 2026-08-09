@@ -11,6 +11,7 @@ import type {
   ChatMode,
   ChatModeEventProjection,
   ContextNoteProjection,
+  RetrievalDecisionProjection,
   RetrievalRoundProjection,
   TeachingTurnProjection,
   WebSearchProjection,
@@ -89,6 +90,8 @@ export interface ChatMessage {
   attachments?: ChatAttachmentProjection[];
   /** Issue 20：本条助手消息绑定的分层检索轮次（含引用），无轮次为 null */
   retrieval?: RetrievalRoundProjection | null;
+  /** Issue 12：本轮全局知识库检索决策，跳过也持久化 */
+  retrievalDecision?: RetrievalDecisionProjection | null;
   /** Issue 21：本条助手消息绑定的公网搜索状态与真实引用 */
   webSearch?: WebSearchProjection | null;
   /** Issue 22：本条助手消息绑定的 arXiv 搜索状态与真实论文引用 */
@@ -722,6 +725,7 @@ export function MessageList({
                 {conversationId && (
                   <RetrievalCard
                     retrieval={message.retrieval ?? null}
+                    retrievalDecision={message.retrievalDecision ?? null}
                     conversationId={conversationId}
                     messageId={message.id}
                     streaming={message.status === "streaming"}

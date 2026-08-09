@@ -112,6 +112,7 @@ from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
+from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection
 from bridges.web_search.service import WebSearchService
@@ -693,6 +694,19 @@ class ChatService:
                 "该会话模式已锁定，请继续使用当前模式或新建会话。",
                 409,
             ) from exc
+        self._ensure_retrieval_decision(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=assistant_message.message_id,
+            user_message_id=user_message.message_id,
+            query=content,
+            mode=mode,
+            use_knowledge_base=use_knowledge_base,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+        )
         self._repo.touch_conversation(account_id, conversation_id, now)
 
         if not record.title:
@@ -1383,10 +1397,64 @@ class ChatService:
             run_record,
             [(ChatStreamEventKind.STARTED.value, started_payload)],
         )
+        self._ensure_retrieval_decision(
+            account_id=account_id,
+            conversation_id=conversation_id,
+            assistant_message_id=new_attempt.message_id,
+            user_message_id=owner.message_id,
+            query=owner.content,
+            mode=mode,
+            use_knowledge_base=use_knowledge_base,
+            skill_payload=owner.skill,
+            image_payload=owner.image,
+            video_payload=owner.video,
+            mcp_call_payload=owner.mcp_call,
+        )
         self._repo.touch_conversation(account_id, conversation_id, now)
         return (
             self._project_message(owner),
             self._project_message(new_attempt, self._run_view(run_record, account_id)),
+        )
+
+    def _ensure_retrieval_decision(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        assistant_message_id: str,
+        user_message_id: str,
+        query: str,
+        mode: ChatMode,
+        use_knowledge_base: bool,
+        skill_payload: dict[str, Any] | None,
+        image_payload: dict[str, Any] | None,
+        video_payload: dict[str, Any] | None,
+        mcp_call_payload: dict[str, Any] | None,
+    ) -> None:
+        """在入队前保存决策，使首个响应即可恢复跳过/触发状态。"""
+        if self._retrieval is None:
+            return
+        route = capability_route_for_request(
+            query,
+            mode=mode.value,
+            has_humanizer=skill_payload is not None,
+            has_image=image_payload is not None,
+            image_edit=(
+                image_payload is not None
+                and str(image_payload.get("kind")) == ImageTaskKind.EDIT.value
+            ),
+            has_video=video_payload is not None,
+            has_mcp=mcp_call_payload is not None,
+        )
+        self._retrieval.ensure_decision(
+            account_id,
+            conversation_id,
+            assistant_message_id,
+            user_message_id,
+            query,
+            mode=mode.value,
+            capability_route=route,
+            use_knowledge_base=use_knowledge_base,
         )
 
     # ------------------------------------------------------------------
@@ -1810,6 +1878,14 @@ class ChatService:
             ),
             retrieval=(
                 self._retrieval.round_projection(
+                    message.account_id, message.message_id
+                )
+                if self._retrieval is not None
+                and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            retrieval_decision=(
+                self._retrieval.decision_projection(
                     message.account_id, message.message_id
                 )
                 if self._retrieval is not None

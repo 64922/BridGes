@@ -104,6 +104,7 @@ from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
+from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
@@ -1228,6 +1229,45 @@ class TurnOrchestrator:
                 account_id, conversation_id, until_user_message_id
             )
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            owner_message_for_decision = owner_user_message(
+                self._repo.list_messages(account_id, conversation_id),
+                assistant_message_id,
+            )
+            owner_query = owner_message_for_decision.content if owner_message_for_decision else ""
+            owner_skill_for_decision = skill_input_from(owner_message_for_decision)
+            owner_image_for_decision = image_payload_from(owner_message_for_decision)
+            owner_video_for_decision = video_payload_from(owner_message_for_decision)
+            owner_mcp_for_decision = mcp_call_payload_from(owner_message_for_decision)
+            capability_route = capability_route_for_request(
+                owner_query,
+                mode=mode.value,
+                has_humanizer=owner_skill_for_decision is not None,
+                has_image=owner_image_for_decision is not None,
+                image_edit=(
+                    owner_image_for_decision is not None
+                    and owner_image_for_decision.kind == ImageTaskKind.EDIT
+                ),
+                has_video=owner_video_for_decision is not None,
+                has_mcp=owner_mcp_for_decision is not None,
+            )
+            # Issue 12：先固化意图决策，再允许任何检索服务访问索引；专用
+            # 能力即使随后直接返回，也会保留 skip 快照供刷新/重试恢复。
+            if self._retrieval is not None:
+                self._retrieval.ensure_decision(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    until_user_message_id
+                    or (
+                        owner_message_for_decision.message_id
+                        if owner_message_for_decision is not None
+                        else None
+                    ),
+                    owner_query,
+                    mode=mode.value,
+                    capability_route=capability_route,
+                    use_knowledge_base=use_knowledge_base,
+                )
             # Issue 28：用户消息携带 SKILL 载荷（bridges-humanizer）时走
             # 内置 SKILL 编排路径——同一真实消息流程（持久化/重试/审计），
             # 过程卡五态经 humanizer SSE 事件下发，终态 done/error 收敛。
@@ -2586,6 +2626,9 @@ class TurnOrchestrator:
         """
         if self._retrieval is None or stop_event.is_set():
             return thinking, None
+        decision = self._retrieval.decision_projection(
+            account_id, assistant_message_id
+        )
         retrieval_round = self._retrieval.run_round(
             account_id,
             conversation_id,
@@ -2593,6 +2636,7 @@ class TurnOrchestrator:
             until_user_message_id,
             round_query,
             use_knowledge_base=use_knowledge_base,
+            decision=decision,
         )
         if retrieval_round is None:
             return thinking, None

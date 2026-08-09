@@ -33,6 +33,105 @@ class RetrievalRepository:
     def __init__(self, database: BridgesDatabase) -> None:
         self._database = database
 
+    # ------------------------------------------------------------------
+    # Issue 12：决策快照
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _decision_select() -> str:
+        return (
+            "SELECT decision_id, assistant_message_id, user_message_id,"
+            " conversation_id, action, reason, rules_version, capability_route,"
+            " mode, query_fingerprint, created_at FROM retrieval_decisions"
+        )
+
+    def insert_decision(
+        self,
+        *,
+        account_id: str,
+        decision_id: str,
+        assistant_message_id: str,
+        user_message_id: str | None,
+        conversation_id: str,
+        action: str,
+        reason: str,
+        rules_version: str,
+        capability_route: str,
+        mode: str,
+        query_fingerprint: str,
+        created_at: datetime,
+    ) -> None:
+        """写入一份回合决策；同一用户回合由数据库唯一约束去重。"""
+        self._database.scoped(account_id).execute(
+            "INSERT INTO retrieval_decisions"
+            " (decision_id, assistant_message_id, user_message_id, conversation_id,"
+            " account_id, action, reason, rules_version, capability_route, mode,"
+            " query_fingerprint, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                decision_id,
+                assistant_message_id,
+                user_message_id,
+                conversation_id,
+                account_id,
+                action,
+                reason,
+                rules_version,
+                capability_route,
+                mode,
+                query_fingerprint,
+                created_at.isoformat(timespec="seconds"),
+            ),
+        )
+
+    def decision_row(
+        self,
+        account_id: str,
+        *,
+        assistant_message_id: str | None = None,
+        user_message_id: str | None = None,
+    ) -> sqlite3.Row | None:
+        """按当前账户读取决策；用户消息键优先用于重试复用。"""
+        clauses = ["account_id = ?"]
+        params: list[object] = [account_id]
+        if user_message_id is not None:
+            clauses.append("user_message_id = ?")
+            params.append(user_message_id)
+        elif assistant_message_id is not None:
+            clauses.append("assistant_message_id = ?")
+            params.append(assistant_message_id)
+        else:
+            return None
+        row = self._database.scoped(account_id).execute(
+            self._decision_select() + " WHERE " + " AND ".join(clauses), params
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def decision_row_for_message(
+        self, account_id: str, assistant_message_id: str
+    ) -> sqlite3.Row | None:
+        """读取助手尝试对应的决策，重试时沿 generation_runs 回溯用户回合。"""
+        row = self.decision_row(
+            account_id, assistant_message_id=assistant_message_id
+        )
+        if row is not None:
+            return row
+        row = self._database.scoped(account_id).execute(
+            "SELECT retrieval_decisions.decision_id,"
+            " retrieval_decisions.assistant_message_id,"
+            " retrieval_decisions.user_message_id,"
+            " retrieval_decisions.conversation_id, retrieval_decisions.action,"
+            " retrieval_decisions.reason, retrieval_decisions.rules_version,"
+            " retrieval_decisions.capability_route, retrieval_decisions.mode,"
+            " retrieval_decisions.query_fingerprint, retrieval_decisions.created_at"
+            " FROM retrieval_decisions"
+            + " JOIN generation_runs g ON g.account_id = retrieval_decisions.account_id"
+            " AND g.user_message_id = retrieval_decisions.user_message_id"
+            " WHERE retrieval_decisions.account_id = ?"
+            " AND g.assistant_message_id = ? LIMIT 1",
+            (account_id, assistant_message_id),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
     def insert_round(
         self,
         *,
@@ -120,6 +219,31 @@ class RetrievalRepository:
         ).fetchone()
         return cast(sqlite3.Row | None, row)
 
+    def round_row_for_user_message(
+        self, account_id: str, user_message_id: str
+    ) -> sqlite3.Row | None:
+        """返回同一用户回合已有的检索轮次，供重试幂等复用。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT round_id, message_id, user_message_id, conversation_id,"
+            " use_knowledge_base, sufficiency, index_version_id, layers_json, note,"
+            " created_at FROM retrieval_rounds"
+            " WHERE account_id = ? AND user_message_id = ?"
+            " ORDER BY created_at, round_id LIMIT 1",
+            (account_id, user_message_id),
+        ).fetchone()
+        return cast(sqlite3.Row | None, row)
+
+    def generation_user_message_id(
+        self, account_id: str, assistant_message_id: str
+    ) -> str | None:
+        """返回助手尝试所属的用户消息，供重试引用授权校验。"""
+        row = self._database.scoped(account_id).execute(
+            "SELECT user_message_id FROM generation_runs"
+            " WHERE account_id = ? AND assistant_message_id = ? LIMIT 1",
+            (account_id, assistant_message_id),
+        ).fetchone()
+        return str(row["user_message_id"]) if row is not None else None
+
     def citation_rows(self, account_id: str, round_id: str) -> list[sqlite3.Row]:
         """返回轮次的全部引用行（按融合位次升序）。"""
         return list(
@@ -188,6 +312,63 @@ class RetrievalRepository:
             params.append(project_id)
         rows = self._database.scoped(account_id).execute(sql, params).fetchall()
         return [str(row["document_id"]) for row in rows]
+
+    def document_statuses(
+        self,
+        account_id: str,
+        *,
+        source: str,
+        object_ids: list[str] | None = None,
+        project_id: str | None = None,
+    ) -> set[str]:
+        """读取当前账户候选材料的摄取状态，用于区分等待与损坏。"""
+        clauses = ["r.account_id = ?", "r.source = ?"]
+        params: list[object] = [account_id, source]
+        if object_ids is not None:
+            if not object_ids:
+                return set()
+            placeholders = ",".join("?" for _ in object_ids)
+            clauses.append(f"r.object_id IN ({placeholders})")
+            params.extend(object_ids)
+        if project_id is not None:
+            clauses.append("r.project_id = ?")
+            params.append(project_id)
+        rows = self._database.scoped(account_id).execute(
+            "SELECT DISTINCT r.status FROM document_records r WHERE "
+            + " AND ".join(clauses),
+            params,
+        ).fetchall()
+        return {str(row["status"]) for row in rows}
+
+    def document_metadata(
+        self,
+        account_id: str,
+        document_ids: list[str],
+        *,
+        source: str,
+    ) -> list[dict[str, str]]:
+        """只读取当前账户候选文件的元数据，不触碰正文或向量。"""
+        if not document_ids:
+            return []
+        placeholders = ",".join("?" for _ in document_ids)
+        rows = self._database.scoped(account_id).execute(
+            "SELECT r.document_id, r.object_id, o.original_filename, o.media_type"
+            " FROM document_records r JOIN objects o ON o.object_id = r.object_id"
+            " WHERE r.account_id = ? AND r.source = ? AND r.status = 'ready'"
+            " AND o.account_id = ? AND o.status = 'active'"
+            f" AND r.document_id IN ({placeholders})"
+            " ORDER BY r.created_at, r.document_id",
+            (account_id, source, account_id, *document_ids),
+        ).fetchall()
+        return [
+            {
+                "document_id": str(row["document_id"]),
+                "object_id": str(row["object_id"]),
+                "filename": str(row["original_filename"]),
+                "media_type": str(row["media_type"]),
+            }
+            for row in rows
+        ]
 
     def has_stale_documents(
         self,

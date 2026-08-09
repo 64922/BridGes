@@ -7,6 +7,7 @@ import {
   getCitationDetail,
   type CitationDetailProjection,
   type CitationProjection,
+  type RetrievalDecisionProjection,
   type RetrievalLayerResult,
   type RetrievalLayerStatus,
   type RetrievalRoundProjection,
@@ -41,6 +42,9 @@ const LAYER_STATUS_META: Record<
   disabled: { label: "未启用", icon: "info", color: "var(--color-text-tertiary)", bg: "var(--color-surface-muted, #f1f2f3)" },
   no_material: { label: "无材料", icon: "info", color: "var(--color-text-tertiary)", bg: "var(--color-surface-muted, #f1f2f3)" },
   index_unavailable: { label: "索引不可用", icon: "alert", color: "var(--color-status-error)", bg: "var(--color-status-error-bg)" },
+  index_processing: { label: "索引处理中", icon: "info", color: "var(--color-status-wait)", bg: "var(--color-status-wait-bg)" },
+  index_corrupt: { label: "索引损坏", icon: "alert", color: "var(--color-status-error)", bg: "var(--color-status-error-bg)" },
+  timeout: { label: "检索超时", icon: "alert", color: "var(--color-status-error)", bg: "var(--color-status-error-bg)" },
 };
 
 const SUFFICIENCY_META: Record<
@@ -326,19 +330,25 @@ function LayerRow({ layer }: { layer: RetrievalLayerResult }) {
 /** 检索/引用卡主组件：加载、空、错误、权限、恢复状态全覆盖。 */
 export function RetrievalCard({
   retrieval,
+  retrievalDecision,
   conversationId,
   messageId,
   streaming,
   onRetry,
 }: {
   retrieval: RetrievalRoundProjection | null;
+  retrievalDecision?: RetrievalDecisionProjection | null;
   conversationId: string;
   messageId: string;
   streaming: boolean;
   onRetry: () => void;
 }) {
-  // 生成中且尚无检索结果：展示检索中的加载态（不闪空）
-  if (!retrieval && streaming) {
+  // 新合同不展示独立的本地检索过程卡；无决策字段的历史消息保留旧兼容态。
+  if (
+    !retrieval &&
+    streaming &&
+    retrievalDecision == null
+  ) {
     return (
       <section
         data-testid="retrieval-card-loading"
@@ -365,8 +375,10 @@ export function RetrievalCard({
   if (!retrieval) return null;
 
   const sufficiency = SUFFICIENCY_META[retrieval.sufficiency];
-  const needsRetry = retrieval.sufficiency === "index_unavailable";
+  const legacyLayered = retrievalDecision == null;
+  const needsRetry = legacyLayered && retrieval.sufficiency === "index_unavailable";
   const hasCitations = (retrieval.citations ?? []).length > 0;
+  if (!legacyLayered && !hasCitations) return null;
 
   return (
     <section
@@ -383,64 +395,68 @@ export function RetrievalCard({
         gap: "var(--space-2)",
       }}
     >
-      <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
-        <Icon name="paperSearch" size={16} aria-hidden />
-        <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
-          本地检索
-        </span>
-        <span
-          role={sufficiency.role}
-          data-testid={`retrieval-sufficiency-${retrieval.sufficiency}`}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-1)",
-            padding: "2px var(--space-2)",
-            borderRadius: "999px",
-            fontSize: "var(--text-xs)",
-            fontWeight: 600,
-            color: sufficiency.color,
-            backgroundColor: sufficiency.bg,
-          }}
-        >
-          <Icon name={sufficiency.icon} size={13} aria-hidden />
-          {sufficiency.label}
-        </span>
-        {needsRetry && (
-          <button
-            type="button"
-            onClick={onRetry}
-            data-testid="retrieval-retry"
+      {legacyLayered && (
+        <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)", flexWrap: "wrap" }}>
+          <Icon name="paperSearch" size={16} aria-hidden />
+          <span style={{ fontWeight: 600, fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
+            本地检索
+          </span>
+          <span
+            role={sufficiency.role}
+            data-testid={`retrieval-sufficiency-${retrieval.sufficiency}`}
             style={{
               display: "inline-flex",
               alignItems: "center",
               gap: "var(--space-1)",
-              marginLeft: "auto",
-              padding: "var(--space-1) var(--space-2)",
-              border: "1px solid var(--color-status-error)",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "transparent",
-              color: "var(--color-status-error)",
-              cursor: "pointer",
-              font: "inherit",
+              padding: "2px var(--space-2)",
+              borderRadius: "999px",
               fontSize: "var(--text-xs)",
               fontWeight: 600,
-              minHeight: "var(--target-size)",
+              color: sufficiency.color,
+              backgroundColor: sufficiency.bg,
             }}
           >
-            <Icon name="retry" size={13} aria-hidden />
-            重试检索
-          </button>
-        )}
-      </div>
+            <Icon name={sufficiency.icon} size={13} aria-hidden />
+            {sufficiency.label}
+          </span>
+          {needsRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              data-testid="retrieval-retry"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "var(--space-1)",
+                marginLeft: "auto",
+                padding: "var(--space-1) var(--space-2)",
+                border: "1px solid var(--color-status-error)",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "transparent",
+                color: "var(--color-status-error)",
+                cursor: "pointer",
+                font: "inherit",
+                fontSize: "var(--text-xs)",
+                fontWeight: 600,
+                minHeight: "var(--target-size)",
+              }}
+            >
+              <Icon name="retry" size={13} aria-hidden />
+              重试检索
+            </button>
+          )}
+        </div>
+      )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
-        {(retrieval.layers ?? []).map((layer) => (
-          <LayerRow key={layer.layer} layer={layer} />
-        ))}
-      </div>
+      {legacyLayered && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-1)" }}>
+          {(retrieval.layers ?? []).map((layer) => (
+            <LayerRow key={layer.layer} layer={layer} />
+          ))}
+        </div>
+      )}
 
-      {retrieval.note && (
+      {legacyLayered && retrieval.note && (
         <p role="status" style={{ margin: 0, fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
           {retrieval.note}
         </p>

@@ -15,6 +15,43 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
+class RetrievalDecisionAction(StrEnum):
+    """全局知识库是否进入本轮证据编排。"""
+
+    RETRIEVE = "retrieve"
+    SKIP = "skip"
+
+
+class RetrievalDecisionReason(StrEnum):
+    """检索决策的稳定原因枚举。"""
+
+    EXPLICIT_KNOWLEDGE_BASE = "explicit_knowledge_base"
+    UPLOADED_MATERIAL = "uploaded_material"
+    STUDY_EXPLANATION = "study_explanation"
+    KNOWLEDGE_BASE_REQUIRED = "knowledge_base_required"
+    USER_DISABLED = "user_disabled"
+    SPECIALIZED_CAPABILITY = "specialized_capability"
+    COMPANION_DEFAULT = "companion_default"
+
+
+class RetrievalDecisionProjection(BaseModel):
+    """一轮聊天在任何索引副作用前形成的可恢复检索决策。"""
+
+    decision_id: str = Field(description="稳定决策标识；重试同一用户回合时复用。")
+    assistant_message_id: str = Field(description="首次绑定的助手消息标识。")
+    user_message_id: str | None = Field(
+        default=None, description="触发决策的用户消息标识。"
+    )
+    conversation_id: str = Field(description="所属对话标识。")
+    action: RetrievalDecisionAction = Field(description="retrieve 或 skip。")
+    reason: RetrievalDecisionReason = Field(description="确定性决策原因。")
+    rules_version: str = Field(description="决策规则版本；只影响新回合。")
+    capability_route: str = Field(description="能力路由快照，不是模型输出。")
+    mode: str = Field(description="决策时锁定的对话模式。")
+    query_fingerprint: str = Field(description="用户请求的不可逆指纹，不保存原文。")
+    created_at: datetime = Field(description="决策形成时间。")
+
+
 class RetrievalSourceLayer(StrEnum):
     """候选来源层（作用域顺序即优先级：附件 → 项目文件 → 知识库）。
 
@@ -40,6 +77,9 @@ class RetrievalLayerStatus(StrEnum):
     DISABLED = "disabled"
     NO_MATERIAL = "no_material"
     INDEX_UNAVAILABLE = "index_unavailable"
+    INDEX_PROCESSING = "index_processing"
+    INDEX_CORRUPT = "index_corrupt"
+    TIMEOUT = "timeout"
     OK = "ok"
 
 
@@ -60,12 +100,25 @@ class RetrievalSufficiency(StrEnum):
     INDEX_UNAVAILABLE = "index_unavailable"
 
 
+class RetrievalCandidateFile(BaseModel):
+    """两阶段检索第一阶段选出的文件摘要。"""
+
+    document_id: str = Field(description="稳定索引文档身份。")
+    object_id: str = Field(description="稳定对象身份；用于授权校验。")
+    filename: str = Field(description="用户可理解的文件名。")
+    media_type: str = Field(description="文件媒体类型。")
+
+
 class RetrievalLayerResult(BaseModel):
     """单层检索结果（状态 + 去重后候选数 + 中文说明）。"""
 
     layer: RetrievalSourceLayer = Field(description="来源层。")
     status: RetrievalLayerStatus = Field(description="该层检索状态。")
     candidates: int = Field(default=0, description="该层去重后的候选数。")
+    candidate_files: list[RetrievalCandidateFile] = Field(
+        default_factory=list,
+        description="候选文件元数据摘要；不包含文件正文。",
+    )
     note: str | None = Field(default=None, description="面向用户的中文说明。")
 
 
