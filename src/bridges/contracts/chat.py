@@ -608,9 +608,27 @@ class VideoRequestPayload(BaseModel):
     或任何账户秘密。
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     prompt: str = Field(
         min_length=1, max_length=2000, description="视频生成要求。"
     )
+    aspect_ratio: Literal["16:9", "9:16"] = Field(
+        default="16:9", description="视频画面比例。"
+    )
+    size: Literal["1280*720", "720*1280"] = Field(
+        default="1280*720", description="视频画面尺寸。"
+    )
+    duration_seconds: Literal[5, 10] = Field(
+        default=5, description="视频时长（秒）。"
+    )
+
+    @model_validator(mode="after")
+    def validate_video_parameters(self) -> VideoRequestPayload:
+        expected_size = "720*1280" if self.aspect_ratio == "9:16" else "1280*720"
+        if self.size != expected_size:
+            raise ValueError("视频画面比例与尺寸不匹配。")
+        return self
 
 
 class ImageRequestPayload(BaseModel):

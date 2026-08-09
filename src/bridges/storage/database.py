@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 38
+SCHEMA_VERSION = 39
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1872,6 +1872,20 @@ MIGRATIONS: dict[int, list[str]] = {
     38: [
         """
         ALTER TABLE image_tasks ADD COLUMN attempt_number INTEGER NOT NULL DEFAULT 1
+        """,
+    ],
+    # Issue 09：视频路由契约的画面尺寸与时长必须随任务持久化，保证重启、重试
+    # 与队列执行使用同一份参数；旧任务使用既有默认值平滑迁移。
+    39: [
+        """
+        ALTER TABLE video_tasks ADD COLUMN size TEXT NOT NULL DEFAULT '1280*720'
+        """,
+        """
+        ALTER TABLE video_tasks ADD COLUMN duration_seconds INTEGER NOT NULL DEFAULT 5
+        """,
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_video_tasks_account_message
+        ON video_tasks(account_id, message_id) WHERE message_id IS NOT NULL
         """,
     ],
 }

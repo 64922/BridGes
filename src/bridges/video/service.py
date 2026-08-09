@@ -31,7 +31,6 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
 from bridges.ai.model_gateway import ModelGateway
-from bridges.ai.qwen_wan_adapter import DEFAULT_VIDEO_SIZE
 from bridges.chat.repository import ConversationRepository
 from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.observability import AuditAction, AuditResult
@@ -57,6 +56,12 @@ from bridges.runtime.queue import (
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
+from bridges.video.constants import (
+    VIDEO_DEFAULT_DURATION_SECONDS,
+    VIDEO_DEFAULT_SIZE,
+    VIDEO_SUPPORTED_DURATIONS_SECONDS,
+    VIDEO_SUPPORTED_SIZES,
+)
 
 #: 视频任务队列名（task_claims 调度表）。
 _VIDEO_QUEUE = "video"
@@ -184,7 +189,14 @@ class VideoService:
     # ------------------------------------------------------------------
 
     def submit(
-        self, account_id: str, conversation_id: str, message_id: str, prompt: str
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        prompt: str,
+        *,
+        size: str = VIDEO_DEFAULT_SIZE,
+        duration_seconds: int = VIDEO_DEFAULT_DURATION_SECONDS,
     ) -> VideoTaskProjection:
         """提交一个文生视频任务并关联到当前助手消息。"""
         prompt = prompt.strip()
@@ -194,6 +206,10 @@ class VideoService:
             raise VideoError(
                 "prompt_too_long", f"提示词超过 {PROMPT_MAX_LENGTH} 字限制。"
             )
+        if size not in VIDEO_SUPPORTED_SIZES:
+            raise VideoError("video_size_unsupported", "视频画面尺寸暂不受支持。")
+        if duration_seconds not in VIDEO_SUPPORTED_DURATIONS_SECONDS:
+            raise VideoError("video_duration_unsupported", "视频时长暂不受支持。")
         # 消息归属校验：任务与消息投影原子落库，跨账户消息一律 404。
         if self._repo is not None:
             record = self._repo.get_message(account_id, message_id)
@@ -210,16 +226,25 @@ class VideoService:
         try:
             with self._db.transaction():
                 scoped = self._db.scoped(account_id)
+                existing = scoped.execute(
+                    "SELECT * FROM video_tasks WHERE account_id = ? AND message_id = ?"
+                    " ORDER BY created_at LIMIT 1",
+                    (account_id, message_id),
+                ).fetchone()
+                if existing is not None:
+                    return self._task_projection_from_row(existing)
                 scoped.execute(
                     "INSERT INTO video_tasks(task_id, account_id, conversation_id,"
-                    " message_id, prompt, status, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, 'queued', ?, ?)",
+                    " message_id, prompt, size, duration_seconds, status, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?)",
                     (
                         task_id,
                         account_id,
                         conversation_id,
                         message_id,
                         prompt,
+                        size,
+                        duration_seconds,
                         now,
                         now,
                     ),
@@ -753,7 +778,8 @@ class VideoService:
             {
                 "kind": "submit",
                 "prompt": str(row["prompt"]),
-                "size": DEFAULT_VIDEO_SIZE,
+                "size": str(row["size"]),
+                "duration_seconds": int(row["duration_seconds"]),
             },
         )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:

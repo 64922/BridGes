@@ -22,6 +22,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,6 +59,9 @@ class VideoTaskProjection(BaseModel):
 
     task_id: str = Field(description="任务标识。")
     prompt: str = Field(description="用户提交的生成要求（用于追溯与前端展示）。")
+    synthetic_media: Literal[True] = Field(
+        default=True, description="合成媒体标记；视频不是实拍、新闻或科学证据。"
+    )
     model_id: str | None = Field(
         default=None, description="实际使用的固定视频模型快照（Wan 例外）。"
     )
@@ -100,6 +104,9 @@ class VideoAssetProjection(BaseModel):
     """
 
     asset_id: str = Field(description="资产标识。")
+    synthetic_media: Literal[True] = Field(
+        default=True, description="合成媒体标记；视频不是实拍、新闻或科学证据。"
+    )
     description: str = Field(default="", description="可访问文字说明（可修改）。")
     description_source: VideoDescriptionSource = Field(
         default=VideoDescriptionSource.PROMPT, description="说明文字来源。"

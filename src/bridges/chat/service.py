@@ -949,8 +949,12 @@ class ChatService:
             explicit_capability = MainCapability.IMAGE
             reason = "已提交图片能力载荷"
         elif video_payload is not None:
-            explicit_capability = MainCapability.VIDEO
-            reason = "已提交视频能力载荷"
+            payload = VideoRequestPayload.model_validate(video_payload)
+            return self._router.route_explicit_video(
+                payload.prompt,
+                aspect_ratio=payload.aspect_ratio,
+                duration_seconds=payload.duration_seconds,
+            )
         elif mcp_call_payload is not None:
             return CapabilityRoute(
                 status=RouteStatus.ORDINARY,

@@ -45,6 +45,12 @@ class CapabilityRouteRegistry:
                     100,
                     "受控 arXiv 论文搜索",
                 ),
+                CapabilityDefinition(
+                    MainCapability.VIDEO.value,
+                    "1.0.0",
+                    100,
+                    "固定 Wan 文生视频",
+                ),
             )
         )
 

@@ -12,6 +12,14 @@ BridGes 为每个逻辑能力类别固定一个经评测的具体模型快照，
 
 from __future__ import annotations
 
+from bridges.video.constants import (
+    VIDEO_DEFAULT_DURATION_SECONDS,
+    VIDEO_DEFAULT_SIZE,
+    VIDEO_MODEL_ID,
+    VIDEO_SUPPORTED_DURATIONS_SECONDS,
+    VIDEO_SUPPORTED_SIZES,
+)
+
 #: 核心对话固定模型快照（qwen3.7-plus 评测版）。
 CHAT_MODEL_ID = "qwen3.7-plus-2026-05-26"
 #: 知识库向量化固定模型快照（1024 维，ADR-0008 合同锁定）。
@@ -24,5 +32,16 @@ ASR_MODEL_ID = "qwen3-asr-flash"
 TTS_MODEL_ID = "qwen3-tts-flash-2025-11-27"
 #: 图片生成与编辑固定模型快照。
 IMAGE_MODEL_ID = "qwen-image-2.0-pro-2026-06-22"
-#: 文生视频固定模型快照（Wan 已批准的同一百炼生态例外，ADR-0007）。
-VIDEO_MODEL_ID = "wan2.7-t2v-2026-06-12"
+
+__all__ = [
+    "ASR_MODEL_ID",
+    "CHAT_MODEL_ID",
+    "EMBEDDING_MODEL_ID",
+    "IMAGE_MODEL_ID",
+    "TTS_MODEL_ID",
+    "VIDEO_DEFAULT_DURATION_SECONDS",
+    "VIDEO_DEFAULT_SIZE",
+    "VIDEO_MODEL_ID",
+    "VIDEO_SUPPORTED_DURATIONS_SECONDS",
+    "VIDEO_SUPPORTED_SIZES",
+]

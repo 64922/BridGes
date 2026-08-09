@@ -422,7 +422,14 @@ class VideoOrchestrator(Protocol):
     """
 
     def submit(
-        self, account_id: str, conversation_id: str, message_id: str, prompt: str
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        prompt: str,
+        *,
+        size: str,
+        duration_seconds: int,
     ) -> VideoTaskProjection: ...
 
 
@@ -982,20 +989,30 @@ def route_decision_from(owner: MessageRecord | None) -> RouteDecision | None:
         return None
 
 
-def video_payload_from(owner: MessageRecord | None) -> VideoRequestPayload | None:
+def video_payload_from(
+    owner: MessageRecord | None,
+    route: CapabilityRoute | None = None,
+) -> VideoRequestPayload | None:
     """从用户消息的 video 列还原视频请求载荷（重试沿用同一份输入）。
 
     用户消息的 video 列只存请求载荷；任务状态快照只写在助手消息的
     video 列（含 task_id/status 字段），据此判别避免误解析。
     """
-    if owner is None or not owner.video:
-        return None
-    if "task_id" in owner.video or "status" in owner.video:
-        return None
-    try:
-        return VideoRequestPayload.model_validate(owner.video)
-    except ValidationError:
-        return None
+    if owner is not None and owner.video:
+        if "task_id" in owner.video or "status" in owner.video:
+            return None
+        try:
+            return VideoRequestPayload.model_validate(owner.video)
+        except ValidationError:
+            return None
+    if route is not None and route.is_video and route.video is not None:
+        return VideoRequestPayload(
+            prompt=route.video.prompt,
+            aspect_ratio=route.video.aspect_ratio,
+            size=route.video.size,
+            duration_seconds=route.video.duration_seconds,
+        )
+    return None
 
 
 def mcp_call_payload_from(owner: MessageRecord | None) -> McpCallRequestPayload | None:
@@ -1323,7 +1340,7 @@ class TurnOrchestrator:
                 RouteStatus.REJECTED,
             }:
                 feedback = route.clarification_question or (
-                    "论文搜索请求未通过参数校验，请调整后重试。"
+                    "请求未通过参数校验，请调整后重试。"
                 )
                 route_error = route.error_code or "route_rejected"
                 if route.status == RouteStatus.CLARIFY:
@@ -1482,7 +1499,7 @@ class TurnOrchestrator:
             # Issue 32：用户消息携带文生视频载荷（前端视频对话框提交）走
             # 视频异步任务编排（Wan 固定绑定）——创建任务并立即收敛消息，
             # 绝不阻塞等待云端生成；失败原因与安全重试边界由任务卡呈现。
-            owner_video = video_payload_from(owner_message)
+            owner_video = video_payload_from(owner_message, route)
             if owner_video is not None:
                 if self._video is None:
                     finalize_message(
@@ -3906,6 +3923,8 @@ class TurnOrchestrator:
                 conversation_id,
                 assistant_message_id,
                 payload.prompt,
+                size=payload.size,
+                duration_seconds=payload.duration_seconds,
             )
         except VideoError as exc:
             finalize_message(

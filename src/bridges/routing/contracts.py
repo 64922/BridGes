@@ -3,9 +3,15 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from bridges.video.constants import (
+    VIDEO_MODEL_ID,
+    VIDEO_SUPPORTED_DURATIONS_SECONDS,
+    VIDEO_SUPPORTED_SIZES,
+)
 
 
 ROUTE_CONTRACT_VERSION = "2026.08.09"
@@ -65,6 +71,36 @@ class PaperSearchPlan(BaseModel):
     constraints: PaperSearchConstraints
 
 
+class VideoGenerationPlan(BaseModel):
+    """已规范化、可重放的文生视频生成合同。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    version: str = ROUTE_CONTRACT_VERSION
+    model_id: str = VIDEO_MODEL_ID
+    prompt: str = Field(min_length=1, max_length=2000)
+    aspect_ratio: Literal["16:9", "9:16"] = "16:9"
+    size: Literal["1280*720", "720*1280"] = "1280*720"
+    duration_seconds: Literal[5, 10] = 5
+    account_object_domain: Literal["account"] = "account"
+
+    @model_validator(mode="after")
+    def validate_fixed_contract(self) -> VideoGenerationPlan:
+        if self.version != ROUTE_CONTRACT_VERSION:
+            raise ValueError("未知视频路由合同版本。")
+        if self.model_id != VIDEO_MODEL_ID:
+            raise ValueError("视频模型必须使用固定能力快照。")
+        expected_size = {
+            "16:9": VIDEO_SUPPORTED_SIZES[0],
+            "9:16": VIDEO_SUPPORTED_SIZES[1],
+        }[self.aspect_ratio]
+        if self.size != expected_size:
+            raise ValueError("视频画幅与尺寸不匹配。")
+        if self.duration_seconds not in VIDEO_SUPPORTED_DURATIONS_SECONDS:
+            raise ValueError("视频时长不在支持范围内。")
+        return self
+
+
 class CapabilityRoute(BaseModel):
     """一次用户消息的主能力路由快照。"""
 
@@ -76,6 +112,7 @@ class CapabilityRoute(BaseModel):
     confidence: Annotated[float, Field(ge=0, le=1)]
     reason: str = Field(min_length=1, max_length=240)
     paper_search: PaperSearchPlan | None = None
+    video: VideoGenerationPlan | None = None
     clarification_question: str | None = Field(default=None, max_length=240)
     error_code: str | None = Field(default=None, max_length=80)
     knowledge_base_allowed: bool = True
@@ -91,6 +128,13 @@ class CapabilityRoute(BaseModel):
                 raise ValueError("未命中论文搜索不能携带可执行计划。")
         elif self.paper_search is not None:
             raise ValueError("非论文主能力不能携带论文搜索计划。")
+        if self.main_capability == MainCapability.VIDEO:
+            if self.status == RouteStatus.MATCHED and self.video is None:
+                raise ValueError("视频路由命中必须携带生成合同。")
+            if self.status != RouteStatus.MATCHED and self.video is not None:
+                raise ValueError("未命中视频路由不能携带生成合同。")
+        elif self.video is not None:
+            raise ValueError("非视频主能力不能携带视频生成合同。")
         if self.status in {RouteStatus.CLARIFY, RouteStatus.REJECTED} and not (
             self.clarification_question or self.error_code
         ):
@@ -106,4 +150,13 @@ class CapabilityRoute(BaseModel):
             self.status == RouteStatus.MATCHED
             and self.main_capability == MainCapability.PAPER_SEARCH
             and self.paper_search is not None
+        )
+
+    @property
+    def is_video(self) -> bool:
+        """当前快照是否代表可执行的文生视频主能力。"""
+        return (
+            self.status == RouteStatus.MATCHED
+            and self.main_capability == MainCapability.VIDEO
+            and self.video is not None
         )
