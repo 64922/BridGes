@@ -82,7 +82,7 @@ def test_missing_source_stays_on_humanizer_route_without_generation_input() -> N
 
     assert decision is not None
     assert decision.skill_input.contract.source_text is None
-    assert decision.skill_input.contract.attachment_ids == []
+    assert decision.skill_input.contract.knowledge_base_object_ids == []
     assert decision.skill_input.contract.audience == "普通读者"
 
 

@@ -838,7 +838,7 @@ class ChatService:
         if skill_payload is None:
             return
         contract_ids = list(
-            (skill_payload.get("contract") or {}).get("attachment_ids") or []
+            (skill_payload.get("contract") or {}).get("knowledge_base_object_ids") or []
         )
         if set(contract_ids) != set(attachment_ids):
             raise ChatDomainError(
@@ -1494,11 +1494,10 @@ class ChatService:
                 "not_retryable_message", "找不到该助手消息对应的用户消息。", 400
             )
         if owner.skill:
-            try:
-                owner_skill = HumanizerSkillInput.model_validate(owner.skill)
-            except ValidationError:
-                owner_skill = None
-            if owner_skill is not None and owner_skill.contract.attachment_ids:
+            legacy_attachment_ids = (owner.skill.get("contract") or {}).get(
+                "attachment_ids"
+            )
+            if legacy_attachment_ids:
                 raise ChatDomainError(
                     "historical_attachment_not_retryable",
                     "历史聊天附件不能作为人味化重试输入，请先把原文件上传到当前账户知识库后再重试。",

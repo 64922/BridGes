@@ -44,12 +44,12 @@ def test_upgrade_from_v22_creates_mcp_tables_and_preserves_data(tmp_path: Path) 
         }
     assert "mcp_servers" in tables
     assert "mcp_calls" in tables
-    # 旧数据保留。
+    # 继续升级到当前模式时，用户扩展已按退役迁移停用，但记录本身保留。
     with sqlite3.connect(path) as connection:
         row = connection.execute(
             "SELECT name, status FROM skill_packages WHERE package_id = 'pkg-1'"
         ).fetchone()
-    assert row == ("待办整理", "installed")
+    assert row == ("待办整理", "disabled")
 
 
 def test_v23_columns_match_service_contract(tmp_path: Path) -> None:
