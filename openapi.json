@@ -14499,6 +14499,398 @@
         }
       }
     },
+    "/profiles/four-dimensions": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "List Four Dimension Records",
+        "description": "列出当前账户的活动四维画像记录。",
+        "operationId": "list_four_dimension_records_profiles_four_dimensions_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FourDimensionProfileProjection"
+                  },
+                  "title": "Response List Four Dimension Records Profiles Four Dimensions Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/four-dimensions/migration-report": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Get Four Dimension Migration Report",
+        "description": "返回当前账户的迁移汇总，不包含画像正文。",
+        "operationId": "get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FourDimensionMigrationReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/four-dimensions/migrate": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Migrate Four Dimension Records",
+        "description": "执行账户级、确定性的 expand/migrate 投影。",
+        "operationId": "migrate_four_dimension_records_profiles_four_dimensions_migrate_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FourDimensionMigrationReport"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/profiles/four-dimensions/{record_id}": {
+      "patch": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Modify Four Dimension Record",
+        "description": "修改已有记录；此处刻意不提供新增路由。",
+        "operationId": "modify_four_dimension_record_profiles_four_dimensions__record_id__patch",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FourDimensionProfileModifyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FourDimensionProfileProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/profiles/four-dimensions/{record_id}/withdraw": {
+      "post": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Withdraw Four Dimension Record",
+        "description": "撤回一条记录并保留内部墓碑。",
+        "operationId": "withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FourDimensionProfileWithdrawRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FourDimensionProfileProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
     "/projects/{project_id}/work-orders": {
       "post": {
         "tags": [
@@ -37319,6 +37711,224 @@
         ],
         "title": "FormulaBinding",
         "description": "Binding from a formula asset to its scientific context."
+      },
+      "FourDimension": {
+        "type": "string",
+        "enum": [
+          "academic_status",
+          "knowledge_interest",
+          "hobby",
+          "stage_goal"
+        ],
+        "title": "FourDimension",
+        "description": "扩展合同中的四个产品画像维度。\n\nExpand/migrate 期间旧的 :class:`ProfileDimension` 仍可解码。新画像记录使用\n独立枚举，避免旧治理维度成为新的写入目标。"
+      },
+      "FourDimensionMigrationReport": {
+        "properties": {
+          "report_id": {
+            "type": "string",
+            "title": "Report Id",
+            "description": "Stable migration report identifier."
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "description": "Account migrated by this report."
+          },
+          "migration_version": {
+            "type": "string",
+            "title": "Migration Version",
+            "description": "Migration contract version."
+          },
+          "status": {
+            "$ref": "#/components/schemas/FourDimensionMigrationStatus",
+            "description": "Migration outcome."
+          },
+          "four_dimension_migrated": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Four Dimension Migrated",
+            "description": "New four-dimension records created."
+          },
+          "teaching_records_migrated": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Teaching Records Migrated",
+            "description": "Knowledge records handed to teaching."
+          },
+          "legacy_preserved": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Legacy Preserved",
+            "description": "Records retained in the legacy archive."
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Skipped",
+            "description": "Already migrated or intentionally skipped records."
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Failed",
+            "description": "Records that failed deterministic migration."
+          },
+          "stable_record_ids": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stable Record Ids",
+            "description": "Stable target ids for audit tracing; never profile正文."
+          },
+          "failure_codes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Failure Codes",
+            "description": "Safe retry diagnostics."
+          },
+          "retryable": {
+            "type": "boolean",
+            "title": "Retryable",
+            "description": "Whether the same account migration may be retried."
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At",
+            "description": "Report creation time."
+          }
+        },
+        "type": "object",
+        "required": [
+          "report_id",
+          "owner_account_id",
+          "migration_version",
+          "status",
+          "four_dimension_migrated",
+          "teaching_records_migrated",
+          "legacy_preserved",
+          "skipped",
+          "failed",
+          "retryable",
+          "created_at"
+        ],
+        "title": "FourDimensionMigrationReport",
+        "description": "Account-scoped migration result without profile正文泄露."
+      },
+      "FourDimensionMigrationStatus": {
+        "type": "string",
+        "enum": [
+          "completed",
+          "retryable"
+        ],
+        "title": "FourDimensionMigrationStatus",
+        "description": "一次账户级确定性迁移尝试的结果。"
+      },
+      "FourDimensionProfileModifyRequest": {
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content",
+            "description": "Replacement content."
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Version read by the caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "content",
+          "version"
+        ],
+        "title": "FourDimensionProfileModifyRequest",
+        "description": "修改已有四维记录的乐观锁请求。"
+      },
+      "FourDimensionProfileProjection": {
+        "properties": {
+          "record_id": {
+            "type": "string",
+            "title": "Record Id",
+            "description": "稳定的四维画像记录标识。"
+          },
+          "dimension": {
+            "$ref": "#/components/schemas/FourDimension",
+            "description": "四个产品维度之一。"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "维度中文标签。"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Content",
+            "description": "画像记录内容。"
+          },
+          "first_stable_recorded_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "First Stable Recorded At",
+            "description": "首次稳定记录时间，修改不会重置。"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "修改/撤回使用的乐观锁版本号。"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FourDimensionRecordStatus",
+            "description": "记录状态。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "record_id",
+          "dimension",
+          "label",
+          "content",
+          "first_stable_recorded_at",
+          "version",
+          "status"
+        ],
+        "title": "FourDimensionProfileProjection",
+        "description": "普通画像页面可见的四维记录投影。\n\n来源引用、哈希、迁移版本和审计字段只保留在内部记录中，不进入普通 API\n响应或模型上下文；版本号作为修改/撤回的乐观锁令牌保留。"
+      },
+      "FourDimensionProfileWithdrawRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Version read by the caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "FourDimensionProfileWithdrawRequest",
+        "description": "撤回已有四维记录的乐观锁请求。"
+      },
+      "FourDimensionRecordStatus": {
+        "type": "string",
+        "enum": [
+          "active",
+          "withdrawn"
+        ],
+        "title": "FourDimensionRecordStatus",
+        "description": "扩展四维画像记录的生命周期状态。"
       },
       "GateResult": {
         "type": "string",

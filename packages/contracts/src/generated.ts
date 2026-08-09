@@ -3077,6 +3077,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/four-dimensions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Four Dimension Records
+         * @description 列出当前账户的活动四维画像记录。
+         */
+        get: operations["list_four_dimension_records_profiles_four_dimensions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/four-dimensions/migration-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Four Dimension Migration Report
+         * @description 返回当前账户的迁移汇总，不包含画像正文。
+         */
+        get: operations["get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/four-dimensions/migrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Migrate Four Dimension Records
+         * @description 执行账户级、确定性的 expand/migrate 投影。
+         */
+        post: operations["migrate_four_dimension_records_profiles_four_dimensions_migrate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/four-dimensions/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Modify Four Dimension Record
+         * @description 修改已有记录；此处刻意不提供新增路由。
+         */
+        patch: operations["modify_four_dimension_record_profiles_four_dimensions__record_id__patch"];
+        trace?: never;
+    };
+    "/profiles/four-dimensions/{record_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Four Dimension Record
+         * @description 撤回一条记录并保留内部墓碑。
+         */
+        post: operations["withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/projects/{project_id}/work-orders": {
         parameters: {
             query?: never;
@@ -12478,6 +12578,162 @@ export interface components {
             /** Definition Refs */
             definition_refs?: string[];
         };
+        /**
+         * FourDimension
+         * @description 扩展合同中的四个产品画像维度。
+         *
+         *     Expand/migrate 期间旧的 :class:`ProfileDimension` 仍可解码。新画像记录使用
+         *     独立枚举，避免旧治理维度成为新的写入目标。
+         * @enum {string}
+         */
+        FourDimension: "academic_status" | "knowledge_interest" | "hobby" | "stage_goal";
+        /**
+         * FourDimensionMigrationReport
+         * @description Account-scoped migration result without profile正文泄露.
+         */
+        FourDimensionMigrationReport: {
+            /**
+             * Report Id
+             * @description Stable migration report identifier.
+             */
+            report_id: string;
+            /**
+             * Owner Account Id
+             * @description Account migrated by this report.
+             */
+            owner_account_id: string;
+            /**
+             * Migration Version
+             * @description Migration contract version.
+             */
+            migration_version: string;
+            /** @description Migration outcome. */
+            status: components["schemas"]["FourDimensionMigrationStatus"];
+            /**
+             * Four Dimension Migrated
+             * @description New four-dimension records created.
+             */
+            four_dimension_migrated: number;
+            /**
+             * Teaching Records Migrated
+             * @description Knowledge records handed to teaching.
+             */
+            teaching_records_migrated: number;
+            /**
+             * Legacy Preserved
+             * @description Records retained in the legacy archive.
+             */
+            legacy_preserved: number;
+            /**
+             * Skipped
+             * @description Already migrated or intentionally skipped records.
+             */
+            skipped: number;
+            /**
+             * Failed
+             * @description Records that failed deterministic migration.
+             */
+            failed: number;
+            /**
+             * Stable Record Ids
+             * @description Stable target ids for audit tracing; never profile正文.
+             */
+            stable_record_ids?: string[];
+            /**
+             * Failure Codes
+             * @description Safe retry diagnostics.
+             */
+            failure_codes?: string[];
+            /**
+             * Retryable
+             * @description Whether the same account migration may be retried.
+             */
+            retryable: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             * @description Report creation time.
+             */
+            created_at: string;
+        };
+        /**
+         * FourDimensionMigrationStatus
+         * @description 一次账户级确定性迁移尝试的结果。
+         * @enum {string}
+         */
+        FourDimensionMigrationStatus: "completed" | "retryable";
+        /**
+         * FourDimensionProfileModifyRequest
+         * @description 修改已有四维记录的乐观锁请求。
+         */
+        FourDimensionProfileModifyRequest: {
+            /**
+             * Content
+             * @description Replacement content.
+             */
+            content: string;
+            /**
+             * Version
+             * @description Version read by the caller.
+             */
+            version: number;
+        };
+        /**
+         * FourDimensionProfileProjection
+         * @description 普通画像页面可见的四维记录投影。
+         *
+         *     来源引用、哈希、迁移版本和审计字段只保留在内部记录中，不进入普通 API
+         *     响应或模型上下文；版本号作为修改/撤回的乐观锁令牌保留。
+         */
+        FourDimensionProfileProjection: {
+            /**
+             * Record Id
+             * @description 稳定的四维画像记录标识。
+             */
+            record_id: string;
+            /** @description 四个产品维度之一。 */
+            dimension: components["schemas"]["FourDimension"];
+            /**
+             * Label
+             * @description 维度中文标签。
+             */
+            label: string;
+            /**
+             * Content
+             * @description 画像记录内容。
+             */
+            content: string;
+            /**
+             * First Stable Recorded At
+             * Format: date-time
+             * @description 首次稳定记录时间，修改不会重置。
+             */
+            first_stable_recorded_at: string;
+            /**
+             * Version
+             * @description 修改/撤回使用的乐观锁版本号。
+             */
+            version: number;
+            /** @description 记录状态。 */
+            status: components["schemas"]["FourDimensionRecordStatus"];
+        };
+        /**
+         * FourDimensionProfileWithdrawRequest
+         * @description 撤回已有四维记录的乐观锁请求。
+         */
+        FourDimensionProfileWithdrawRequest: {
+            /**
+             * Version
+             * @description Version read by the caller.
+             */
+            version: number;
+        };
+        /**
+         * FourDimensionRecordStatus
+         * @description 扩展四维画像记录的生命周期状态。
+         * @enum {string}
+         */
+        FourDimensionRecordStatus: "active" | "withdrawn";
         /**
          * GateResult
          * @description Result of a single input quality gate.
@@ -32931,6 +33187,263 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    list_four_dimension_records_profiles_four_dimensions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FourDimensionProfileProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FourDimensionMigrationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migrate_four_dimension_records_profiles_four_dimensions_migrate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FourDimensionMigrationReport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    modify_four_dimension_record_profiles_four_dimensions__record_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FourDimensionProfileModifyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FourDimensionProfileProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Unprocessable Content */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                record_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FourDimensionProfileWithdrawRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FourDimensionProfileProjection"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -156,7 +156,13 @@ from bridges.persistence import (
     build_state_store,
 )
 from bridges.plugins.service import PluginService
-from bridges.profiles import InMemoryProfileRepository, ProfileService
+from bridges.profiles import (
+    FourDimensionProfileService,
+    InMemoryFourDimensionProfileRepository,
+    InMemoryProfileRepository,
+    ProfileService,
+    SqliteFourDimensionProfileRepository,
+)
 from bridges.profiles.api import router as profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
@@ -865,6 +871,15 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         scope_enforcer=app.state.scope_enforcer,
         invalidation_service=invalidation_service,
         observability_service=app.state.observability_service,
+    )
+    four_dimension_repository = (
+        SqliteFourDimensionProfileRepository(profile_database)
+        if profile_database is not None
+        else InMemoryFourDimensionProfileRepository()
+    )
+    app.state.four_dimension_profile_service = FourDimensionProfileService(
+        source_repository=profile_repository,
+        repository=four_dimension_repository,
     )
 
     # T020: register a profile-specific impact resolver so assertion deletions
