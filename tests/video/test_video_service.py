@@ -241,6 +241,58 @@ def test_generate_success_creates_asset_and_message_projection(tmp_path: Path) -
     assert set(h.lock_model_ids()) == {VIDEO_MODEL}
 
 
+def test_submit_is_idempotent_for_the_same_assistant_message(tmp_path: Path) -> None:
+    h = _VideoHarness(tmp_path)
+
+    first = h.service.submit(
+        h.account_id,
+        h.conversation_id,
+        h.message_id,
+        "一条竖屏短视频",
+        size="720*1280",
+        duration_seconds=10,
+    )
+    second = h.service.submit(
+        h.account_id,
+        h.conversation_id,
+        h.message_id,
+        "另一条提示词",
+    )
+
+    assert second.task_id == first.task_id
+    row = h.db.scoped(h.account_id).execute(
+        "SELECT COUNT(*) AS count, size, duration_seconds FROM video_tasks"
+        " WHERE account_id = ? AND message_id = ?",
+        (h.account_id, h.message_id),
+    ).fetchone()
+    assert row is not None
+    assert row["count"] == 1
+    assert row["size"] == "720*1280"
+    assert row["duration_seconds"] == 10
+
+
+def test_worker_uses_persisted_video_parameters(tmp_path: Path) -> None:
+    h = _VideoHarness(tmp_path)
+    h.wan.script = [{"output": {"cloud_task_id": "cloud-parameters"}}]
+
+    h.service.submit(
+        h.account_id,
+        h.conversation_id,
+        h.message_id,
+        "一条竖屏短视频",
+        size="720*1280",
+        duration_seconds=10,
+    )
+    h.service.process_pending()
+
+    assert h.wan.calls[0] == {
+        "kind": "submit",
+        "prompt": "一条竖屏短视频",
+        "size": "720*1280",
+        "duration_seconds": 10,
+    }
+
+
 def test_generate_message_content_converges(tmp_path: Path) -> None:
     h = _VideoHarness(tmp_path)
     h.wan.script = _succeeded_script()

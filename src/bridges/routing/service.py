@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import re
 from datetime import UTC, datetime
+from typing import Literal, cast
+
+from pydantic import ValidationError
 
 from bridges.routing.contracts import (
     CapabilityRoute,
@@ -11,6 +14,13 @@ from bridges.routing.contracts import (
     PaperSearchConstraints,
     PaperSearchPlan,
     RouteStatus,
+    VideoGenerationPlan,
+)
+from bridges.video.constants import (
+    VIDEO_DEFAULT_DURATION_SECONDS,
+    VIDEO_DEFAULT_SIZE,
+    VIDEO_MODEL_ID,
+    VIDEO_SUPPORTED_DURATIONS_SECONDS,
 )
 from bridges.routing.registry import CapabilityRouteRegistry
 
@@ -99,6 +109,43 @@ class NaturalLanguageRouter:
         r"新闻|网页|网站|通用网页|latest\s+(?:news|updates)|web\s+search",
         re.I,
     )
+    _VIDEO = re.compile(r"视频|短视频|video|clip", re.I)
+    _VIDEO_DISCUSSION = re.compile(
+        r"(?:这个|该|此)?(?:视频|短视频).*(?:讲了什么|怎么制作|如何制作|"
+        r"是什么内容|内容是什么|什么意思|介绍了什么|总结|分析|评价)",
+        re.I,
+    )
+    _VIDEO_ACTION = re.compile(
+        r"生成|制作|做成|做一个|拍摄|创建|generate|create|make|turn\s+.+\s+into",
+        re.I,
+    )
+    _VIDEO_EDIT = re.compile(
+        r"剪辑|编辑|裁剪|拼接|加字幕|配音|口型|换背景|edit|trim|splice|dub|lip\s*sync",
+        re.I,
+    )
+    _VIDEO_DURATION = re.compile(
+        r"(?<!\d)(\d{1,3}|[一二两三四五六七八九十]+)\s*"
+        r"(?:秒|s|seconds?)(?![A-Za-z0-9_])",
+        re.I,
+    )
+    _VIDEO_ASPECT_16_9 = re.compile(r"16\s*[:：比/]\s*9|横屏|宽屏", re.I)
+    _VIDEO_ASPECT_9_16 = re.compile(r"9\s*[:：比/]\s*16|竖屏|竖版|手机屏", re.I)
+    _VIDEO_UNSUPPORTED_ASPECT = re.compile(
+        r"(?:4\s*[:：比/]\s*3|1\s*[:：比/]\s*1|21\s*[:：比/]\s*9)", re.I
+    )
+    _VIDEO_PREFIX = re.compile(
+        r"^\s*(?:请|帮我|请帮我)?\s*(?:生成|制作|做成|做一个|拍摄|创建|"
+        r"generate|create|make)\s*(?:一段|一条|一个|一支|一部)?\s*"
+        r"(?:\d{1,3}\s*(?:秒|s|seconds?)\s*)?(?:的\s*)?"
+        r"(?:横屏|宽屏|竖屏|竖版|手机屏|短视频|视频|video|clip)?\s*",
+        re.I,
+    )
+    _VIDEO_PARAMETER = re.compile(
+        r"\s*(?:\d{1,3}\s*(?:秒|s|seconds?)|16\s*[:：比/]\s*9|"
+        r"9\s*[:：比/]\s*16|横屏|宽屏|竖屏|竖版|手机屏)\s*",
+        re.I,
+    )
+    _VIDEO_TRAILING_WORD = re.compile(r"(?:短视频|视频|video|clip)\s*$", re.I)
 
     _ENGLISH_COUNT = re.compile(
         r"(?:(?:at\s+most|up\s+to|return|show|give(?:\s+me)?|maximum|max|"
@@ -128,6 +175,14 @@ class NaturalLanguageRouter:
         text = content.strip()
         if not text:
             return self._clarify("paper_empty_query", "你想查哪一主题的论文？")
+
+        if self._VIDEO.search(text) and self._VIDEO_DISCUSSION.search(text):
+            return self._ordinary("当前请求是在讨论视频内容，而不是生成视频。")
+
+        if self._VIDEO.search(text) and (
+            self._VIDEO_ACTION.search(text) or self._VIDEO_EDIT.search(text)
+        ):
+            return self._classify_video(text)
 
         has_paper = bool(self._PAPER.search(text))
         has_action = bool(self._ACTION.search(text))
@@ -174,6 +229,172 @@ class NaturalLanguageRouter:
             confidence=0.99 if has_id or has_action else 0.8,
             reason="识别到明确的论文查找/筛选/核对请求。",
             paper_search=plan,
+            knowledge_base_allowed=False,
+            web_search_allowed=False,
+        )
+
+    def route_explicit_video(
+        self,
+        prompt: str,
+        *,
+        aspect_ratio: str = "16:9",
+        duration_seconds: int = VIDEO_DEFAULT_DURATION_SECONDS,
+    ) -> CapabilityRoute:
+        """把旧的显式视频载荷编译为同一份版本化路由合同。"""
+        try:
+            plan = self._video_plan(prompt, aspect_ratio, duration_seconds)
+        except _InvalidVideoRequest as exc:
+            return self._video_rejected(exc.code, exc.message)
+        return self._video_matched(plan, reason="已提交显式视频能力载荷")
+
+    def _classify_video(self, text: str) -> CapabilityRoute:
+        has_paper_action = bool(
+            self._PAPER.search(text)
+            and (self._ACTION.search(text) or self._ARXIV_ID.search(text))
+        )
+        has_other_capability = bool(
+            self._REWRITE.search(text)
+            or re.search(
+                r"生成(?:一张|图片|图像)|职业规划|转行|考研|找工作|"
+                r"人味化|更像人类|humanizer",
+                text,
+                re.I,
+            )
+        )
+        if has_paper_action or has_other_capability:
+            return self._clarify(
+                "multiple_capabilities",
+                "这条消息包含多个任务；请先只说明视频生成，或先执行其他任务。",
+            )
+        if self._VIDEO_EDIT.search(text):
+            return self._video_rejected(
+                "video_editing_unsupported",
+                "当前只支持文生视频，不支持编辑现有视频、剪辑、字幕或配音。",
+            )
+        try:
+            duration = self._video_duration(text)
+            aspect_ratio = self._video_aspect_ratio(text)
+            prompt = self._video_prompt(text)
+            if not prompt:
+                raise _InvalidVideoRequest(
+                    "video_missing_scene", "请说明视频要展示的主题、场景或镜头内容。"
+                )
+            plan = self._video_plan(prompt, aspect_ratio, duration)
+        except _InvalidVideoRequest as exc:
+            if exc.code == "video_missing_scene":
+                return self._clarify(exc.code, exc.message)
+            return self._video_rejected(exc.code, exc.message)
+        return self._video_matched(plan, reason="识别到明确的文生视频请求。")
+
+    def _video_plan(self, prompt: str, aspect_ratio: str, duration: int) -> VideoGenerationPlan:
+        if aspect_ratio not in {"16:9", "9:16"}:
+            raise _InvalidVideoRequest(
+                "video_aspect_unsupported", "视频画幅目前只支持 16:9 横屏或 9:16 竖屏。"
+            )
+        if duration not in VIDEO_SUPPORTED_DURATIONS_SECONDS:
+            raise _InvalidVideoRequest(
+                "video_duration_unsupported", "视频时长目前只支持 5 秒或 10 秒。"
+            )
+        typed_aspect_ratio = cast(Literal["16:9", "9:16"], aspect_ratio)
+        typed_size = cast(
+            Literal["1280*720", "720*1280"],
+            "720*1280" if aspect_ratio == "9:16" else VIDEO_DEFAULT_SIZE,
+        )
+        typed_duration = cast(Literal[5, 10], duration)
+        try:
+            return VideoGenerationPlan(
+                model_id=VIDEO_MODEL_ID,
+                prompt=prompt.strip(),
+                aspect_ratio=typed_aspect_ratio,
+                size=typed_size,
+                duration_seconds=typed_duration,
+                account_object_domain="account",
+            )
+        except ValidationError as exc:
+            message = "视频请求参数不受支持，请使用 5 或 10 秒、16:9 或 9:16。"
+            if "duration_seconds" in str(exc):
+                code = "video_duration_unsupported"
+            elif "aspect_ratio" in str(exc) or "size" in str(exc):
+                code = "video_aspect_unsupported"
+            else:
+                code = "video_contract_invalid"
+            raise _InvalidVideoRequest(code, message) from exc
+
+    def _video_duration(self, text: str) -> int:
+        match = self._VIDEO_DURATION.search(text)
+        if match is None:
+            return VIDEO_DEFAULT_DURATION_SECONDS
+        raw_duration = match.group(1)
+        duration = (
+            int(raw_duration)
+            if raw_duration.isdigit()
+            else _CHINESE_NUMBERS.get(raw_duration, 0)
+        )
+        if duration not in VIDEO_SUPPORTED_DURATIONS_SECONDS:
+            raise _InvalidVideoRequest(
+                "video_duration_unsupported", "视频时长目前只支持 5 秒或 10 秒。"
+            )
+        return duration
+
+    def _video_aspect_ratio(self, text: str) -> str:
+        if self._VIDEO_UNSUPPORTED_ASPECT.search(text):
+            raise _InvalidVideoRequest(
+                "video_aspect_unsupported", "视频画幅目前只支持 16:9 横屏或 9:16 竖屏。"
+            )
+        if self._VIDEO_ASPECT_9_16.search(text):
+            return "9:16"
+        return "16:9"
+
+    def _video_prompt(self, text: str) -> str:
+        prompt = text
+        if "：" in prompt or ":" in prompt:
+            prefix, candidate = re.split(r"[：:]", prompt, maxsplit=1)
+            if candidate.strip():
+                prompt = candidate
+        else:
+            into_match = re.match(
+                r"^\s*(?:请|帮我|请帮我)?把(?P<scene>.+?)"
+                r"(?:做成|制作成|转成|变成)\s*"
+                r"(?:一段|一条|一个|一支)?\s*(?:短视频|视频|video|clip)\s*$",
+                prompt,
+                re.I,
+            )
+            english_into_match = re.match(
+                r"^\s*(?:turn|make|create|generate)\s+(?P<scene>.+?)\s+"
+                r"into\s+(?:a\s+)?(?:video|clip)\s*$",
+                prompt,
+                re.I,
+            )
+            if into_match is not None:
+                prompt = into_match.group("scene")
+            elif english_into_match is not None:
+                prompt = english_into_match.group("scene")
+            else:
+                prompt = self._VIDEO_PREFIX.sub("", prompt, count=1)
+        prompt = self._VIDEO_PARAMETER.sub(" ", prompt)
+        prompt = self._VIDEO_TRAILING_WORD.sub("", prompt)
+        prompt = re.sub(r"\s+", " ", prompt).strip(" ，,。.!！?？：:")
+        return prompt
+
+    def _video_matched(self, plan: VideoGenerationPlan, *, reason: str) -> CapabilityRoute:
+        return CapabilityRoute(
+            status=RouteStatus.MATCHED,
+            main_capability=MainCapability.VIDEO,
+            confidence=0.99,
+            reason=reason,
+            video=plan,
+            knowledge_base_allowed=False,
+            web_search_allowed=False,
+        )
+
+    def _video_rejected(self, code: str, message: str) -> CapabilityRoute:
+        return CapabilityRoute(
+            status=RouteStatus.REJECTED,
+            main_capability=MainCapability.VIDEO,
+            confidence=0.99,
+            reason="视频请求未通过能力或参数校验。",
+            clarification_question=message,
+            error_code=code,
             knowledge_base_allowed=False,
             web_search_allowed=False,
         )
@@ -299,6 +520,13 @@ class NaturalLanguageRouter:
 
 
 class _InvalidPaperQuery(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        self.message = message
+        super().__init__(message)
+
+
+class _InvalidVideoRequest(ValueError):
     def __init__(self, code: str, message: str) -> None:
         self.code = code
         self.message = message

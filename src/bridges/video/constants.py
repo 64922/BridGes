@@ -1,0 +1,9 @@
+"""文生视频固定合同常量；路由、适配器和任务服务共用。"""
+
+from __future__ import annotations
+
+VIDEO_MODEL_ID = "wan2.7-t2v-2026-06-12"
+VIDEO_DEFAULT_SIZE = "1280*720"
+VIDEO_SUPPORTED_SIZES = ("1280*720", "720*1280")
+VIDEO_DEFAULT_DURATION_SECONDS = 5
+VIDEO_SUPPORTED_DURATIONS_SECONDS = (5, 10)

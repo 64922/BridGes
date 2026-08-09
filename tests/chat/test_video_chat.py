@@ -66,6 +66,7 @@ class _ProgrammableWanAdapter:
 
     def __init__(self, script: list[dict[str, Any]] | None = None) -> None:
         self.script = list(script or [])
+        self.calls: list[dict[str, Any]] = []
 
     def call(
         self,
@@ -73,6 +74,7 @@ class _ProgrammableWanAdapter:
         run_context: Any,
         payload: dict[str, Any],
     ) -> AdapterResult:
+        self.calls.append(payload)
         step = self.script.pop(0) if self.script else {"output": {}}
         if step.get("error") is not None:
             raise step["error"]
@@ -86,17 +88,19 @@ def _wan_gateway() -> ModelGateway:
     registry = CapabilityRegistry()
     registry.register(_wan_capability())
     gateway = ModelGateway(registry)
+    adapter = _ProgrammableWanAdapter(
+        [
+            {"output": {"cloud_task_id": "cloud-1"}},
+            {"output": {"cloud_status": "SUCCEEDED", "result_url": _RESULT_URL}},
+            {"output": {"video_bytes": _VIDEO_BYTES, "media_type": "video/mp4"}},
+        ]
+    )
     gateway.register_adapter(
         "qwen_wan",
         "1",
-        _ProgrammableWanAdapter(
-            [
-                {"output": {"cloud_task_id": "cloud-1"}},
-                {"output": {"cloud_status": "SUCCEEDED", "result_url": _RESULT_URL}},
-                {"output": {"video_bytes": _VIDEO_BYTES, "media_type": "video/mp4"}},
-            ]
-        ),
+        adapter,
     )
+    gateway.video_adapter = adapter  # type: ignore[attr-defined]
     return gateway
 
 
@@ -136,6 +140,7 @@ def _register(client: TestClient, tag: str = "1") -> dict[str, Any]:
 def _swap_wan_gateway(sqlite_app: Any) -> None:
     gateway = _wan_gateway()
     sqlite_app.state.video_service._gateway = gateway
+    return gateway.video_adapter
 
 
 def _create_conversation(client: TestClient) -> str:
@@ -214,6 +219,7 @@ def test_video_message_flows_through_real_stream_and_worker(
     assistant = next(m for m in messages if m["role"] == "assistant")
     assert assistant["video"]["status"] == "succeeded"
     assert assistant["video"]["model_id"] == VIDEO_MODEL
+    assert assistant["video"]["synthetic_media"] is True
     assert assistant["video"]["asset_id"] is not None
     assert assistant["content"] == "视频生成完成。"
 
@@ -225,6 +231,7 @@ def test_video_message_flows_through_real_stream_and_worker(
     assert asset_response.status_code == 200
     asset = asset_response.json()
     assert asset["model_id"] == VIDEO_MODEL
+    assert asset["synthetic_media"] is True
     assert asset["cloud_task_id"] == "cloud-1"
     assert asset["description_source"] == "prompt"
     assert "一条静谧的河" in asset["description"]
@@ -261,6 +268,46 @@ def test_video_message_flows_through_real_stream_and_worker(
         f"/chat/conversations/{conversation_id}/video-assets/{asset_id}"
     )
     assert again.json()["removed_objects"] == 0
+
+
+def test_natural_language_video_routes_to_one_existing_video_task(
+    sqlite_app: Any, client: TestClient
+) -> None:
+    _register(client, tag="2")
+    adapter = _swap_wan_gateway(sqlite_app)
+    conversation_id = _create_conversation(client)
+
+    response = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={
+            "content": "生成一段 10 秒的竖屏短视频：雨后的街道，镜头慢慢推进到一盏路灯。"
+        },
+    )
+    assert response.status_code == 200, response.text
+    created = response.json()
+    route = created["assistant_message"]["route"]
+    assert route["main_capability"] == "video"
+    assert route["video"]["duration_seconds"] == 10
+    assert route["video"]["aspect_ratio"] == "9:16"
+    assert route["video"]["account_object_domain"] == "account"
+
+    sqlite_app.state.generation_executor.run_tick()
+    messages = client.get(f"/chat/conversations/{conversation_id}").json()["messages"]
+    assistant = next(message for message in messages if message["role"] == "assistant")
+    assert assistant["video"]["status"] == "queued"
+    assert assistant["content"] == "已提交视频生成请求，正在处理…"
+
+    sqlite_app.state.video_service.process_pending()
+    sqlite_app.state.video_service.process_pending()
+    sqlite_app.state.video_service.process_pending()
+
+    final_messages = client.get(
+        f"/chat/conversations/{conversation_id}"
+    ).json()["messages"]
+    final = next(message for message in final_messages if message["role"] == "assistant")
+    assert final["video"]["status"] == "succeeded"
+    assert len([call for call in adapter.calls if call.get("kind") == "submit"]) == 1
+    assert final["route"] == route
 
 
 def test_video_payload_conflicts_with_skill(sqlite_app: Any, client: TestClient) -> None:

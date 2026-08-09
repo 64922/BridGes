@@ -6,6 +6,7 @@ from bridges.routing.contracts import (
     PaperSearchConstraints,
     PaperSearchPlan,
     RouteStatus,
+    VideoGenerationPlan,
 )
 from bridges.routing.registry import (
     CapabilityDefinition,
@@ -24,4 +25,5 @@ __all__ = [
     "PaperSearchConstraints",
     "PaperSearchPlan",
     "RouteStatus",
+    "VideoGenerationPlan",
 ]

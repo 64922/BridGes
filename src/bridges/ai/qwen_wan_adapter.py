@@ -34,9 +34,18 @@ from bridges.ai.adapters import (
 from bridges.ai.qwen_client import QwenApiClient
 from bridges.contracts.ai import CapabilityRecord
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.video.constants import (
+    VIDEO_DEFAULT_DURATION_SECONDS,
+    VIDEO_DEFAULT_SIZE,
+    VIDEO_SUPPORTED_DURATIONS_SECONDS,
+    VIDEO_SUPPORTED_SIZES,
+)
 
 #: 固定生成尺寸（与能力矩阵探测参数一致，用户不可选）。
-DEFAULT_VIDEO_SIZE = "1280*720"
+DEFAULT_VIDEO_SIZE = VIDEO_DEFAULT_SIZE
+DEFAULT_VIDEO_DURATION_SECONDS = VIDEO_DEFAULT_DURATION_SECONDS
+SUPPORTED_VIDEO_SIZES = frozenset(VIDEO_SUPPORTED_SIZES)
+SUPPORTED_VIDEO_DURATIONS_SECONDS = frozenset(VIDEO_SUPPORTED_DURATIONS_SECONDS)
 
 #: 结果下载超时（视频文件较大，允许更长等待）。
 _RESULT_DOWNLOAD_TIMEOUT_SECONDS = 300.0
@@ -122,11 +131,35 @@ class QwenWanAdapter(CapabilityAdapter):
                 message="视频请求必须包含非空提示词。",
                 retryable=False,
             )
+        size = str(payload.get("size") or DEFAULT_VIDEO_SIZE)
+        if size not in SUPPORTED_VIDEO_SIZES:
+            raise AdapterError(
+                code="video_size_unsupported",
+                message="视频画面尺寸暂不受支持。",
+                retryable=False,
+            )
+        try:
+            duration_seconds = int(
+                payload.get("duration_seconds") or DEFAULT_VIDEO_DURATION_SECONDS
+            )
+        except (TypeError, ValueError) as exc:
+            raise AdapterError(
+                code="video_duration_unsupported",
+                message="视频时长暂不受支持。",
+                retryable=False,
+            ) from exc
+        if duration_seconds not in SUPPORTED_VIDEO_DURATIONS_SECONDS:
+            raise AdapterError(
+                code="video_duration_unsupported",
+                message="视频时长暂不受支持。",
+                retryable=False,
+            )
         body: dict[str, Any] = {
             "model": capability.model_id,
             "input": {"prompt": prompt},
             "parameters": {
-                "size": str(payload.get("size") or DEFAULT_VIDEO_SIZE),
+                "size": size,
+                "duration": duration_seconds,
             },
         }
         # 视频合成是异步优先服务：必须带 X-DashScope-Async: enable 头，
@@ -316,6 +349,9 @@ class QwenWanAdapter(CapabilityAdapter):
 
 __all__ = [
     "DEFAULT_VIDEO_SIZE",
+    "DEFAULT_VIDEO_DURATION_SECONDS",
     "QwenWanAdapter",
+    "SUPPORTED_VIDEO_DURATIONS_SECONDS",
+    "SUPPORTED_VIDEO_SIZES",
     "SUPPORTED_RESULT_MEDIA_TYPES",
 ]
