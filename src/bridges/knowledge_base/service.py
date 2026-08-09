@@ -23,6 +23,7 @@ from bridges.ingestion.service import (
     IngestionError,
     IngestionService,
 )
+from bridges.learning_projects.migration import ProjectMigrationService
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.repository import BridgesObjectRepository
@@ -50,10 +51,12 @@ class KnowledgeBaseService:
         database: BridgesDatabase,
         object_repository: BridgesObjectRepository,
         ingestion_service: IngestionService,
+        migration_service: ProjectMigrationService | None = None,
     ) -> None:
         self._database = database
         self._objects = object_repository
         self._ingestion = ingestion_service
+        self._migration = migration_service
 
     def upload(
         self, account_id: str, original_filename: str, content: bytes
@@ -145,10 +148,17 @@ class KnowledgeBaseService:
     def delete(self, account_id: str, object_id: str) -> None:
         """级联删除材料及其派生索引数据；处理中冲突由摄取服务保证。"""
         self.get_material(account_id, object_id)
+        deleted = False
         try:
             self._ingestion.delete_material(account_id, object_id)
+            deleted = True
         except IngestionError as exc:
+            if exc.code == "material_delete_failed":
+                deleted = True
             raise KnowledgeBaseError(exc.code, exc.message, exc.status_code) from exc
+        finally:
+            if deleted and self._migration is not None:
+                self._migration.mark_target_deleted(account_id, object_id)
 
     def _find_active_material(
         self, account_id: str, filename: str, content_hash: str

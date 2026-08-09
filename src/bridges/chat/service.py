@@ -353,6 +353,7 @@ class ChatService:
                     mode=ChatMode(record.mode),
                     pinned=record.pinned,
                     project_id=record.project_id,
+                    legacy_project_name=record.legacy_project_name,
                     message_count=message_count,
                     created_at=record.created_at,
                     updated_at=record.updated_at,
@@ -1905,6 +1906,9 @@ class ChatService:
             mode=mode,
             pinned=pinned,
             project_id=project_id,
+            legacy_project_name=self._repo.legacy_project_name(
+                account_id, conversation_id
+            ),
             plugin_selection=list(plugin_selection or []),
             removed_selections=list(removed_selections or []),
             created_at=created_at,

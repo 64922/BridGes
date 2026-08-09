@@ -30,6 +30,7 @@ class ConversationRecord:
     project_id: str | None
     created_at: datetime
     updated_at: datetime
+    legacy_project_name: str | None = None
     plugin_selection: list[dict[str, Any]] | None = None
 
 
@@ -177,6 +178,10 @@ class ConversationRepository:
     ) -> ConversationRecord | None:
         row = self._db.scoped(account_id).execute(
             "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
+            " (SELECT a.project_name FROM learning_project_migration_conversations a"
+            "  WHERE a.account_id = conversations.account_id"
+            "  AND a.conversation_id = conversations.conversation_id"
+            "  ORDER BY a.detached_at DESC LIMIT 1) AS legacy_project_name,"
             " plugin_selection, created_at, updated_at"
             " FROM conversations WHERE conversation_id = ? AND account_id = ?",
             (conversation_id, account_id),
@@ -188,12 +193,25 @@ class ConversationRepository:
     def list_conversations(self, account_id: str) -> list[ConversationRecord]:
         rows = self._db.scoped(account_id).execute(
             "SELECT conversation_id, account_id, title, mode, pinned, project_id,"
+            " (SELECT a.project_name FROM learning_project_migration_conversations a"
+            "  WHERE a.account_id = conversations.account_id"
+            "  AND a.conversation_id = conversations.conversation_id"
+            "  ORDER BY a.detached_at DESC LIMIT 1) AS legacy_project_name,"
             " plugin_selection, created_at, updated_at FROM conversations"
             " WHERE account_id = ?"
             " ORDER BY pinned DESC, updated_at DESC, created_at DESC, conversation_id",
             (account_id,),
         ).fetchall()
         return [self._conversation_from_row(row) for row in rows]
+
+    def legacy_project_name(self, account_id: str, conversation_id: str) -> str | None:
+        row = self._db.scoped(account_id).execute(
+            "SELECT project_name FROM learning_project_migration_conversations"
+            " WHERE account_id = ? AND conversation_id = ?"
+            " ORDER BY detached_at DESC LIMIT 1",
+            (account_id, conversation_id),
+        ).fetchone()
+        return str(row["project_name"]) if row is not None else None
 
     @staticmethod
     def _conversation_from_row(row: Any) -> ConversationRecord:
@@ -206,6 +224,11 @@ class ConversationRepository:
             project_id=(str(row["project_id"]) if row["project_id"] is not None else None),
             created_at=_parse_iso(str(row["created_at"])),
             updated_at=_parse_iso(str(row["updated_at"])),
+            legacy_project_name=(
+                str(row["legacy_project_name"])
+                if row["legacy_project_name"] is not None
+                else None
+            ),
             plugin_selection=_json_loads_list(row["plugin_selection"]),
         )
 

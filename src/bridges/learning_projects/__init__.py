@@ -5,9 +5,17 @@ from bridges.learning_projects.service import (
     LearningProjectRecord,
     LearningProjectService,
 )
+from bridges.learning_projects.migration import (
+    ProjectMigrationError,
+    ProjectMigrationService,
+    project_writes_frozen,
+)
 
 __all__ = [
     "LearningProjectError",
     "LearningProjectRecord",
     "LearningProjectService",
+    "ProjectMigrationError",
+    "ProjectMigrationService",
+    "project_writes_frozen",
 ]

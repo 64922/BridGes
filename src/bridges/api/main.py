@@ -37,6 +37,7 @@ from bridges.api import (
     ingestion,
     institution,
     knowledge_base,
+    learning_project_migration,
     learning_projects,
     projects,
     science,
@@ -128,6 +129,7 @@ from bridges.learning import (
 )
 from bridges.learning.api import router as learning_router
 from bridges.learning_projects import LearningProjectService
+from bridges.learning_projects.migration import ProjectMigrationService
 from bridges.lifecycle.backup import BackupService
 from bridges.lifecycle.deletion import DeletionService
 from bridges.lifecycle.exports import ExportService
@@ -1035,11 +1037,17 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 object_repository=object_repository,
                 embedding=embedding_port,
             )
+            app.state.learning_project_migration_service = ProjectMigrationService(
+                database=bridges_database,
+                object_repository=object_repository,
+                ingestion_service=app.state.ingestion_service,
+            )
             # Issue 18: 全局本地知识库（材料不绑定对话，复用摄取状态机）。
             app.state.knowledge_base_service = KnowledgeBaseService(
                 bridges_database,
                 object_repository,
                 app.state.ingestion_service,
+                app.state.learning_project_migration_service,
             )
             # Issue 19: 文件夹式学习项目（对话归属 + 项目级文件，复用摄取状态机）。
             app.state.learning_project_service = LearningProjectService(
@@ -1589,6 +1597,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(ingestion.router)
     app.include_router(knowledge_base.router)
+    app.include_router(learning_project_migration.router)
     app.include_router(learning_projects.router)
     app.include_router(search.router)
     app.include_router(domain_packs.router)

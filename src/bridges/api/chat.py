@@ -263,11 +263,13 @@ def create_conversation(
     try:
         if body.project_id is not None:
             try:
-                learning_project_service.get_project(subject.account_id, body.project_id)
+                learning_project_service.ensure_project_assignment_allowed(
+                    subject.account_id, body.project_id
+                )
             except LearningProjectError as exc:
                 raise _error(
-                    status.HTTP_404_NOT_FOUND,
-                    "project_not_found",
+                    exc.status_code,
+                    exc.code,
                     "学习项目不存在或没有访问权限。",
                 ) from exc
         if body.plugin_selection:
@@ -334,11 +336,13 @@ def create_first_turn(
     try:
         if body.project_id is not None:
             try:
-                learning_project_service.get_project(subject.account_id, body.project_id)
+                learning_project_service.ensure_project_assignment_allowed(
+                    subject.account_id, body.project_id
+                )
             except LearningProjectError as exc:
                 raise _error(
-                    status.HTTP_404_NOT_FOUND,
-                    "project_not_found",
+                    exc.status_code,
+                    exc.code,
                     "学习项目不存在或没有访问权限。",
                 ) from exc
         if body.plugin_selection:
