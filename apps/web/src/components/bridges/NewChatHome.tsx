@@ -9,12 +9,9 @@ import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
-import { ImageDialog } from "@/components/bridges/ImageDialog";
 import { VideoDialog } from "@/components/bridges/VideoDialog";
 import type {
   HumanizerSkillInput,
-  ImageRequestPayload,
-  ImageTaskKind,
   VideoRequestPayload,
 } from "@/lib/api";
 import { SuggestionCards } from "@/components/bridges/SuggestionCards";
@@ -78,7 +75,6 @@ export function NewChatHome() {
 
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
-  const [imageOpen, setImageOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
   // Issue 36：新聊天首页暂存的插件选择（随首轮写入会话；chip 与
   // 真实选择器共用，随对话持久化；停用/卸载/撤权由服务端清洗解释）。
@@ -93,7 +89,6 @@ export function NewChatHome() {
     useProfile?: boolean;
     skillId?: string;
     skillInput?: HumanizerSkillInput;
-    image?: ImageRequestPayload;
     video?: VideoRequestPayload;
   }): Promise<boolean> => {
     if (firstTurnInFlightRef.current) return false;
@@ -115,7 +110,6 @@ export function NewChatHome() {
         use_profile: options.useProfile ?? true,
         ...(options.skillId !== undefined ? { skill_id: options.skillId } : {}),
         ...(options.skillInput !== undefined ? { skill_input: options.skillInput } : {}),
-        ...(options.image !== undefined ? { image: options.image } : {}),
         ...(options.video !== undefined ? { video: options.video } : {}),
       });
       // 首轮事务已成功：侧栏立即刷新（服务端列表对该会话立即可见，
@@ -149,22 +143,6 @@ export function NewChatHome() {
     useProfile: boolean
   ): Promise<boolean> => {
     return submitFirstTurn({ content, useProfile });
-  };
-
-  /** Issue 31：首页提交图片任务（image 载荷随首轮落库，任务异步执行）。 */
-  const handleImageSubmit = async (payload: {
-    kind: ImageTaskKind;
-    prompt: string;
-    sourceObjectId?: string;
-  }): Promise<boolean> => {
-    const imagePayload: ImageRequestPayload = {
-      kind: payload.kind,
-      prompt: payload.prompt,
-      ...(payload.sourceObjectId
-        ? { source_object_id: payload.sourceObjectId }
-        : {}),
-    };
-    return submitFirstTurn({ content: payload.prompt, image: imagePayload });
   };
 
   /** Issue 32：首页提交视频任务（video 载荷随首轮落库，任务异步执行）。 */
@@ -229,7 +207,6 @@ export function NewChatHome() {
                 prefill={prefill}
                 onOpenHumanizer={() => setHumanizerOpen(true)}
                 onOpenCareer={() => setCareerOpen(true)}
-                onOpenImage={() => setImageOpen(true)}
                 onOpenVideo={() => setVideoOpen(true)}
               />
               {sending && (
@@ -262,11 +239,6 @@ export function NewChatHome() {
         onClose={() => setCareerOpen(false)}
         ensureConversation={ensureConversation}
         onSubmit={handleCareerSubmit}
-      />
-      <ImageDialog
-        open={imageOpen}
-        onClose={() => setImageOpen(false)}
-        onSubmit={handleImageSubmit}
       />
       <VideoDialog
         open={videoOpen}

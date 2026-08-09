@@ -27,6 +27,7 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.routing import NaturalLanguageImageRouter, image_request_from_decision
 from bridges.chat.repository import (
     ConversationModeLockConflict,
     ConversationRecord,
@@ -60,6 +61,7 @@ from bridges.chat.turn import (
     initial_thinking,
     owner_user_message,
     result_summary,
+    capability_route_from,
     stopped_teaching_projection,
     stopped_thinking,
     user_facing_error,  # noqa: F401 - re-export
@@ -102,6 +104,7 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
+from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.mcp import McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profile_extraction import ProfilePreprocessResult
@@ -156,17 +159,24 @@ def _started_event_payload(
             if message.arxiv_search is not None
             else None
         ),
-        route=(
-            CapabilityRoute.model_validate(message.route)
-            if message.route is not None
-            else None
-        ),
+        route=_route_projection(message.route),
         teaching=(
             TeachingTurnProjection.model_validate(message.teaching)
             if message.teaching is not None
             else None
         ),
     ).model_dump(mode="json")
+
+
+def _route_projection(
+    route: dict[str, Any] | None,
+) -> CapabilityRoute | RouteDecision | None:
+    if route is None:
+        return None
+    try:
+        return RouteDecision.model_validate(route)
+    except ValidationError:
+        return CapabilityRoute.model_validate(route)
 
 
 class ChatDomainError(Exception):
@@ -200,6 +210,7 @@ class ChatService:
         video_service: VideoOrchestrator | None = None,
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
+        natural_language_router: NaturalLanguageImageRouter | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -237,6 +248,9 @@ class ChatService:
         self._mcp = mcp_service
         #: 新聊天自然语言主能力路由；结果在消息上持久化后才允许外部调用。
         self._router = NaturalLanguageRouter()
+        #: 普通自然语言图片路由（Issue 08）；路由快照随用户消息落库，
+        #: 未挂载时保留既有显式能力载荷兼容路径。
+        self._natural_language_router = natural_language_router
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
         #: 回合编排深模块（Issue 42）：生成管线（模式路由/检索/切片编译/
@@ -699,8 +713,18 @@ class ChatService:
                 use_knowledge_base=use_knowledge_base,
             )
         )
+        image_route = self._route_natural_language(
+            account_id,
+            content,
+            explicit_payload=any(
+                value is not None for value in (skill_id, image, video, mcp_call)
+            ),
+        )
+        routed_image = image_request_from_decision(image_route) if image_route else None
         skill_payload, image_payload, video_payload, mcp_call_payload = (
-            self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
+            self._validate_turn_payloads(
+                skill_id, skill_input, image or routed_image, video, mcp_call
+            )
         )
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
@@ -722,7 +746,7 @@ class ChatService:
             )
         attachment_ids = None
         mode = ChatMode(record.mode)
-        route = self._route_for_turn(
+        capability_route = self._route_for_turn(
             content,
             skill_payload=skill_payload,
             image_payload=image_payload,
@@ -743,7 +767,8 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
-            route=route,
+            route=capability_route,
+            image_route=image_route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -847,6 +872,31 @@ class ChatService:
                 422,
             )
 
+    def _route_natural_language(
+        self, account_id: str, content: str, *, explicit_payload: bool
+    ) -> RouteDecision | None:
+        """只对无显式能力载荷的普通消息做一次本地路由。"""
+
+        if explicit_payload or self._natural_language_router is None:
+            return None
+        return self._natural_language_router.route(account_id, content)
+
+    @staticmethod
+    def _reject_natural_image_attachments(
+        route: RouteDecision | None, attachment_ids: list[str]
+    ) -> None:
+        if (
+            route is not None
+            and route.capability.value == "image"
+            and route.operation in {RouteOperation.GENERATE, RouteOperation.EDIT}
+            and attachment_ids
+        ):
+            raise ChatDomainError(
+                "image_source_not_allowed",
+                "自然语言图片编辑只允许使用当前账户知识库中的图片，不能使用聊天附件。",
+                422,
+            )
+
     def _validate_turn_payloads(
         self,
         skill_id: str | None,
@@ -933,6 +983,7 @@ class ChatService:
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
         route: CapabilityRoute,
+        image_route: RouteDecision | None = None,
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
@@ -992,7 +1043,11 @@ class ChatService:
             image=image_payload,
             video=video_payload,
             mcp_call=mcp_call_payload,
-            route=route.model_dump(mode="json"),
+            route=(
+                image_route.model_dump(mode="json")
+                if image_route is not None
+                else route.model_dump(mode="json")
+            ),
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -1160,8 +1215,18 @@ class ChatService:
                 use_knowledge_base=use_knowledge_base,
             )
         )
+        image_route = self._route_natural_language(
+            account_id,
+            content,
+            explicit_payload=any(
+                value is not None for value in (skill_id, image, video, mcp_call)
+            ),
+        )
+        routed_image = image_request_from_decision(image_route) if image_route else None
         skill_payload, image_payload, video_payload, mcp_call_payload = (
-            self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
+            self._validate_turn_payloads(
+                skill_id, skill_input, image or routed_image, video, mcp_call
+            )
         )
         # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
         # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
@@ -1187,7 +1252,7 @@ class ChatService:
                 "聊天附件已退役，请先将材料加入全局知识库。",
                 410,
             )
-        route = self._route_for_turn(
+        capability_route = self._route_for_turn(
             content,
             skill_payload=skill_payload,
             image_payload=image_payload,
@@ -1211,7 +1276,8 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
-            route=route,
+            route=capability_route,
+            image_route=image_route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -1509,11 +1575,7 @@ class ChatService:
         )
         now = datetime.now(UTC)
         mode = ChatMode(record.mode)
-        route = (
-            CapabilityRoute.model_validate(owner.route)
-            if owner.route is not None
-            else None
-        )
+        route = capability_route_from(owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None
         for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
             if previous_attempt.arxiv_search is None:
@@ -1570,7 +1632,7 @@ class ChatService:
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
-            route=owner.route,
+            route=(route.model_dump(mode="json") if route is not None else owner.route),
         )
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
@@ -2054,11 +2116,7 @@ class ChatService:
                 and message.role == ChatMessageRole.ASSISTANT
                 else None
             ),
-            route=(
-                CapabilityRoute.model_validate(message.route)
-                if message.route is not None
-                else None
-            ),
+            route=_route_projection(message.route),
             teaching=(
                 TeachingTurnProjection.model_validate(message.teaching)
                 if message.teaching is not None and message.role == ChatMessageRole.ASSISTANT
@@ -2220,9 +2278,7 @@ def _validate_image_payload(
         raise ChatDomainError(
             "invalid_image_request", "图片请求载荷无效。", 422
         ) from exc
-    if payload.kind == ImageTaskKind.EDIT and bool(payload.source_version_id) == bool(
-        payload.source_object_id
-    ):
+    if payload.kind == ImageTaskKind.EDIT and not payload.source_object_id:
         raise ChatDomainError(
             "invalid_image_request", "编辑必须且只能选择一个来源图片。", 422
         )

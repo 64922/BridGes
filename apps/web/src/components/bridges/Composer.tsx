@@ -42,10 +42,6 @@ interface ComposerProps {
   onOpenHumanizer?: () => void;
   /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
   onOpenCareer?: () => void;
-  /** Issue 31：打开「图片生成与编辑」任务对话框（由宿主渲染对话框）。 */
-  onOpenImage?: () => void;
-  /** Issue 31：图片生成与编辑能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
-  image?: CapabilityAvailability;
   /** Issue 32：打开「视频生成」任务对话框（由宿主渲染对话框）。 */
   onOpenVideo?: () => void;
   /** Issue 32：视频生成能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
@@ -66,8 +62,6 @@ export function Composer({
   prefill = null,
   onOpenHumanizer,
   onOpenCareer,
-  onOpenImage,
-  image = { available: true },
   onOpenVideo,
   video = { available: true },
   asr = { available: true },
@@ -713,30 +707,15 @@ export function Composer({
                   },
                 ]
               : []),
-            // 既有能力入口（图片/视频生成）保留在清单六入口之后：
-            // 它们是已实现能力，非清单新增项。
+            // 视频能力仍保留显式任务入口；图片能力由普通自然语言自动路由。
             ...TOOL_PROMPTS.filter(
-              (tool) =>
-                tool.label === IMAGE_TOOL_LABEL || tool.label === VIDEO_TOOL_LABEL
+              (tool) => tool.label === VIDEO_TOOL_LABEL
             ).map((tool) => ({
               label: tool.label,
               icon: tool.icon,
               onSelect:
-                tool.label === IMAGE_TOOL_LABEL && onOpenImage
+                onOpenVideo
                   ? () => {
-                      // Issue 31：图片能力不可用时入口明确停用并说明
-                      // 原因（探测快照；服务端仍做权威校验）。
-                      if (!image.available) {
-                        setToolNotice(
-                          image.reason ?? "图片生成与编辑能力当前不可用。"
-                        );
-                        return;
-                      }
-                      setToolNotice("");
-                      onOpenImage?.();
-                    }
-                  : tool.label === VIDEO_TOOL_LABEL && onOpenVideo
-                    ? () => {
                         // Issue 32：视频能力不可用时入口明确停用并说明
                         // 原因（探测快照；服务端仍做权威校验）。
                         if (!video.available) {

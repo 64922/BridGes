@@ -30214,9 +30214,13 @@
                 "$ref": "#/components/schemas/CapabilityRoute"
               },
               {
+                "$ref": "#/components/schemas/RouteDecision"
+              },
+              {
                 "type": "null"
               }
             ],
+            "title": "Route",
             "description": "本条消息绑定的自然语言能力路由快照（Issue 06）。"
           },
           "teaching": {
@@ -31083,6 +31087,17 @@
             "type": "array",
             "title": "Notifications",
             "description": "本轮产生的画像通知。"
+          },
+          "privacy_notice": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProfilePrivacyNotice"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "账户级首次自动画像隐私说明。"
           }
         },
         "type": "object",
@@ -31090,7 +31105,7 @@
           "message_id"
         ],
         "title": "ChatStreamProfileData",
-        "description": "profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。\n\n通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条\n自动写入通知携带一键撤回入口。"
+        "description": "profile 事件载荷：一次性隐私说明或兼容期画像通知。\n\nIssue 15 的自动写入不发送写入通知；``privacy_notice`` 只在账户首次\n触发自动画像时出现一次。``notifications`` 仅保留旧画像兼容测试和\n历史事件的读取形状。"
       },
       "ChatStreamStageData": {
         "properties": {
@@ -38663,6 +38678,47 @@
         "title": "HumanizerResultStatus",
         "description": "人味化任务的终态；needs_human 表示事实锁冲突或待核事项。"
       },
+      "HumanizerRouteDecision": {
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/HumanizerRouteSource",
+            "description": "任务进入人味化能力的来源。"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "路由规则版本。"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason",
+            "description": "命中的中文意图说明。"
+          },
+          "external_evidence_requested": {
+            "type": "boolean",
+            "title": "External Evidence Requested",
+            "description": "用户是否明确要求补充或核验外部事实；默认不联网。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "source",
+          "version",
+          "reason"
+        ],
+        "title": "HumanizerRouteDecision",
+        "description": "自然语言路由的不可变快照。"
+      },
+      "HumanizerRouteSource": {
+        "type": "string",
+        "enum": [
+          "explicit_skill",
+          "natural_language"
+        ],
+        "title": "HumanizerRouteSource",
+        "description": "人味化任务的入口来源。"
+      },
       "HumanizerSkillInput": {
         "properties": {
           "skill_id": {
@@ -38685,6 +38741,17 @@
             ],
             "title": "Version",
             "description": "请求声明版本；空则使用注册的默认版本。"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/HumanizerRouteDecision"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "进入能力前保存的路由决策快照。"
           }
         },
         "type": "object",
@@ -38792,6 +38859,18 @@
             ],
             "title": "Source Label",
             "description": "来源显示名（文件名或用户粘贴说明）。"
+          },
+          "knowledge_base_reference": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Knowledge Base Reference",
+            "description": "用户明确引用的当前账户知识库文档名；为空时不得泛化检索。"
           }
         },
         "additionalProperties": false,
@@ -38801,7 +38880,7 @@
           "genre"
         ],
         "title": "HumanizerTaskContract",
-        "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text 或知识库材料；生成路径必带 topic。"
+        "description": "一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。\n\n与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。\n改写路径必带 source_text、知识库引用或历史兼容附件；生成路径必带 topic。"
       },
       "ImageAltTextSource": {
         "type": "string",
@@ -38865,6 +38944,12 @@
             "title": "Version Count",
             "description": "版本数量。",
             "default": 0
+          },
+          "synthetic": {
+            "type": "boolean",
+            "title": "Synthetic",
+            "description": "该资产是否由图片模型生成或编辑产生。",
+            "default": true
           },
           "versions": {
             "items": {
@@ -38960,6 +39045,26 @@
             ],
             "title": "Source Object Id",
             "description": "编辑来源全局知识库图片对象标识（kind=edit 时可选）。"
+          },
+          "source_scope": {
+            "anyOf": [
+              {
+                "type": "string",
+                "const": "knowledge_base"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Scope",
+            "description": "自然语言编辑来源范围；仅允许当前账户知识库。"
+          },
+          "size": {
+            "type": "string",
+            "pattern": "^(1024\\*1024|1536\\*1024|1024\\*1536)$",
+            "title": "Size",
+            "description": "图片尺寸合同。",
+            "default": "1024*1024"
           }
         },
         "additionalProperties": false,
@@ -38970,6 +39075,84 @@
         ],
         "title": "ImageRequestPayload",
         "description": "图片生成/编辑请求（Issue 31）。\n\n生成：只提供 ``prompt``；编辑：提供 ``prompt`` 且恰好提供一个来源\n（当前账户全局知识库图片材料 ``source_object_id``）。编辑来源归属\n在服务层校验，跨账户一律 404；历史 ``source_version_id`` 仅保留在\n投影和历史任务兼容模型中。\n请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。"
+      },
+      "ImageRouteContract": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "图片路由合同版本。",
+            "default": "image-route-v1"
+          },
+          "capability": {
+            "$ref": "#/components/schemas/RouteCapability",
+            "default": "image"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/RouteOperation",
+            "description": "generate 或 edit。"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt",
+            "description": "图片提示词或编辑指令。"
+          },
+          "source_object_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Object Id",
+            "description": "编辑时当前账户知识库中的图片对象标识。"
+          },
+          "parameters": {
+            "$ref": "#/components/schemas/ImageRouteParameters",
+            "description": "尺寸与输出约束。"
+          },
+          "output_version": {
+            "type": "string",
+            "title": "Output Version",
+            "description": "输出资产合同版本。",
+            "default": "image-output-v1"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "operation",
+          "prompt"
+        ],
+        "title": "ImageRouteContract",
+        "description": "图片生成/编辑提交给图片域的稳定输入合同。"
+      },
+      "ImageRouteParameters": {
+        "properties": {
+          "size": {
+            "type": "string",
+            "pattern": "^(1024\\*1024|1536\\*1024|1024\\*1536)$",
+            "title": "Size",
+            "description": "图片尺寸；只允许已登记模型支持的尺寸。",
+            "default": "1024*1024"
+          },
+          "n": {
+            "type": "integer",
+            "maximum": 1.0,
+            "minimum": 1.0,
+            "title": "N",
+            "description": "输出张数；当前固定为 1。",
+            "default": 1
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "ImageRouteParameters",
+        "description": "图片模型可接受的稳定参数快照。"
       },
       "ImageTaskKind": {
         "type": "string",
@@ -38986,6 +39169,13 @@
             "type": "string",
             "title": "Task Id",
             "description": "任务标识。"
+          },
+          "attempt_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Attempt Number",
+            "description": "该图片任务的显式提交轮次；手动重试时递增。",
+            "default": 1
           },
           "kind": {
             "$ref": "#/components/schemas/ImageTaskKind",
@@ -39096,6 +39286,12 @@
             "description": "资产已被删除（消息引用维护：删除资产时标记，前端据此显示已删除状态，不再请求资产详情）。",
             "default": false
           },
+          "synthetic": {
+            "type": "boolean",
+            "title": "Synthetic",
+            "description": "结果是否为图片模型生成的合成内容。",
+            "default": true
+          },
           "created_at": {
             "type": "string",
             "format": "date-time",
@@ -39193,6 +39389,12 @@
             "type": "integer",
             "title": "Content Length",
             "description": "图片字节数。"
+          },
+          "synthetic": {
+            "type": "boolean",
+            "title": "Synthetic",
+            "description": "该版本是否为图片模型生成的合成内容。",
+            "default": true
           },
           "created_at": {
             "type": "string",
@@ -45832,6 +46034,31 @@
         "title": "ProfilePermissionUpdateRequest",
         "description": "Request to enable or disable one low-risk automatic-update permission."
       },
+      "ProfilePrivacyNotice": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version"
+          },
+          "text": {
+            "type": "string",
+            "title": "Text"
+          },
+          "shown_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Shown At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "version",
+          "text",
+          "shown_at"
+        ],
+        "title": "ProfilePrivacyNotice",
+        "description": "首次启用自动画像时的一次性非交互说明。"
+      },
       "ProfileSensitivityClass": {
         "type": "string",
         "enum": [
@@ -45973,6 +46200,13 @@
             "title": "Compiled Policy Version",
             "description": "Version of the slice compilation policy used.",
             "default": "slice-1.0"
+          },
+          "length_budget": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Length Budget",
+            "description": "Maximum number of profile items allowed in this slice.",
+            "default": 6
           },
           "status": {
             "$ref": "#/components/schemas/SliceStatus",
@@ -48377,6 +48611,129 @@
         ],
         "title": "RollbackRequest",
         "description": "提议回滚到仍受信、依赖兼容且通过平台下限的旧版。"
+      },
+      "RouteCapability": {
+        "type": "string",
+        "enum": [
+          "image",
+          "paper_search",
+          "humanizer",
+          "video",
+          "career"
+        ],
+        "title": "RouteCapability",
+        "description": "统一聊天主能力名。"
+      },
+      "RouteDecision": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "路由合同版本。",
+            "default": "chat-route-v1"
+          },
+          "capability": {
+            "$ref": "#/components/schemas/RouteCapability",
+            "description": "选中的主能力。"
+          },
+          "operation": {
+            "$ref": "#/components/schemas/RouteOperation",
+            "description": "本次路由动作。"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "description": "确定性路由置信度。"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Reason",
+            "description": "路由判定原因。"
+          },
+          "contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageRouteContract"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "图片能力的输入合同；其他能力暂不携带。"
+          },
+          "clarification_question": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Question",
+            "description": "需要用户补充时唯一的中文问题。"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code",
+            "description": "拒绝路由时的稳定错误码。"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message",
+            "description": "拒绝路由时的可操作中文说明。"
+          },
+          "competing_capabilities": {
+            "items": {
+              "$ref": "#/components/schemas/RouteCapability"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Competing Capabilities",
+            "description": "检测到的互斥能力集合。"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "capability",
+          "operation",
+          "confidence",
+          "reason"
+        ],
+        "title": "RouteDecision",
+        "description": "一条消息的路由快照；持久化后重试与恢复不得重新分类。"
+      },
+      "RouteOperation": {
+        "type": "string",
+        "enum": [
+          "generate",
+          "edit",
+          "clarify",
+          "reject"
+        ],
+        "title": "RouteOperation",
+        "description": "一次路由的执行动作。"
       },
       "RouteStatus": {
         "type": "string",

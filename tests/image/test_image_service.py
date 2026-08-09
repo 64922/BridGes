@@ -555,6 +555,7 @@ def test_cloud_failure_retry_uses_same_input_and_snapshot(tmp_path: Path) -> Non
     h.image.script = _succeeded_script()
     retried = h.service.retry(h.account_id, h.conversation_id, task.task_id)
     assert retried.status == ImageTaskStatus.QUEUED
+    assert retried.attempt_number == 2
     h.service.process_pending()  # 重新提交
     h.service.process_pending()  # poll RUNNING
     h.service.process_pending()  # poll SUCCEEDED → finalize（含下载）

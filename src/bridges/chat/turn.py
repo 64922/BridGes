@@ -80,6 +80,7 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
+from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
@@ -109,7 +110,7 @@ from bridges.observability.service import ObservabilityService
 from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
-from bridges.routing import CapabilityRoute, RouteStatus
+from bridges.routing import CapabilityRoute, MainCapability, RouteStatus
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
@@ -391,7 +392,12 @@ class ImageOrchestrator(Protocol):
     """
 
     def submit_generation(
-        self, account_id: str, conversation_id: str, message_id: str, prompt: str
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        prompt: str,
+        size: str = "1024*1024",
     ) -> ImageTaskProjection: ...
 
     def submit_edit(
@@ -401,8 +407,10 @@ class ImageOrchestrator(Protocol):
         message_id: str,
         prompt: str,
         *,
-        source_version_id: str,
-        source_object_id: str,
+        source_version_id: str | None,
+        source_object_id: str | None,
+        source_scope: str | None = None,
+        size: str = "1024*1024",
     ) -> ImageTaskProjection: ...
 
 
@@ -932,6 +940,48 @@ def image_payload_from(owner: MessageRecord | None) -> ImageRequestPayload | Non
         return None
 
 
+def capability_route_from(route: dict[str, Any] | None) -> CapabilityRoute | None:
+    """解析通用路由，并将 Issue 08 图片路由映射为编排所需的通用快照。"""
+
+    if route is None:
+        return None
+    try:
+        return CapabilityRoute.model_validate(route)
+    except ValidationError as capability_error:
+        try:
+            decision = RouteDecision.model_validate(route)
+        except ValidationError:
+            raise capability_error
+    status = {
+        RouteOperation.GENERATE: RouteStatus.MATCHED,
+        RouteOperation.EDIT: RouteStatus.MATCHED,
+        RouteOperation.CLARIFY: RouteStatus.CLARIFY,
+        RouteOperation.REJECT: RouteStatus.REJECTED,
+    }[decision.operation]
+    capability = MainCapability(decision.capability.value)
+    return CapabilityRoute(
+        status=status,
+        main_capability=capability,
+        confidence=decision.confidence,
+        reason=decision.reason,
+        clarification_question=decision.clarification_question,
+        error_code=decision.error_code,
+        knowledge_base_allowed=False,
+        web_search_allowed=False,
+    )
+
+
+def route_decision_from(owner: MessageRecord | None) -> RouteDecision | None:
+    """从用户消息读取已持久化的路由快照；重试不重新分类。"""
+
+    if owner is None or not owner.route:
+        return None
+    try:
+        return RouteDecision.model_validate(owner.route)
+    except ValidationError:
+        return None
+
+
 def video_payload_from(owner: MessageRecord | None) -> VideoRequestPayload | None:
     """从用户消息的 video 列还原视频请求载荷（重试沿用同一份输入）。
 
@@ -1257,14 +1307,10 @@ class TurnOrchestrator:
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
             route_messages = self._repo.list_messages(account_id, conversation_id)
             route_owner = owner_user_message(route_messages, assistant_message_id)
-            route = (
-                CapabilityRoute.model_validate(current.route)
+            route = capability_route_from(
+                current.route
                 if current.route is not None
-                else (
-                    CapabilityRoute.model_validate(route_owner.route)
-                    if route_owner is not None and route_owner.route is not None
-                    else None
-                )
+                else (route_owner.route if route_owner is not None else None)
             )
             paper_route = route is not None and route.is_paper_search
             if paper_route and current.arxiv_search is not None:
@@ -1391,6 +1437,18 @@ class TurnOrchestrator:
                 self._repo.list_messages(account_id, conversation_id),
                 assistant_message_id,
             )
+            owner_route = route_decision_from(owner_message)
+            if owner_route is not None and owner_route.operation in {
+                RouteOperation.CLARIFY,
+                RouteOperation.REJECT,
+            }:
+                yield from self._stream_route_decision(
+                    account_id,
+                    assistant_message_id,
+                    owner_route,
+                    thinking,
+                )
+                return
             owner_image = image_payload_from(owner_message)
             if owner_image is not None:
                 if self._image is None:
@@ -3662,6 +3720,57 @@ class TurnOrchestrator:
     # Issue 31/32/36：异步任务与 MCP 调用编排路径
     # ------------------------------------------------------------------
 
+    def _stream_route_decision(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        decision: RouteDecision,
+        thinking: ChatThinkingSummary,
+    ) -> Iterator[StreamEvent]:
+        """收敛一次性澄清/拒绝路由，不进入普通文本模型。"""
+
+        now = datetime.now(UTC)
+        if decision.operation == RouteOperation.CLARIFY:
+            question = decision.clarification_question or "请补充这次请求的具体目标。"
+            self._repo.update_message_content(
+                account_id, assistant_message_id, question, now
+            )
+            finalize_message(
+                self._repo,
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.DONE,
+                error_code=None,
+                error_message=None,
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=time.monotonic(),
+                now=now,
+                thinking=done_thinking(thinking),
+            )
+            yield StreamEvent(kind="done")
+            return
+        error_code = decision.error_code or "route_rejected"
+        error_message = decision.error_message or "这条图片请求暂时无法执行，请补充有效来源后重试。"
+        finalize_message(
+            self._repo,
+            account_id,
+            assistant_message_id,
+            status=ChatMessageStatus.ERROR,
+            error_code=error_code,
+            error_message=error_message,
+            duration_ms=None,
+            model_id=None,
+            run_lock_id=None,
+            started=time.monotonic(),
+            now=now,
+            thinking=failed_thinking(thinking, error_code),
+        )
+        yield StreamEvent(
+            kind="error", error_code=error_code, error_message=error_message
+        )
+
     def _stream_image_request(
         self,
         account_id: str,
@@ -3688,6 +3797,8 @@ class TurnOrchestrator:
                     payload.prompt,
                     source_version_id=payload.source_version_id,
                     source_object_id=payload.source_object_id,
+                    source_scope=payload.source_scope,
+                    size=payload.size,
                 )
             else:
                 projection = self._image.submit_generation(
@@ -3695,6 +3806,7 @@ class TurnOrchestrator:
                     conversation_id,
                     assistant_message_id,
                     payload.prompt,
+                    size=payload.size,
                 )
         except ImageError as exc:
             finalize_message(

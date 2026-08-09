@@ -366,9 +366,9 @@ class ConversationRepository:
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                     " web_search, arxiv_search, teaching, context_note, skill,"
-                    " career_planning, image, video, mcp_call)"
+                    " career_planning, image, video, mcp_call, route)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                    " ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         record.message_id,
                         record.conversation_id,
@@ -396,6 +396,7 @@ class ConversationRepository:
                         _json_dumps(record.image) if record.image else None,
                         _json_dumps(record.video) if record.video else None,
                         _json_dumps(record.mcp_call) if record.mcp_call else None,
+                        _json_dumps(record.route) if record.route else None,
                     ),
                 )
                 self._persist_message_route(record)
@@ -420,9 +421,9 @@ class ConversationRepository:
                         " status, content, thinking, error_code, error_message,"
                         " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                         " web_search, arxiv_search, teaching, context_note, skill,"
-                        " career_planning, image, video, mcp_call)"
+                        " career_planning, image, video, mcp_call, route)"
                         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                         (
                             record.message_id,
                             record.conversation_id,
@@ -450,6 +451,7 @@ class ConversationRepository:
                             _json_dumps(record.image) if record.image else None,
                             _json_dumps(record.video) if record.video else None,
                             _json_dumps(record.mcp_call) if record.mcp_call else None,
+                            _json_dumps(record.route) if record.route else None,
                         ),
                     )
                     self._persist_message_route(record)
@@ -1028,9 +1030,9 @@ class ConversationRepository:
                 " status, content, thinking, error_code, error_message,"
                 " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                 " web_search, arxiv_search, teaching, context_note, skill,"
-                " career_planning, image, video, mcp_call)"
+                " career_planning, image, video, mcp_call, route)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     record.message_id,
                     record.conversation_id,
@@ -1062,6 +1064,7 @@ class ConversationRepository:
                     _json_dumps(record.image) if record.image else None,
                     _json_dumps(record.video) if record.video else None,
                     _json_dumps(record.mcp_call) if record.mcp_call else None,
+                    _json_dumps(record.route) if record.route else None,
                 ),
             )
             self._persist_message_route(record)
@@ -1275,9 +1278,9 @@ class ConversationRepository:
                     " status, content, thinking, error_code, error_message,"
                     " duration_ms, model_id, run_lock_id, created_at, updated_at,"
                     " web_search, arxiv_search, teaching, context_note, skill,"
-                    " career_planning, image, video, mcp_call)"
+                    " career_planning, image, video, mcp_call, route)"
                     " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,"
-                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    " ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     (
                         assistant_record.message_id,
                         assistant_record.conversation_id,
@@ -1334,6 +1337,9 @@ class ConversationRepository:
                         else None,
                         _json_dumps(assistant_record.mcp_call)
                         if assistant_record.mcp_call
+                        else None,
+                        _json_dumps(assistant_record.route)
+                        if assistant_record.route
                         else None,
                     ),
                 )

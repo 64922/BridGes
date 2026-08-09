@@ -58,6 +58,9 @@ class ImageTaskProjection(BaseModel):
     """
 
     task_id: str = Field(description="任务标识。")
+    attempt_number: int = Field(
+        default=1, ge=1, description="该图片任务的显式提交轮次；手动重试时递增。"
+    )
     kind: ImageTaskKind = Field(description="任务类型：生成或编辑。")
     prompt: str = Field(
         description="用户提交的生成要求或编辑指令（用于追溯与前端展示）。"
@@ -90,6 +93,9 @@ class ImageTaskProjection(BaseModel):
         description="资产已被删除（消息引用维护：删除资产时标记，前端据此"
         "显示已删除状态，不再请求资产详情）。",
     )
+    synthetic: bool = Field(
+        default=True, description="结果是否为图片模型生成的合成内容。"
+    )
     created_at: datetime = Field(description="任务创建时间。")
     updated_at: datetime = Field(description="最近状态更新时间。")
 
@@ -110,6 +116,9 @@ class ImageVersionProjection(BaseModel):
     object_id: str = Field(description="账户对象库中的图片对象标识。")
     media_type: str = Field(description="图片媒体类型。")
     content_length: int = Field(description="图片字节数。")
+    synthetic: bool = Field(
+        default=True, description="该版本是否为图片模型生成的合成内容。"
+    )
     created_at: datetime = Field(description="版本创建时间。")
 
 
@@ -133,6 +142,9 @@ class ImageAssetProjection(BaseModel):
         default=None, description="当前版本指针（删除后为 None）。"
     )
     version_count: int = Field(default=0, description="版本数量。")
+    synthetic: bool = Field(
+        default=True, description="该资产是否由图片模型生成或编辑产生。"
+    )
     versions: list[ImageVersionProjection] = Field(
         default_factory=list, description="版本列表（按创建时间升序）。"
     )

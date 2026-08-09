@@ -67,6 +67,7 @@ from bridges.chat import (
     ConversationRepository,
 )
 from bridges.chat.run_executor import GenerationRunExecutor
+from bridges.chat.routing import NaturalLanguageImageRouter
 from bridges.chat.selections import ChatSelectionsService
 from bridges.config import Settings, get_settings
 from bridges.retirement import retire_user_extensions
@@ -1197,6 +1198,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             selections_service=app.state.chat_selections_service,
             mcp_service=getattr(app.state, "mcp_service", None),
             automatic_profile_service=app.state.automatic_profile_service,
+            natural_language_router=NaturalLanguageImageRouter(bridges_database),
         )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。

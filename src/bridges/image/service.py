@@ -72,6 +72,7 @@ MAX_CLOUD_POLLS = 36
 MAX_AUTO_RETRIES = 3
 #: 提示词长度上限（与消息正文上限一致的保守值）。
 PROMPT_MAX_LENGTH = 2000
+_IMAGE_SIZES = {"1024*1024", "1536*1024", "1024*1536"}
 #: 替代文本确定性降级模板的提示词摘要长度。
 _ALT_TEXT_PROMPT_SUMMARY = 80
 #: 永久失败错误码：重试不会因输入/来源变化而成功（如来源已删除），
@@ -186,7 +187,12 @@ class ImageService:
     # ------------------------------------------------------------------
 
     def submit_generation(
-        self, account_id: str, conversation_id: str, message_id: str, prompt: str
+        self,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        prompt: str,
+        size: str = DEFAULT_IMAGE_SIZE,
     ) -> ImageTaskProjection:
         """提交一个图片生成任务并关联到当前助手消息。"""
         return self._submit(
@@ -195,6 +201,7 @@ class ImageService:
             message_id,
             ImageTaskKind.GENERATE,
             prompt,
+            size=size,
         )
 
     def submit_edit(
@@ -205,6 +212,8 @@ class ImageService:
         prompt: str,
         source_version_id: str | None = None,
         source_object_id: str | None = None,
+        source_scope: str | None = None,
+        size: str = DEFAULT_IMAGE_SIZE,
     ) -> ImageTaskProjection:
         """提交一个图片编辑任务；来源必须是当前账户有权访问的图片。
 
@@ -220,6 +229,8 @@ class ImageService:
             prompt,
             source_version_id=source_version_id,
             source_object_id=source_object_id,
+            source_scope=source_scope,
+            size=size,
         )
 
     def _submit(
@@ -231,6 +242,8 @@ class ImageService:
         prompt: str,
         source_version_id: str | None = None,
         source_object_id: str | None = None,
+        source_scope: str | None = None,
+        size: str = DEFAULT_IMAGE_SIZE,
     ) -> ImageTaskProjection:
         prompt = prompt.strip()
         if not prompt:
@@ -239,6 +252,8 @@ class ImageService:
             raise ImageError(
                 "prompt_too_long", f"提示词超过 {PROMPT_MAX_LENGTH} 字限制。"
             )
+        if size not in _IMAGE_SIZES:
+            raise ImageError("invalid_parameters", "图片尺寸不在已登记模型的支持范围内。")
         # 消息归属校验：任务与消息投影原子落库，跨账户消息一律 404。
         if self._repo is not None:
             record = self._repo.get_message(account_id, message_id)
@@ -266,6 +281,14 @@ class ImageService:
                 asset_id = str(version["asset_id"])
             else:
                 assert source_object_id is not None
+                if source_scope == "knowledge_base" and not self._is_knowledge_base_image(
+                    account_id, source_object_id
+                ):
+                    raise ImageError(
+                        "source_not_found",
+                        "来源图片不存在或没有访问权限。",
+                        status_code=404,
+                    )
                 obj = self._object_meta(account_id, source_object_id)
                 if (
                     obj is None
@@ -287,8 +310,8 @@ class ImageService:
                 scoped.execute(
                     "INSERT INTO image_tasks(task_id, account_id, conversation_id,"
                     " message_id, kind, prompt, source_version_id, source_object_id,"
-                    " status, asset_id, created_at, updated_at)"
-                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
+                    " source_scope, size, status, asset_id, created_at, updated_at)"
+                    " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, ?, ?)",
                     (
                         task_id,
                         account_id,
@@ -298,6 +321,8 @@ class ImageService:
                         prompt,
                         source_version_id,
                         source_object_id,
+                        source_scope,
+                        size,
                         asset_id,
                         now,
                         now,
@@ -484,6 +509,7 @@ class ImageService:
                 scoped = self._db.scoped(account_id)
                 scoped.execute(
                     "UPDATE image_tasks SET status = 'queued', retry_count = 0,"
+                    " attempt_number = attempt_number + 1,"
                     " cloud_task_id = NULL, poll_count = 0, error_code = NULL,"
                     " error_message = NULL, updated_at = ?"
                     " WHERE task_id = ? AND account_id = ? AND status = 'failed'",
@@ -492,6 +518,7 @@ class ImageService:
                 if row["message_id"]:
                     retried = self._task_projection(
                         task_id=task_id,
+                        attempt_number=int(row["attempt_number"] or 1) + 1,
                         kind=ImageTaskKind(str(row["kind"])),
                         prompt=str(row["prompt"]),
                         source_version_id=(
@@ -805,7 +832,7 @@ class ImageService:
             {
                 "kind": "submit",
                 "prompt": prompt,
-                "size": DEFAULT_IMAGE_SIZE,
+                "size": str(row["size"] or DEFAULT_IMAGE_SIZE),
                 "base_image": base_image,
             },
         )
@@ -1243,6 +1270,15 @@ class ImageService:
             object_id = str(version["object_id"])
         if object_id is None:
             return None
+        if (
+            str(row["source_scope"] or "") == "knowledge_base"
+            and not self._is_knowledge_base_image(account_id, object_id)
+        ):
+            raise ImageError(
+                "source_not_found",
+                "编辑来源图片已不在当前账户知识库中。",
+                status_code=404,
+            )
         try:
             content = self._objects.get_content(account_id, object_id)
         except StorageError as exc:
@@ -1340,6 +1376,7 @@ class ImageService:
         kind: ImageTaskKind,
         prompt: str,
         status: ImageTaskStatus,
+        attempt_number: int = 1,
         source_version_id: str | None = None,
         source_object_id: str | None = None,
         model_id: str | None = None,
@@ -1353,6 +1390,7 @@ class ImageService:
     ) -> ImageTaskProjection:
         return ImageTaskProjection(
             task_id=task_id,
+            attempt_number=attempt_number,
             kind=kind,
             prompt=prompt,
             source_version_id=source_version_id,
@@ -1371,6 +1409,7 @@ class ImageService:
     def _task_projection_from_row(self, row: Any) -> ImageTaskProjection:
         return self._task_projection(
             task_id=str(row["task_id"]),
+            attempt_number=int(row["attempt_number"] or 1),
             kind=ImageTaskKind(str(row["kind"])),
             prompt=str(row["prompt"]),
             source_version_id=(
@@ -1472,6 +1511,16 @@ class ImageService:
             "   AND r.source = 'knowledge_base' AND r.status = 'ready'"
             "   AND o.status = 'active'",
             (account_id, object_id),
+        ).fetchone()
+        return row is not None
+
+    def _is_knowledge_base_image(self, account_id: str, object_id: str) -> bool:
+        row = self._db.scoped(account_id).execute(
+            "SELECT 1 FROM objects o JOIN document_records r ON r.object_id = o.object_id"
+            " WHERE o.object_id = ? AND o.account_id = ? AND r.account_id = ?"
+            " AND r.source = 'knowledge_base' AND r.status = 'ready'"
+            " AND o.status = 'active' AND o.media_type LIKE 'image/%' LIMIT 1",
+            (object_id, account_id, account_id),
         ).fetchone()
         return row is not None
 

@@ -39,7 +39,6 @@ import { readAloudSession } from "@/lib/read-aloud";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
-import { ImageDialog } from "@/components/bridges/ImageDialog";
 import { VideoDialog } from "@/components/bridges/VideoDialog";
 import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
@@ -51,11 +50,7 @@ import type {
   ChatStreamStageData,
   ChatStreamVideoData,
 } from "@/lib/api";
-import type {
-  ImageRequestPayload,
-  ImageTaskKind,
-  VideoRequestPayload,
-} from "@/lib/api";
+import type { VideoRequestPayload } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -160,8 +155,6 @@ export default function ChatConversationPage() {
   // Issue 29：生涯规划任务对话框（问题 + 画像开关）
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
-  // Issue 31：图片生成/编辑任务对话框（生成页签 + 编辑页签）
-  const [imageOpen, setImageOpen] = useState(false);
   // Issue 32：视频生成任务对话框（单一生成页签，Wan 固定绑定）
   const [videoOpen, setVideoOpen] = useState(false);
   // Issue 36：对话级插件选择（随对话持久化；chip 持续显示；停用/卸载/
@@ -502,7 +495,6 @@ export default function ChatConversationPage() {
       useProfile: boolean = true,
       skillId?: string,
       skillInput?: unknown,
-      image?: ImageRequestPayload,
       video?: VideoRequestPayload,
       mcpCall?: McpCallRequestPayload
     ): Promise<boolean> => {
@@ -536,7 +528,6 @@ export default function ChatConversationPage() {
             ...(skillInput !== undefined
               ? { skill_input: skillInput as HumanizerSkillInput }
               : {}),
-            ...(image !== undefined ? { image } : {}),
             ...(video !== undefined ? { video } : {}),
             ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
           });
@@ -554,7 +545,7 @@ export default function ChatConversationPage() {
             useProfile,
             skillId,
             skillInput,
-            image,
+            undefined,
             video,
             mcpCall
           );
@@ -632,26 +623,6 @@ export default function ChatConversationPage() {
     [sendMessage]
   );
 
-  /** Issue 31：提交图片生成/编辑任务（真实消息流：image 载荷创建异步任务，
-   *  状态卡与资产卡在消息流中呈现，不在此处伪造图片结果）。 */
-  const handleImageSubmit = useCallback(
-    async (payload: {
-      kind: ImageTaskKind;
-      prompt: string;
-      sourceObjectId?: string;
-    }): Promise<boolean> => {
-      const imagePayload: ImageRequestPayload = {
-        kind: payload.kind,
-        prompt: payload.prompt,
-        ...(payload.sourceObjectId
-          ? { source_object_id: payload.sourceObjectId }
-          : {}),
-      };
-      return sendMessage(payload.prompt, true, true, undefined, undefined, imagePayload);
-    },
-    [sendMessage]
-  );
-
   /** Issue 36：提交对选中 MCP 插件的调用（真实消息流：mcp_call 载荷
    *  走服务端选中校验与 invoke，结果卡在消息流中呈现，不伪造结果）。 */
   /*
@@ -662,7 +633,6 @@ export default function ChatConversationPage() {
         `调用 ${payload.mcp_id} 的 ${payload.tool} 工具`,
         true,
         true,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -954,8 +924,6 @@ export default function ChatConversationPage() {
                     onStop={() => void stop()}
                     onOpenHumanizer={() => setHumanizerOpen(true)}
                     onOpenCareer={() => setCareerOpen(true)}
-                    onOpenImage={() => setImageOpen(true)}
-                    image={MEDIA_ALWAYS_AVAILABLE}
                     onOpenVideo={() => setVideoOpen(true)}
                     video={MEDIA_ALWAYS_AVAILABLE}
                     asr={MEDIA_ALWAYS_AVAILABLE}
@@ -976,11 +944,6 @@ export default function ChatConversationPage() {
         onClose={() => setCareerOpen(false)}
         conversationId={conversationId}
         onSubmit={handleCareerSubmit}
-      />
-      <ImageDialog
-        open={imageOpen}
-        onClose={() => setImageOpen(false)}
-        onSubmit={handleImageSubmit}
       />
       <VideoDialog
         open={videoOpen}

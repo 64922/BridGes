@@ -28,6 +28,7 @@ from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
 from bridges.contracts.profile_extraction import ProfilePrivacyNotice
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
+from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
@@ -213,7 +214,7 @@ class ChatMessageProjection(BaseModel):
         default=None,
         description="本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。",
     )
-    route: CapabilityRoute | None = Field(
+    route: CapabilityRoute | RouteDecision | None = Field(
         default=None,
         description="本条消息绑定的自然语言能力路由快照（Issue 06）。",
     )
@@ -630,6 +631,15 @@ class ImageRequestPayload(BaseModel):
     )
     source_object_id: str | None = Field(
         default=None, description="编辑来源全局知识库图片对象标识（kind=edit 时可选）。"
+    )
+    source_scope: Literal["knowledge_base"] | None = Field(
+        default=None,
+        description="自然语言编辑来源范围；仅允许当前账户知识库。",
+    )
+    size: str = Field(
+        default="1024*1024",
+        pattern=r"^(1024\*1024|1536\*1024|1024\*1536)$",
+        description="图片尺寸合同。",
     )
 
 
