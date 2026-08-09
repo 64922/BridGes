@@ -11,7 +11,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.contracts.career import (
@@ -27,6 +27,7 @@ from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
+from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
@@ -222,6 +223,10 @@ class ChatMessageProjection(BaseModel):
     skill: dict[str, Any] | None = Field(
         default=None,
         description="用户消息的 SKILL 载荷快照（标识+任务契约，重试沿用）；普通消息为 None。",
+    )
+    route: RouteDecision | None = Field(
+        default=None,
+        description="普通自然语言能力路由快照；历史消息和未命中路由时为 None。",
     )
     humanizer: HumanizerResultProjection | None = Field(
         default=None,
@@ -613,6 +618,8 @@ class ImageRequestPayload(BaseModel):
     请求只携带提示与来源引用，不携带完整项目目录、画像或任何账户秘密。
     """
 
+    model_config = ConfigDict(extra="forbid")
+
     kind: ImageTaskKind = Field(description="生成或编辑。")
     prompt: str = Field(
         min_length=1, max_length=2000, description="生成要求或编辑指令。"
@@ -622,6 +629,15 @@ class ImageRequestPayload(BaseModel):
     )
     source_object_id: str | None = Field(
         default=None, description="编辑来源聊天附件对象标识（kind=edit 时可选其一）。"
+    )
+    source_scope: Literal["knowledge_base"] | None = Field(
+        default=None,
+        description="自然语言编辑来源范围；仅允许当前账户知识库。",
+    )
+    size: str = Field(
+        default="1024*1024",
+        pattern=r"^(1024\*1024|1536\*1024|1024\*1536)$",
+        description="图片尺寸合同。",
     )
 
 

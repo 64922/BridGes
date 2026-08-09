@@ -44,7 +44,6 @@ import { readAloudSession } from "@/lib/read-aloud";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
 import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
 import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
-import { ImageDialog } from "@/components/bridges/ImageDialog";
 import { VideoDialog } from "@/components/bridges/VideoDialog";
 import { PluginPickerDialog } from "@/components/bridges/PluginPickerDialog";
 import { McpInvokeDialog } from "@/components/bridges/McpInvokeDialog";
@@ -61,16 +60,12 @@ import type {
 } from "@/lib/api";
 import type {
   ChatPluginSelectionItem,
-  ImageAssetProjection,
-  ImageRequestPayload,
-  ImageTaskKind,
   McpCallRequestPayload,
   VideoRequestPayload,
 } from "@/lib/api";
 import {
   approveMessageMcpConfirmation,
   denyMessageMcpConfirmation,
-  getImageAsset,
   listMcpServers,
   listPlugins,
   updateChatConversation,
@@ -184,9 +179,6 @@ export default function ChatConversationPage() {
   // Issue 29：生涯规划任务对话框（问题 + 画像开关）
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
-  // Issue 31：图片生成/编辑任务对话框（生成页签 + 编辑页签）
-  const [imageOpen, setImageOpen] = useState(false);
-  const [imageAssets, setImageAssets] = useState<ImageAssetProjection[]>([]);
   // Issue 32：视频生成任务对话框（单一生成页签，Wan 固定绑定）
   const [videoOpen, setVideoOpen] = useState(false);
   // Issue 36：对话级插件选择（随对话持久化；chip 持续显示；停用/卸载/
@@ -643,7 +635,6 @@ export default function ChatConversationPage() {
       useProfile: boolean = true,
       skillId?: string,
       skillInput?: unknown,
-      image?: ImageRequestPayload,
       video?: VideoRequestPayload,
       mcpCall?: McpCallRequestPayload
     ): Promise<boolean> => {
@@ -678,7 +669,6 @@ export default function ChatConversationPage() {
             ...(skillInput !== undefined
               ? { skill_input: skillInput as HumanizerSkillInput }
               : {}),
-            ...(image !== undefined ? { image } : {}),
             ...(video !== undefined ? { video } : {}),
             ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
           });
@@ -697,7 +687,7 @@ export default function ChatConversationPage() {
             useProfile,
             skillId,
             skillInput,
-            image,
+            undefined,
             video,
             mcpCall
           );
@@ -779,30 +769,6 @@ export default function ChatConversationPage() {
     [sendMessage]
   );
 
-  /** Issue 31：提交图片生成/编辑任务（真实消息流：image 载荷创建异步任务，
-   *  状态卡与资产卡在消息流中呈现，不在此处伪造图片结果）。 */
-  const handleImageSubmit = useCallback(
-    async (payload: {
-      kind: ImageTaskKind;
-      prompt: string;
-      sourceVersionId?: string;
-      sourceObjectId?: string;
-    }): Promise<boolean> => {
-      const imagePayload: ImageRequestPayload = {
-        kind: payload.kind,
-        prompt: payload.prompt,
-        ...(payload.sourceVersionId
-          ? { source_version_id: payload.sourceVersionId }
-          : {}),
-        ...(payload.sourceObjectId
-          ? { source_object_id: payload.sourceObjectId }
-          : {}),
-      };
-      return sendMessage(payload.prompt, [], true, true, undefined, undefined, imagePayload);
-    },
-    [sendMessage]
-  );
-
   /** Issue 36：提交对选中 MCP 插件的调用（真实消息流：mcp_call 载荷
    *  走服务端选中校验与 invoke，结果卡在消息流中呈现，不伪造结果）。 */
   const handleMcpInvokeSubmit = useCallback(
@@ -813,7 +779,6 @@ export default function ChatConversationPage() {
         [],
         true,
         true,
-        undefined,
         undefined,
         undefined,
         undefined,
@@ -852,43 +817,10 @@ export default function ChatConversationPage() {
   const handleVideoSubmit = useCallback(
     async (payload: { prompt: string }): Promise<boolean> => {
       const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
-      return sendMessage(payload.prompt, [], true, true, undefined, undefined, undefined, videoPayload);
+      return sendMessage(payload.prompt, [], true, true, undefined, undefined, videoPayload);
     },
     [sendMessage]
   );
-
-  // Issue 31：图片编辑对话框的可选来源——当前对话中已成功且未删除的
-  // 图片资产（打开对话框时按消息流收集一次；资产详情含版本链）。
-  useEffect(() => {
-    if (!imageOpen || !conversation) return;
-    let cancelled = false;
-    const assetIds = new Set<string>();
-    for (const message of conversation.messages ?? []) {
-      const image = message.image;
-      if (
-        image &&
-        image.status === "succeeded" &&
-        image.asset_id &&
-        !image.deleted
-      ) {
-        assetIds.add(image.asset_id);
-      }
-    }
-    Promise.all(
-      Array.from(assetIds).map((assetId) =>
-        getImageAsset(conversationId, assetId).catch(() => null)
-      )
-    ).then((results) => {
-      if (!cancelled) {
-        setImageAssets(
-          results.filter((result): result is ImageAssetProjection => result !== null)
-        );
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [imageOpen, conversation, conversationId]);
 
   const downloadAttachment = useCallback(
     async (attachment: ChatAttachmentProjection) => {
@@ -1194,8 +1126,6 @@ export default function ChatConversationPage() {
                     onSelectLearningProject={(project) => void changeLearningProject(project)}
                     onOpenHumanizer={() => setHumanizerOpen(true)}
                     onOpenCareer={() => setCareerOpen(true)}
-                    onOpenImage={() => setImageOpen(true)}
-                    image={MEDIA_ALWAYS_AVAILABLE}
                     onOpenVideo={() => setVideoOpen(true)}
                     video={MEDIA_ALWAYS_AVAILABLE}
                     asr={MEDIA_ALWAYS_AVAILABLE}
@@ -1238,13 +1168,6 @@ export default function ChatConversationPage() {
         conversationId={conversationId}
         onSubmit={handleCareerSubmit}
       />
-      <ImageDialog
-        open={imageOpen}
-        onClose={() => setImageOpen(false)}
-        assets={imageAssets}
-        attachmentOptions={imageAttachmentOptions(threadMessages)}
-        onSubmit={handleImageSubmit}
-      />
       <VideoDialog
         open={videoOpen}
         onClose={() => setVideoOpen(false)}
@@ -1266,29 +1189,4 @@ export default function ChatConversationPage() {
       />
     </AppShell>
   );
-}
-
-/** Issue 31：从消息流收集图片附件作为编辑来源（本账户聊天附件对象）。 */
-function imageAttachmentOptions(
-  messages: (ChatMessageLike | { kind: string; event_id: string; to_mode: string })[]
-): {
-  key: string;
-  objectId: string;
-  label: string;
-  hint: string;
-}[] {
-  const options: { key: string; objectId: string; label: string; hint: string }[] = [];
-  for (const message of messages) {
-    if ("kind" in message || message.role !== "user") continue;
-    for (const attachment of message.attachments ?? []) {
-      if (!attachment.media_type.startsWith("image/")) continue;
-      options.push({
-        key: `object:${attachment.object_id}`,
-        objectId: attachment.object_id,
-        label: attachment.original_filename,
-        hint: attachment.media_type,
-      });
-    }
-  }
-  return options;
 }

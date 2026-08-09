@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 38
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1635,6 +1635,33 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         UPDATE conversations SET mode_locked = 1
+        """,
+    ],
+    # Issue 08：保存普通自然语言消息的一次性路由快照。历史消息保持 NULL，
+    # 读取时不重新分类，也不因升级补发图片任务。
+    35: [
+        """
+        ALTER TABLE messages ADD COLUMN route TEXT
+        """,
+    ],
+    # Issue 08：图片路由合同的尺寸参数随任务持久化，重试和恢复沿用原合同。
+    36: [
+        """
+        ALTER TABLE image_tasks ADD COLUMN size TEXT NOT NULL DEFAULT '1024*1024'
+        """,
+    ],
+    # Issue 08：保存图片编辑来源范围；自然语言路由的知识库边界在后台
+    # 重试/恢复时仍可复核，历史显式附件任务保留 NULL 兼容语义。
+    37: [
+        """
+        ALTER TABLE image_tasks ADD COLUMN source_scope TEXT
+        """,
+    ],
+    # Issue 08：显式图片重试沿用同一任务快照，但递增提交轮次，便于前端
+    # 与审计区分原始失败和用户发起的新尝试；历史任务从 1 开始兼容。
+    38: [
+        """
+        ALTER TABLE image_tasks ADD COLUMN attempt_number INTEGER NOT NULL DEFAULT 1
         """,
     ],
 }

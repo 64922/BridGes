@@ -27,6 +27,7 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.routing import NaturalLanguageImageRouter, image_request_from_decision
 from bridges.chat.repository import (
     ConversationModeLockConflict,
     ConversationRecord,
@@ -101,6 +102,7 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
+from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.mcp import McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import ProfileNotification
@@ -190,6 +192,7 @@ class ChatService:
         video_service: VideoOrchestrator | None = None,
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
+        natural_language_router: NaturalLanguageImageRouter | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -223,6 +226,9 @@ class ChatService:
         #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用与
         #: 敏感确认；未挂载时携带 mcp_call 载荷的消息按错误收敛。
         self._mcp = mcp_service
+        #: 普通自然语言图片路由（Issue 08）；路由快照随用户消息落库，
+        #: 未挂载时保留既有显式能力载荷兼容路径。
+        self._natural_language_router = natural_language_router
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
         #: 回合编排深模块（Issue 42）：生成管线（模式路由/检索/切片编译/
@@ -637,8 +643,18 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
+        route = self._route_natural_language(
+            account_id,
+            content,
+            explicit_payload=any(
+                value is not None for value in (skill_id, image, video, mcp_call)
+            ),
+        )
+        routed_image = image_request_from_decision(route) if route else None
         skill_payload, image_payload, video_payload, mcp_call_payload = (
-            self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
+            self._validate_turn_payloads(
+                skill_id, skill_input, image or routed_image, video, mcp_call
+            )
         )
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
@@ -655,6 +671,7 @@ class ChatService:
         attachment_ids = self._validate_attachments(
             account_id, conversation_id, attachment_ids
         )
+        self._reject_natural_image_attachments(route, attachment_ids)
         # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致——
         # 不一致直接返回可理解错误，绝不静默回退（如用知识库材料冒充原文）。
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
@@ -674,6 +691,7 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
+            route=route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -736,6 +754,31 @@ class ChatService:
             raise ChatDomainError(
                 "attachment_contract_mismatch",
                 "任务引用的附件与消息附加的附件不一致，请重新选择文件后重试。",
+                422,
+            )
+
+    def _route_natural_language(
+        self, account_id: str, content: str, *, explicit_payload: bool
+    ) -> RouteDecision | None:
+        """只对无显式能力载荷的普通消息做一次本地路由。"""
+
+        if explicit_payload or self._natural_language_router is None:
+            return None
+        return self._natural_language_router.route(account_id, content)
+
+    @staticmethod
+    def _reject_natural_image_attachments(
+        route: RouteDecision | None, attachment_ids: list[str]
+    ) -> None:
+        if (
+            route is not None
+            and route.capability.value == "image"
+            and route.operation in {RouteOperation.GENERATE, RouteOperation.EDIT}
+            and attachment_ids
+        ):
+            raise ChatDomainError(
+                "image_source_not_allowed",
+                "自然语言图片编辑只允许使用当前账户知识库中的图片，不能使用聊天附件。",
                 422,
             )
 
@@ -804,6 +847,7 @@ class ChatService:
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
+        route: RouteDecision | None,
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
@@ -852,6 +896,7 @@ class ChatService:
             image=image_payload,
             video=video_payload,
             mcp_call=mcp_call_payload,
+            route=(route.model_dump(mode="json") if route else None),
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -978,8 +1023,18 @@ class ChatService:
         content = content.strip()
         if not content:
             raise ChatDomainError("empty_message", "消息内容不能为空。", 422)
+        route = self._route_natural_language(
+            account_id,
+            content,
+            explicit_payload=any(
+                value is not None for value in (skill_id, image, video, mcp_call)
+            ),
+        )
+        routed_image = image_request_from_decision(route) if route else None
         skill_payload, image_payload, video_payload, mcp_call_payload = (
-            self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
+            self._validate_turn_payloads(
+                skill_id, skill_input, image or routed_image, video, mcp_call
+            )
         )
         # 指定会话（附件路径）必须存在且属于当前账户；缺省新建会话没有
         # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
@@ -1003,6 +1058,7 @@ class ChatService:
             attachment_ids = self._validate_attachments(
                 account_id, conversation_id, attachment_ids
             )
+        self._reject_natural_image_attachments(route, attachment_ids)
         # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致。
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
         title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
@@ -1021,6 +1077,7 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
+            route=route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -1840,6 +1897,11 @@ class ChatService:
                 else None
             ),
             skill=message.skill,
+            route=(
+                RouteDecision.model_validate(message.route)
+                if message.route is not None and message.role == ChatMessageRole.USER
+                else None
+            ),
             # 助手消息的 skill 列只承载人味化结果投影（输入快照只在用户消息），
             # 直接按结果投影解析，无需魔数判别。
             humanizer=(
