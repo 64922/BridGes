@@ -18,6 +18,7 @@ from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
 )
+from bridges.contracts.routing import RouteDecision
 from bridges.contracts.humanizer import (
     HumanizerProcessState,
     HumanizerResultProjection,
@@ -245,6 +246,10 @@ class ChatMessageProjection(BaseModel):
         default=None,
         description="助手消息的 MCP 插件调用结果投影（Issue 36）；非 MCP "
         "调用消息为 None。",
+    )
+    route: RouteDecision | None = Field(
+        default=None,
+        description="副作用前固化的自然语言能力路由快照；旧消息为 None。",
     )
     read_aloud: ReadAloudProjection | None = Field(
         default=None,

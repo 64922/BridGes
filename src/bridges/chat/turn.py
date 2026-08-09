@@ -46,9 +46,11 @@ from bridges.chat.budget import (
 )
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, MessageRecord
+from bridges.chat.routing import classify_message
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.career import (
+    CareerPlanningRouteContract,
     CareerPlanningProcessState,
     CareerPlanningProjection,
     CareerPlanningStatus,
@@ -86,6 +88,7 @@ from bridges.contracts.profiles import (
     ProfileDimension,
     ProfileSlice,
 )
+from bridges.contracts.routing import RouteCapability, RouteConfidence, RouteDecision
 from bridges.contracts.retrieval import (
     CitationProjection,
     RetrievalLayerStatus,
@@ -373,6 +376,7 @@ class CareerPlannerOrchestrator(Protocol):
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
+        route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
     ) -> Iterator[CareerRunEvent]: ...
 
@@ -1277,6 +1281,7 @@ class TurnOrchestrator:
                 self._repo.list_messages(account_id, conversation_id),
                 assistant_message_id,
             )
+            route = self._route_for_message(current, owner_message)
             owner_image = image_payload_from(owner_message)
             if owner_image is not None:
                 if self._image is None:
@@ -1374,20 +1379,30 @@ class TurnOrchestrator:
                     owner_mcp_call,
                 )
                 return
-            # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
-            # 走生涯规划编排——同一真实消息流程，六类输出经 career 过程事件
-            # 呈现，终态 done/error 收敛；非规划消息继续普通回答。
+            # Issue 06/10：路由快照已在消息创建事务中落盘；互斥任务只提出
+            # 一个澄清问题，澄清前不进入检索、模型或其他能力副作用。
+            if route is not None and route.capability == RouteCapability.CLARIFY:
+                yield from self._stream_route_clarification(
+                    account_id,
+                    assistant_message_id,
+                    route.clarification or "请确认本轮要先执行哪一项任务。",
+                    thinking,
+                    started,
+                )
+                return
+            # Issue 29/10：明确生涯规划意图（含自然语言自动路由与前端
+            # 预填前缀）走生涯规划编排；非规划消息继续普通回答。
             # Issue 09：上一轮助手是澄清问题时（career_planning.clarification
             # 非空），本轮用户回复继续走生涯编排——澄清问答是同一规划的
             # 延续，不因回复不含触发词而断裂。
+            pending_career = self._has_pending_career_clarification(
+                account_id, conversation_id, until_user_message_id
+            )
             if (
                 owner_message is not None
-                and self._career_planner is not None
                 and (
-                    is_career_intent(owner_message.content)
-                    or self._has_pending_career_clarification(
-                        account_id, conversation_id, until_user_message_id
-                    )
+                    (route is not None and route.capability == RouteCapability.CAREER_PLANNING)
+                    or pending_career
                 )
             ):
                 yield from self._stream_career_planning(
@@ -1400,6 +1415,12 @@ class TurnOrchestrator:
                     use_knowledge_base,
                     use_profile,
                     budget,
+                    route_contract=(
+                        route.career_contract
+                        if route is not None
+                        and route.capability == RouteCapability.CAREER_PLANNING
+                        else None
+                    ),
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
@@ -2992,6 +3013,60 @@ class TurnOrchestrator:
     # Issue 29：生涯规划编排路径
     # ------------------------------------------------------------------
 
+    def _route_for_message(
+        self, assistant_message: MessageRecord, owner_message: MessageRecord | None
+    ) -> RouteDecision | None:
+        """读取已固化路由；历史消息没有快照时只做兼容性确定性回退。"""
+        if assistant_message.route is not None:
+            return RouteDecision.model_validate(assistant_message.route)
+        if owner_message is None:
+            return None
+        # 迁移兼容：旧消息没有路由快照时沿用 Issue 29 的旧判定，避免新
+        # 自然语言规则把历史普通聊天重新路由；新消息一定从落盘快照读取。
+        if is_career_intent(owner_message.content):
+            return RouteDecision(
+                capability=RouteCapability.CAREER_PLANNING,
+                confidence=RouteConfidence.HIGH,
+                normalized_query=owner_message.content[:2_000],
+                reason_code="legacy_career_intent",
+            )
+        return RouteDecision(
+            capability=RouteCapability.CHAT,
+            confidence=RouteConfidence.MEDIUM,
+            normalized_query=owner_message.content[:2_000],
+            reason_code="legacy_chat_message",
+        )
+
+    def _stream_route_clarification(
+        self,
+        account_id: str,
+        assistant_message_id: str,
+        question: str,
+        thinking: ChatThinkingSummary,
+        started: float,
+    ) -> Iterator[StreamEvent]:
+        """互斥或低置信路由只交付一个澄清问题，不启动任何能力。"""
+        now = datetime.now(UTC)
+        self._repo.update_message_content(
+            account_id, assistant_message_id, question, now
+        )
+        finalize_message(
+            self._repo,
+            account_id,
+            assistant_message_id,
+            status=ChatMessageStatus.DONE,
+            error_code=None,
+            error_message=None,
+            duration_ms=None,
+            model_id=None,
+            run_lock_id=None,
+            started=started,
+            now=now,
+            thinking=done_thinking(thinking),
+        )
+        yield StreamEvent(kind="delta", delta=question)
+        yield StreamEvent(kind="done")
+
     def _stream_career_planning(
         self,
         account_id: str,
@@ -3003,6 +3078,7 @@ class TurnOrchestrator:
         use_knowledge_base: bool,
         use_profile: bool,
         budget: RunBudget,
+        route_contract: CareerPlanningRouteContract | None = None,
     ) -> Iterator[StreamEvent]:
         """生涯规划编排（Issue 29）：证据获取 → 过程事件 → 终态收敛。
 
@@ -3014,6 +3090,26 @@ class TurnOrchestrator:
         """
         started = time.monotonic()
         if self._career_planner is None:
+            now = datetime.now(UTC)
+            finalize_message(
+                self._repo,
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="career_unavailable",
+                error_message="生涯规划能力暂不可用；已保留原问题，请稍后重试。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=now,
+                thinking=failed_thinking(initial_thinking(CHAT_MODE), "career_unavailable"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="career_unavailable",
+                error_message="生涯规划能力暂不可用；已保留原问题，请稍后重试。",
+            )
             return
         entry = self._lifecycle.signal_and_started(assistant_message_id)
         stop_event = (
@@ -3039,11 +3135,19 @@ class TurnOrchestrator:
                 or "请补充你的目标方向与当前阶段，我好为你规划。",
                 thinking=thinking,
                 started=started,
+                route_contract=route_contract,
             )
             return
         retrieval_round: RetrievalRoundProjection | None = None
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
+        career_use_knowledge_base = bool(
+            use_knowledge_base
+            and (
+                route_contract is None
+                or "authorized_knowledge_base" in route_contract.evidence_requirements
+            )
+        )
         # 检索与联网证据获取（复用 humanizer 分支的同一套证据合同）。
         if budget.enter(RunStage.LOCAL_RETRIEVAL):
             yield self._stage_event(
@@ -3055,7 +3159,7 @@ class TurnOrchestrator:
                 assistant_message_id,
                 until_user_message_id,
                 intent,
-                use_knowledge_base=use_knowledge_base,
+                use_knowledge_base=career_use_knowledge_base,
                 thinking=thinking,
                 stop_event=stop_event,
             )
@@ -3227,6 +3331,7 @@ class TurnOrchestrator:
                 assistant_message_id,
                 intent,
                 mode=mode.value,
+                route_contract=route_contract,
                 run_context=run_context,
                 profile_enabled=use_profile,
                 profile_used=profile_used,
@@ -3405,6 +3510,7 @@ class TurnOrchestrator:
         question: str,
         thinking: ChatThinkingSummary,
         started: float,
+        route_contract: CareerPlanningRouteContract | None = None,
     ) -> Iterator[StreamEvent]:
         """信息不足：只问一个关键澄清问题，不启动完整规划生成（Issue 09）。
 
@@ -3416,6 +3522,7 @@ class TurnOrchestrator:
         projection = CareerPlanningProjection(
             plan_id=assistant_message_id,
             intent=_truncate_text(intent, 240),
+            route_contract=route_contract,
             status=CareerPlanningStatus.DONE,
             profile_enabled=use_profile,
             profile_used=False,

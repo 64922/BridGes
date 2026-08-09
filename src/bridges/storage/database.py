@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 34
+SCHEMA_VERSION = 35
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1635,6 +1635,13 @@ MIGRATIONS: dict[int, list[str]] = {
         """,
         """
         UPDATE conversations SET mode_locked = 1
+        """,
+    ],
+    # Issue 10：自然语言能力路由快照。路由在外部搜索、画像编译或模型
+    # 调用前固化到消息；重试和历史回放复用原版本，不重新分类。
+    35: [
+        """
+        ALTER TABLE messages ADD COLUMN route TEXT
         """,
     ],
 }

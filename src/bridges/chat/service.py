@@ -27,6 +27,7 @@ from bridges.arxiv_mcp.contracts import ArxivSearchProjection
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.routing import classify_message
 from bridges.chat.repository import (
     ConversationModeLockConflict,
     ConversationRecord,
@@ -65,6 +66,7 @@ from bridges.chat.turn import (
     user_facing_error,  # noqa: F401 - re-export
 )
 from bridges.contracts.career import CareerPlanningProjection
+from bridges.contracts.routing import RouteCapability, RouteDecision
 from bridges.contracts.chat import (
     ChatConversationListProjection,
     ChatConversationProjection,
@@ -640,6 +642,13 @@ class ChatService:
         skill_payload, image_payload, video_payload, mcp_call_payload = (
             self._validate_turn_payloads(skill_id, skill_input, image, video, mcp_call)
         )
+        route_decision = classify_message(
+            content,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+        )
         record = self._repo.get_conversation(account_id, conversation_id)
         if record is None:
             raise ChatDomainError(
@@ -655,6 +664,7 @@ class ChatService:
         attachment_ids = self._validate_attachments(
             account_id, conversation_id, attachment_ids
         )
+        self._reject_career_attachments(route_decision, attachment_ids)
         # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致——
         # 不一致直接返回可理解错误，绝不静默回退（如用知识库材料冒充原文）。
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
@@ -677,6 +687,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
+            route_decision=route_decision,
         )
         try:
             self._repo.insert_generation_turn(
@@ -807,6 +818,7 @@ class ChatService:
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
+        route_decision: RouteDecision | None = None,
     ) -> tuple[MessageRecord, MessageRecord, GenerationRunRecord, dict[str, Any]]:
         """组装一轮的用户消息、助手占位、queued 运行与 started 载荷。
 
@@ -815,6 +827,13 @@ class ChatService:
         读取收敛不会误伤（判定源为运行表）。
         """
         thinking = initial_thinking(mode).model_dump(mode="json")
+        route = (route_decision or classify_message(
+            content,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+        )).model_dump(mode="json")
         # Issue 28：SKILL 任务不需要搜索/教学初始计划（其证据合同由
         # 人味化编排按需执行），避免把任务摘要误当搜索查询。
         web_search = (
@@ -852,6 +871,7 @@ class ChatService:
             image=image_payload,
             video=video_payload,
             mcp_call=mcp_call_payload,
+            route=route,
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -872,6 +892,7 @@ class ChatService:
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
+            route=route,
         )
         # Issue 02：同一事务创建消息、queued 运行、started 事件与队列行。
         run_id = secrets.token_urlsafe(16)
@@ -985,6 +1006,13 @@ class ChatService:
         # 这个问题。「会话已有消息」的检查在事务内（幂等查找之后）执行：
         # 同键重放（含预建会话路径）必须 200 返回既有数据，不能被 409
         # 短路；并发不同键双发同一预建会话由事务内检查拦截。
+        route_decision = classify_message(
+            content,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+        )
         if conversation_id is not None:
             # 共享 SQLite 连接不能在其他线程提交首轮原子事务时并发读取。
             with self._repo.connection_lock():
@@ -1003,6 +1031,7 @@ class ChatService:
             attachment_ids = self._validate_attachments(
                 account_id, conversation_id, attachment_ids
             )
+        self._reject_career_attachments(route_decision, attachment_ids)
         # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致。
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
         title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
@@ -1024,6 +1053,7 @@ class ChatService:
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
+            route_decision=route_decision,
         )
         created_id, created, conflict_not_empty = self._repo.insert_first_turn(
             account_id=account_id,
@@ -1347,6 +1377,7 @@ class ChatService:
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
+            route=(message.route or owner.route),
         )
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
@@ -1390,8 +1421,23 @@ class ChatService:
         )
 
     # ------------------------------------------------------------------
-    # Issue 28：SKILL 载荷发送校验（编排路径见 chat/turn.py）
+    # Issue 10：生涯路由相关的消息载荷校验（编排路径见 chat/turn.py）
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _reject_career_attachments(
+        decision: RouteDecision, attachment_ids: list[str] | None
+    ) -> None:
+        """生涯规划只接收当前消息和授权知识库证据，不接收聊天附件。"""
+        if not attachment_ids:
+            return
+        if decision.capability == RouteCapability.CAREER_PLANNING:
+            raise ChatDomainError(
+                "career_chat_attachments_not_supported",
+                "生涯规划聊天不接收附件；请先把材料上传到当前账户知识库，"
+                "再明确要求依据知识库规划。",
+                422,
+            )
 
     def _validate_skill_payload(
         self,
@@ -1881,6 +1927,11 @@ class ChatService:
                 McpCallMessageProjection.model_validate(message.mcp_call)
                 if message.mcp_call is not None
                 and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            route=(
+                RouteDecision.model_validate(message.route)
+                if message.route is not None
                 else None
             ),
             error_code=message.error_code,
