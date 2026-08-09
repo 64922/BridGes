@@ -18,6 +18,7 @@ from bridges.storage.errors import StorageError
 #: 全部账户数据表 = 删除顺序表（同一清单，单一事实源）。
 #: 不含系统级 schema_meta 与 account_deletions 状态表。
 ACCOUNT_TABLES: tuple[str, ...] = (
+    "web_search_cache",
     "fts_chunks",
     "index_vectors",
     "index_active",

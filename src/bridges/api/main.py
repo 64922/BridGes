@@ -208,6 +208,7 @@ from bridges.vault import (
     VaultService,
 )
 from bridges.video.service import VideoService
+from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
 
@@ -826,8 +827,14 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
     # Issue 21：固定 DuckDuckGo 公网搜索；不读取账户 Key，也不把私有上下文
     # 传入客户端，搜索状态由聊天消息持久化并向桌面端公开。
+    web_search_database = getattr(app.state, "bridges_database", None)
     app.state.web_search_service = WebSearchService(
-        observability=app.state.observability_service
+        observability=app.state.observability_service,
+        cache=(
+            WebSearchCacheRepository(web_search_database)
+            if web_search_database is not None
+            else None
+        ),
     )
     # Issue 22：固定版本、只读、受限的 arXiv MCP；只接收本地脱敏后的
     # public_query_terms，不继承账户凭据或画像上下文。

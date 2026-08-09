@@ -125,7 +125,10 @@ def _local_sources(retrieval: RetrievalRoundProjection | None) -> list[TeachingE
 
 
 def _web_sources(web_search: WebSearchProjection | None) -> list[TeachingEvidenceSource]:
-    if web_search is None or web_search.status != WebSearchStatus.SUCCESS:
+    if web_search is None or web_search.status not in {
+        WebSearchStatus.SUCCESS,
+        WebSearchStatus.PARTIAL,
+    }:
         return []
     return [
         TeachingEvidenceSource(
@@ -137,6 +140,7 @@ def _web_sources(web_search: WebSearchProjection | None) -> list[TeachingEvidenc
             accessed_at=result.accessed_at,
         )
         for result in web_search.results
+        if result.verification in {"verified", "cross_verified"}
     ]
 
 
@@ -793,7 +797,11 @@ class TeachingTurnService:
 def _web_status(status: WebSearchStatus) -> TeachingCardStatus:
     return {
         WebSearchStatus.SUCCESS: TeachingCardStatus.READY,
+        WebSearchStatus.PARTIAL: TeachingCardStatus.READY,
         WebSearchStatus.EMPTY: TeachingCardStatus.EMPTY,
+        WebSearchStatus.FETCH_ERROR: TeachingCardStatus.ERROR,
+        WebSearchStatus.EVIDENCE_INSUFFICIENT: TeachingCardStatus.EMPTY,
+        WebSearchStatus.SOURCE_CONFLICT: TeachingCardStatus.RECOVERY,
         WebSearchStatus.PERMISSION: TeachingCardStatus.PERMISSION,
         WebSearchStatus.ERROR: TeachingCardStatus.ERROR,
         WebSearchStatus.LOADING: TeachingCardStatus.LOADING,
