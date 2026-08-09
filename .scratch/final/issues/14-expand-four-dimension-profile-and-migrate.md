@@ -1,6 +1,6 @@
 # 14 — 扩展四维画像模型并迁移现有记录
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 
 ## What to build
@@ -55,3 +55,9 @@ Type: task
 ## Comments
 
 - 2026-08-09：四个产品维度已由用户明确指定；默认页面只保留记录时间、修改和撤回。
+
+## Answer
+
+- 2026-08-09：在 `codex/issue-14-expand-four-dimension-profile-and-migrate` 分支完成四维画像合同、Schema v33、账户级确定性迁移、幂等/乐观锁修改与撤回、legacy/教学域内部交接、账户删除清理、API 及前端页面。
+- 迁移无模型调用；公共画像投影不返回来源、哈希和审计字段，迁移报告仅返回计数、失败码和稳定标识。
+- 验证：`tests/profiles tests/storage tests/contracts tests/lifecycle` 共 217 项通过；前端 `npm run typecheck` 通过。全量回归曾受既有聊天持久化并发测试的偶发 SQLite 接口错误影响，单独重跑该测试通过。

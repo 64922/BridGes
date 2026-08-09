@@ -17,7 +17,7 @@ from typing import Any
 from bridges.storage.errors import StorageError
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 32
+SCHEMA_VERSION = 33
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1540,6 +1540,87 @@ MIGRATIONS: dict[int, list[str]] = {
         BEGIN
             SELECT RAISE(ABORT, 'bound 状态必须携带 message_id');
         END
+        """,
+    ],
+    # Issue 14：四维画像 expand/migrate 投影。旧画像表、旧枚举和旧读写
+    # 路径保留；新表只承载四维目标、教学域内部交接、legacy 封存与无正文
+    # 迁移报告，所有账户域查询由仓库层通过 scoped() 强制隔离。
+    33: [
+        """
+        CREATE TABLE profile_four_dimension_records (
+            record_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            dimension TEXT NOT NULL,
+            label TEXT NOT NULL,
+            content TEXT NOT NULL,
+            first_stable_recorded_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            version INTEGER NOT NULL DEFAULT 1,
+            status TEXT NOT NULL DEFAULT 'active',
+            source_record_id TEXT NOT NULL,
+            source_version INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            write_origin TEXT NOT NULL,
+            migration_version TEXT NOT NULL,
+            UNIQUE (account_id, source_record_id, dimension)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_account
+        ON profile_four_dimension_records(account_id, dimension, first_stable_recorded_at)
+        """,
+        """
+        CREATE TABLE profile_four_dimension_learning_records (
+            record_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            source_record_id TEXT NOT NULL,
+            source_version INTEGER NOT NULL,
+            content_hash TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, source_record_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_learning_account
+        ON profile_four_dimension_learning_records(account_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE profile_four_dimension_legacy (
+            archive_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            source_record_id TEXT NOT NULL,
+            source_dimension TEXT NOT NULL,
+            content TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            reason_code TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, source_record_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_legacy_account
+        ON profile_four_dimension_legacy(account_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE profile_four_dimension_migrations (
+            report_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            migration_version TEXT NOT NULL,
+            status TEXT NOT NULL,
+            four_dimension_migrated INTEGER NOT NULL,
+            teaching_records_migrated INTEGER NOT NULL,
+            legacy_preserved INTEGER NOT NULL,
+            skipped INTEGER NOT NULL,
+            failed INTEGER NOT NULL,
+            stable_record_ids_json TEXT NOT NULL DEFAULT '[]',
+            failure_codes_json TEXT NOT NULL DEFAULT '[]',
+            retryable INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_four_dimension_migrations_account
+        ON profile_four_dimension_migrations(account_id, created_at DESC)
         """,
     ],
 }

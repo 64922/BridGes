@@ -184,6 +184,14 @@ export type ProfileNotificationKind = components["schemas"]["ProfileNotification
 export type ProfileBatchCandidateDecisionRequest = components["schemas"]["ProfileBatchCandidateDecisionRequest"];
 export type ProfileBatchCandidateResult = components["schemas"]["ProfileBatchCandidateResult"];
 
+/** Issue 14：展开期四维画像的最小用户投影。内部来源、哈希和迁移字段不在页面渲染。 */
+export type FourDimension = components["schemas"]["FourDimension"];
+export type FourDimensionRecordStatus = components["schemas"]["FourDimensionRecordStatus"];
+export type FourDimensionProfileRecord =
+  components["schemas"]["FourDimensionProfileProjection"];
+export type FourDimensionProfileModifyRequest =
+  components["schemas"]["FourDimensionProfileModifyRequest"];
+
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
 function deviceOperationHeaders(operationId?: number): Record<string, string> {
@@ -1734,6 +1742,49 @@ export async function listProfileAssertions(): Promise<ProfileAssertion[]> {
     credentials: "same-origin",
     cache: "no-store",
   });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function listFourDimensionProfileRecords(): Promise<FourDimensionProfileRecord[]> {
+  const res = await fetch(`${API_BASE}/profiles/four-dimensions`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function modifyFourDimensionProfileRecord(
+  recordId: string,
+  request: FourDimensionProfileModifyRequest
+): Promise<FourDimensionProfileRecord> {
+  const res = await fetch(
+    `${API_BASE}/profiles/four-dimensions/${encodeURIComponent(recordId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify(request),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function withdrawFourDimensionProfileRecord(
+  recordId: string,
+  version: number
+): Promise<FourDimensionProfileRecord> {
+  const res = await fetch(
+    `${API_BASE}/profiles/four-dimensions/${encodeURIComponent(recordId)}/withdraw`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ version }),
+    }
+  );
   if (!res.ok) throw await parseApiError(res);
   return res.json();
 }

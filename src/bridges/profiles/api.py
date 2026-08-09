@@ -9,6 +9,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from bridges.api.auth import SubjectDep
 from bridges.contracts.profiles import (
     CandidateDecision,
+    FourDimensionMigrationReport,
+    FourDimensionProfileModifyRequest,
+    FourDimensionProfileProjection,
+    FourDimensionProfileRecord,
+    FourDimensionProfileWithdrawRequest,
     ManualAssertionCreateRequest,
     ProfileAssertion,
     ProfileAssertionHistory,
@@ -32,8 +37,26 @@ from bridges.contracts.profiles import (
 )
 from bridges.profiles import ProfileService
 from bridges.profiles.adapters import ProfileError as ProfileAdapterError
+from bridges.profiles.four_dimensions import (
+    FourDimensionProfileError,
+    FourDimensionProfileService,
+)
 
 router = APIRouter(prefix="/profiles", tags=["profiles"])
+
+
+def _four_dimension_projection(
+    record: FourDimensionProfileRecord,
+) -> FourDimensionProfileProjection:
+    return FourDimensionProfileProjection(
+        record_id=record.record_id,
+        dimension=record.dimension,
+        label=record.label,
+        content=record.content,
+        first_stable_recorded_at=record.first_stable_recorded_at,
+        version=record.version,
+        status=record.status,
+    )
 
 
 def _get_profile_service(request: Request) -> ProfileService:
@@ -44,6 +67,20 @@ def _get_profile_service(request: Request) -> ProfileService:
 
 
 ProfileServiceDep = Annotated[ProfileService, Depends(_get_profile_service)]
+
+
+def _get_four_dimension_profile_service(request: Request) -> FourDimensionProfileService:
+    service: FourDimensionProfileService | None = getattr(
+        request.app.state, "four_dimension_profile_service", None
+    )
+    if service is None:
+        raise RuntimeError("FourDimensionProfileService not attached to application state.")
+    return service
+
+
+FourDimensionProfileServiceDep = Annotated[
+    FourDimensionProfileService, Depends(_get_four_dimension_profile_service)
+]
 
 
 def _profile_error(status_code: int, error: str, message: str) -> HTTPException:
@@ -63,6 +100,17 @@ def _assertion_error(exc: ProfileAdapterError, failure_code: str) -> HTTPExcepti
     return _profile_error(
         status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message
     )
+
+
+def _four_dimension_error(
+    exc: FourDimensionProfileError, failure_code: str
+) -> HTTPException:
+    message = str(exc)
+    if "对象不存在" in message or "访问权限" in message:
+        return _profile_error(status.HTTP_404_NOT_FOUND, "four_dimension_not_found", message)
+    if "版本冲突" in message or "已撤回" in message:
+        return _profile_error(status.HTTP_409_CONFLICT, "four_dimension_conflict", message)
+    return _profile_error(status.HTTP_422_UNPROCESSABLE_CONTENT, failure_code, message)
 
 
 @router.post(
@@ -788,4 +836,110 @@ async def batch_decide_candidates(
             "candidate_batch_decision_failed",
             str(exc),
         ) from exc
+
+
+@router.get(
+    "/four-dimensions",
+    response_model=list[FourDimensionProfileProjection],
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ProfileError}},
+)
+async def list_four_dimension_records(
+    service: FourDimensionProfileServiceDep,
+    subject: SubjectDep,
+) -> list[FourDimensionProfileProjection]:
+    """列出当前账户的活动四维画像记录。"""
+    return [
+        _four_dimension_projection(record)
+        for record in service.list_records(subject.account_id)
+    ]
+
+
+@router.get(
+    "/four-dimensions/migration-report",
+    response_model=FourDimensionMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+    },
+)
+async def get_four_dimension_migration_report(
+    service: FourDimensionProfileServiceDep,
+    subject: SubjectDep,
+) -> FourDimensionMigrationReport:
+    """返回当前账户的迁移汇总，不包含画像正文。"""
+    report = service.latest_migration_report(subject.account_id)
+    if report is None:
+        raise _profile_error(
+            status.HTTP_404_NOT_FOUND,
+            "migration_report_not_found",
+            "迁移报告不存在。",
+        )
+    return report
+
+
+@router.post(
+    "/four-dimensions/migrate",
+    response_model=FourDimensionMigrationReport,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def migrate_four_dimension_records(
+    service: FourDimensionProfileServiceDep,
+    subject: SubjectDep,
+) -> FourDimensionMigrationReport:
+    """执行账户级、确定性的 expand/migrate 投影。"""
+    try:
+        return service.migrate_account(subject.account_id)
+    except FourDimensionProfileError as exc:
+        raise _four_dimension_error(exc, "four_dimension_migration_failed") from exc
+
+
+@router.patch(
+    "/four-dimensions/{record_id}",
+    response_model=FourDimensionProfileProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def modify_four_dimension_record(
+    service: FourDimensionProfileServiceDep,
+    subject: SubjectDep,
+    record_id: str,
+    request: FourDimensionProfileModifyRequest,
+) -> FourDimensionProfileProjection:
+    """修改已有记录；此处刻意不提供新增路由。"""
+    try:
+        record = service.modify_record(subject.account_id, record_id, request)
+        return _four_dimension_projection(record)
+    except FourDimensionProfileError as exc:
+        raise _four_dimension_error(exc, "four_dimension_modify_failed") from exc
+
+
+@router.post(
+    "/four-dimensions/{record_id}/withdraw",
+    response_model=FourDimensionProfileProjection,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def withdraw_four_dimension_record(
+    service: FourDimensionProfileServiceDep,
+    subject: SubjectDep,
+    record_id: str,
+    request: FourDimensionProfileWithdrawRequest,
+) -> FourDimensionProfileProjection:
+    """撤回一条记录并保留内部墓碑。"""
+    try:
+        record = service.withdraw_record(subject.account_id, record_id, request.version)
+        return _four_dimension_projection(record)
+    except FourDimensionProfileError as exc:
+        raise _four_dimension_error(exc, "four_dimension_withdraw_failed") from exc
 
