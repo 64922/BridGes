@@ -47,6 +47,7 @@ from bridges.identity.service import IdentityService
 from bridges.lifecycle.catalog import global_stats
 from bridges.observability.service import ObservabilityService
 from bridges.persistence import SqliteStateStore
+from bridges.retirement import run_reminder_retirement
 from bridges.storage.database import BridgesDatabase
 from bridges.storage.errors import StorageError
 from bridges.storage.object_store import EncryptedFileObjectStore
@@ -552,6 +553,12 @@ class BackupService:
                 self._smtp_credentials.delete(account_id)
             except Exception:  # noqa: BLE001 - 凭据清理失败不阻断恢复
                 continue
+        # Issue 03：恢复旧备份也不能重新启用学习提醒或 SMTP 验证状态。
+        run_reminder_retirement(
+            database=self._database,
+            credential_store=self._smtp_credentials,
+            state_store=self._state_store,
+        )
         self._schedule_index_rebuilds()
 
     def _schedule_index_rebuilds(self) -> None:

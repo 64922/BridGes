@@ -167,7 +167,7 @@ test.describe("Issue 38 — 可访问性结构扫描", () => {
     "/account/projects": { wait: "hidden", locator: (page) => page.getByTestId("state-loading") },
     "/tasks": {
       wait: "visible",
-      locator: (page) => page.getByRole("heading", { name: "QQ 邮箱提醒设置" }),
+      locator: (page) => page.getByRole("heading", { name: "任务安排已退役" }),
     },
     "/plugins": {
       wait: "visible",

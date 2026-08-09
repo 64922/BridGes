@@ -316,7 +316,6 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
     const modules = [
       { label: "本地知识库", section: "knowledge" },
       { label: "学习项目", section: "projects" },
-      { label: "任务安排", section: "tasks" },
       { label: "插件", section: "plugins" },
       { label: "用户画像", section: "profile" },
     ];

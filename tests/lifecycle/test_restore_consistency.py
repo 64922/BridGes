@@ -83,7 +83,7 @@ def test_backup_during_running_tasks_is_consistent(tmp_path) -> None:
         " AND account_id = ?",
         (harness.acc1,),
     ).fetchone()
-    assert reminder is not None and reminder["status"] == "enabled"
+    assert reminder is not None and reminder["status"] == "retired"
 
 
 def test_export_then_restore_roundtrip_matches_summary(tmp_path) -> None:

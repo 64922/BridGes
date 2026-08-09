@@ -232,6 +232,7 @@ class ReminderStatus(StrEnum):
     PAUSED = "paused"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    RETIRED = "retired"
 
 
 class ReminderProjection(BaseModel):

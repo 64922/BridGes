@@ -42,4 +42,18 @@ Status: pending-runtime-evidence
 - 非零调用及处置：待填写
 - 发布负责人复核：待填写
 
+## Issue 03 兼容端点清单
+
+本 Issue 的旧入口统一返回 HTTP 410；稳定端点 ID 用于计数，响应不回显账户、路径参数或请求正文。
+
+- 学习复习：`learning.review-schedule.create/read`、`learning.review-tasks.list/detail/postpone/adjust/cancel/complete/work-order`
+- 提醒 SMTP：`reminders.smtp.read/write/verify/delete`
+- 提醒设置与解析：`reminders.settings.read/write`、`reminders.parse`
+- 提醒生命周期：`reminders.create/list/detail/update/pause/resume/send-now/cancel/deliveries`
+- 桌面 `/tasks`、`/templates/list?section=tasks` 和任务详情深链展示退役说明，并提供学习聊天入口。
+
+兼容计数器使用持久化命名空间 `compatibility_gate`，只保存 `service_version`、稳定端点 ID 以及 `real/probe` 两类计数。探针通过 `X-Bridges-Compatibility-Probe: true` 标记；计数不包含账户、路径参数、查询串或请求正文。
+
+提醒清理报告使用 `reminder_retirement` 命名空间，只保存数量、状态、时间和历史投递保留标记。提醒行标记为 `retired`，排程字段清空；SMTP 验证标记为 `superseded`，授权码逐账户清除。历史投递仅通过账户导出保留，不重放未来提醒。
+
 所有通过条件满足后，将 `Status` 改为 `passed`，并在 Issue 24 的 Comments 中引用本报告及证据。任何非零真实调用、缺失计数器或不完整观察周期都会使门禁保持 `pending-runtime-evidence`。
