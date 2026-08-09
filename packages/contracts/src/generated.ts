@@ -17534,12 +17534,6 @@ export interface components {
              * @description 产生该响应的服务版本。
              */
             service_version: string;
-            /**
-             * Traffic Class
-             * @description real 或 probe
-             * @default real
-             */
-            traffic_class: string;
         };
         /**
          * RetrievalCandidate

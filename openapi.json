@@ -45201,12 +45201,6 @@
             "type": "string",
             "title": "Service Version",
             "description": "产生该响应的服务版本。"
-          },
-          "traffic_class": {
-            "type": "string",
-            "title": "Traffic Class",
-            "description": "real 或 probe",
-            "default": "real"
           }
         },
         "type": "object",

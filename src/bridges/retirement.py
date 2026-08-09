@@ -111,7 +111,6 @@ def raise_retired_capability(
         replacement_path=replacement_path,
         endpoint=endpoint,
         service_version=COMPATIBILITY_SERVICE_VERSION,
-        traffic_class="probe" if probe else "real",
     ).model_dump()
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=detail)
 
