@@ -197,9 +197,6 @@ export default function ChatConversationPage() {
     try {
       const projection = await getChatConversation(conversationId);
       setConversation(projection);
-      setSelectedMode(projection.mode);
-      setPluginSelection(projection.plugin_selection ?? []);
-      setRemovedSelections(projection.removed_selections ?? []);
       if ((projection.removed_selections ?? []).length > 0) {
         setAnnouncement(
           `已移除失效插件：${(projection.removed_selections ?? [])
