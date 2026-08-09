@@ -157,10 +157,15 @@ from bridges.persistence import (
 )
 from bridges.plugins.service import PluginService
 from bridges.profiles import (
+    AutomaticProfileService,
     FourDimensionProfileService,
+    GatewayAutomaticProfileExtractor,
+    InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     InMemoryProfileRepository,
     ProfileService,
+    RuleBasedAutomaticProfileExtractor,
+    SqliteAutomaticProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
 from bridges.profiles.api import router as profiles_router
@@ -239,6 +244,21 @@ def _register_builtin_capabilities(registry: CapabilityRegistry) -> None:
             status=CapabilityStatus.VERIFIED,
             retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=1.0),
             prompt_version="2026-07-24",
+        )
+    )
+    registry.register(
+        CapabilityRecord(
+            name="qwen_profile_extraction",
+            version="1",
+            kind=CapabilityKind.MODEL,
+            vendor="qwen",
+            region="cn-beijing",
+            model_id="qwen3.6-flash",
+            input_schema_version="profile-message-v1",
+            output_schema_version="profile-extraction-v1",
+            status=CapabilityStatus.VERIFIED,
+            retry_policy=RetryPolicy(max_attempts=1, backoff_seconds=0),
+            prompt_version="2026-08-09",
         )
     )
     # T061: real Qwen OCR and vision capabilities for media/science ingestion.
@@ -941,6 +961,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             "qwen_structured_output", "1", QwenStructuredOutputAdapter(qwen_client)
         )
         model_gateway.register_adapter(
+            "qwen_profile_extraction", "1", QwenStructuredOutputAdapter(qwen_client)
+        )
+        model_gateway.register_adapter(
             "qwen_ocr", "1", QwenOcrAdapter(qwen_client)
         )
         model_gateway.register_adapter(
@@ -977,6 +1000,29 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                 )
     app.state.capability_registry = capability_registry
     app.state.model_gateway = model_gateway
+
+    # Issue 15：消息持久化后、生成前执行默认画像预处理；测试环境使用确定性抽取器，
+    # 其他环境使用固定版本的结构化画像能力，失败时由同一执行器驱动持久重试。
+    automatic_profile_repository = (
+        SqliteAutomaticProfileRepository(profile_database)
+        if profile_database is not None
+        else InMemoryAutomaticProfileRepository()
+    )
+    automatic_profile_extractor = (
+        RuleBasedAutomaticProfileExtractor()
+        if settings is not None and settings.environment.lower() == "test"
+        else GatewayAutomaticProfileExtractor(model_gateway)
+    )
+    app.state.automatic_profile_service = AutomaticProfileService(
+        four_dimension_service=app.state.four_dimension_profile_service,
+        repository=automatic_profile_repository,
+        extractor=automatic_profile_extractor,
+        message_reader=(
+            ConversationRepository(profile_database).get_message
+            if profile_database is not None
+            else None
+        ),
+    )
 
     # Issue 11: 持久化流式聊天纵向切片。对话/消息/运行锁写入 bridges.db；
     # 未配置持久化数据目录（内存模式，仅测试/E2E）时不挂载聊天服务，
@@ -1149,13 +1195,16 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             video_service=app.state.video_service,
             selections_service=app.state.chat_selections_service,
             mcp_service=getattr(app.state, "mcp_service", None),
+            automatic_profile_service=app.state.automatic_profile_service,
         )
         # Issue 02：持久化生成运行的后台执行器（ADR-0013）。API 进程内
         # 受监督线程按租约领取生成运行并执行——HTTP/SSE 只创建与订阅。
         # test 环境（确定性适配器驱动）不自动启动线程，由测试显式驱动
         # run_tick 或自行启动，避免与同步消费生成器的既有测试竞态。
         app.state.generation_executor = GenerationRunExecutor(
-            app.state.chat_service, bridges_database
+            app.state.chat_service,
+            bridges_database,
+            profile_extraction_service=app.state.automatic_profile_service,
         )
         app.state.generation_executor_stop = threading.Event()
 

@@ -118,6 +118,17 @@ from .learning import (
     TeachingQualityGateCheck,
     TeachingQualityGateResult,
 )
+from .profile_extraction import (
+    AutomaticProfileObservation,
+    ProfileExtractionAction,
+    ProfileExtractionItem,
+    ProfileExtractionOutput,
+    ProfileExtractionRetryTask,
+    ProfileExtractionRun,
+    ProfileExtractionStatus,
+    ProfilePreprocessResult,
+    ProfilePrivacyNotice,
+)
 from .science import (
     ChunkCorrection,
     ChunkStructurePath,
@@ -179,6 +190,15 @@ __all__ = [
     "ControlledContentAccessRequest",
     "ControlledContentAccessStatus",
     "DependencyHealth",
+    "AutomaticProfileObservation",
+    "ProfileExtractionAction",
+    "ProfileExtractionItem",
+    "ProfileExtractionOutput",
+    "ProfileExtractionRetryTask",
+    "ProfileExtractionRun",
+    "ProfileExtractionStatus",
+    "ProfilePreprocessResult",
+    "ProfilePrivacyNotice",
     "DomainCheckStatus",
     "DomainClaimSchema",
     "DomainCompatibility",

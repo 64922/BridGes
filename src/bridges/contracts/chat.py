@@ -25,6 +25,7 @@ from bridges.contracts.humanizer import (
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
+from bridges.contracts.profile_extraction import ProfilePrivacyNotice
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.speech import ReadAloudProjection
@@ -780,16 +781,20 @@ class ChatStreamDoneData(BaseModel):
 
 
 class ChatStreamProfileData(BaseModel):
-    """profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。
+    """profile 事件载荷：一次性隐私说明或兼容期画像通知。
 
-    通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条
-    自动写入通知携带一键撤回入口。
+    Issue 15 的自动写入不发送写入通知；``privacy_notice`` 只在账户首次
+    触发自动画像时出现一次。``notifications`` 仅保留旧画像兼容测试和
+    历史事件的读取形状。
     """
 
     kind: Literal["profile"] = "profile"
     message_id: str = Field(description="本轮用户消息标识。")
     notifications: list[ProfileNotification] = Field(
         default_factory=list, description="本轮产生的画像通知。"
+    )
+    privacy_notice: ProfilePrivacyNotice | None = Field(
+        default=None, description="账户级首次自动画像隐私说明。"
     )
 
 

@@ -1,0 +1,1292 @@
+"""Issue 15：消息级自动画像预处理、四维写入与有界重试。"""
+
+from __future__ import annotations
+
+import copy
+import hashlib
+import json
+import re
+from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
+from contextlib import AbstractContextManager, ExitStack, contextmanager
+from datetime import UTC, datetime, timedelta
+from typing import Any, Protocol
+
+from bridges.ai import ModelGateway
+from bridges.contracts.ai import ModelCallStatus
+from bridges.contracts.profile_extraction import (
+    AutomaticProfileObservation,
+    ProfileExtractionAction,
+    ProfileExtractionOutput,
+    ProfileExtractionRetryTask,
+    ProfileExtractionRun,
+    ProfileExtractionStatus,
+    ProfilePreprocessResult,
+    ProfilePrivacyNotice,
+)
+from bridges.contracts.profiles import (
+    FourDimension,
+    FourDimensionProfileRecord,
+    FourDimensionRecordStatus,
+    ProfileSensitivityClass,
+    ProfileSlice,
+    ProfileSliceItem,
+    UnusedSliceItem,
+)
+from bridges.contracts.projects import ObjectDomain
+from bridges.contracts.workflows import RunContextEnvelope
+from bridges.profiles.four_dimensions import FourDimensionProfileService
+from bridges.profiles.ports import ProfileRepository
+from bridges.runtime.queue import RetryKind, TaskQueue
+from bridges.storage.database import BridgesDatabase
+
+AUTOMATIC_EXTRACTOR_VERSION = "profile-auto-v1"
+AUTOMATIC_PRIVACY_NOTICE_VERSION = "profile-privacy-v1"
+AUTOMATIC_PRIVACY_NOTICE_TEXT = (
+    "BridGes 会默认从你明确介绍自己的稳定信息中整理四维画像，"
+    "仅用于后续相关回答；第三方、假设、敏感信息和一次性情绪不会写入。"
+)
+PROFILE_EXTRACTION_QUEUE = "profile-extraction"
+PROFILE_EXTRACTION_MAX_RETRIES = 3
+_KNOWLEDGE_PROMOTION_WINDOW = timedelta(days=90)
+_MAX_SLICE_ITEMS = 6
+
+_PROFILE_SIGNAL = re.compile(
+    r"(?:^|[，。；：\s])(?:我(?:的|目前|现在|对|喜欢|计划|想|正在|是|在读|就读)|"
+    r"什么是|如何学|怎么学)"
+)
+_QUESTION_SIGNAL = re.compile(r"(?:什么是|如何|怎么|为什么|能否|请问|？|\?)")
+_SELF_SIGNAL = re.compile(
+    r"(?:^|[，。；：\s])(?:我|我的|目前我|我现在|我对|我喜欢|我计划)"
+)
+_FORBIDDEN_SIGNAL = re.compile(
+    r"(?:他人|第三方|朋友|同学|同事|他|她|他们|她们|假设|如果我是|扮演|角色扮演|"
+    r"引用|据说|有人说|不喜欢|不想|不要|别|没有|不是|焦虑|抑郁|健康|政治|宗教|财务|"
+    r"身份证|密码|密钥|邮箱|手机号|住址|精确位置|私信|私人通信|病|诊断)"
+)
+_KNOWLEDGE_TERMS = frozenset(
+    {
+        "物理",
+        "化学",
+        "生物",
+        "数学",
+        "历史",
+        "哲学",
+        "天文",
+        "地理",
+        "编程",
+        "计算机",
+        "科学",
+        "技术",
+        "语言",
+    }
+)
+_HOBBY_TERMS = frozenset(
+    {
+        "跑步",
+        "游泳",
+        "运动",
+        "音乐",
+        "乐器",
+        "绘画",
+        "画画",
+        "摄影",
+        "旅行",
+        "旅游",
+        "游戏",
+        "烘焙",
+        "做饭",
+        "园艺",
+        "电影",
+        "追剧",
+        "书法",
+        "手工",
+        "宠物",
+    }
+)
+
+
+class AutomaticProfileError(RuntimeError):
+    """自动抽取失败；调用方应保留聊天主流程并安排重试。"""
+
+
+class AutomaticProfileExtractor(Protocol):
+    """一次只处理一条消息的抽取器接缝。"""
+
+    version: str
+
+    def extract(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        content: str,
+        run_id: str,
+    ) -> ProfileExtractionOutput: ...
+
+
+class AutomaticProfileRepository(ABC):
+    """自动画像状态、观察、重试与首次说明的持久化端口。"""
+
+    @abstractmethod
+    def transaction(self) -> AbstractContextManager[None]: ...
+
+    @abstractmethod
+    def get_run(
+        self, account_id: str, message_id: str, version: str, source_hash: str
+    ) -> ProfileExtractionRun | None: ...
+
+    @abstractmethod
+    def save_run(self, run: ProfileExtractionRun) -> ProfileExtractionRun: ...
+
+    @abstractmethod
+    def get_task(
+        self, account_id: str, message_id: str, version: str, source_hash: str
+    ) -> ProfileExtractionRetryTask | None: ...
+
+    @abstractmethod
+    def save_task(
+        self, task: ProfileExtractionRetryTask
+    ) -> ProfileExtractionRetryTask: ...
+
+    @abstractmethod
+    def list_tasks(
+        self, account_id: str | None = None
+    ) -> list[ProfileExtractionRetryTask]: ...
+
+    @abstractmethod
+    def save_observation(self, observation: AutomaticProfileObservation) -> None: ...
+
+    @abstractmethod
+    def list_observations(
+        self,
+        account_id: str,
+        dimension: FourDimension,
+        normalized_value: str,
+        *,
+        since: datetime,
+    ) -> list[AutomaticProfileObservation]: ...
+
+    @abstractmethod
+    def claim_privacy_notice(
+        self, account_id: str, now: datetime
+    ) -> ProfilePrivacyNotice | None: ...
+
+    @abstractmethod
+    def mark_message_tombstone(self, account_id: str, message_id: str) -> None: ...
+
+    @abstractmethod
+    def is_message_tombstoned(self, account_id: str, message_id: str) -> bool: ...
+
+
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _source_hash(account_id: str, message_id: str, content: str) -> str:
+    return _hash("|".join((account_id, message_id, content)))
+
+
+def _stable_id(prefix: str, *parts: str) -> str:
+    return f"{prefix}-{_hash('|'.join(parts))[:32]}"
+
+
+def _normalize(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip(" \t\r\n，。；：:、,;.!！？?"))
+
+
+def has_probable_profile_signal(content: str) -> bool:
+    """确定性预检：明显无画像信号的机器/空载荷零次调用。"""
+
+    text = content.strip()
+    return bool(text and _PROFILE_SIGNAL.search(text))
+
+
+def _extract_value(text: str, patterns: tuple[str, ...]) -> str | None:
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            value = _normalize(match.group(1))
+            if 1 < len(value) <= 200:
+                return value
+    return None
+
+
+def _record_matches_question(
+    record: FourDimensionProfileRecord, current_question: str | None
+) -> bool:
+    if not current_question or not current_question.strip():
+        return True
+    question = _normalize(current_question)
+    content = _normalize(record.content)
+    if content in question or question in content:
+        return True
+    terms = re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z0-9_]{2,}", content)
+    if any(term in question for term in terms):
+        return True
+    keyword_groups = {
+        FourDimension.ACADEMIC_STATUS: ("学习", "课程", "考试", "升学", "学校"),
+        FourDimension.KNOWLEDGE_INTEREST: ("知识", "学习", "研究", "物理", "化学"),
+        FourDimension.HOBBY: ("兴趣", "爱好", "休闲", "运动", "喜欢"),
+        FourDimension.STAGE_GOAL: ("目标", "计划", "安排", "考试", "职业"),
+    }
+    return any(keyword in question for keyword in keyword_groups[record.dimension])
+
+
+class RuleBasedAutomaticProfileExtractor:
+    """高置信自述的本地抽取器；生产可替换为网关抽取器。"""
+
+    version = AUTOMATIC_EXTRACTOR_VERSION
+
+    def extract(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        content: str,
+        run_id: str,
+    ) -> ProfileExtractionOutput:
+        del account_id, conversation_id, run_id
+        text = content.strip()
+        if not text or _FORBIDDEN_SIGNAL.search(text):
+            return ProfileExtractionOutput(items=[])
+
+        item: dict[str, Any] | None = None
+        goal = _extract_value(
+            text,
+            (
+                r"(?:我的|我这阶段的|我目前的)?目标(?:是|为)?\s*([^。！？!?；;，,]+)",
+                r"我(?:计划|打算)\s*([^。！？!?；;，,]+)",
+            ),
+        )
+        if goal is not None:
+            item = {
+                "dimension": FourDimension.STAGE_GOAL,
+                "normalized_value": goal,
+                "action": ProfileExtractionAction.CREATE,
+            }
+        else:
+            interest = _extract_value(
+                text,
+                (
+                    r"我对\s*([^。！？!?；;，,]+?)\s*(?:很)?感兴趣",
+                    r"我(?:很|比较|特别)?喜欢\s*([^。！？!?；;，,]+)",
+                ),
+            )
+            if interest is not None:
+                dimension = (
+                    FourDimension.KNOWLEDGE_INTEREST
+                    if any(term in interest for term in _KNOWLEDGE_TERMS)
+                    else FourDimension.HOBBY
+                )
+                item = {
+                    "dimension": dimension,
+                    "normalized_value": interest,
+                    "action": ProfileExtractionAction.CREATE,
+                }
+            else:
+                academic = _extract_value(
+                    text,
+                    (r"我(?:现在|目前)?(?:在读|就读|是)\s*([^。！？!?；;，,]+)",),
+                )
+                if academic is not None:
+                    item = {
+                        "dimension": FourDimension.ACADEMIC_STATUS,
+                        "normalized_value": academic,
+                        "action": ProfileExtractionAction.CREATE,
+                    }
+
+        if item is None and _QUESTION_SIGNAL.search(text):
+            topic = next((term for term in _KNOWLEDGE_TERMS if term in text), None)
+            if topic is not None:
+                item = {
+                    "dimension": FourDimension.KNOWLEDGE_INTEREST,
+                    "normalized_value": topic,
+                    "action": ProfileExtractionAction.OBSERVE,
+                }
+
+        if item is None:
+            return ProfileExtractionOutput(items=[])
+        item.update({"evidence_ref": message_id, "reliability": 0.99})
+        return ProfileExtractionOutput.model_validate({"items": [item]})
+
+
+class GatewayAutomaticProfileExtractor:
+    """经固定结构化能力执行一次画像抽取。"""
+
+    version = AUTOMATIC_EXTRACTOR_VERSION
+
+    def __init__(self, gateway: ModelGateway) -> None:
+        self._gateway = gateway
+
+    def extract(
+        self,
+        *,
+        account_id: str,
+        conversation_id: str,
+        message_id: str,
+        content: str,
+        run_id: str,
+    ) -> ProfileExtractionOutput:
+        context = RunContextEnvelope(
+            run_id=run_id,
+            account_id=account_id,
+            project_id=conversation_id,
+            workflow_name="profile-extraction",
+            workflow_version="1",
+            object_domain=ObjectDomain.PERSONAL_VAULT,
+            submitted_at=_now(),
+        )
+        result = self._gateway.invoke(
+            "qwen_profile_extraction",
+            "1",
+            context,
+            payload={
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "只抽取用户关于自己的明确稳定信号。禁止第三方、引用、假设、"
+                            "角色扮演、敏感信息与一次性情绪。只输出四维枚举、规范化值、"
+                            "消息证据引用、可靠度和动作。"
+                        ),
+                    },
+                    {"role": "user", "content": content},
+                ],
+                "json_schema": ProfileExtractionOutput.model_json_schema(),
+                "temperature": 0,
+                "max_tokens": 512,
+            },
+        )
+        if result.status != ModelCallStatus.SUCCESS or result.output is None:
+            raise AutomaticProfileError(
+                result.error_code or "profile_extraction_failed"
+            )
+        try:
+            return ProfileExtractionOutput.model_validate(result.output)
+        except Exception as exc:  # noqa: BLE001 - 合同错误进入持久重试
+            raise AutomaticProfileError("profile_extraction_contract_invalid") from exc
+
+
+class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
+    """领域测试与无数据库开发模式使用的持久化替身。"""
+
+    def __init__(self) -> None:
+        self._runs: dict[tuple[str, str, str, str], ProfileExtractionRun] = {}
+        self._tasks: dict[tuple[str, str, str, str], ProfileExtractionRetryTask] = {}
+        self._observations: dict[str, AutomaticProfileObservation] = {}
+        self._disclosures: set[str] = set()
+        self._tombstones: set[tuple[str, str]] = set()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        snapshot = (
+            copy.deepcopy(self._runs),
+            copy.deepcopy(self._tasks),
+            copy.deepcopy(self._observations),
+            copy.deepcopy(self._disclosures),
+            copy.deepcopy(self._tombstones),
+        )
+        try:
+            yield
+        except BaseException:
+            (
+                self._runs,
+                self._tasks,
+                self._observations,
+                self._disclosures,
+                self._tombstones,
+            ) = snapshot
+            raise
+
+    @staticmethod
+    def _key(
+        account_id: str, message_id: str, version: str, source_hash: str
+    ) -> tuple[str, str, str, str]:
+        return account_id, message_id, version, source_hash
+
+    def get_run(
+        self, account_id: str, message_id: str, version: str, source_hash: str
+    ) -> ProfileExtractionRun | None:
+        return self._runs.get(self._key(account_id, message_id, version, source_hash))
+
+    def save_run(self, run: ProfileExtractionRun) -> ProfileExtractionRun:
+        self._runs[
+            self._key(
+                run.account_id, run.message_id, run.extractor_version, run.source_hash
+            )
+        ] = run
+        return run
+
+    def get_task(
+        self, account_id: str, message_id: str, version: str, source_hash: str
+    ) -> ProfileExtractionRetryTask | None:
+        return self._tasks.get(self._key(account_id, message_id, version, source_hash))
+
+    def save_task(self, task: ProfileExtractionRetryTask) -> ProfileExtractionRetryTask:
+        self._tasks[
+            self._key(
+                task.account_id,
+                task.message_id,
+                task.extractor_version,
+                task.source_hash,
+            )
+        ] = task
+        return task
+
+    def list_tasks(
+        self, account_id: str | None = None
+    ) -> list[ProfileExtractionRetryTask]:
+        tasks = [
+            task
+            for task in self._tasks.values()
+            if account_id is None or task.account_id == account_id
+        ]
+        return sorted(tasks, key=lambda task: task.created_at)
+
+    def save_observation(self, observation: AutomaticProfileObservation) -> None:
+        self._observations[observation.observation_id] = observation
+
+    def list_observations(
+        self,
+        account_id: str,
+        dimension: FourDimension,
+        normalized_value: str,
+        *,
+        since: datetime,
+    ) -> list[AutomaticProfileObservation]:
+        return [
+            observation
+            for observation in self._observations.values()
+            if observation.account_id == account_id
+            and observation.dimension == dimension
+            and observation.normalized_value == normalized_value
+            and observation.created_at >= since
+        ]
+
+    def claim_privacy_notice(
+        self, account_id: str, now: datetime
+    ) -> ProfilePrivacyNotice | None:
+        if account_id in self._disclosures:
+            return None
+        self._disclosures.add(account_id)
+        return ProfilePrivacyNotice(
+            version=AUTOMATIC_PRIVACY_NOTICE_VERSION,
+            text=AUTOMATIC_PRIVACY_NOTICE_TEXT,
+            shown_at=now,
+        )
+
+    def mark_message_tombstone(self, account_id: str, message_id: str) -> None:
+        self._tombstones.add((account_id, message_id))
+
+    def is_message_tombstoned(self, account_id: str, message_id: str) -> bool:
+        return (account_id, message_id) in self._tombstones
+
+
+class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
+    """SQLite 持久化实现；所有查询显式绑定账户。"""
+
+    def __init__(self, database: BridgesDatabase) -> None:
+        self.database = database
+        self.database.initialize()
+
+    def transaction(self) -> AbstractContextManager[None]:
+        return self.database.transaction()
+
+    @staticmethod
+    def _iso(value: datetime) -> str:
+        return value.astimezone(UTC).isoformat(timespec="seconds")
+
+    @staticmethod
+    def _dt(value: str) -> datetime:
+        return datetime.fromisoformat(value)
+
+    @staticmethod
+    def _run(row: Any) -> ProfileExtractionRun:
+        return ProfileExtractionRun(
+            extraction_id=str(row["extraction_id"]),
+            account_id=str(row["account_id"]),
+            message_id=str(row["message_id"]),
+            extractor_version=str(row["extractor_version"]),
+            source_hash=str(row["source_hash"]),
+            source_snapshot=str(row["source_snapshot"]),
+            status=ProfileExtractionStatus(str(row["status"])),
+            attempts=int(row["attempts"]),
+            committed_record_ids=json.loads(str(row["record_ids_json"])),
+            observed_count=int(row["observed_count"]),
+            last_error=row["last_error"],
+            created_at=SqliteAutomaticProfileRepository._dt(str(row["created_at"])),
+            updated_at=SqliteAutomaticProfileRepository._dt(str(row["updated_at"])),
+        )
+
+    @staticmethod
+    def _task(row: Any) -> ProfileExtractionRetryTask:
+        return ProfileExtractionRetryTask(
+            task_id=str(row["task_id"]),
+            account_id=str(row["account_id"]),
+            message_id=str(row["message_id"]),
+            extractor_version=str(row["extractor_version"]),
+            source_hash=str(row["source_hash"]),
+            status=ProfileExtractionStatus(str(row["status"])),
+            attempts=int(row["attempts"]),
+            last_error=row["last_error"],
+            created_at=SqliteAutomaticProfileRepository._dt(str(row["created_at"])),
+            updated_at=SqliteAutomaticProfileRepository._dt(str(row["updated_at"])),
+        )
+
+    def get_run(
+        self, account_id: str, message_id: str, version: str, source_hash: str
+    ) -> ProfileExtractionRun | None:
+        row = (
+            self.database.scoped(account_id)
+            .execute(
+                "SELECT * FROM profile_extraction_runs WHERE account_id = ? AND message_id = ? AND extractor_version = ? AND source_hash = ?",
+                (account_id, message_id, version, source_hash),
+            )
+            .fetchone()
+        )
+        return self._run(row) if row is not None else None
+
+    def save_run(self, run: ProfileExtractionRun) -> ProfileExtractionRun:
+        self.database.scoped(run.account_id).execute(
+            "INSERT INTO profile_extraction_runs (extraction_id, account_id, message_id, extractor_version, source_hash, source_snapshot, status, attempts, record_ids_json, observed_count, last_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(extraction_id) DO UPDATE SET status=excluded.status, attempts=excluded.attempts, record_ids_json=excluded.record_ids_json, observed_count=excluded.observed_count, last_error=excluded.last_error, updated_at=excluded.updated_at",
+            (
+                run.extraction_id,
+                run.account_id,
+                run.message_id,
+                run.extractor_version,
+                run.source_hash,
+                run.source_snapshot,
+                run.status.value,
+                run.attempts,
+                json.dumps(run.committed_record_ids),
+                run.observed_count,
+                run.last_error,
+                self._iso(run.created_at),
+                self._iso(run.updated_at),
+            ),
+        )
+        return run
+
+    def get_task(
+        self, account_id: str, message_id: str, version: str, source_hash: str
+    ) -> ProfileExtractionRetryTask | None:
+        row = (
+            self.database.scoped(account_id)
+            .execute(
+                "SELECT * FROM profile_extraction_tasks WHERE account_id = ? AND message_id = ? AND extractor_version = ? AND source_hash = ?",
+                (account_id, message_id, version, source_hash),
+            )
+            .fetchone()
+        )
+        return self._task(row) if row is not None else None
+
+    def save_task(self, task: ProfileExtractionRetryTask) -> ProfileExtractionRetryTask:
+        self.database.scoped(task.account_id).execute(
+            "INSERT INTO profile_extraction_tasks (task_id, account_id, message_id, extractor_version, source_hash, status, attempts, last_error, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(task_id) DO UPDATE SET status=excluded.status, attempts=excluded.attempts, last_error=excluded.last_error, updated_at=excluded.updated_at",
+            (
+                task.task_id,
+                task.account_id,
+                task.message_id,
+                task.extractor_version,
+                task.source_hash,
+                task.status.value,
+                task.attempts,
+                task.last_error,
+                self._iso(task.created_at),
+                self._iso(task.updated_at),
+            ),
+        )
+        return task
+
+    def list_tasks(
+        self, account_id: str | None = None
+    ) -> list[ProfileExtractionRetryTask]:
+        if account_id is None:
+            rows = self.database.connection.execute(
+                "SELECT * FROM profile_extraction_tasks ORDER BY created_at"
+            ).fetchall()
+        else:
+            rows = (
+                self.database.scoped(account_id)
+                .execute(
+                    "SELECT * FROM profile_extraction_tasks WHERE account_id = ? ORDER BY created_at",
+                    (account_id,),
+                )
+                .fetchall()
+            )
+        return [self._task(row) for row in rows]
+
+    def save_observation(self, observation: AutomaticProfileObservation) -> None:
+        self.database.scoped(observation.account_id).execute(
+            "INSERT INTO profile_extraction_observations (observation_id, account_id, message_id, extractor_version, dimension, normalized_value, evidence_ref, reliability, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(account_id, message_id, extractor_version, dimension, normalized_value) DO NOTHING",
+            (
+                observation.observation_id,
+                observation.account_id,
+                observation.message_id,
+                observation.extractor_version,
+                observation.dimension.value,
+                observation.normalized_value,
+                observation.evidence_ref,
+                observation.reliability,
+                self._iso(observation.created_at),
+            ),
+        )
+
+    def list_observations(
+        self,
+        account_id: str,
+        dimension: FourDimension,
+        normalized_value: str,
+        *,
+        since: datetime,
+    ) -> list[AutomaticProfileObservation]:
+        rows = (
+            self.database.scoped(account_id)
+            .execute(
+                "SELECT * FROM profile_extraction_observations WHERE account_id = ? AND dimension = ? AND normalized_value = ? AND created_at >= ? ORDER BY created_at",
+                (account_id, dimension.value, normalized_value, self._iso(since)),
+            )
+            .fetchall()
+        )
+        return [
+            AutomaticProfileObservation(
+                observation_id=str(row["observation_id"]),
+                account_id=str(row["account_id"]),
+                message_id=str(row["message_id"]),
+                extractor_version=str(row["extractor_version"]),
+                dimension=FourDimension(str(row["dimension"])),
+                normalized_value=str(row["normalized_value"]),
+                evidence_ref=str(row["evidence_ref"]),
+                reliability=float(row["reliability"]),
+                created_at=self._dt(str(row["created_at"])),
+            )
+            for row in rows
+        ]
+
+    def claim_privacy_notice(
+        self, account_id: str, now: datetime
+    ) -> ProfilePrivacyNotice | None:
+        cursor = self.database.scoped(account_id).execute(
+            "INSERT INTO profile_privacy_disclosures (account_id, disclosure_version, ever_shown, shown_at) VALUES (?, ?, 1, ?) ON CONFLICT(account_id) DO NOTHING",
+            (account_id, AUTOMATIC_PRIVACY_NOTICE_VERSION, self._iso(now)),
+        )
+        if cursor.rowcount != 1:
+            return None
+        return ProfilePrivacyNotice(
+            version=AUTOMATIC_PRIVACY_NOTICE_VERSION,
+            text=AUTOMATIC_PRIVACY_NOTICE_TEXT,
+            shown_at=now,
+        )
+
+    def mark_message_tombstone(self, account_id: str, message_id: str) -> None:
+        self.database.scoped(account_id).execute(
+            "INSERT INTO profile_extraction_tombstones (account_id, message_id, created_at) VALUES (?, ?, ?) ON CONFLICT(account_id, message_id) DO NOTHING",
+            (account_id, message_id, self._iso(_now())),
+        )
+
+    def is_message_tombstoned(self, account_id: str, message_id: str) -> bool:
+        return (
+            self.database.scoped(account_id)
+            .execute(
+                "SELECT 1 FROM profile_extraction_tombstones WHERE account_id = ? AND message_id = ?",
+                (account_id, message_id),
+            )
+            .fetchone()
+            is not None
+        )
+
+
+class AutomaticProfileService:
+    """消息预处理的单一编排入口。"""
+
+    def __init__(
+        self,
+        *,
+        four_dimension_service: FourDimensionProfileService,
+        repository: AutomaticProfileRepository,
+        extractor: AutomaticProfileExtractor | None = None,
+        slice_repository: ProfileRepository | None = None,
+        message_reader: Callable[[str, str], Any | None] | None = None,
+    ) -> None:
+        self._four_dimensions = four_dimension_service
+        self._repository = repository
+        self._extractor = extractor or RuleBasedAutomaticProfileExtractor()
+        self._slice_repository = slice_repository
+        self._message_reader = message_reader
+        self._queue = (
+            TaskQueue(repository.database, default_lease_seconds=60)
+            if isinstance(repository, SqliteAutomaticProfileRepository)
+            else None
+        )
+        if self._queue is not None:
+            self._queue.set_lease_seconds(PROFILE_EXTRACTION_QUEUE, 60)
+
+    @property
+    def extractor_version(self) -> str:
+        return self._extractor.version
+
+    def preprocess_message(
+        self,
+        account_id: str,
+        *,
+        conversation_id: str,
+        message_id: str,
+        content: str,
+        run_id: str,
+        mode: str,
+    ) -> ProfilePreprocessResult:
+        now = _now()
+        source_hash = _source_hash(account_id, message_id, content)
+        existing = self._repository.get_run(
+            account_id, message_id, self.extractor_version, source_hash
+        )
+        if self._repository.is_message_tombstoned(account_id, message_id):
+            if existing is None:
+                now = _now()
+                existing = ProfileExtractionRun(
+                    extraction_id=_stable_id(
+                        "profile-extract",
+                        account_id,
+                        message_id,
+                        self.extractor_version,
+                        source_hash,
+                    ),
+                    account_id=account_id,
+                    message_id=message_id,
+                    extractor_version=self.extractor_version,
+                    source_hash=source_hash,
+                    source_snapshot=content,
+                    status=ProfileExtractionStatus.EXHAUSTED,
+                    attempts=0,
+                    last_error="原消息已撤回或被墓碑阻止",
+                    created_at=now,
+                    updated_at=now,
+                )
+                self._repository.save_run(existing)
+            elif existing.status not in {
+                ProfileExtractionStatus.SUCCEEDED,
+                ProfileExtractionStatus.EXHAUSTED,
+            }:
+                existing.status = ProfileExtractionStatus.EXHAUSTED
+                existing.last_error = "原消息已撤回或被墓碑阻止"
+                existing.updated_at = _now()
+                self._repository.save_run(existing)
+            return ProfilePreprocessResult(
+                run=existing,
+                committed_record_ids=existing.committed_record_ids,
+                observed_count=existing.observed_count,
+            )
+        if existing is not None and existing.status in {
+            ProfileExtractionStatus.SUCCEEDED,
+            ProfileExtractionStatus.EXHAUSTED,
+            ProfileExtractionStatus.PENDING,
+        }:
+            return ProfilePreprocessResult(
+                run=existing,
+                committed_record_ids=existing.committed_record_ids,
+                observed_count=existing.observed_count,
+            )
+
+        run = existing or ProfileExtractionRun(
+            extraction_id=_stable_id(
+                "profile-extract",
+                account_id,
+                message_id,
+                self.extractor_version,
+                source_hash,
+            ),
+            account_id=account_id,
+            message_id=message_id,
+            extractor_version=self.extractor_version,
+            source_hash=source_hash,
+            source_snapshot=content,
+            status=ProfileExtractionStatus.RUNNING,
+            attempts=0,
+            created_at=now,
+            updated_at=now,
+        )
+        if not has_probable_profile_signal(content):
+            run.status = ProfileExtractionStatus.SUCCEEDED
+            run.updated_at = now
+            self._repository.save_run(run)
+            return ProfilePreprocessResult(run=run)
+
+        # 只有真正进入画像判定（明确自述或普通知识提问）时才展示一次说明，
+        # 避免对明显无关的寒暄和机器载荷产生打扰。
+        notice = self._repository.claim_privacy_notice(account_id, now)
+
+        self._repository.save_run(run)
+        try:
+            with self._commit_transaction():
+                output = self._extract_once(
+                    account_id=account_id,
+                    conversation_id=conversation_id,
+                    message_id=message_id,
+                    content=content,
+                    run_id=run_id,
+                )
+                record_ids, observed_count = self._commit_output(
+                    account_id,
+                    conversation_id=conversation_id,
+                    message_id=message_id,
+                    content=content,
+                    mode=mode,
+                    output=output,
+                    now=now,
+                )
+                run.status = ProfileExtractionStatus.SUCCEEDED
+                run.attempts += 1
+                run.committed_record_ids = record_ids
+                run.observed_count = observed_count
+                run.last_error = None
+                run.updated_at = _now()
+                self._repository.save_run(run)
+        except Exception as exc:  # noqa: BLE001 - 抽取是聊天辅助路径
+            return self._schedule_retry(run, notice, str(exc))
+
+        return ProfilePreprocessResult(
+            run=run,
+            privacy_notice=notice,
+            committed_record_ids=record_ids,
+            observed_count=observed_count,
+        )
+
+    def _extract_once(self, **kwargs: object) -> ProfileExtractionOutput:
+        output = self._extractor.extract(**kwargs)  # type: ignore[arg-type]
+        if not isinstance(output, ProfileExtractionOutput):
+            output = ProfileExtractionOutput.model_validate(output)
+        return output
+
+    def _schedule_retry(
+        self,
+        run: ProfileExtractionRun,
+        notice: ProfilePrivacyNotice | None,
+        error: str,
+    ) -> ProfilePreprocessResult:
+        now = _now()
+        run.status = ProfileExtractionStatus.PENDING
+        run.attempts += 1
+        run.last_error = error[:500]
+        run.updated_at = now
+        task = self._repository.get_task(
+            run.account_id, run.message_id, run.extractor_version, run.source_hash
+        )
+        if task is None:
+            task = ProfileExtractionRetryTask(
+                task_id=_stable_id(
+                    "profile-retry",
+                    run.account_id,
+                    run.message_id,
+                    run.extractor_version,
+                    run.source_hash,
+                ),
+                account_id=run.account_id,
+                message_id=run.message_id,
+                extractor_version=run.extractor_version,
+                source_hash=run.source_hash,
+                status=ProfileExtractionStatus.PENDING,
+                attempts=0,
+                created_at=now,
+                updated_at=now,
+            )
+        task.status = ProfileExtractionStatus.PENDING
+        task.last_error = error[:500]
+        task.updated_at = now
+        with self._repository.transaction():
+            self._repository.save_run(run)
+            self._repository.save_task(task)
+            if self._queue is not None:
+                self._queue.enqueue(
+                    PROFILE_EXTRACTION_QUEUE,
+                    task.task_id,
+                    payload={
+                        "account_id": run.account_id,
+                        "message_id": run.message_id,
+                        "extractor_version": run.extractor_version,
+                        "source_hash": run.source_hash,
+                    },
+                )
+        return ProfilePreprocessResult(run=run, privacy_notice=notice)
+
+    def run_retry_tick(self) -> str:
+        if self._queue is not None:
+            claim = self._queue.claim_next(
+                PROFILE_EXTRACTION_QUEUE, "profile-extractor"
+            )
+            if claim is None:
+                return "profile-extraction: 无待处理任务。"
+            task_id = claim.task_key
+            task = next(
+                (
+                    item
+                    for item in self._repository.list_tasks()
+                    if item.task_id == task_id
+                ),
+                None,
+            )
+            if task is None:
+                self._queue.complete(claim)
+                return "profile-extraction: 任务已不存在。"
+            result = self._run_retry_task(task, claim.attempt + 1)
+            if result == ProfileExtractionStatus.SUCCEEDED:
+                self._queue.complete(claim)
+            elif result == ProfileExtractionStatus.EXHAUSTED:
+                self._queue.fail(claim, task.last_error or "画像抽取重试耗尽")
+            else:
+                self._queue.requeue(
+                    claim,
+                    retry_kind=RetryKind.FIXED,
+                    reason=task.last_error or "画像抽取失败",
+                    max_attempts=PROFILE_EXTRACTION_MAX_RETRIES,
+                    backoff_seconds=0,
+                )
+            return f"profile-extraction: {result.value}。"
+
+        task = next(
+            (
+                item
+                for item in self._repository.list_tasks()
+                if item.status == ProfileExtractionStatus.PENDING
+            ),
+            None,
+        )
+        if task is None:
+            return "profile-extraction: 无待处理任务。"
+        result = self._run_retry_task(task, task.attempts + 1)
+        return f"profile-extraction: {result.value}。"
+
+    @contextmanager
+    def _commit_transaction(self) -> Iterator[None]:
+        with ExitStack() as stack:
+            stack.enter_context(self._repository.transaction())
+            # SQLite 两个仓库共用同一连接，自动仓库事务已经覆盖四维写入；
+            # 内存仓库则分别建立可回滚快照，确保整批提交失败时零部分写入。
+            if not isinstance(self._repository, SqliteAutomaticProfileRepository):
+                stack.enter_context(self._four_dimensions.transaction())
+            yield
+
+    def _run_retry_task(
+        self, task: ProfileExtractionRetryTask, attempt: int
+    ) -> ProfileExtractionStatus:
+        run = self._repository.get_run(
+            task.account_id, task.message_id, task.extractor_version, task.source_hash
+        )
+        if run is None:
+            task.status = ProfileExtractionStatus.EXHAUSTED
+            task.last_error = "画像预处理记录不存在"
+            task.updated_at = _now()
+            self._repository.save_task(task)
+            return task.status
+        if task.extractor_version != self.extractor_version:
+            return self._exhaust_task(
+                task, run, "原抽取器版本不可用，禁止改用新版本重放"
+            )
+        if self._repository.is_message_tombstoned(
+            task.account_id, task.message_id
+        ) or not self._message_snapshot_is_current(
+            task.account_id, task.message_id, task.source_hash
+        ):
+            return self._exhaust_task(task, run, "原消息已修改、撤回或被墓碑阻止")
+        task.status = ProfileExtractionStatus.RUNNING
+        task.attempts = attempt
+        task.updated_at = _now()
+        self._repository.save_task(task)
+        run.status = ProfileExtractionStatus.RUNNING
+        run.attempts = attempt
+        run.updated_at = _now()
+        self._repository.save_run(run)
+        try:
+            with self._commit_transaction():
+                content = self._message_content(
+                    task.account_id, task.message_id, run.source_snapshot
+                )
+                output = self._extract_once(
+                    account_id=task.account_id,
+                    conversation_id="retry",
+                    message_id=task.message_id,
+                    content=content,
+                    run_id=run.extraction_id,
+                )
+                record_ids, observed_count = self._commit_output(
+                    task.account_id,
+                    conversation_id="retry",
+                    message_id=task.message_id,
+                    content=content,
+                    mode="companion",
+                    output=output,
+                    now=_now(),
+                )
+                task.status = ProfileExtractionStatus.SUCCEEDED
+                task.last_error = None
+                task.updated_at = _now()
+                run.status = ProfileExtractionStatus.SUCCEEDED
+                run.last_error = None
+                run.committed_record_ids = record_ids
+                run.observed_count = observed_count
+                run.updated_at = task.updated_at
+                self._repository.save_task(task)
+                self._repository.save_run(run)
+        except Exception as exc:  # noqa: BLE001 - 留在有界重试状态机
+            if attempt >= PROFILE_EXTRACTION_MAX_RETRIES:
+                return self._exhaust_task(task, run, str(exc))
+            task.status = ProfileExtractionStatus.PENDING
+            task.last_error = str(exc)[:500]
+            task.updated_at = _now()
+            run.status = ProfileExtractionStatus.PENDING
+            run.last_error = task.last_error
+            run.updated_at = task.updated_at
+            self._repository.save_task(task)
+            self._repository.save_run(run)
+            return task.status
+        return task.status
+
+    def _exhaust_task(
+        self, task: ProfileExtractionRetryTask, run: ProfileExtractionRun, error: str
+    ) -> ProfileExtractionStatus:
+        now = _now()
+        task.status = ProfileExtractionStatus.EXHAUSTED
+        task.last_error = error[:500]
+        task.updated_at = now
+        run.status = ProfileExtractionStatus.EXHAUSTED
+        run.last_error = task.last_error
+        run.updated_at = now
+        self._repository.save_task(task)
+        self._repository.save_run(run)
+        return task.status
+
+    def _message_snapshot_is_current(
+        self, account_id: str, message_id: str, source_hash: str
+    ) -> bool:
+        if self._message_reader is None:
+            return True
+        message = self._message_reader(account_id, message_id)
+        return (
+            message is not None
+            and _source_hash(account_id, message_id, str(message.content))
+            == source_hash
+        )
+
+    def _message_content(self, account_id: str, message_id: str, snapshot: str) -> str:
+        if self._message_reader is None:
+            return snapshot
+        message = self._message_reader(account_id, message_id)
+        if message is None:
+            raise AutomaticProfileError("原消息不存在")
+        return str(message.content)
+
+    def _commit_output(
+        self,
+        account_id: str,
+        *,
+        conversation_id: str,
+        message_id: str,
+        content: str,
+        mode: str,
+        output: ProfileExtractionOutput,
+        now: datetime,
+    ) -> tuple[list[str], int]:
+        record_ids: list[str] = []
+        observed_count = 0
+        for item in output.items:
+            if self._repository.is_message_tombstoned(account_id, message_id):
+                continue
+            self._validate_item(item, account_id, message_id, content)
+            if item.action == ProfileExtractionAction.IGNORE:
+                continue
+            observation = AutomaticProfileObservation(
+                observation_id=_stable_id(
+                    "profile-observation",
+                    account_id,
+                    message_id,
+                    self.extractor_version,
+                    item.dimension.value,
+                    item.normalized_value,
+                ),
+                account_id=account_id,
+                message_id=message_id,
+                extractor_version=self.extractor_version,
+                dimension=item.dimension,
+                normalized_value=item.normalized_value,
+                evidence_ref=item.evidence_ref,
+                reliability=item.reliability,
+                created_at=now,
+            )
+            self._repository.save_observation(observation)
+            observed_count += 1
+            if item.action == ProfileExtractionAction.OBSERVE or item.reliability < 0.6:
+                continue
+            if not self._is_explicit_self_statement(content, item.dimension):
+                if item.dimension != FourDimension.KNOWLEDGE_INTEREST:
+                    continue
+                observations = self._repository.list_observations(
+                    account_id,
+                    item.dimension,
+                    item.normalized_value,
+                    since=now - _KNOWLEDGE_PROMOTION_WINDOW,
+                )
+                if len({entry.message_id for entry in observations}) < 2:
+                    continue
+            if self._repository.is_message_tombstoned(account_id, message_id):
+                continue
+            action = item.action.value
+            if (
+                action == ProfileExtractionAction.CREATE.value
+                and item.dimension
+                in {
+                    FourDimension.ACADEMIC_STATUS,
+                    FourDimension.STAGE_GOAL,
+                }
+                and self._is_explicit_self_statement(content, item.dimension)
+            ):
+                # 学业阶段与阶段目标是当前稳定状态；后来的明确自述
+                # 更新现有记录，避免把冲突陈述并列注入模型。
+                action = ProfileExtractionAction.UPDATE.value
+            record = self._four_dimensions.upsert_automatic_record(
+                account_id,
+                dimension=item.dimension,
+                content=item.normalized_value,
+                action=action,
+            )
+            record_ids.append(record.record_id)
+        return list(dict.fromkeys(record_ids)), observed_count
+
+    @staticmethod
+    def _validate_item(
+        item: Any, account_id: str, message_id: str, content: str
+    ) -> None:
+        del account_id
+        if item.evidence_ref != message_id:
+            raise AutomaticProfileError("画像抽取证据引用不匹配")
+        if _FORBIDDEN_SIGNAL.search(item.normalized_value):
+            raise AutomaticProfileError("画像抽取值包含禁止内容")
+        if item.action == ProfileExtractionAction.OBSERVE:
+            if not _QUESTION_SIGNAL.search(content):
+                raise AutomaticProfileError("内部观察缺少普通提问依据")
+            return
+        if _FORBIDDEN_SIGNAL.search(content) or not _SELF_SIGNAL.search(content):
+            raise AutomaticProfileError("画像抽取缺少明确的用户自述边界")
+
+    @staticmethod
+    def _is_explicit_self_statement(content: str, dimension: FourDimension) -> bool:
+        if _FORBIDDEN_SIGNAL.search(content) or not _SELF_SIGNAL.search(content):
+            return False
+        if dimension == FourDimension.KNOWLEDGE_INTEREST:
+            return bool(re.search(r"我对.+感兴趣|我喜欢", content))
+        return True
+
+    def compile_chat_slice(
+        self,
+        account_id: str,
+        *,
+        mode: str,
+        run_id: str,
+        project_id: str | None = None,
+        current_question: str | None = None,
+    ) -> ProfileSlice:
+        allowed = (
+            {
+                FourDimension.ACADEMIC_STATUS,
+                FourDimension.KNOWLEDGE_INTEREST,
+                FourDimension.STAGE_GOAL,
+            }
+            if mode == "study"
+            else {
+                FourDimension.ACADEMIC_STATUS,
+                FourDimension.KNOWLEDGE_INTEREST,
+                FourDimension.HOBBY,
+                FourDimension.STAGE_GOAL,
+            }
+        )
+        records = [
+            record
+            for record in self._four_dimensions.list_records(account_id)
+            if record.status == FourDimensionRecordStatus.ACTIVE
+            and record.dimension in allowed
+        ]
+        related: list[FourDimensionProfileRecord] = []
+        unrelated: list[FourDimensionProfileRecord] = []
+        for record in records:
+            (
+                related
+                if _record_matches_question(record, current_question)
+                else unrelated
+            ).append(record)
+        related.sort(key=lambda record: record.updated_at, reverse=True)
+        unrelated.sort(key=lambda record: record.updated_at, reverse=True)
+        included = [
+            ProfileSliceItem(
+                assertion_id=record.record_id,
+                dimension=record.dimension.value,
+                value_or_rule=record.content[:80],
+                inclusion_reason=f"当前{mode}模式的最小四维画像切片",
+                sensitivity_class=(
+                    ProfileSensitivityClass.LEARNING
+                    if record.dimension
+                    in {
+                        FourDimension.ACADEMIC_STATUS,
+                        FourDimension.KNOWLEDGE_INTEREST,
+                        FourDimension.STAGE_GOAL,
+                    }
+                    else ProfileSensitivityClass.PREFERENCE
+                ),
+            )
+            for record in related[:_MAX_SLICE_ITEMS]
+        ]
+        unused = [
+            UnusedSliceItem(
+                assertion_id=record.record_id,
+                dimension=record.dimension.value,
+                value_or_rule=record.content[:80],
+                exclusion_reason=(
+                    "与当前问题不相关"
+                    if record in unrelated
+                    else "超出本轮最小切片预算或模式范围"
+                ),
+            )
+            for record in related[_MAX_SLICE_ITEMS:] + unrelated
+        ]
+        slice_ = ProfileSlice(
+            slice_id=_stable_id("profile-slice", account_id, run_id),
+            owner_account_id=account_id,
+            run_id=run_id,
+            purpose=f"chat:{mode}",
+            project_id=project_id,
+            included_items=included,
+            unused_items=unused,
+            authorization_snapshot="profile-auto-authz-v1",
+            key_epoch="epoch-0",
+            expires_at=now_plus_hour(),
+            sensitivity_classes_allowed=[
+                ProfileSensitivityClass.PUBLIC,
+                ProfileSensitivityClass.PREFERENCE,
+                ProfileSensitivityClass.LEARNING,
+            ],
+            compiled_policy_version="profile-auto-slice-v1",
+            length_budget=_MAX_SLICE_ITEMS,
+            compiled_at=_now(),
+        )
+        if self._slice_repository is not None:
+            self._slice_repository.save_slice(slice_)
+        return slice_
+
+    def get_record(self, account_id: str, record_id: str) -> FourDimensionProfileRecord:
+        return self._four_dimensions.get_record(account_id, record_id)
+
+    def mark_message_tombstone(self, account_id: str, message_id: str) -> None:
+        self._repository.mark_message_tombstone(account_id, message_id)
+
+    def list_retry_tasks(
+        self, account_id: str | None = None
+    ) -> list[ProfileExtractionRetryTask]:
+        return self._repository.list_tasks(account_id)
+
+
+def now_plus_hour() -> datetime:
+    return _now() + timedelta(hours=1)

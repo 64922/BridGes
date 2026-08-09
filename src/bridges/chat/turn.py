@@ -82,7 +82,9 @@ from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjecti
 from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
+    FOUR_DIMENSION_LABELS,
     PROFILE_DIMENSION_LABELS,
+    FourDimension,
     ProfileDimension,
     ProfileSlice,
 )
@@ -103,6 +105,7 @@ from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
+from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
@@ -125,6 +128,7 @@ def _wait_timeout(futures: list[Any], timeout: float) -> tuple[set[Any], set[Any
     # 等全部来源完成（或总超时）：并行语义 = 总耗时接近较慢者而非之和
     done, pending = wait(futures, timeout=timeout, return_when=ALL_COMPLETED)
     return done, pending
+
 
 #: 对话双模式（ADR-0022）：普通新聊天默认日常陪伴，学习项目新建对话默认学习模式。
 CHAT_MODE = ChatMode.COMPANION
@@ -424,6 +428,7 @@ class VideoOrchestrator(Protocol):
 # 思考摘要以类型化 ``ChatThinkingSummary`` 记录承载（不再是裸 dict 约定），
 # 落库时经 ``finalize_message`` 统一转为 JSON。
 
+
 def initial_thinking(mode: ChatMode) -> ChatThinkingSummary:
     """生成开始时的初始摘要（前端据此自动展开思考区域）。
 
@@ -454,7 +459,9 @@ def failed_thinking(
 ) -> ChatThinkingSummary:
     """失败/断流/内部错误时的摘要：保留已完成步骤并给出中文质量结论。"""
     return thinking.model_copy(
-        update={"quality": [user_facing_error(error_code, "生成失败，已保留已完成部分。")]}
+        update={
+            "quality": [user_facing_error(error_code, "生成失败，已保留已完成部分。")]
+        }
     )
 
 
@@ -504,8 +511,7 @@ def retrieval_thinking(
         if len(snippet) > _EVIDENCE_SNIPPET_MAX:
             snippet = snippet[:_EVIDENCE_SNIPPET_MAX] + "…"
         evidence.append(
-            f"引用了「{citation.filename}」{citation_location(citation)}"
-            f"：{snippet}"
+            f"引用了「{citation.filename}」{citation_location(citation)}" f"：{snippet}"
         )
     tools: list[str] = []
     for layer in retrieval_round.layers:
@@ -558,7 +564,9 @@ def retrieval_context(citations: list[CitationProjection]) -> str:
         snippet = citation.snippet
         if len(snippet) > _EVIDENCE_SNIPPET_MAX:
             snippet = snippet[:_EVIDENCE_SNIPPET_MAX] + "…"
-        line = f"[{index}]「{citation.filename}」{citation_location(citation)}：{snippet}"
+        line = (
+            f"[{index}]「{citation.filename}」{citation_location(citation)}：{snippet}"
+        )
         if used + len(line) > _CONTEXT_MAX_CHARS:
             break
         used += len(line)
@@ -570,11 +578,14 @@ def retrieval_context(citations: list[CitationProjection]) -> str:
 # 公网搜索的思考摘要与上下文（Issue 21）
 # ---------------------------------------------------------------------------
 
+
 def web_search_thinking(
     thinking: ChatThinkingSummary, projection: WebSearchProjection
 ) -> ChatThinkingSummary:
     """把搜索触发原因、结果与失败状态变成可公开进度。"""
-    tools = [f"已触发联网搜索：{projection.trigger_reason}；查询概述：{projection.query_summary}"]
+    tools = [
+        f"已触发联网搜索：{projection.trigger_reason}；查询概述：{projection.query_summary}"
+    ]
     if projection.status == WebSearchStatus.SUCCESS:
         evidence = [f"{item.title}（{item.site}）" for item in projection.results]
         tools.append(f"已返回 {len(projection.results)} 条公开网页结果")
@@ -630,6 +641,7 @@ def web_search_citation_error(content: str, result_count: int) -> str | None:
 # arXiv 搜索的思考摘要与上下文（Issue 22）
 # ---------------------------------------------------------------------------
 
+
 def arxiv_search_thinking(
     thinking: ChatThinkingSummary, projection: ArxivSearchProjection
 ) -> ChatThinkingSummary:
@@ -680,9 +692,7 @@ def arxiv_search_context(projection: ArxivSearchProjection) -> str:
     return "\n".join(lines)
 
 
-def arxiv_citation_error(
-    content: str, projection: ArxivSearchProjection
-) -> str | None:
+def arxiv_citation_error(content: str, projection: ArxivSearchProjection) -> str | None:
     """要求论文回答至少引用一个真实结果且不引用不存在的编号。"""
     references = set(re.findall(r"\[arxiv-(\d+)\]", content))
     if not references:
@@ -696,6 +706,7 @@ def arxiv_citation_error(
 # ---------------------------------------------------------------------------
 # 教学证据门的思考摘要与上下文（Issue 23）
 # ---------------------------------------------------------------------------
+
 
 def teaching_thinking(
     thinking: ChatThinkingSummary, teaching: TeachingTurnProjection
@@ -813,6 +824,7 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
 # 上下文说明披露只展示类别、用途、来源记录链接与使用时间，不暴露系统
 # 提示、隐藏提示或原始思维链。
 
+
 def profile_slice_context(profile_slice: ProfileSlice) -> str:
     """构造注入模型的最小画像切片上下文（固定格式，可测试）。
 
@@ -839,7 +851,10 @@ def dimension_label(dimension: str) -> str:
     try:
         return PROFILE_DIMENSION_LABELS[ProfileDimension(dimension)]
     except ValueError:
-        return dimension
+        try:
+            return FOUR_DIMENSION_LABELS[FourDimension(dimension)]
+        except ValueError:
+            return dimension
 
 
 def context_note_ready_text(items: list[ContextNoteProfileItem]) -> str:
@@ -872,6 +887,7 @@ def context_note_thinking(
 # ---------------------------------------------------------------------------
 # 用户消息载荷与轮次辅助（重试沿用同一份任务契约）
 # ---------------------------------------------------------------------------
+
 
 def owner_user_message(
     messages: list[MessageRecord], assistant_message_id: str
@@ -1012,6 +1028,7 @@ def mcp_call_summary(projection: McpCallMessageProjection) -> str:
 # 提示词组装单点
 # ---------------------------------------------------------------------------
 
+
 def assemble_payload(
     history: list[dict[str, str]],
     *,
@@ -1064,6 +1081,7 @@ def assemble_payload(
 # ---------------------------------------------------------------------------
 # 消息终态收敛
 # ---------------------------------------------------------------------------
+
 
 def finalize_message(
     repo: ConversationRepository,
@@ -1128,6 +1146,7 @@ class TurnOrchestrator:
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
         profile_service: ProfileService | None = None,
+        automatic_profile_service: AutomaticProfileService | None = None,
         observability_service: ObservabilityService | None = None,
         humanizer_service: HumanizerOrchestrator | None = None,
         career_planner_service: CareerPlannerOrchestrator | None = None,
@@ -1148,6 +1167,8 @@ class TurnOrchestrator:
         self._teaching = teaching_service or TeachingTurnService()
         #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
         self._profiles = profile_service
+        #: Issue 15：新写入的四维画像通过独立服务编译；旧服务只作兼容。
+        self._automatic_profiles = automatic_profile_service
         #: 云端披露审计（Issue 27）；未挂载时跳过审计，不阻断生成。
         self._observability = observability_service
         #: 内置 bridges-humanizer SKILL 编排（Issue 28）。
@@ -1209,7 +1230,9 @@ class TurnOrchestrator:
         # 生效，读取陈旧收敛不会误伤进行中的流）；缺失时补注册。
         entry = self._lifecycle.signal_and_started(assistant_message_id)
         stop_event = (
-            entry[0] if entry is not None else self._lifecycle.register(assistant_message_id)
+            entry[0]
+            if entry is not None
+            else self._lifecycle.register(assistant_message_id)
         )
         content = ""
         started = time.monotonic()
@@ -1229,7 +1252,9 @@ class TurnOrchestrator:
             history = self._model_history(
                 account_id, conversation_id, until_user_message_id
             )
-            mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            mode = (
+                ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            )
             # Issue 28：用户消息携带 SKILL 载荷（bridges-humanizer）时走
             # 内置 SKILL 编排路径——同一真实消息流程（持久化/重试/审计），
             # 过程卡五态经 humanizer SSE 事件下发，终态 done/error 收敛。
@@ -1434,7 +1459,9 @@ class TurnOrchestrator:
             if current.teaching is not None and mode != ChatMode.STUDY:
                 # 若用户在流启动后切回日常陪伴，不能留下永久 loading 教学卡，
                 # 也不能把教学上下文注入这条日常回答。
-                switched_teaching = TeachingTurnProjection.model_validate(current.teaching)
+                switched_teaching = TeachingTurnProjection.model_validate(
+                    current.teaching
+                )
                 switched_gate = switched_teaching.evidence_gate.model_copy(
                     update={"search_status": TeachingCardStatus.RECOVERY}
                 )
@@ -1470,9 +1497,7 @@ class TurnOrchestrator:
                     messages, owner.message_id if owner else None
                 )
                 # Issue 08：先分类意图，再按教学状态机分派；不检索整句意图。
-                mission = (
-                    previous_turn.mission if previous_turn is not None else None
-                )
+                mission = previous_turn.mission if previous_turn is not None else None
                 intent = self._teaching.classify_intent(round_query, mission)
 
                 # 建立/修改目标：只确认目标与水平，不过证据门、不调模型。
@@ -1494,7 +1519,10 @@ class TurnOrchestrator:
                         f"{teaching_projection.next_prompt}"
                     )
                     self._repo.update_message_content(
-                        account_id, assistant_message_id, mission_content, datetime.now(UTC)
+                        account_id,
+                        assistant_message_id,
+                        mission_content,
+                        datetime.now(UTC),
                     )
                     finalize_message(
                         self._repo,
@@ -1557,7 +1585,9 @@ class TurnOrchestrator:
                         assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
                     )
 
-                required_search = self._teaching.required_search(round_query, retrieval_round)
+                required_search = self._teaching.required_search(
+                    round_query, retrieval_round
+                )
                 # 超预算跳过搜索时仍保持投影变量可引用（None 表示未执行）。
                 web_search_projection: WebSearchProjection | None = None
                 arxiv_search_projection: ArxivSearchProjection | None = None
@@ -1578,7 +1608,9 @@ class TurnOrchestrator:
                         required_search.value in {"arxiv", "both"}
                         and self._arxiv_search is not None
                     ):
-                        arxiv_plan = self._arxiv_search.plan(round_query, mode, force=True)
+                        arxiv_plan = self._arxiv_search.plan(
+                            round_query, mode, force=True
+                        )
                         calls.append(
                             (
                                 "arxiv",
@@ -1591,7 +1623,9 @@ class TurnOrchestrator:
                         required_search.value in {"duckduckgo", "both"}
                         and self._web_search is not None
                     ):
-                        search_plan = self._web_search.plan(round_query, mode, force=True)
+                        search_plan = self._web_search.plan(
+                            round_query, mode, force=True
+                        )
                         calls.append(
                             (
                                 "web",
@@ -1607,9 +1641,7 @@ class TurnOrchestrator:
                     )
                     search_results = self._parallel_search(
                         calls,
-                        timeout_seconds=min(
-                            stage_budget, budget.remaining_ms() / 1000
-                        ),
+                        timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
                     )
                     arxiv_result = search_results.get("arxiv")
                     web_result = search_results.get("web")
@@ -1668,7 +1700,10 @@ class TurnOrchestrator:
                         thinking = arxiv_search_thinking(
                             thinking, arxiv_search_projection
                         )
-                        if arxiv_search_projection.status == ArxivSearchStatus.CANCELLED:
+                        if (
+                            arxiv_search_projection.status
+                            == ArxivSearchStatus.CANCELLED
+                        ):
                             finalize_message(
                                 self._repo,
                                 account_id,
@@ -1682,7 +1717,9 @@ class TurnOrchestrator:
                                 started=started,
                                 now=datetime.now(UTC),
                                 thinking=stopped_thinking(thinking),
-                                arxiv_search=arxiv_search_projection.model_dump(mode="json"),
+                                arxiv_search=arxiv_search_projection.model_dump(
+                                    mode="json"
+                                ),
                                 teaching=(
                                     teaching_projection.model_dump(mode="json")
                                     if teaching_projection is not None
@@ -1712,7 +1749,9 @@ class TurnOrchestrator:
                                 started=started,
                                 now=datetime.now(UTC),
                                 thinking=stopped_thinking(thinking),
-                                web_search=web_search_projection.model_dump(mode="json"),
+                                web_search=web_search_projection.model_dump(
+                                    mode="json"
+                                ),
                                 teaching=(
                                     teaching_projection.model_dump(mode="json")
                                     if teaching_projection is not None
@@ -1746,10 +1785,12 @@ class TurnOrchestrator:
                     web_search=web_search_projection,
                     arxiv_search=arxiv_search_projection,
                     previous_turn=previous_turn,
-                    answer_text=user_input
-                    if previous_turn is not None
-                    and intent in {TeachingIntent.ANSWER, TeachingIntent.SKIP}
-                    else None,
+                    answer_text=(
+                        user_input
+                        if previous_turn is not None
+                        and intent in {TeachingIntent.ANSWER, TeachingIntent.SKIP}
+                        else None
+                    ),
                     answer_message_id=owner.message_id if owner is not None else None,
                     mission=mission,
                     intent=intent,
@@ -1784,7 +1825,10 @@ class TurnOrchestrator:
                         "这轮的依据还不够，我先不把不确定内容说成可靠结论。"
                     )
                     self._repo.update_message_content(
-                        account_id, assistant_message_id, safe_response, datetime.now(UTC)
+                        account_id,
+                        assistant_message_id,
+                        safe_response,
+                        datetime.now(UTC),
                     )
                     finalize_message(
                         self._repo,
@@ -1825,7 +1869,9 @@ class TurnOrchestrator:
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
                 mode_for_plan = (
-                    ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+                    ChatMode(conversation.mode)
+                    if conversation is not None
+                    else CHAT_MODE
                 )
                 arxiv_plan = None
                 search_plan = None
@@ -1866,9 +1912,7 @@ class TurnOrchestrator:
                     )
                     search_results = self._parallel_search(
                         calls,
-                        timeout_seconds=min(
-                            stage_budget, budget.remaining_ms() / 1000
-                        ),
+                        timeout_seconds=min(stage_budget, budget.remaining_ms() / 1000),
                     )
                     arxiv_result = search_results.get("arxiv")
                     if arxiv_plan is not None:
@@ -2076,9 +2120,11 @@ class TurnOrchestrator:
                     now=datetime.now(UTC),
                     thinking=stopped_thinking(thinking),
                     web_search=cancelled_web_search(
-                        web_search_projection.model_dump(mode="json")
-                        if web_search_projection is not None
-                        else current.web_search,
+                        (
+                            web_search_projection.model_dump(mode="json")
+                            if web_search_projection is not None
+                            else current.web_search
+                        ),
                         datetime.now(UTC),
                     ),
                 )
@@ -2222,9 +2268,11 @@ class TurnOrchestrator:
                         now=datetime.now(UTC),
                         thinking=stopped_thinking(thinking),
                         web_search=cancelled_web_search(
-                            web_search_projection.model_dump(mode="json")
-                            if web_search_projection is not None
-                            else current.web_search,
+                            (
+                                web_search_projection.model_dump(mode="json")
+                                if web_search_projection is not None
+                                else current.web_search
+                            ),
                             datetime.now(UTC),
                         ),
                     )
@@ -2252,7 +2300,9 @@ class TurnOrchestrator:
                         assistant_message_id,
                         status=ChatMessageStatus.ERROR,
                         error_code=event.error_code,
-                        error_message=user_facing_error(event.error_code, event.error_message),
+                        error_message=user_facing_error(
+                            event.error_code, event.error_message
+                        ),
                         duration_ms=None,
                         model_id=self._lock_model_id(event.lock),
                         run_lock_id=self._lock_id(event.lock),
@@ -2320,7 +2370,9 @@ class TurnOrchestrator:
                                 thinking=failed_thinking(
                                     thinking, "web_search_citation_invalid"
                                 ),
-                                web_search=invalid_web_projection.model_dump(mode="json"),
+                                web_search=invalid_web_projection.model_dump(
+                                    mode="json"
+                                ),
                             )
                             if quality_entered:
                                 budget.exit(
@@ -2340,14 +2392,16 @@ class TurnOrchestrator:
                             content, arxiv_search_projection
                         )
                         if citation_error is not None:
-                            invalid_arxiv_projection = arxiv_search_projection.model_copy(
-                                update={
-                                    "status": ArxivSearchStatus.ERROR,
-                                    "error_code": "arxiv_citation_invalid",
-                                    "error_message": citation_error,
-                                    "can_retry": True,
-                                    "can_cancel": False,
-                                }
+                            invalid_arxiv_projection = (
+                                arxiv_search_projection.model_copy(
+                                    update={
+                                        "status": ArxivSearchStatus.ERROR,
+                                        "error_code": "arxiv_citation_invalid",
+                                        "error_message": citation_error,
+                                        "can_retry": True,
+                                        "can_cancel": False,
+                                    }
+                                )
                             )
                             self._repo.update_message_arxiv_search(
                                 account_id,
@@ -2370,7 +2424,9 @@ class TurnOrchestrator:
                                 thinking=failed_thinking(
                                     thinking, "arxiv_citation_invalid"
                                 ),
-                                arxiv_search=invalid_arxiv_projection.model_dump(mode="json"),
+                                arxiv_search=invalid_arxiv_projection.model_dump(
+                                    mode="json"
+                                ),
                             )
                             if quality_entered:
                                 budget.exit(
@@ -2646,7 +2702,9 @@ class TurnOrchestrator:
             return
         entry = self._lifecycle.signal_and_started(assistant_message_id)
         stop_event = (
-            entry[0] if entry is not None else self._lifecycle.register(assistant_message_id)
+            entry[0]
+            if entry is not None
+            else self._lifecycle.register(assistant_message_id)
         )
         conversation = self._repo.get_conversation(account_id, conversation_id)
         thinking = initial_thinking(
@@ -2671,7 +2729,8 @@ class TurnOrchestrator:
                 account_id,
                 conversation_id,
                 assistant_message_id,
-                until_user_message_id or (owner.message_id if owner is not None else None),
+                until_user_message_id
+                or (owner.message_id if owner is not None else None),
                 round_query,
                 # 改写路径默认不检索全局知识库（issue 07 意图）由调用方
                 # 传值保证（改写默认 false、显式开启才 true），此处原样传递。
@@ -3170,9 +3229,7 @@ class TurnOrchestrator:
                     arxiv_search_projection.model_dump(mode="json"),
                     datetime.now(UTC),
                 )
-                thinking = arxiv_search_thinking(
-                    thinking, arxiv_search_projection
-                )
+                thinking = arxiv_search_thinking(thinking, arxiv_search_projection)
         if public_search_entered:
             budget.exit(
                 RunStage.PUBLIC_SEARCH,
@@ -3501,9 +3558,7 @@ class TurnOrchestrator:
         非空）；用户回复它的下一轮继续走生涯编排，保证「先问关键问题、
         再给完整规划」的两轮交互不断裂。
         """
-        for message in reversed(
-            self._repo.list_messages(account_id, conversation_id)
-        ):
+        for message in reversed(self._repo.list_messages(account_id, conversation_id)):
             if (
                 until_user_message_id is not None
                 and message.message_id == until_user_message_id
@@ -3576,7 +3631,9 @@ class TurnOrchestrator:
                 now=now,
                 thinking=failed_thinking(initial_thinking(CHAT_MODE), exc.code),
             )
-            yield StreamEvent(kind="error", error_code=exc.code, error_message=exc.message)
+            yield StreamEvent(
+                kind="error", error_code=exc.code, error_message=exc.message
+            )
             return
         except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
             finalize_message(
@@ -3591,7 +3648,9 @@ class TurnOrchestrator:
                 run_lock_id=None,
                 started=started,
                 now=now,
-                thinking=failed_thinking(initial_thinking(CHAT_MODE), "image_submit_failed"),
+                thinking=failed_thinking(
+                    initial_thinking(CHAT_MODE), "image_submit_failed"
+                ),
             )
             yield StreamEvent(
                 kind="error",
@@ -3671,7 +3730,9 @@ class TurnOrchestrator:
                 now=now,
                 thinking=failed_thinking(initial_thinking(CHAT_MODE), exc.code),
             )
-            yield StreamEvent(kind="error", error_code=exc.code, error_message=exc.message)
+            yield StreamEvent(
+                kind="error", error_code=exc.code, error_message=exc.message
+            )
             return
         except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
             finalize_message(
@@ -3686,7 +3747,9 @@ class TurnOrchestrator:
                 run_lock_id=None,
                 started=started,
                 now=now,
-                thinking=failed_thinking(initial_thinking(CHAT_MODE), "video_submit_failed"),
+                thinking=failed_thinking(
+                    initial_thinking(CHAT_MODE), "video_submit_failed"
+                ),
             )
             yield StreamEvent(
                 kind="error",
@@ -3757,7 +3820,9 @@ class TurnOrchestrator:
                     run_lock_id=None,
                     started=started,
                     now=now,
-                    thinking=failed_thinking(initial_thinking(CHAT_MODE), "mcp_not_selected"),
+                    thinking=failed_thinking(
+                        initial_thinking(CHAT_MODE), "mcp_not_selected"
+                    ),
                 )
                 yield StreamEvent(
                     kind="error",
@@ -3823,7 +3888,9 @@ class TurnOrchestrator:
                 now=now,
                 thinking=failed_thinking(initial_thinking(CHAT_MODE), exc.code),
             )
-            yield StreamEvent(kind="error", error_code=exc.code, error_message=exc.message)
+            yield StreamEvent(
+                kind="error", error_code=exc.code, error_message=exc.message
+            )
             return
         except Exception:  # noqa: BLE001 - 意外异常收敛为可重试错误
             failed_projection = McpCallMessageProjection(
@@ -3855,7 +3922,9 @@ class TurnOrchestrator:
                 run_lock_id=None,
                 started=started,
                 now=now,
-                thinking=failed_thinking(initial_thinking(CHAT_MODE), "mcp_invoke_failed"),
+                thinking=failed_thinking(
+                    initial_thinking(CHAT_MODE), "mcp_invoke_failed"
+                ),
             )
             yield StreamEvent(
                 kind="error",
@@ -3933,7 +4002,9 @@ class TurnOrchestrator:
 
     def _mcp_name(self, account_id: str, mcp_id: str) -> str | None:
         try:
-            listing = self._mcp.list_servers(account_id) if self._mcp is not None else None
+            listing = (
+                self._mcp.list_servers(account_id) if self._mcp is not None else None
+            )
         except Exception:  # noqa: BLE001 - 名称只是展示快照，失败不阻断调用
             return None
         if listing is None:
@@ -3974,7 +4045,8 @@ class TurnOrchestrator:
         )
         # 画像服务未挂载（退化环境）时无画像能力：不披露、不审计，聊天
         # 行为与旧版一致（thinking 不追加画像说明）。
-        if self._profiles is None:
+        profile_source = self._automatic_profiles or self._profiles
+        if profile_source is None:
             return None, None
         if not use_profile:
             self._audit_slice_usage(
@@ -4003,12 +4075,52 @@ class TurnOrchestrator:
                 None,
             )
         try:
-            profile_slice = self._profiles.compile_chat_slice(
-                account_id,
-                mode=mode.value,
-                run_id=assistant_message_id,
-                project_id=conversation_id,
+            current_messages = self._repo.list_messages(account_id, conversation_id)
+            current_user_message = owner_user_message(
+                current_messages, assistant_message_id
             )
+            if self._automatic_profiles is not None:
+                profile_slice = self._automatic_profiles.compile_chat_slice(
+                    account_id,
+                    mode=mode.value,
+                    run_id=assistant_message_id,
+                    project_id=conversation_id,
+                    current_question=(
+                        current_user_message.content
+                        if current_user_message is not None
+                        else None
+                    ),
+                )
+            else:
+                assert self._profiles is not None
+                profile_slice = self._profiles.compile_chat_slice(
+                    account_id,
+                    mode=mode.value,
+                    run_id=assistant_message_id,
+                    project_id=conversation_id,
+                )
+            if self._automatic_profiles is not None and self._profiles is not None:
+                # Issue 14 的旧画像只读兼容：新消息只写四维记录，但尚未
+                # 迁移的合法旧断言仍可作为切片来源，且共享本轮长度预算。
+                legacy_slice = self._profiles.compile_chat_slice(
+                    account_id,
+                    mode=mode.value,
+                    run_id=assistant_message_id,
+                    project_id=conversation_id,
+                    persist_usage=False,
+                )
+                remaining = max(0, 6 - len(profile_slice.included_items))
+                profile_slice = profile_slice.model_copy(
+                    update={
+                        "included_items": profile_slice.included_items
+                        + legacy_slice.included_items[:remaining],
+                        "unused_items": profile_slice.unused_items
+                        + legacy_slice.included_items[remaining:]
+                        + legacy_slice.unused_items,
+                        "rejected_items": profile_slice.rejected_items
+                        + legacy_slice.rejected_items,
+                    }
+                )
         except Exception:  # noqa: BLE001 - 切片编译失败只影响披露，不阻断回答
             self._audit_slice_usage(
                 account_id,
@@ -4037,7 +4149,9 @@ class TurnOrchestrator:
                 None,
             )
         profile_context = (
-            profile_slice_context(profile_slice) if profile_slice.included_items else None
+            profile_slice_context(profile_slice)
+            if profile_slice.included_items
+            else None
         )
         profile_items: list[ContextNoteProfileItem] = []
         for item in profile_slice.included_items:
@@ -4045,10 +4159,29 @@ class TurnOrchestrator:
             version = 1
             applicable_scenes: list[str] = []
             with contextlib.suppress(Exception):  # noqa: BLE001 - 披露项尽力而为
-                assertion = self._profiles.get_assertion(account_id, item.assertion_id)
-                status = assertion.status.value
-                version = assertion.version
-                applicable_scenes = list(assertion.applicable_scenes)
+                if self._automatic_profiles is not None:
+                    try:
+                        record = self._automatic_profiles.get_record(
+                            account_id, item.assertion_id
+                        )
+                        status = record.status.value
+                        version = record.version
+                    except Exception:
+                        if self._profiles is not None:
+                            assertion = self._profiles.get_assertion(
+                                account_id, item.assertion_id
+                            )
+                            status = assertion.status.value
+                            version = assertion.version
+                            applicable_scenes = list(assertion.applicable_scenes)
+                else:
+                    assert self._profiles is not None
+                    assertion = self._profiles.get_assertion(
+                        account_id, item.assertion_id
+                    )
+                    status = assertion.status.value
+                    version = assertion.version
+                    applicable_scenes = list(assertion.applicable_scenes)
             profile_items.append(
                 ContextNoteProfileItem(
                     assertion_id=item.assertion_id,
@@ -4073,11 +4206,7 @@ class TurnOrchestrator:
             material_categories=material_categories,
         )
         context_note = ContextNoteProjection(
-            state=(
-                ContextNoteState.READY
-                if profile_items
-                else ContextNoteState.EMPTY
-            ),
+            state=(ContextNoteState.READY if profile_items else ContextNoteState.EMPTY),
             profile_enabled=True,
             mode=mode,
             used_at=now,
@@ -4198,7 +4327,9 @@ class TurnOrchestrator:
         for message in messages:
             if message.role == ChatMessageRole.USER:
                 if latest_done is not None:
-                    history.append({"role": "assistant", "content": latest_done.content})
+                    history.append(
+                        {"role": "assistant", "content": latest_done.content}
+                    )
                     latest_done = None
                 history.append({"role": "user", "content": message.content})
                 if (
