@@ -7,25 +7,19 @@
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
-from urllib.parse import quote, unquote
+from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse
-
 from bridges.api.auth import SubjectDep
-from bridges.chat.attachments import MAX_ATTACHMENT_BYTES
 from bridges.contracts.learning_projects import (
-    LearningProjectCreateRequest,
     LearningProjectDetail,
-    LearningProjectFile,
     LearningProjectFileListProjection,
     LearningProjectListProjection,
-    LearningProjectSummary,
-    LearningProjectUpdateRequest,
 )
 from bridges.learning_projects import LearningProjectError, LearningProjectService
-from bridges.learning_projects.service import UNSET
+from bridges.retirement import raise_retired_file_source
+from bridges.contracts.retirement import RetiredCapabilityError
 
 router = APIRouter(prefix="/learning-projects", tags=["learning-projects"])
 
@@ -59,24 +53,21 @@ def _error(status_code: int, code: str, message: str) -> HTTPException:
 
 @router.post(
     "",
-    response_model=LearningProjectSummary,
-    status_code=status.HTTP_201_CREATED,
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": RetiredCapabilityError},
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
     },
 )
 def create_project(
-    body: LearningProjectCreateRequest,
-    service: LearningProjectServiceDep,
+    request: Request,
     subject: SubjectDep,
-) -> LearningProjectSummary:
-    """新建学习项目；名称必填，描述可选。"""
-    try:
-        return service.create_project(subject.account_id, body.name, body.description)
-    except LearningProjectError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
+) -> None:
+    """学习项目创建已退役；历史项目仍由只读投影读取。"""
+    del subject
+    raise_retired_file_source(request, endpoint="legacy.learning_projects.create")
 
 
 @router.get(
@@ -120,121 +111,61 @@ def get_project(
 
 @router.patch(
     "/{project_id}",
-    response_model=LearningProjectSummary,
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": RetiredCapabilityError},
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
-        status.HTTP_404_NOT_FOUND: {"model": dict},
-        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
     },
 )
 def update_project(
     project_id: str,
-    body: LearningProjectUpdateRequest,
-    service: LearningProjectServiceDep,
+    request: Request,
     subject: SubjectDep,
-) -> LearningProjectSummary:
-    """更新项目名称或描述；字段缺省保持不变，显式 null 清空描述（名称显式 null 为 422）。"""
-    try:
-        return service.update_project(
-            subject.account_id,
-            project_id,
-            name=body.name if body.name is not None else UNSET,
-            description=(
-                body.description if "description" in body.model_fields_set else UNSET
-            ),
-        )
-    except LearningProjectError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
+) -> None:
+    """学习项目更新已退役，避免触碰历史对象。"""
+    del project_id, subject
+    raise_retired_file_source(request, endpoint="legacy.learning_projects.update")
 
 
 @router.delete(
     "/{project_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": RetiredCapabilityError},
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
-        status.HTTP_404_NOT_FOUND: {"model": dict},
-        status.HTTP_409_CONFLICT: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
     },
 )
 def delete_project(
     project_id: str,
-    service: LearningProjectServiceDep,
+    request: Request,
     subject: SubjectDep,
-    contents: Literal["keep", "delete"] = "keep",
-) -> Response:
-    """删除项目；``keep`` 保留对话（解除归属），``delete`` 连同对话删除。"""
-    try:
-        service.delete_project(subject.account_id, project_id, contents=contents)
-    except LearningProjectError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+) -> None:
+    """学习项目删除已退役，物理清理必须走独立审计。"""
+    del project_id, subject
+    raise_retired_file_source(request, endpoint="legacy.learning_projects.delete")
 
 
 @router.post(
     "/{project_id}/files",
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
     responses={
-        status.HTTP_201_CREATED: {"model": LearningProjectFile},
-        status.HTTP_400_BAD_REQUEST: {"model": dict},
+        status.HTTP_410_GONE: {"model": RetiredCapabilityError},
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
-        status.HTTP_404_NOT_FOUND: {"model": dict},
-        status.HTTP_413_CONTENT_TOO_LARGE: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
     },
 )
 async def upload_file(
     project_id: str,
     request: Request,
-    service: LearningProjectServiceDep,
     subject: SubjectDep,
-) -> Response:
-    """接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
-
-    上传成功即入队摄取（source=project_file）：解析、分块与索引由后台
-    执行器完成。同项目同名同内容的重复上传幂等复用——客户端安全重试
-    同一上传只会得到已有文件的 200 投影，绝不重复摄取。
-    """
-    declared_length = request.headers.get("content-length")
-    if declared_length is not None:
-        try:
-            if int(declared_length) > MAX_ATTACHMENT_BYTES:
-                raise _error(
-                    status.HTTP_413_CONTENT_TOO_LARGE,
-                    "file_too_large",
-                    "文件超过 10 MB 大小限制，请压缩后重试。",
-                )
-        except ValueError as exc:
-            raise _error(
-                status.HTTP_400_BAD_REQUEST, "invalid_request", "上传请求大小无效。"
-            ) from exc
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > MAX_ATTACHMENT_BYTES:
-            raise _error(
-                status.HTTP_413_CONTENT_TOO_LARGE,
-                "file_too_large",
-                "文件超过 10 MB 大小限制，请压缩后重试。",
-            )
-        chunks.append(chunk)
-    filename_header = request.headers.get("x-bridges-filename")
-    if not filename_header:
-        raise _error(
-            status.HTTP_400_BAD_REQUEST, "invalid_filename", "缺少文件名，无法上传。"
-        )
-    filename = unquote(filename_header)
-    try:
-        projection, created = service.upload_file(
-            subject.account_id, project_id, b"".join(chunks), filename
-        )
-    except LearningProjectError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        content=projection.model_dump(mode="json"),
-    )
+) -> None:
+    """项目文件上传已退役；不读取请求体，也不访问对象库。"""
+    del project_id, subject
+    raise_retired_file_source(request, endpoint="legacy.learning_project_files.upload")
 
 
 @router.get(
@@ -294,23 +225,19 @@ def download_file(
 
 @router.delete(
     "/{project_id}/files/{object_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": RetiredCapabilityError},
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
-        status.HTTP_404_NOT_FOUND: {"model": dict},
-        status.HTTP_409_CONFLICT: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
     },
 )
 def delete_file(
     project_id: str,
     object_id: str,
-    service: LearningProjectServiceDep,
+    request: Request,
     subject: SubjectDep,
-) -> Response:
-    """级联删除项目文件与派生索引数据；被后台任务使用时返回 409。"""
-    try:
-        service.delete_file(subject.account_id, project_id, object_id)
-    except LearningProjectError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+) -> None:
+    """项目文件删除已退役，物理清理必须单独审计。"""
+    del project_id, object_id, subject
+    raise_retired_file_source(request, endpoint="legacy.learning_project_files.delete")

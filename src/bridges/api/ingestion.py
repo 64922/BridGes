@@ -18,11 +18,8 @@ from bridges.contracts.ingestion import (
     DocumentIngestionStatus,
     IndexStatusProjection,
 )
-from bridges.ingestion.service import (
-    IngestionError,
-    IngestionService,
-    parser_version_for,
-)
+from bridges.ingestion.service import IngestionService, parser_version_for
+from bridges.retirement import raise_retired_file_source
 
 router = APIRouter(prefix="/chat", tags=["ingestion"])
 
@@ -136,8 +133,10 @@ def get_attachment_ingestion(
 
 @router.post(
     "/conversations/{conversation_id}/attachments/{object_id}/ingestion/retry",
-    response_model=DocumentIngestionProjection,
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": dict},
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
         status.HTTP_404_NOT_FOUND: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
@@ -146,23 +145,12 @@ def get_attachment_ingestion(
 def retry_attachment_ingestion(
     conversation_id: str,
     object_id: str,
-    service: IngestionServiceDep,
-    attachment_service: AttachmentServiceDep,
+    request: Request,
     subject: SubjectDep,
-) -> DocumentIngestionProjection:
-    """把失败文档重新入队；非失败状态幂等返回当前投影。"""
-    _require_attachment(attachment_service, subject.account_id, conversation_id, object_id)
-    try:
-        projection = service.mark_retry(subject.account_id, object_id)
-    except IngestionError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    if projection is None:
-        raise _error(
-            status.HTTP_404_NOT_FOUND,
-            "ingestion_not_found",
-            "附件不存在或没有访问权限。",
-        )
-    return projection
+) -> None:
+    """聊天附件摄取重试已退役；知识库材料由知识库流程重建派生索引。"""
+    del conversation_id, object_id, subject
+    raise_retired_file_source(request, endpoint="legacy.chat.attachments.ingestion_retry")
 
 
 @router.get(

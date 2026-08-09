@@ -358,49 +358,9 @@ class LayeredRetrievalService:
                 "stale": False,
             },
         }
-        if attachment_ids:
-            layers[RetrievalSourceLayer.ATTACHMENT].update(
-                status=RetrievalLayerStatus.NO_MATERIAL,
-                note="附件仍在处理中或暂无可检索内容。",
-            )
-            layers[RetrievalSourceLayer.ATTACHMENT][
-                "ready_document_ids"
-            ] = self._ready_documents(
-                account_id,
-                source="chat_attachment",
-                object_ids=attachment_ids,
-            )
-            layers[RetrievalSourceLayer.ATTACHMENT]["stale"] = self._has_stale_documents(
-                account_id,
-                source="chat_attachment",
-                object_ids=attachment_ids,
-            )
-        if project_id is not None:
-            layers[RetrievalSourceLayer.PROJECT].update(
-                status=RetrievalLayerStatus.NO_MATERIAL,
-                note="项目暂无已就绪文件。",
-            )
-            # Issue 36「新附件归属」：会话归属项目后，新上传的聊天附件
-            # 携带 project_id 入队，纳入项目层检索范围（与项目上传文件
-            # 同层）；清除项目归属后的新附件不再进入任何项目层。
-            layers[RetrievalSourceLayer.PROJECT][
-                "ready_document_ids"
-            ] = _merge_document_ids(
-                self._ready_documents(
-                    account_id, source="project_file", project_id=project_id
-                ),
-                self._ready_documents(
-                    account_id, source="chat_attachment", project_id=project_id
-                ),
-            )
-            layers[RetrievalSourceLayer.PROJECT]["stale"] = (
-                self._has_stale_documents(
-                    account_id, source="project_file", project_id=project_id
-                )
-                or self._has_stale_documents(
-                    account_id, source="chat_attachment", project_id=project_id
-                )
-            )
+        # 聊天附件和学习项目文件只保留历史读模型，不能进入新检索轮次。
+        layers[RetrievalSourceLayer.ATTACHMENT]["note"] = "聊天附件来源已退役。"
+        layers[RetrievalSourceLayer.PROJECT]["note"] = "学习项目文件来源已退役。"
         if use_knowledge_base:
             layers[RetrievalSourceLayer.KNOWLEDGE_BASE].update(
                 status=RetrievalLayerStatus.NO_MATERIAL,

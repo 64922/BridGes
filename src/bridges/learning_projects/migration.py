@@ -12,6 +12,7 @@ import hashlib
 import secrets
 import sqlite3
 from datetime import UTC, datetime
+from typing import Any
 
 from bridges.contracts.learning_project_migration import (
     LearningProjectMigrationConversation,
@@ -59,6 +60,102 @@ def project_writes_frozen(database: BridgesDatabase, account_id: str) -> bool:
         (account_id,),
     ).fetchone()
     return row is not None
+
+
+def contraction_gate_report(database: BridgesDatabase) -> dict[str, Any]:
+    """返回全库项目文件收缩闸门报告。"""
+
+    accounts = database.connection.execute(
+        "SELECT account_id FROM accounts ORDER BY account_id"
+    ).fetchall()
+    unmanaged = 0
+    pending = 0
+    failed = 0
+    blocking_accounts: set[str] = set()
+    for account_row in accounts:
+        account_id = str(account_row["account_id"])
+        source_rows = database.scoped(account_id).execute(
+            "SELECT r.document_id, r.created_at, m.status, m.target_document_id"
+            " FROM document_records r"
+            " LEFT JOIN learning_project_migrations m"
+            "   ON m.account_id = r.account_id"
+            "  AND m.source_document_id = r.document_id"
+            " LEFT JOIN objects o ON o.object_id = r.object_id"
+            "  AND o.account_id = r.account_id"
+            " WHERE r.account_id = ? AND r.source = 'project_file'"
+            "   AND o.status = 'active'",
+            (account_id,),
+        ).fetchall()
+        if not source_rows:
+            continue
+        run = database.scoped(account_id).execute(
+            "SELECT started_at FROM learning_project_migration_runs"
+            " WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        for row in source_rows:
+            status_value = str(row["status"]) if row["status"] is not None else None
+            if run is None or status_value is None:
+                unmanaged += 1
+                blocking_accounts.add(account_id)
+                continue
+            if str(row["created_at"]) > str(run["started_at"]):
+                unmanaged += 1
+                blocking_accounts.add(account_id)
+                continue
+            if status_value == ProjectMigrationStatus.COMPLETED.value:
+                target = database.scoped(account_id).execute(
+                    "SELECT 1 FROM document_records r JOIN objects o"
+                    " ON o.object_id = r.object_id AND o.account_id = r.account_id"
+                    " WHERE r.account_id = ? AND r.document_id = ?"
+                    "   AND r.source = 'knowledge_base' AND o.status = 'active'",
+                    (account_id, str(row["target_document_id"])),
+                ).fetchone()
+                if target is None:
+                    failed += 1
+                    blocking_accounts.add(account_id)
+            elif status_value == ProjectMigrationStatus.SOURCE_DELETED.value:
+                # 有明确源删除状态的历史对象不再阻挡收缩。
+                continue
+            elif status_value in {
+                ProjectMigrationStatus.FAILED.value,
+                ProjectMigrationStatus.TARGET_DELETED.value,
+            }:
+                failed += 1
+                blocking_accounts.add(account_id)
+            else:
+                pending += 1
+                blocking_accounts.add(account_id)
+    blocking_total = unmanaged + pending + failed
+    status_value = "passed" if blocking_total == 0 else "blocked"
+    summary = (
+        "全局知识库收缩闸门已通过：没有未纳管、待处理或校验失败的活跃项目文件。"
+        if status_value == "passed"
+        else (
+            "全局知识库收缩闸门未通过："
+            f"未纳管 {unmanaged} 项，待处理 {pending} 项，失败 {failed} 项；"
+            "请先运行迁移、修复失败项并重新执行闸门检查。"
+        )
+    )
+    return {
+        "version": MIGRATION_COMPATIBILITY_WINDOW,
+        "status": status_value,
+        "summary": summary,
+        "checked_at": _now(),
+        "blocking_account_count": len(blocking_accounts),
+        "unmanaged_count": unmanaged,
+        "pending_count": pending,
+        "failed_count": failed,
+    }
+
+
+def assert_contraction_ready(database: BridgesDatabase) -> dict[str, Any]:
+    """通过闸门时返回报告，否则阻止进入 contract 阶段。"""
+
+    report = contraction_gate_report(database)
+    if report["status"] != "passed":
+        raise ProjectMigrationError("migration_gate_blocked", report["summary"], 503)
+    return report
 
 
 class ProjectMigrationService:
@@ -846,6 +943,8 @@ class ProjectMigrationService:
 
 
 __all__ = [
+    "assert_contraction_ready",
+    "contraction_gate_report",
     "MIGRATION_BATCH_SIZE",
     "MIGRATION_COMPATIBILITY_WINDOW",
     "ProjectMigrationError",

@@ -13,24 +13,19 @@ import json
 import time
 from collections.abc import Iterator
 from typing import Annotated, Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from bridges.api.auth import SubjectDep
-from bridges.chat.attachments import (
-    MAX_ATTACHMENT_BYTES,
-    ChatAttachmentError,
-    ChatAttachmentService,
-)
+from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.selections import ChatSelectionsService
 from bridges.chat.service import (
     ChatDomainError,
     ChatService,
 )
 from bridges.contracts.chat import (
-    ChatAttachmentProjection,
     ChatConversationListProjection,
     ChatConversationProjection,
     ChatConversationUpdateRequest,
@@ -52,10 +47,9 @@ from bridges.contracts.feedback import (
     FeedbackResolveRequest,
 )
 from bridges.contracts.retrieval import CitationDetailProjection
-from bridges.ingestion.service import IngestionError, IngestionService
-from bridges.learning_projects import LearningProjectError, LearningProjectService
+from bridges.ingestion.service import IngestionService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
-from bridges.retirement import record_compatibility_observation
+from bridges.retirement import record_compatibility_observation, raise_retired_file_source
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -130,26 +124,6 @@ RetrievalServiceDep = Annotated[
 ]
 
 
-def _get_learning_project_service(request: Request) -> LearningProjectService:
-    service: LearningProjectService | None = getattr(
-        request.app.state, "learning_project_service", None
-    )
-    if service is None:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=ChatError(
-                error="projects_unavailable",
-                message="学习项目服务未启用，当前实例拒绝创建项目归属会话。",
-            ).model_dump(),
-        )
-    return service
-
-
-LearningProjectServiceDep = Annotated[
-    LearningProjectService, Depends(_get_learning_project_service)
-]
-
-
 def _get_selections_service(request: Request) -> ChatSelectionsService | None:
     """插件选择服务依赖：未挂载时返回 None（选择端点自行 503）。"""
     return getattr(request.app.state, "chat_selections_service", None)
@@ -194,6 +168,17 @@ def _reject_retired_extension_fields(
             "user_extensions_retired",
             "用户 SKILL、插件与通用 MCP 已退役，请返回聊天或知识库。",
         )
+
+
+def _reject_retired_file_fields(
+    request: Request,
+    fields: set[str],
+    *,
+    endpoint: str,
+) -> None:
+    """拒绝新请求中的历史项目文件归属字段。"""
+    if "project_id" in fields:
+        raise_retired_file_source(request, endpoint=endpoint)
 
 
 def _sse_frame(event_kind: str, payload: dict[str, Any]) -> str:
@@ -277,15 +262,17 @@ def create_conversation(
     body: ChatCreateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
-    learning_project_service: LearningProjectServiceDep,
     selections_service: SelectionsServiceDep,
 ) -> ChatConversationProjection:
     """新建对话；标题可选，缺省由首条消息自动推导。
 
-    ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
+    ``mode`` 缺省为日常陪伴；历史学习项目会话仅通过读取接口兼容。
     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
     逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
     """
+    _reject_retired_file_fields(
+        request, body.model_fields_set, endpoint="legacy.chat.conversations.create"
+    )
     _reject_retired_extension_fields(
         body.model_fields_set,
         request=request,
@@ -293,17 +280,6 @@ def create_conversation(
         plugin_selection=body.plugin_selection,
     )
     try:
-        if body.project_id is not None:
-            try:
-                learning_project_service.ensure_project_assignment_allowed(
-                    subject.account_id, body.project_id
-                )
-            except LearningProjectError as exc:
-                raise _error(
-                    exc.status_code,
-                    exc.code,
-                    "学习项目不存在或没有访问权限。",
-                ) from exc
         if body.plugin_selection:
             if selections_service is None:
                 raise _error(
@@ -323,7 +299,7 @@ def create_conversation(
             subject.account_id,
             title=body.title,
             mode=body.mode,
-            project_id=body.project_id,
+            project_id=None,
             plugin_selection=body.plugin_selection,
         )
     except ChatDomainError as exc:
@@ -352,7 +328,6 @@ def create_first_turn(
     body: ChatFirstTurnRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
-    learning_project_service: LearningProjectServiceDep,
     selections_service: SelectionsServiceDep,
     response: Response,
 ) -> ChatFirstTurnResponse:
@@ -362,10 +337,12 @@ def create_first_turn(
     首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再
     导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御
     双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。
-    ``conversation_id`` 可选指定已预建的空会话（附件上传路径先建会话
-    再发送），缺省在事务内新建会话；``mode``/``project_id``/
+    ``conversation_id`` 可选指定已预建的空会话，缺省在事务内新建会话；``mode``/``project_id``/
     ``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。
     """
+    _reject_retired_file_fields(
+        request, body.model_fields_set, endpoint="legacy.chat.first-turn.create"
+    )
     _reject_retired_extension_fields(
         body.model_fields_set,
         request=request,
@@ -376,17 +353,6 @@ def create_first_turn(
         mcp_call=body.mcp_call,
     )
     try:
-        if body.project_id is not None:
-            try:
-                learning_project_service.ensure_project_assignment_allowed(
-                    subject.account_id, body.project_id
-                )
-            except LearningProjectError as exc:
-                raise _error(
-                    exc.status_code,
-                    exc.code,
-                    "学习项目不存在或没有访问权限。",
-                ) from exc
         if body.plugin_selection:
             if selections_service is None:
                 raise _error(
@@ -408,9 +374,9 @@ def create_first_turn(
             idempotency_key=body.idempotency_key,
             conversation_id=body.conversation_id,
             mode=body.mode,
-            project_id=body.project_id,
+            project_id=None,
             plugin_selection=body.plugin_selection,
-            attachment_ids=body.attachment_ids,
+            attachment_ids=None,
             skill_id=body.skill_id,
             skill_input=(
                 body.skill_input.model_dump(mode="json") if body.skill_input else None
@@ -453,7 +419,6 @@ def update_conversation(
     body: ChatConversationUpdateRequest,
     service: ChatServiceDep,
     subject: SubjectDep,
-    learning_project_service: LearningProjectServiceDep,
     selections_service: SelectionsServiceDep,
 ) -> ChatConversationProjection:
     """更新当前账户会话的标题、置顶状态、学习项目归属或插件选择。
@@ -465,6 +430,9 @@ def update_conversation(
     已安装且启用，停用/卸载/撤权项 422 拒绝并说明原因（读取路径的
     失效清洗在投影层完成并解释影响）。
     """
+    _reject_retired_file_fields(
+        request, body.model_fields_set, endpoint="legacy.chat.conversations.update"
+    )
     _reject_retired_extension_fields(
         body.model_fields_set,
         request=request,
@@ -494,21 +462,6 @@ def update_conversation(
                     "plugin_not_available",
                     reasons,
                 )
-        if "project_id" in body.model_fields_set:
-            record = learning_project_service.update_conversation_metadata(
-                subject.account_id,
-                conversation_id,
-                title=body.title,
-                pinned=body.pinned,
-                project_id=body.project_id,
-            )
-            if "plugin_selection" in body.model_fields_set:
-                return service.update_conversation(
-                    subject.account_id,
-                    conversation_id,
-                    plugin_selection=body.plugin_selection,
-                )
-            return service.projection_from_record(record)
         return service.update_conversation(
             subject.account_id,
             conversation_id,
@@ -518,8 +471,6 @@ def update_conversation(
         )
     except ChatDomainError as exc:
         raise _handle_domain_error(exc) from exc
-    except LearningProjectError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
 
 
 @router.delete(
@@ -605,8 +556,10 @@ def get_conversation(
 
 @router.get(
     "/conversations/{conversation_id}/attachments",
-    response_model=list[ChatAttachmentProjection],
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": ChatError},
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
@@ -614,106 +567,37 @@ def get_conversation(
 )
 def list_unbound_attachments(
     conversation_id: str,
-    service: AttachmentServiceDep,
+    request: Request,
     subject: SubjectDep,
-) -> list[ChatAttachmentProjection]:
+) -> None:
     """列出会话内「已上传未绑定」附件（Issue 04 草稿恢复）。
 
     用户关页重开后据此把未发送附件恢复为待绑定状态；跨账户或不存在
     返回空集，不泄漏存在性。已绑定消息的附件经消息投影读取。
     """
-    return [
-        record.projection()
-        for record in service.list_unbound(subject.account_id, conversation_id)
-    ]
+    del conversation_id, subject
+    raise_retired_file_source(request, endpoint="legacy.chat.attachments.list_unbound")
 
 
 @router.post(
     "/conversations/{conversation_id}/attachments",
+    response_model=None,
+    status_code=status.HTTP_410_GONE,
     responses={
-        status.HTTP_201_CREATED: {"model": ChatAttachmentProjection},
-        status.HTTP_400_BAD_REQUEST: {"model": ChatError},
+        status.HTTP_410_GONE: {"model": ChatError},
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
-        status.HTTP_413_CONTENT_TOO_LARGE: {"model": ChatError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
     },
 )
 async def upload_attachment(
     conversation_id: str,
     request: Request,
-    service: AttachmentServiceDep,
     subject: SubjectDep,
-    ingestion_service: IngestionServiceDep,
 ) -> Response:
-    """接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
-
-    上传成功即把对象入队摄取（Issue 17）：解析、分块与索引由后台
-    执行器完成；不支持解析的类型不创建摄取记录，附件投影显示"未索引"。
-    """
-    declared_length = request.headers.get("content-length")
-    if declared_length is not None:
-        try:
-            if int(declared_length) > MAX_ATTACHMENT_BYTES:
-                raise _error(
-                    status.HTTP_413_CONTENT_TOO_LARGE,
-                    "file_too_large",
-                    "文件超过 10 MB 大小限制，请压缩后重试。",
-                )
-        except ValueError as exc:
-            raise _error(
-                status.HTTP_400_BAD_REQUEST, "invalid_request", "上传请求大小无效。"
-            ) from exc
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > MAX_ATTACHMENT_BYTES:
-            raise _error(
-                status.HTTP_413_CONTENT_TOO_LARGE,
-                "file_too_large",
-                "文件超过 10 MB 大小限制，请压缩后重试。",
-            )
-        chunks.append(chunk)
-    filename_header = request.headers.get("x-bridges-filename")
-    if not filename_header:
-        raise _error(status.HTTP_400_BAD_REQUEST, "invalid_filename", "缺少文件名，无法上传。")
-    filename = unquote(filename_header)
-    try:
-        projection, created = service.upload(
-            subject.account_id,
-            conversation_id,
-            filename,
-            b"".join(chunks),
-            upload_id=request.headers.get("x-bridges-upload-id"),
-        )
-    except ChatAttachmentError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    # 入队幂等（INSERT OR IGNORE），重复上传与失败重试都安全；入队失败
-    # 显式报错，前端可重试，绝不静默吞掉摄取记录缺失。会话归属学习项目
-    # 时新附件携带项目归属（Issue 36）：纳入项目检索范围，清除归属后的
-    # 新上传不再携带旧项目上下文。
-    try:
-        ingestion_service.enqueue(
-            subject.account_id,
-            projection.object_id,
-            conversation_id,
-            project_id=service.conversation_project_id(
-                subject.account_id, conversation_id
-            ),
-        )
-    except IngestionError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    # 入队后重新读取投影：让响应携带最新摄取状态（queued），而非入队前快照。
-    refreshed = service.get(
-        subject.account_id, conversation_id, projection.object_id
-    )
-    if refreshed is not None:
-        projection = refreshed.projection()
-    return JSONResponse(
-        status_code=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
-        content=projection.model_dump(mode="json"),
-    )
+    """聊天附件上传已退役；文件必须先进入全局知识库。"""
+    del conversation_id, subject
+    raise_retired_file_source(request, endpoint="legacy.chat.attachments.upload")
 
 
 @router.get(
@@ -752,8 +636,9 @@ def download_attachment(
 
 @router.delete(
     "/conversations/{conversation_id}/messages/{message_id}/attachments/{object_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": ChatError},
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
@@ -763,26 +648,19 @@ def delete_message_attachment(
     conversation_id: str,
     message_id: str,
     object_id: str,
-    service: AttachmentServiceDep,
+    request: Request,
     subject: SubjectDep,
 ) -> Response:
-    """解除消息引用并按对象引用计数安全清理附件。"""
-    try:
-        service.delete(
-            subject.account_id,
-            conversation_id,
-            object_id,
-            message_id=message_id,
-        )
-    except ChatAttachmentError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    """聊天附件删除已退役；历史附件仅保留读取兼容。"""
+    del conversation_id, message_id, object_id, subject
+    raise_retired_file_source(request, endpoint="legacy.chat.attachments.delete")
 
 
 @router.delete(
     "/conversations/{conversation_id}/attachments/by-upload/{upload_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": ChatError},
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
         status.HTTP_409_CONFLICT: {"model": ChatError},
@@ -792,21 +670,19 @@ def delete_message_attachment(
 def cancel_attachment_upload(
     conversation_id: str,
     upload_id: str,
-    service: AttachmentServiceDep,
+    request: Request,
     subject: SubjectDep,
 ) -> Response:
-    """按上传幂等标识取消未绑定项，覆盖客户端中止后的服务端竞态。"""
-    try:
-        service.delete_by_upload_id(subject.account_id, conversation_id, upload_id)
-    except ChatAttachmentError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    """聊天附件上传取消已退役。"""
+    del conversation_id, upload_id, subject
+    raise_retired_file_source(request, endpoint="legacy.chat.attachments.cancel_upload")
 
 
 @router.delete(
     "/conversations/{conversation_id}/attachments/{object_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_410_GONE,
     responses={
+        status.HTTP_410_GONE: {"model": ChatError},
         status.HTTP_401_UNAUTHORIZED: {"model": ChatError},
         status.HTTP_404_NOT_FOUND: {"model": ChatError},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": ChatError},
@@ -815,15 +691,12 @@ def cancel_attachment_upload(
 def cancel_attachment(
     conversation_id: str,
     object_id: str,
-    service: AttachmentServiceDep,
+    request: Request,
     subject: SubjectDep,
 ) -> Response:
-    """删除尚未绑定消息的上传项，用于取消或移除待发送附件。"""
-    try:
-        service.delete(subject.account_id, conversation_id, object_id)
-    except ChatAttachmentError as exc:
-        raise _error(exc.status_code, exc.code, exc.message) from exc
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+    """聊天附件取消已退役。"""
+    del conversation_id, object_id, subject
+    raise_retired_file_source(request, endpoint="legacy.chat.attachments.cancel")
 
 
 @router.post(
@@ -874,7 +747,7 @@ async def send_message(
             subject.account_id,
             conversation_id,
             body.content,
-            body.attachment_ids,
+            None,
             skill_id=body.skill_id,
             skill_input=(
                 body.skill_input.model_dump(mode="json") if body.skill_input else None

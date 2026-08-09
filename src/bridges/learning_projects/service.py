@@ -1,27 +1,19 @@
 """文件夹式学习项目服务（Issue 19）。
 
-学习项目是账户内的项目文件夹：对话可选归属到项目（移动只改
-``conversations.project_id``，绝不触碰消息/模式事件/附件），项目级
-文件与知识库材料、聊天附件共用同一摄取状态机（source=project_file）。
-所有查询经 ``db.scoped(account_id)``，跨账户访问与不存在返回同一中文
-404，不泄漏资源是否存在。
+学习项目是账户内的历史项目文件夹：项目与项目文件仅保留只读兼容和迁移
+查询，新的文件来源统一由全局知识库管理。所有查询经
+``db.scoped(account_id)``，跨账户访问与不存在返回同一中文 404，不泄漏
+资源是否存在。
 """
 
 from __future__ import annotations
 
-import hashlib
 import secrets
 import sqlite3
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal
 
-from bridges.chat.attachments import (
-    MAX_ATTACHMENT_BYTES,
-    ChatAttachmentError,
-    sniff_media_type,
-    validate_filename,
-)
 from bridges.chat.repository import ConversationRecord, ConversationRepository
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.knowledge_base import KnowledgeBaseMaterialProjection
@@ -32,8 +24,6 @@ from bridges.contracts.learning_projects import (
     LearningProjectSummary,
 )
 from bridges.ingestion.service import (
-    SUPPORTED_MEDIA_TYPES,
-    IngestionError,
     IngestionService,
 )
 from bridges.learning_projects.migration import project_writes_frozen
@@ -372,59 +362,12 @@ class LearningProjectService:
     def upload_file(
         self, account_id: str, project_id: str, data: bytes, filename: str
     ) -> tuple[LearningProjectFile, bool]:
-        self._ensure_project_writes_enabled(account_id)
-        """上传一份项目文件并入队摄取；返回投影与是否为新建记录。"""
-        self.get_project(account_id, project_id)
-        try:
-            valid_filename = validate_filename(filename)
-        except ChatAttachmentError as exc:
-            raise LearningProjectError(exc.code, exc.message, exc.status_code) from exc
-        if not data:
-            raise LearningProjectError("empty_file", "文件为空，无法上传。")
-        if len(data) > MAX_ATTACHMENT_BYTES:
-            raise LearningProjectError(
-                "file_too_large", "文件超过 10 MB 大小限制，请压缩后重试。", 413
-            )
-        try:
-            media_type = sniff_media_type(valid_filename, data)
-        except ChatAttachmentError as exc:
-            raise LearningProjectError(exc.code, exc.message, exc.status_code) from exc
-        if media_type not in SUPPORTED_MEDIA_TYPES:
-            raise LearningProjectError(
-                "unsupported_media_type",
-                "该文件类型暂不支持加入学习项目，"
-                "请使用 PDF、DOCX、TXT、Markdown 或常见图片。",
-            )
-        # 同项目同名同内容的活跃文件直接复用：重复上传幂等，不产生重复摄取。
-        content_hash = hashlib.sha256(data).hexdigest()
-        duplicate = self._find_active_file(
-            account_id, project_id, valid_filename, content_hash
+        """拒绝新的项目文件写入；历史文件仅通过读取接口兼容。"""
+        raise LearningProjectError(
+            "legacy_file_source_retired",
+            "项目文件已退役，请改用全局知识库。",
+            410,
         )
-        if duplicate is not None:
-            projection = self._ingestion.project_material_projection(
-                account_id, project_id, duplicate
-            )
-            assert projection is not None
-            return self._file_from_projection(projection), False
-        try:
-            stored = self._objects.create_object(
-                account_id, valid_filename, data, media_type=media_type
-            )
-        except StorageError as exc:
-            raise LearningProjectError(
-                "file_save_failed", "文件保存失败，请稍后重试。", 503
-            ) from exc
-        try:
-            self._ingestion.enqueue(
-                account_id, stored.object_id, project_id=project_id
-            )
-        except IngestionError as exc:
-            raise LearningProjectError(exc.code, exc.message, exc.status_code) from exc
-        projection = self._ingestion.project_material_projection(
-            account_id, project_id, stored.object_id
-        )
-        assert projection is not None
-        return self._file_from_projection(projection), True
 
     def list_files(self, account_id: str, project_id: str) -> list[LearningProjectFile]:
         """列出项目全部文件投影（最新上传在前）。"""
@@ -454,12 +397,12 @@ class LearningProjectService:
         return self._file_from_projection(projection), content
 
     def delete_file(self, account_id: str, project_id: str, object_id: str) -> None:
-        self._ensure_project_writes_enabled(account_id)
-        """级联删除项目文件及其派生索引数据；处理中冲突由摄取服务保证。"""
-        try:
-            self._ingestion.delete_project_material(account_id, project_id, object_id)
-        except IngestionError as exc:
-            raise LearningProjectError(exc.code, exc.message, exc.status_code) from exc
+        """拒绝新的项目文件删除；物理清理由独立收缩审计处理。"""
+        raise LearningProjectError(
+            "legacy_file_source_retired",
+            "项目文件已退役，请改用全局知识库。",
+            410,
+        )
 
     # ------------------------------------------------------------------
     # 内部工具

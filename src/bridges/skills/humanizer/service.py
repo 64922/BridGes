@@ -42,6 +42,7 @@ from bridges.contracts.humanizer import (
 )
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.ingestion.parsers import ParsedDocument, ParseError, parse_document
+from bridges.knowledge_base.service import KnowledgeBaseError, KnowledgeBaseService
 from bridges.observability.service import ObservabilityService
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.skills.humanizer.factlock import _KIND_LABEL_CN as _KIND_CN
@@ -159,6 +160,7 @@ class HumanizerService:
         registry: SkillRegistry,
         gateway: ModelGateway,
         attachment_service: ChatAttachmentService | None = None,
+        knowledge_base_service: KnowledgeBaseService | None = None,
         retrieval_service: LayeredRetrievalService | None = None,
         web_search_service: WebSearchService | None = None,
         observability_service: ObservabilityService | None = None,
@@ -166,6 +168,7 @@ class HumanizerService:
         self._registry = registry
         self._gateway = gateway
         self._attachments = attachment_service
+        self._knowledge_base = knowledge_base_service
         self._retrieval = retrieval_service
         self._web_search = web_search_service
         self._observability = observability_service
@@ -228,7 +231,7 @@ class HumanizerService:
         try:
             # 步骤 1：解析任务契约与来源（改写路径）
             yield process(HumanizerProcessState.LOADING, "正在解析任务契约…")
-            source_text, source_label, references, source_attachment_ids = (
+            source_text, source_label, references, source_knowledge_base_object_ids = (
                 self._resolve_source(
                     account_id, conversation_id, contract, retrieval_round,
                     web_search_projection, arxiv_search_projection,
@@ -242,7 +245,7 @@ class HumanizerService:
                 if not source_text.strip():
                     raise HumanizerError(
                         "empty_source",
-                        "没有可改写的原文：请粘贴文本或选择当前账户文件。",
+                        "没有可改写的原文：请粘贴文本或选择当前账户知识库材料。",
                         retryable=True,
                     )
                 locks = extract_locks(source_text)
@@ -275,7 +278,12 @@ class HumanizerService:
             # 持久化消息正文；随后的软检查/修复/复核不删除草稿（Issue 07）。
             output = self._coerce_output(result.output or {})
             output = output.model_copy(
-                update={"source_attachment_ids": list(source_attachment_ids)}
+                update={
+                    "source_attachment_ids": [],
+                    "source_knowledge_base_object_ids": list(
+                        source_knowledge_base_object_ids
+                    ),
+                }
             )
             yield HumanizerRunEvent(
                 kind=HumanizerRunKind.DRAFT,
@@ -369,12 +377,11 @@ class HumanizerService:
         web_search_projection: Any | None,
         arxiv_search_projection: Any | None,
     ) -> tuple[str, str, list[HumanizerReference], list[str]]:
-        """改写路径解析原文（粘贴或附件），并组装证据合同引用清单。
+        """改写路径解析原文（粘贴或知识库材料），并组装证据合同引用清单。
 
-        Issue 07：改写原文只来自用户粘贴/附件，默认不引用知识库检索
+        Issue 11：改写原文只来自用户粘贴/知识库材料，默认不引用知识库检索
         候选（知识库中不相关图片等材料绝不进入改写证据合同）；解析成功
-        的附件 ID 随输出持久化（``source_attachment_ids``），与消息绑定
-        一致，供界面核对原文文件名。
+        的知识库材料 ID 随输出持久化，与账户授权一致，供界面核对原文文件名。
         """
         references: list[HumanizerReference] = []
         if contract.path == HumanizerPath.GENERATE:
@@ -387,30 +394,29 @@ class HumanizerService:
 
         source_parts: list[str] = []
         label_parts: list[str] = []
-        source_attachment_ids: list[str] = []
+        source_knowledge_base_object_ids: list[str] = []
         if contract.source_text and contract.source_text.strip():
             source_parts.append(contract.source_text.strip())
             label_parts.append("粘贴文本")
-        # Issue 04：任何契约引用的附件解析失败都指名文件并给出支持格式，
-        # 保留附件供重试，绝不静默改用另一材料（粘贴文本不顶替失败附件）。
-        for attachment_id in contract.attachment_ids:
-            parsed = self._parse_attachment(account_id, conversation_id, attachment_id)
+        # Issue 11：能力输入只允许当前账户已授权且完成解析的全局知识库材料。
+        for object_id in contract.knowledge_base_object_ids:
+            parsed = self._parse_knowledge_base_material(account_id, object_id)
             source_parts.append(parsed.text)
             label_parts.append(parsed.title)
-            source_attachment_ids.append(attachment_id)
+            source_knowledge_base_object_ids.append(object_id)
             references.append(
                 HumanizerReference(
                     reference_id=f"ref-{secrets.token_urlsafe(8)}",
                     label=parsed.title,
-                    source_type="attachment",
-                    detail=f"文件：{parsed.title}",
+                    source_type="knowledge_base",
+                    detail=f"知识库材料：{parsed.title}",
                     preserved=True,
                 )
             )
         if not source_parts:
             raise HumanizerError(
                 "empty_source",
-                "没有可改写的原文：请粘贴文本或选择当前账户文件。",
+                "没有可改写的原文：请粘贴文本或选择当前账户知识库材料。",
                 retryable=True,
             )
         # 证据合同：改写默认不引用知识库检索候选（原文即用户材料）；
@@ -427,8 +433,41 @@ class HumanizerService:
             "\n\n".join(source_parts),
             "、".join(label_parts) or "原文",
             references,
-            source_attachment_ids,
+            source_knowledge_base_object_ids,
         )
+
+    def _parse_knowledge_base_material(
+        self, account_id: str, object_id: str
+    ) -> ParsedDocument:
+        """读取当前账户已授权的知识库材料并解析为能力输入。"""
+        if self._knowledge_base is None:
+            raise HumanizerError(
+                "knowledge_base_unavailable",
+                "全局知识库服务未启用，请稍后重试。",
+                retryable=True,
+            )
+        try:
+            record, content = self._knowledge_base.download_for_capability(
+                account_id, object_id
+            )
+        except KnowledgeBaseError as exc:
+            raise HumanizerError(
+                "knowledge_base_material_unreadable",
+                f"知识库材料（{object_id}）读取失败：{exc.message}",
+                retryable=exc.status_code in {409, 429, 500, 503},
+            ) from exc
+        try:
+            return parse_document(
+                content,
+                record.original_filename,
+                record.media_type or "application/octet-stream",
+            )
+        except ParseError as exc:
+            raise HumanizerError(
+                "knowledge_base_material_parse_failed",
+                f"无法解析知识库材料“{record.original_filename}”，请重试摄取或更换材料。",
+                retryable=True,
+            ) from exc
 
     def _parse_attachment(
         self, account_id: str, conversation_id: str, attachment_id: str
@@ -848,7 +887,10 @@ class HumanizerService:
                 return 1, checkpoint
             repaired = repaired.model_copy(
                 update={
-                    "source_attachment_ids": list(checkpoint.output.source_attachment_ids)
+                    "source_attachment_ids": list(checkpoint.output.source_attachment_ids),
+                    "source_knowledge_base_object_ids": list(
+                        checkpoint.output.source_knowledge_base_object_ids
+                    ),
                 }
             )
             return 1, self._review_checks(

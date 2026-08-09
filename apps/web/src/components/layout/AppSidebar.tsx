@@ -10,19 +10,15 @@ import { Dialog } from "@/components/bridges/Dialog";
 import { Menu } from "@/components/bridges/Menu";
 import { Button } from "@/components/design-system/Button";
 import { Icon, type IconName } from "@/components/design-system/Icon";
-import { LearningProjectPickerDialog } from "@/components/learning-projects/LearningProjectPickerDialog";
-import { RemoveFromProjectDialog } from "@/components/learning-projects/RemoveFromProjectDialog";
 import { useAuth } from "@/context/AuthContext";
 import {
   CHAT_LIST_CHANGED_EVENT,
   useRecentConversations,
 } from "@/lib/recent-conversations";
-import { useLearningProjects, changeConversationLearningProject } from "@/lib/learning-projects";
 import {
   deleteChatConversation,
   updateChatConversation,
   type ChatConversationSummary,
-  type LearningProjectSummary,
 } from "@/lib/api";
 
 /** 侧栏收起状态的本地持久化键（与根布局内联脚本共用，避免刷新闪烁）。 */
@@ -117,12 +113,8 @@ export function AppSidebar() {
   const router = useRouter();
   const { user, authState, refreshSession } = useAuth();
   const { conversations, loading, loadError, permissionDenied, reload } = useRecentConversations();
-  // 学习项目名称解析（Issue 19）：最近对话徽标显示项目名而非通用标签
-  const { projects: learningProjects } = useLearningProjects();
   const [renameTarget, setRenameTarget] = useState<ChatConversationSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ChatConversationSummary | null>(null);
-  const [moveTarget, setMoveTarget] = useState<ChatConversationSummary | null>(null);
-  const [removeProjectTarget, setRemoveProjectTarget] = useState<ChatConversationSummary | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [operationBusy, setOperationBusy] = useState(false);
   const [operationError, setOperationError] = useState("");
@@ -232,46 +224,6 @@ export function AppSidebar() {
       }
     } catch (error) {
       await reportOperationFailure(error instanceof Error ? error.message : "删除操作失败。");
-    } finally {
-      setOperationBusy(false);
-    }
-  };
-
-  /** 学习项目名称解析：项目列表未加载或项目已删除时回退为通用标签。 */
-  const projectNameOf = (projectId: string | null | undefined): string | null => {
-    if (!projectId) return null;
-    return learningProjects.find((project) => project.project_id === projectId)?.name ?? null;
-  };
-
-  const moveToProject = async (
-    conversation: ChatConversationSummary,
-    project: LearningProjectSummary | null
-  ) => {
-    if (operationBusy) return;
-    setOperationBusy(true);
-    setOperationError("");
-    try {
-      await changeConversationLearningProject(
-        conversation.conversation_id,
-        project?.project_id ?? null
-      );
-      setMoveTarget(null);
-    } catch (error) {
-      await reportOperationFailure(error instanceof Error ? error.message : "移动到学习项目失败。");
-    } finally {
-      setOperationBusy(false);
-    }
-  };
-
-  const removeFromProject = async () => {
-    if (!removeProjectTarget || operationBusy) return;
-    setOperationBusy(true);
-    setOperationError("");
-    try {
-      await changeConversationLearningProject(removeProjectTarget.conversation_id, null);
-      setRemoveProjectTarget(null);
-    } catch (error) {
-      setOperationError(error instanceof Error ? error.message : "移出学习项目失败。");
     } finally {
       setOperationBusy(false);
     }
@@ -558,9 +510,7 @@ export function AppSidebar() {
                         }}
                       >
                         {conversationModeLabel(conversation.mode)}
-                        {conversation.project_id
-                          ? ` · ${projectNameOf(conversation.project_id) ?? "学习项目"}`
-                          : ""}
+                        {conversation.project_id ? " · 历史学习项目" : ""}
                         {` · ${formatConversationTime(conversation.updated_at)}`}
                       </span>
                     </span>
@@ -586,28 +536,6 @@ export function AppSidebar() {
                         returnFocus: false,
                         onSelect: () => openRename(conversation),
                       },
-                      {
-                        label: "移动到学习项目…",
-                        icon: "learningProject",
-                        returnFocus: false,
-                        onSelect: () => {
-                          setOperationError("");
-                          setMoveTarget(conversation);
-                        },
-                      },
-                      ...(conversation.project_id
-                        ? [
-                            {
-                              label: "移出学习项目",
-                              icon: "close" as const,
-                              returnFocus: false,
-                              onSelect: () => {
-                                setOperationError("");
-                                setRemoveProjectTarget(conversation);
-                              },
-                            },
-                          ]
-                        : []),
                       {
                         label: "删除",
                         icon: "trash",
@@ -732,23 +660,6 @@ export function AppSidebar() {
         </div>
       </Dialog>
 
-      {moveTarget && (
-        <LearningProjectPickerDialog
-          selectedProjectId={moveTarget.project_id ?? null}
-          onSelect={(project) => void moveToProject(moveTarget, project)}
-          onClose={() => setMoveTarget(null)}
-        />
-      )}
-
-      {removeProjectTarget && (
-        <RemoveFromProjectDialog
-          conversationTitle={conversationTitle(removeProjectTarget)}
-          busy={operationBusy}
-          error={operationError}
-          onConfirm={() => void removeFromProject()}
-          onClose={() => setRemoveProjectTarget(null)}
-        />
-      )}
     </nav>
   );
 }

@@ -208,9 +208,9 @@ class ImageService:
     ) -> ImageTaskProjection:
         """提交一个图片编辑任务；来源必须是当前账户有权访问的图片。
 
-        ``source_version_id`` 指向本账户图片资产的既有版本，
-        ``source_object_id`` 指向本账户聊天附件对象（media_type 须为
-        图片）。两者至多提供一个；跨账户来源一律 404，不泄漏存在性。
+        新请求的 ``source_object_id`` 指向本账户全局知识库中已就绪的图片
+        材料；``source_version_id`` 仅供历史任务兼容。两者至多提供一个；
+        跨账户来源一律 404，不泄漏存在性。
         """
         return self._submit(
             account_id,
@@ -267,7 +267,11 @@ class ImageService:
             else:
                 assert source_object_id is not None
                 obj = self._object_meta(account_id, source_object_id)
-                if obj is None or not obj.media_type.startswith("image/"):
+                if (
+                    obj is None
+                    or not obj.media_type.startswith("image/")
+                    or not self._knowledge_base_material_ready(account_id, source_object_id)
+                ):
                     raise ImageError(
                         "source_not_found",
                         "来源图片不存在或没有访问权限。",
@@ -1457,6 +1461,19 @@ class ImageService:
             return self._objects.get_object(account_id, object_id)
         except StorageError:
             return None
+
+    def _knowledge_base_material_ready(self, account_id: str, object_id: str) -> bool:
+        """图片编辑来源必须是当前账户已完成摄取的知识库材料。"""
+
+        row = self._db.scoped(account_id).execute(
+            "SELECT 1 FROM document_records r JOIN objects o"
+            " ON o.object_id = r.object_id AND o.account_id = r.account_id"
+            " WHERE r.account_id = ? AND r.object_id = ?"
+            "   AND r.source = 'knowledge_base' AND r.status = 'ready'"
+            "   AND o.status = 'active'",
+            (account_id, object_id),
+        ).fetchone()
+        return row is not None
 
     def _object_status(self, account_id: str, object_id: str) -> str:
         try:

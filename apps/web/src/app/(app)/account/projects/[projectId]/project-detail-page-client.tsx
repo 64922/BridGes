@@ -1,89 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useParams } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { IngestionStatusChip } from "@/components/bridges/AttachmentIngestion";
-import { Dialog } from "@/components/bridges/Dialog";
 import { Menu, type MenuItem } from "@/components/bridges/Menu";
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { MainContent } from "@/components/layout/MainContent";
 import {
-  LearningProjectDeleteDialog,
-  type ProjectDeleteContents,
-} from "@/components/learning-projects/LearningProjectDeleteDialog";
-import { LearningProjectFormDialog } from "@/components/learning-projects/LearningProjectFormDialog";
-import { RemoveFromProjectDialog } from "@/components/learning-projects/RemoveFromProjectDialog";
-import {
   ApiError,
   classifyApiError,
-  createChatConversation,
-  deleteLearningProject,
-  deleteLearningProjectFile,
   downloadLearningProjectFile,
   getLearningProject,
   getLearningProjectMigration,
   listLearningProjectFiles,
   retryLearningProjectMigration,
-  updateLearningProject,
-  uploadLearningProjectFile,
   type LearningProjectConversation,
   type LearningProjectDetail,
   type LearningProjectFile,
   type LearningProjectMigrationSummary,
 } from "@/lib/api";
-import { LEARNING_PROJECTS_CHANGED_EVENT, changeConversationLearningProject } from "@/lib/learning-projects";
-import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import { formatAbsoluteTime, formatRelativeTime, formatSize } from "@/lib/format";
-
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ACCEPT_ATTRIBUTE = ".pdf,.docx,.txt,.md,.markdown,.png,.jpg,.jpeg,.gif,.webp";
-const SUPPORTED_EXTENSION = /\.(pdf|docx|txt|md|markdown|png|jpe?g|gif|webp)$/i;
-const POLL_INTERVAL_MS = 2500;
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
-}
-
-function newId(prefix: string): string {
-  return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
 }
 
 function conversationModeLabel(mode: LearningProjectConversation["mode"]): string {
   return mode === "study" ? "学习模式" : "日常陪伴";
 }
 
-interface PendingUpload {
-  id: string;
-  filename: string;
-  progress: number;
-  status: "uploading" | "error";
-  error?: string;
-}
-
-type DialogState =
-  | { kind: "rename" }
-  | { kind: "delete" }
-  | { kind: "removeConversation"; conversation: LearningProjectConversation }
-  | { kind: "removeFile"; file: LearningProjectFile }
-  | null;
-
 type LoadFailure = { kind: "error" | "permission" | "notfound"; message: string } | null;
 
 /**
  * 学习项目详情页（Issue 19）。
  *
- * 仅包含三个区块：项目头部（改名/删除）、相关对话（移出项目）、项目文件
- * （上传/轮询/下载/移除）。项目文件仅归属于该学习项目，与全局知识库材料
- * （对所有对话生效）通过页内说明文案区分。
+ * 仅读取项目头部、相关对话、历史项目文件及迁移记录；所有项目文件写操作
+ * 与项目归属修改均已退役，新的文件统一进入全局知识库。
  */
 export default function ProjectDetailPageClient() {
   const params = useParams<{ projectId: string }>();
   const projectId = params.projectId;
-  const router = useRouter();
 
   const [detail, setDetail] = useState<LearningProjectDetail | null>(null);
   const [migration, setMigration] = useState<LearningProjectMigrationSummary | null>(null);
@@ -91,15 +51,7 @@ export default function ProjectDetailPageClient() {
   const [files, setFiles] = useState<LearningProjectFile[] | null>(null);
   const [loadFailure, setLoadFailure] = useState<LoadFailure>(null);
   const [filesError, setFilesError] = useState("");
-  const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [actionError, setActionError] = useState("");
-  const [dialog, setDialog] = useState<DialogState>(null);
-  const [dialogError, setDialogError] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [creatingChat, setCreatingChat] = useState(false);
-
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const uploadControllersRef = useRef(new Map<string, AbortController>());
 
   const reloadDetail = useCallback(async () => {
     try {
@@ -159,7 +111,8 @@ export default function ProjectDetailPageClient() {
     void reloadMigration();
   }, [reloadDetail, reloadFiles, reloadMigration]);
 
-  // 文件处于等待/解析/恢复中时轮询，稳定后自动停止；卸载时清理计时器。
+  // 历史文件的摄取状态仍可变化，页面只读轮询其派生状态。
+  const POLL_INTERVAL_MS = 2500;
   const needsPolling = useMemo(
     () =>
       (files ?? []).some((file) =>
@@ -174,184 +127,6 @@ export default function ProjectDetailPageClient() {
     return () => window.clearTimeout(timer);
   }, [needsPolling, files, reloadFiles]);
 
-  useEffect(() => {
-    const controllers = uploadControllersRef.current;
-    return () => {
-      controllers.forEach((controller) => controller.abort());
-      controllers.clear();
-    };
-  }, []);
-
-  // -------------------------------------------------------------------------
-  // 项目级操作
-  // -------------------------------------------------------------------------
-
-  const notifyProjectsChanged = () => {
-    window.dispatchEvent(new Event(LEARNING_PROJECTS_CHANGED_EVENT));
-  };
-
-  const openDialog = (next: NonNullable<DialogState>) => {
-    setDialogError("");
-    setDialog(next);
-  };
-
-  const doRename = async (values: { name: string; description: string }) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      await updateLearningProject(projectId, {
-        name: values.name,
-        description: values.description || null,
-      });
-      setDialog(null);
-      notifyProjectsChanged();
-      await reloadDetail();
-    } catch (error) {
-      setDialogError(errorMessage(error, "保存学习项目失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doDelete = async (contents: ProjectDeleteContents) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      await deleteLearningProject(projectId, contents);
-      setDialog(null);
-      notifyProjectsChanged();
-      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
-      router.push("/account/projects");
-    } catch (error) {
-      const message = errorMessage(error, "删除学习项目失败，请稍后重试。");
-      setDialogError(
-        error instanceof ApiError && error.status === 409
-          ? `${message} 请先停止正在生成的回答，再回到这里重试删除。`
-          : message
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createStudyChat = async () => {
-    if (creatingChat) return;
-    setCreatingChat(true);
-    setActionError("");
-    try {
-      const conversation = await createChatConversation(undefined, "study", projectId);
-      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
-      router.push(`/chat/${conversation.conversation_id}`);
-    } catch (error) {
-      setActionError(errorMessage(error, "创建学习对话失败，请稍后重试。"));
-      setCreatingChat(false);
-    }
-  };
-
-  // -------------------------------------------------------------------------
-  // 相关对话
-  // -------------------------------------------------------------------------
-
-  const removeConversation = async (conversation: LearningProjectConversation) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      await changeConversationLearningProject(conversation.conversation_id, null);
-      setDialog(null);
-      await reloadDetail();
-    } catch (error) {
-      setDialogError(errorMessage(error, "移出学习项目失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  // -------------------------------------------------------------------------
-  // 项目文件
-  // -------------------------------------------------------------------------
-
-  const updatePendingUpload = (id: string, update: Partial<PendingUpload>) => {
-    setPendingUploads((current) =>
-      current.map((entry) => (entry.id === id ? { ...entry, ...update } : entry))
-    );
-  };
-
-  const removePendingUpload = (id: string) => {
-    uploadControllersRef.current.get(id)?.abort();
-    uploadControllersRef.current.delete(id);
-    setPendingUploads((current) => current.filter((entry) => entry.id !== id));
-  };
-
-  const startUpload = async (entry: PendingUpload, file: File) => {
-    const controller = new AbortController();
-    uploadControllersRef.current.set(entry.id, controller);
-    try {
-      await uploadLearningProjectFile(
-        projectId,
-        file,
-        entry.id,
-        (loaded, total) =>
-          updatePendingUpload(entry.id, {
-            progress: total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0,
-          }),
-        controller.signal
-      );
-      uploadControllersRef.current.delete(entry.id);
-      setPendingUploads((current) => current.filter((item) => item.id !== entry.id));
-      void reloadFiles(true);
-    } catch (error) {
-      uploadControllersRef.current.delete(entry.id);
-      if (error instanceof DOMException && error.name === "AbortError") {
-        setPendingUploads((current) => current.filter((item) => item.id !== entry.id));
-        return;
-      }
-      updatePendingUpload(entry.id, {
-        status: "error",
-        error: errorMessage(error, "上传失败，请重试。"),
-      });
-    }
-  };
-
-  const onFilesSelected = (filesToUpload: FileList | null) => {
-    if (!filesToUpload || filesToUpload.length === 0) return;
-    setActionError("");
-    const entries: { entry: PendingUpload; file: File | null }[] = Array.from(filesToUpload).map(
-      (file) => {
-        const id = newId("project-upload");
-        if (!SUPPORTED_EXTENSION.test(file.name)) {
-          return {
-            entry: {
-              id,
-              filename: file.name,
-              progress: 0,
-              status: "error" as const,
-              error: "不支持的文件类型：仅支持 PDF、DOCX、TXT、Markdown 与 PNG/JPEG/GIF/WebP 图片。",
-            },
-            file: null,
-          };
-        }
-        if (file.size === 0 || file.size > MAX_FILE_BYTES) {
-          return {
-            entry: {
-              id,
-              filename: file.name,
-              progress: 0,
-              status: "error" as const,
-              error:
-                file.size === 0 ? "文件为空，无法上传。" : "文件超过 10 MB 大小限制，请压缩后重试。",
-            },
-            file: null,
-          };
-        }
-        return { entry: { id, filename: file.name, progress: 0, status: "uploading" as const }, file };
-      }
-    );
-    setPendingUploads((current) => [...current, ...entries.map((item) => item.entry)]);
-    entries.forEach(({ entry, file }) => {
-      if (file) void startUpload(entry, file);
-    });
-  };
-
   const doDownload = async (file: LearningProjectFile) => {
     setActionError("");
     try {
@@ -361,34 +136,12 @@ export default function ProjectDetailPageClient() {
     }
   };
 
-  const doRemoveFile = async (file: LearningProjectFile) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      await deleteLearningProjectFile(projectId, file.object_id);
-      setDialog(null);
-      await reloadFiles(true);
-    } catch (error) {
-      // 409 material_processing 等可恢复错误：对话框内展示中文原因，文件保留在列表中
-      setDialogError(errorMessage(error, "移除失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   // -------------------------------------------------------------------------
   // 渲染
   // -------------------------------------------------------------------------
 
   const fileRowMenuItems = (file: LearningProjectFile): MenuItem[] => [
-    { label: "下载", icon: "download", onSelect: () => void doDownload(file) },
-    {
-      label: "移除",
-      icon: "trash",
-      danger: true,
-      returnFocus: false,
-      onSelect: () => openDialog({ kind: "removeFile", file }),
-    },
+    { label: "下载历史文件", icon: "download", onSelect: () => void doDownload(file) },
   ];
 
   if ((detail === null || !migrationLoaded) && !loadFailure) {
@@ -607,39 +360,10 @@ export default function ProjectDetailPageClient() {
                 </p>
               ) : (
                 <p style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-sm)" }}>
-                  还没有项目说明，可通过「改名」补充。
+                  这是历史项目；新的文件请统一进入全局知识库。
                 </p>
               )}
             </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
-            <Button
-              data-testid="learning-project-new-chat"
-              onClick={() => void createStudyChat()}
-              isLoading={creatingChat}
-            >
-              <Icon name="newChat" size={18} aria-hidden />
-              新建学习对话
-            </Button>
-            <Menu
-              trigger={<Icon name="more" size={20} aria-hidden />}
-              ariaLabel={`项目操作：${detail.name}`}
-              items={[
-                {
-                  label: "改名",
-                  icon: "edit",
-                  returnFocus: false,
-                  onSelect: () => openDialog({ kind: "rename" }),
-                },
-                {
-                  label: "删除",
-                  icon: "trash",
-                  danger: true,
-                  returnFocus: false,
-                  onSelect: () => openDialog({ kind: "delete" }),
-                },
-              ]}
-            />
           </div>
         </div>
 
@@ -676,7 +400,7 @@ export default function ProjectDetailPageClient() {
           </h2>
           {conversations.length === 0 ? (
             <p style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-sm)" }}>
-              还没有关联的对话，点击上方「新建学习对话」开始。
+              还没有历史关联对话。
             </p>
           ) : (
             <ul role="list" style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
@@ -738,20 +462,6 @@ export default function ProjectDetailPageClient() {
                         </span>
                       </span>
                     </Link>
-                    <div style={{ flexShrink: 0, paddingRight: "var(--space-2)" }}>
-                      <Menu
-                        trigger={<Icon name="more" size={20} aria-hidden />}
-                        ariaLabel={`对话操作：${title}`}
-                        items={[
-                          {
-                            label: "移出学习项目",
-                            icon: "close",
-                            returnFocus: false,
-                            onSelect: () => openDialog({ kind: "removeConversation", conversation }),
-                          },
-                        ]}
-                      />
-                    </div>
                   </li>
                 );
               })}
@@ -782,18 +492,9 @@ export default function ProjectDetailPageClient() {
             >
               项目文件
             </h2>
-            <Button
-              variant="secondary"
-              size="sm"
-              data-testid="project-file-upload-button"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Icon name="uploadFile" size={16} aria-hidden />
-              上传文件
-            </Button>
           </div>
           <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
-            项目文件仅归属于该学习项目，仅本项目的对话可使用；
+            项目文件写入已退役；历史文件仅保留只读查看与迁移记录。
             <Link
               href="/knowledge-base"
               style={{ color: "var(--color-accent-primary)", textDecoration: "underline" }}
@@ -802,120 +503,6 @@ export default function ProjectDetailPageClient() {
             </Link>
             的全局材料对你所有对话生效。
           </p>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple
-            accept={ACCEPT_ATTRIBUTE}
-            data-testid="project-file-input"
-            aria-label="选择要上传的项目文件"
-            style={{ display: "none" }}
-            onChange={(event) => {
-              onFilesSelected(event.target.files);
-              event.target.value = "";
-            }}
-          />
-
-          {pendingUploads.length > 0 && (
-            <ul
-              role="list"
-              aria-label="正在上传的项目文件"
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-2)",
-                marginTop: "var(--space-3)",
-              }}
-            >
-              {pendingUploads.map((entry) => (
-                <li
-                  key={entry.id}
-                  data-testid="project-upload-entry"
-                  style={{
-                    padding: "var(--space-3) var(--space-4)",
-                    borderRadius: "var(--radius-md)",
-                    border: `1px solid ${entry.status === "error" ? "var(--color-status-error)" : "var(--color-border)"}`,
-                    backgroundColor: "var(--color-surface)",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "var(--space-3)" }}>
-                    <span
-                      style={{
-                        minWidth: 0,
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        fontWeight: 500,
-                      }}
-                      title={entry.filename}
-                    >
-                      {entry.filename}
-                    </span>
-                    {entry.status === "uploading" ? (
-                      <>
-                        <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-                          {entry.progress}%
-                        </span>
-                        <Button variant="ghost" size="sm" onClick={() => removePendingUpload(entry.id)}>
-                          取消
-                        </Button>
-                      </>
-                    ) : (
-                      <button
-                        type="button"
-                        aria-label={`清除上传错误：${entry.filename}`}
-                        onClick={() => removePendingUpload(entry.id)}
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          minWidth: "var(--target-size)",
-                          minHeight: "var(--target-size)",
-                          border: "none",
-                          backgroundColor: "transparent",
-                          color: "var(--color-text-tertiary)",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Icon name="cross" size={16} aria-hidden />
-                      </button>
-                    )}
-                  </div>
-                  {entry.status === "uploading" ? (
-                    <div
-                      role="progressbar"
-                      aria-valuenow={entry.progress}
-                      aria-valuemin={0}
-                      aria-valuemax={100}
-                      aria-label={`上传进度：${entry.filename}`}
-                      style={{
-                        marginTop: "var(--space-2)",
-                        height: "0.375rem",
-                        borderRadius: "999px",
-                        backgroundColor: "var(--color-border)",
-                        overflow: "hidden",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: `${entry.progress}%`,
-                          height: "100%",
-                          backgroundColor: "var(--color-accent-primary)",
-                          transition: "width var(--motion-duration-base) var(--motion-easing)",
-                        }}
-                      />
-                    </div>
-                  ) : (
-                    <p role="alert" style={{ marginTop: "var(--space-1)", fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-                      {entry.error}
-                    </p>
-                  )}
-                </li>
-              ))}
-            </ul>
-          )}
 
           <div style={{ marginTop: "var(--space-3)" }}>
             {files === null && !filesError ? (
@@ -929,7 +516,7 @@ export default function ProjectDetailPageClient() {
               </div>
             ) : (files ?? []).length === 0 ? (
               <p style={{ color: "var(--color-text-tertiary)", fontSize: "var(--text-sm)" }}>
-                还没有项目文件，上传后仅归属于该学习项目。
+                还没有历史项目文件。
               </p>
             ) : (
               <ul role="list" style={{ display: "flex", flexDirection: "column", gap: "var(--space-2)" }}>
@@ -988,7 +575,7 @@ export default function ProjectDetailPageClient() {
                         </span>
                         {file.status === "error" && (
                           <span role="alert" style={{ color: "var(--color-status-error)" }}>
-                            处理失败{file.error ? `：${file.error}` : "，可移除后重新上传。"}
+                            处理失败{file.error ? `：${file.error}` : "；请在全局知识库中使用新的材料。"}
                           </span>
                         )}
                       </div>
@@ -1008,74 +595,6 @@ export default function ProjectDetailPageClient() {
         </section>
       </section>
 
-      {dialog?.kind === "rename" && (
-        <LearningProjectFormDialog
-          mode="rename"
-          initialName={detail.name}
-          initialDescription={detail.description}
-          busy={busy}
-          error={dialogError}
-          onSubmit={(values) => void doRename(values)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "delete" && (
-        <LearningProjectDeleteDialog
-          projectName={detail.name}
-          busy={busy}
-          error={dialogError}
-          onConfirm={(contents) => void doDelete(contents)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "removeConversation" && (
-        <RemoveFromProjectDialog
-          conversationTitle={dialog.conversation.title || "未命名对话"}
-          busy={busy}
-          error={dialogError}
-          onConfirm={() => void removeConversation(dialog.conversation)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "removeFile" && (
-        <Dialog
-          open
-          onClose={() => {
-            if (!busy) setDialog(null);
-          }}
-          title="移除项目文件？"
-          description={`将从本学习项目移除并删除「${dialog.file.filename}」；此操作与任何对话无关，对话历史不受影响。`}
-        >
-          {dialogError && (
-            <p role="alert" style={{ fontSize: "var(--text-sm)", color: "var(--color-status-error)" }}>
-              {dialogError}
-            </p>
-          )}
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              gap: "var(--space-2)",
-              marginTop: "var(--space-4)",
-            }}
-          >
-            <Button variant="ghost" size="sm" onClick={() => setDialog(null)} disabled={busy}>
-              取消
-            </Button>
-            <Button
-              variant="danger"
-              size="sm"
-              isLoading={busy}
-              onClick={() => void doRemoveFile(dialog.file)}
-            >
-              确认移除
-            </Button>
-          </div>
-        </Dialog>
-      )}
     </MainContent>
   );
 }

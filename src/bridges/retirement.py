@@ -89,6 +89,7 @@ def raise_retired_capability(
     endpoint: str,
     error: str = "user_extensions_retired",
     replacement_path: str = _REPLACEMENT_PATH,
+    message: str = _RETIRED_MESSAGE,
 ) -> NoReturn:
     """记录一次兼容调用并抛出不带敏感输入的 410。"""
 
@@ -99,13 +100,43 @@ def raise_retired_capability(
     compatibility_metrics_for(request).record(endpoint, probe=probe)
     detail = RetiredCapabilityError(
         error=error,
-        message=_RETIRED_MESSAGE,
+        message=message,
         replacement_path=replacement_path,
         endpoint=endpoint,
         service_version=COMPATIBILITY_SERVICE_VERSION,
         traffic_class="probe" if probe else "real",
     ).model_dump()
     raise HTTPException(status_code=status.HTTP_410_GONE, detail=detail)
+
+
+def raise_retired_file_source(request: Request, *, endpoint: str) -> NoReturn:
+    """迁移闸门通过后拒绝项目/聊天文件写入口。"""
+
+    database = getattr(request.app.state, "bridges_database", None)
+    if database is not None:
+        # 延迟导入避免退役观测模块与迁移服务之间形成导入环。
+        from bridges.learning_projects.migration import contraction_gate_report
+
+        report = contraction_gate_report(database)
+        if report["status"] != "passed":
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "migration_gate_blocked",
+                    "message": report["summary"],
+                    "gate_status": report["status"],
+                    "unmanaged_count": report["unmanaged_count"],
+                    "pending_count": report["pending_count"],
+                    "failed_count": report["failed_count"],
+                },
+            )
+    raise_retired_capability(
+        request,
+        endpoint=endpoint,
+        error="legacy_file_source_retired",
+        replacement_path="/knowledge-base",
+        message="项目文件和聊天附件已退役，请使用全局知识库。",
+    )
 
 
 def record_compatibility_observation(request: Request, endpoint: str) -> None:
@@ -436,6 +467,7 @@ __all__ = [
     "mcp_endpoint",
     "plugin_endpoint",
     "raise_retired_capability",
+    "raise_retired_file_source",
     "record_compatibility_observation",
     "retire_user_extensions",
     "run_reminder_retirement",

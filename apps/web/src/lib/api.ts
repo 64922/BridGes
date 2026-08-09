@@ -913,8 +913,7 @@ export async function listChatConversations(): Promise<ChatConversationListProje
 
 export async function createChatConversation(
   title?: string,
-  mode: ChatMode = "companion",
-  projectId?: string
+  mode: ChatMode = "companion"
 ): Promise<ChatConversationProjection> {
   const res = await fetch(`${API_BASE}/chat/conversations`, {
     method: "POST",
@@ -923,7 +922,6 @@ export async function createChatConversation(
     body: JSON.stringify({
       title: title ?? null,
       mode,
-      project_id: projectId ?? null,
     }),
   });
   if (!res.ok) throw await parseApiError(res);
@@ -1163,7 +1161,6 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
 export async function createChatRun(
   conversationId: string,
   content: string,
-  attachmentIds: string[] = [],
   useKnowledgeBase: boolean = true,
   useProfile: boolean = true,
   skillId?: string,
@@ -1178,7 +1175,6 @@ export async function createChatRun(
     credentials: "same-origin",
     body: JSON.stringify({
       content,
-      attachment_ids: attachmentIds,
       use_knowledge_base: useKnowledgeBase,
       use_profile: useProfile,
       // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
@@ -1203,7 +1199,7 @@ export async function createChatRun(
  * 用户消息、助手占位与 queued 运行，返回完整投影。客户端收到成功响应后
  * 再导航，``sessionStorage`` 不再承担业务真相。``idempotencyKey`` 抵御
  * 双击与网络重放（同键并发只产生一份数据）；``conversationId`` 可选指定
- * 已预建的空会话（附件上传路径先建会话再发送），缺省在事务内新建。
+ * 已存在的空会话，缺省在事务内新建。
  * 同键重放返回 200 与既有数据（``idempotent_replay`` 为 true），调用方
  * 无须区分即可导航到同一会话。
  */

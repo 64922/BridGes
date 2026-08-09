@@ -1,56 +1,32 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
-import { Menu, type MenuItem } from "@/components/bridges/Menu";
 import { StateBlock } from "@/components/bridges/StateBlock";
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
 import { MainContent } from "@/components/layout/MainContent";
 import {
-  LearningProjectDeleteDialog,
-  type ProjectDeleteContents,
-} from "@/components/learning-projects/LearningProjectDeleteDialog";
-import { LearningProjectFormDialog } from "@/components/learning-projects/LearningProjectFormDialog";
-import {
-  ApiError,
   classifyApiError,
-  createLearningProject,
-  deleteLearningProject,
   listLearningProjects,
-  updateLearningProject,
   type LearningProjectSummary,
 } from "@/lib/api";
-import { LEARNING_PROJECTS_CHANGED_EVENT } from "@/lib/learning-projects";
-import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import { formatAbsoluteTime, formatRelativeTime } from "@/lib/format";
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-type DialogState =
-  | { kind: "create" }
-  | { kind: "rename"; project: LearningProjectSummary }
-  | { kind: "delete"; project: LearningProjectSummary }
-  | null;
-
 /**
  * 学习项目列表页（Issue 19，文件夹式学习项目）。
  *
  * ChatGPT Projects 式桌面列表：文件夹图标 + 名称 + 计数/更新时间元信息，
- * 整行可点击/键盘聚焦进入详情页，行尾菜单提供改名与删除。新建、改名、
- * 删除走共享对话框；加载/空/错误/权限状态齐全，失败绝不呈现为空列表。
+ * 整行可点击/键盘聚焦进入详情页；写操作已退役，历史数据只读展示。
  */
 export default function ProjectsPageClient() {
-  const router = useRouter();
   const [projects, setProjects] = useState<LearningProjectSummary[] | null>(null);
   const [loadError, setLoadError] = useState<{ kind: "error" | "permission"; message: string } | null>(null);
-  const [dialog, setDialog] = useState<DialogState>(null);
-  const [dialogError, setDialogError] = useState("");
-  const [busy, setBusy] = useState(false);
 
   const reload = useCallback(async () => {
     try {
@@ -68,90 +44,6 @@ export default function ProjectsPageClient() {
   useEffect(() => {
     void reload();
   }, [reload]);
-
-  const notifyChanged = () => {
-    window.dispatchEvent(new Event(LEARNING_PROJECTS_CHANGED_EVENT));
-  };
-
-  const doCreate = async (values: { name: string; description: string }) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      const project = await createLearningProject(values.name, values.description || undefined);
-      setDialog(null);
-      notifyChanged();
-      router.push(`/account/projects/${project.project_id}`);
-    } catch (error) {
-      setDialogError(errorMessage(error, "创建学习项目失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doRename = async (
-    project: LearningProjectSummary,
-    values: { name: string; description: string }
-  ) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      await updateLearningProject(project.project_id, {
-        name: values.name,
-        description: values.description || null,
-      });
-      setDialog(null);
-      notifyChanged();
-      await reload();
-    } catch (error) {
-      setDialogError(errorMessage(error, "保存学习项目失败，请稍后重试。"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const doDelete = async (project: LearningProjectSummary, contents: ProjectDeleteContents) => {
-    setBusy(true);
-    setDialogError("");
-    try {
-      await deleteLearningProject(project.project_id, contents);
-      setDialog(null);
-      notifyChanged();
-      // 对话归属随删除变化（保留对话解绑 / 一并删除移除），侧栏列表同步刷新
-      window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
-      await reload();
-    } catch (error) {
-      // 409 generation_in_progress 等可恢复错误：对话框内展示服务端中文原因
-      const message = errorMessage(error, "删除学习项目失败，请稍后重试。");
-      setDialogError(
-        error instanceof ApiError && error.status === 409
-          ? `${message} 请先停止正在生成的回答，再回到这里重试删除。`
-          : message
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const openDialog = (next: NonNullable<DialogState>) => {
-    setDialogError("");
-    setDialog(next);
-  };
-
-  const rowMenuItems = (project: LearningProjectSummary): MenuItem[] => [
-    {
-      label: "改名",
-      icon: "edit",
-      returnFocus: false,
-      onSelect: () => openDialog({ kind: "rename", project }),
-    },
-    {
-      label: "删除",
-      icon: "trash",
-      danger: true,
-      returnFocus: false,
-      onSelect: () => openDialog({ kind: "delete", project }),
-    },
-  ];
 
   return (
     <MainContent>
@@ -173,13 +65,9 @@ export default function ProjectsPageClient() {
               学习项目
             </h1>
             <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
-              把相关对话与项目文件组织在一起的文件夹，仅当前账户可见。
+              历史项目与文件仅保留只读查看；新的文件请统一进入全局知识库。
             </p>
           </div>
-          <Button data-testid="learning-project-create" onClick={() => openDialog({ kind: "create" })}>
-            <Icon name="plus" size={18} aria-hidden />
-            新建项目
-          </Button>
         </div>
 
         <div style={{ marginTop: "var(--space-6)" }}>
@@ -202,14 +90,8 @@ export default function ProjectsPageClient() {
               <StateBlock
                 kind="empty"
                 title="还没有学习项目"
-                description="创建一个学习项目，把同一主题的对话与项目文件放在一起管理。"
+                description="学习项目已退役；历史项目仅保留只读查看与迁移记录。"
               />
-              <div style={{ display: "flex", justifyContent: "center" }}>
-                <Button onClick={() => openDialog({ kind: "create" })}>
-                  <Icon name="plus" size={18} aria-hidden />
-                  新建项目
-                </Button>
-              </div>
             </div>
           ) : (
             <>
@@ -296,13 +178,6 @@ export default function ProjectsPageClient() {
                         </span>
                       </span>
                     </Link>
-                    <div style={{ flexShrink: 0, paddingRight: "var(--space-2)" }}>
-                      <Menu
-                        trigger={<Icon name="more" size={20} aria-hidden />}
-                        ariaLabel={`项目操作：${project.name}`}
-                        items={rowMenuItems(project)}
-                      />
-                    </div>
                   </li>
                 ))}
               </ul>
@@ -311,37 +186,6 @@ export default function ProjectsPageClient() {
         </div>
       </section>
 
-      {dialog?.kind === "create" && (
-        <LearningProjectFormDialog
-          mode="create"
-          busy={busy}
-          error={dialogError}
-          onSubmit={(values) => void doCreate(values)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "rename" && (
-        <LearningProjectFormDialog
-          mode="rename"
-          initialName={dialog.project.name}
-          initialDescription={dialog.project.description}
-          busy={busy}
-          error={dialogError}
-          onSubmit={(values) => void doRename(dialog.project, values)}
-          onClose={() => setDialog(null)}
-        />
-      )}
-
-      {dialog?.kind === "delete" && (
-        <LearningProjectDeleteDialog
-          projectName={dialog.project.name}
-          busy={busy}
-          error={dialogError}
-          onConfirm={(contents) => void doDelete(dialog.project, contents)}
-          onClose={() => setDialog(null)}
-        />
-      )}
     </MainContent>
   );
 }

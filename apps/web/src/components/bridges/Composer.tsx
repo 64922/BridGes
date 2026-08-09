@@ -4,8 +4,6 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
-import { LearningProjectPickerDialog } from "@/components/learning-projects/LearningProjectPickerDialog";
-import { formatFileType, formatSize } from "@/lib/format";
 import {
   CAREER_TOOL_LABEL,
   CHAT_TOOL_INTENTS,
@@ -14,49 +12,27 @@ import {
   VIDEO_TOOL_LABEL,
 } from "@/lib/chat-tools";
 import {
-  cancelChatAttachment,
-  cancelChatAttachmentUpload,
-  listUnboundAttachments,
   transcribeDictation,
-  uploadChatAttachment,
 } from "@/lib/api";
 import { Menu } from "./Menu";
 import type { CapabilityAvailability } from "./chat/ReadAloudControls";
 import styles from "./chat/chat.module.css";
 
-interface ComposerAttachment {
-  id: string;
-  file: File;
-  filename: string;
-  uploadId: string;
-  objectId?: string;
-  status: "local" | "uploading" | "uploaded" | "error" | "cancelled";
-  progress: number;
-  error?: string;
-  /** 文件大小（恢复的未发送草稿用服务端投影补全；实时上传用 file.size）。 */
-  size?: number;
-}
-
 interface ComposerProps {
   onSend: (
     text: string,
-    attachmentIds?: string[],
     preparedConversationId?: string,
     useKnowledgeBase?: boolean,
     useProfile?: boolean
   ) => Promise<boolean> | boolean | void;
-  /** 已存在的真实对话；提供后选择文件会立即上传到该对话。 */
+  /** 已存在的真实对话；用于发送消息与听写。 */
   conversationId?: string;
-  /** 新聊天页提供的延迟创建钩子；只有选择附件时才会预建空对话。 */
+  /** 新聊天页提供的延迟创建钩子；听写或任务发送前预建空对话。 */
   ensureConversation?: () => Promise<string | undefined>;
   generating?: boolean;
   onStop?: () => void;
   /** 外部预填请求（建议卡等）：nonce 变化时把 text 作为结构化意图填入并聚焦 */
   prefill?: { text: string; nonce: number } | null;
-  /** 当前选中的学习项目（提供 onSelectLearningProject 时生效）。 */
-  learningProject?: { project_id: string; name: string } | null;
-  /** 「选择学习项目」入口；选择/清除后回调（传 null 表示清除）。 */
-  onSelectLearningProject?: (project: { project_id: string; name: string } | null) => void;
   /** Issue 36：当前对话选中的插件（随对话持久化；chip 持续显示）。 */
   /** Issue 36：选中插件的显示名映射（key = `${kind}:${plugin_id}`）。 */
   /** Issue 36：「选择已启用插件」入口（打开真实选择器）。 */
@@ -79,25 +55,8 @@ interface ComposerProps {
 }
 
 const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
-const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 
-function newId(prefix: string): string {
-  return `${prefix}-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`}`;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "上传失败，请重试。";
-}
-
-function attachmentStatus(item: ComposerAttachment): string {
-  if (item.status === "local") return "待上传";
-  if (item.status === "uploading") return `上传中 ${item.progress}%`;
-  if (item.status === "uploaded") return "已上传，等待发送";
-  if (item.status === "cancelled") return "已取消，可移除";
-  return item.error ?? "上传失败，可重试";
-}
-
-/** 对话输入区：统一支持真实字节上传、取消、失败重试与键盘发送。 */
+/** 对话输入区：发送文本、工具任务与听写结果。文件统一由知识库管理。 */
 export function Composer({
   onSend,
   conversationId,
@@ -105,8 +64,6 @@ export function Composer({
   generating = false,
   onStop,
   prefill = null,
-  learningProject = null,
-  onSelectLearningProject,
   onOpenHumanizer,
   onOpenCareer,
   onOpenImage,
@@ -122,7 +79,6 @@ export function Composer({
   const onRemovePlugin = undefined;
   const onInvokeMcp = undefined;
   const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
   // 停止录音后才提交完整音频到固定 ASR 快照；转写结果可编辑回填，绝不
   // 自动发送；取消/重录不遗留待发送文本、跨账户临时音频或后台孤儿任务。
@@ -133,7 +89,6 @@ export function Composer({
   const [dictationSeconds, setDictationSeconds] = useState(0);
   const [dictationTranscribed, setDictationTranscribed] = useState(false);
   const [toolNotice, setToolNotice] = useState("");
-  const [projectPickerOpen, setProjectPickerOpen] = useState(false);
   // Issue 20：本轮是否启用全局知识库层（发送前可关闭；关闭后本轮请求、
   // 检索记录与引用均不含知识库候选）。
   const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
@@ -141,7 +96,6 @@ export function Composer({
   // 审计与上下文说明均不含任何画像内容）。
   const [useProfile, setUseProfile] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -149,21 +103,8 @@ export function Composer({
   const dictationSecondsRef = useRef(0);
   const dictationAbortRef = useRef<AbortController | null>(null);
   const pendingAudioRef = useRef<Blob | null>(null);
-  const controllersRef = useRef(new Map<string, AbortController>());
   const preparedConversationRef = useRef<string | undefined>(conversationId);
-  const attachmentsRef = useRef<ComposerAttachment[]>([]);
-  attachmentsRef.current = attachments;
-
-  const uploadedAttachments = attachments.filter(
-    (item) => item.status === "uploaded" && item.objectId
-  );
-  const hasUploading = attachments.some((item) => item.status === "uploading");
-  // Issue 04：上传未完成时发送按钮明确禁用（不能静默发送空附件）——
-  // 提示文案由状态栏给出，用户可等待完成或移除附件。
-  const canSend =
-    (text.trim().length > 0 || uploadedAttachments.length > 0) &&
-    dictationPhase === "idle" &&
-    !hasUploading;
+  const canSend = text.trim().length > 0 && dictationPhase === "idle";
   // 真实对话上下文（模板设计基线不渲染来源层面板）
   const isRealChat = conversationId !== undefined || ensureConversation !== undefined;
 
@@ -183,142 +124,31 @@ export function Composer({
     element.style.height = `${Math.min(element.scrollHeight, 12 * 16)}px`;
   };
 
-  const setAttachment = (id: string, update: Partial<ComposerAttachment>) => {
-    setAttachments((current) =>
-      current.map((item) => (item.id === id ? { ...item, ...update } : item))
-    );
-  };
-
   const resolveConversation = async (): Promise<string> => {
     if (conversationId) return conversationId;
     if (preparedConversationRef.current) return preparedConversationRef.current;
     const created = await ensureConversation?.();
-    if (!created) throw new Error("无法创建附件所属对话，请稍后重试。");
+    if (!created) throw new Error("无法创建对话，请稍后重试。");
     preparedConversationRef.current = created;
     return created;
   };
 
-  const startUpload = async (
-    item: ComposerAttachment,
-    targetConversationId: string
-  ): Promise<void> => {
-    const controller = new AbortController();
-    controllersRef.current.set(item.id, controller);
-    setAttachment(item.id, { status: "uploading", progress: 0, error: undefined });
-    try {
-      const projection = await uploadChatAttachment(
-        targetConversationId,
-        item.file,
-        item.uploadId,
-        (loaded, total) =>
-          setAttachment(item.id, {
-            progress: total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0,
-          }),
-        controller.signal
-      );
-      setAttachment(item.id, {
-        status: "uploaded",
-        objectId: projection.object_id,
-        progress: 100,
-      });
-    } catch (error) {
-      if (error instanceof DOMException && error.name === "AbortError") {
-        setAttachment(item.id, { status: "cancelled", progress: 0 });
-      } else {
-        setAttachment(item.id, { status: "error", error: errorMessage(error) });
-      }
-    } finally {
-      controllersRef.current.delete(item.id);
-    }
-  };
-
-  const addSelectedFiles = async (files: FileList | null) => {
-    if (!files) return;
-    const selected = Array.from(files).map((file) => {
-      const tooLarge = file.size > MAX_ATTACHMENT_BYTES;
-      const empty = file.size === 0;
-      return {
-        id: newId("attachment"),
-        file,
-        filename: file.name,
-        uploadId: newId("upload"),
-        status: tooLarge || empty ? ("error" as const) : ("local" as const),
-        progress: 0,
-        error: tooLarge ? "文件超过 10 MB 大小限制，请压缩后重试。" : empty ? "文件为空，无法上传。" : undefined,
-      };
-    });
-    setAttachments((current) => [...current, ...selected]);
-    setToolNotice("");
-
-    if (!conversationId && !ensureConversation) return;
-    let targetConversationId: string;
-    try {
-      targetConversationId = await resolveConversation();
-    } catch (error) {
-      const message = errorMessage(error);
-      selected.forEach((item) => setAttachment(item.id, { status: "error", error: message }));
-      return;
-    }
-    await Promise.all(
-      selected
-        .filter((item) => item.status === "local")
-        .map((item) => startUpload(item, targetConversationId))
-    );
-  };
-
-  const retryUpload = async (item: ComposerAttachment) => {
-    try {
-      await startUpload(item, await resolveConversation());
-    } catch (error) {
-      setAttachment(item.id, { status: "error", error: errorMessage(error) });
-    }
-  };
-
-  const removeAttachment = async (item: ComposerAttachment) => {
-    if (item.status === "uploading") {
-      controllersRef.current.get(item.id)?.abort();
-      try {
-        await cancelChatAttachmentUpload(await resolveConversation(), item.uploadId);
-        setAttachment(item.id, { status: "cancelled", progress: 0 });
-      } catch (error) {
-        setAttachment(item.id, { status: "error", error: errorMessage(error) });
-      }
-      return;
-    }
-    if (item.objectId && preparedConversationRef.current) {
-      try {
-        await cancelChatAttachment(preparedConversationRef.current, item.objectId);
-      } catch (error) {
-        setAttachment(item.id, { status: "error", error: errorMessage(error) });
-        return;
-      }
-    }
-    setAttachments((current) => current.filter((candidate) => candidate.id !== item.id));
-  };
-
   const send = async () => {
-    // canSend 已包含 !hasUploading：上传中按钮禁用且 Enter 发送同门，见
-    // 下方键处理；这里不再重复拦截（Issue 04 移除不可达分支）。
     if (!canSend || generating) return;
-    const ids = uploadedAttachments.flatMap((item) => (item.objectId ? [item.objectId] : []));
     try {
       const accepted = await onSend(
-        text.trim() || "（仅附件）",
-        ids,
+        text.trim(),
         conversationId ?? preparedConversationRef.current,
         useKnowledgeBase,
         useProfile
       );
       if (accepted === false) return;
       setText("");
-      setAttachments((current) =>
-        current.filter((item) => item.status !== "uploaded" || !item.objectId)
-      );
       setToolNotice("");
       cancelRecording();
       requestAnimationFrame(autoGrow);
     } catch (error) {
-      setToolNotice(errorMessage(error));
+      setToolNotice(error instanceof Error ? error.message : "发送失败，请重试。");
     }
   };
 
@@ -565,54 +395,9 @@ export function Composer({
   useEffect(
     () => () => {
       cancelRecording();
-      controllersRef.current.forEach((controller, id) => {
-        controller.abort();
-        const item = attachmentsRef.current.find((candidate) => candidate.id === id);
-        const targetConversationId = conversationId ?? preparedConversationRef.current;
-        if (item && targetConversationId) {
-          void cancelChatAttachmentUpload(targetConversationId, item.uploadId);
-        }
-      });
     },
     [conversationId]
   );
-
-  // Issue 04：关页重开后恢复未发送草稿——从服务端读取本会话「已上传
-  // 未绑定」附件并显示为待绑定状态（浏览器 sessionStorage 不承担事实
-  // 源）。恢复失败静默：附件仍在服务端，可再次打开恢复；非数组响应
-  // （协议替身等）按空列表处理，不中断输入。
-  useEffect(() => {
-    if (!conversationId) return;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const unbound = await listUnboundAttachments(conversationId);
-        if (cancelled || !Array.isArray(unbound) || unbound.length === 0) return;
-        const restored = unbound.map((item) => ({
-          id: newId("attachment"),
-          file: new File([], item.original_filename, { type: item.media_type }),
-          filename: item.original_filename,
-          uploadId: `restore-${item.object_id}`,
-          objectId: item.object_id,
-          status: "uploaded" as const,
-          progress: 100,
-          size: item.content_length,
-        }));
-        if (cancelled) return;
-        // 去重只在 updater 内做一次：以提交时的最新附件状态为准
-        // （获取期间用户可能已重新上传同一文件）。
-        setAttachments((current) => {
-          const known = new Set(current.map((item) => item.objectId));
-          return [...current, ...restored.filter((item) => !known.has(item.objectId))];
-        });
-      } catch {
-        // 恢复失败静默（协议替身可能拦截并返回非预期形状）。
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [conversationId]);
 
   const iconButtonStyle: React.CSSProperties = {
     display: "inline-flex",
@@ -641,69 +426,6 @@ export function Composer({
         gap: "var(--space-2)",
       }}
     >
-      {attachments.length > 0 && (
-        <ul role="list" aria-label="待发送附件" style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-2)" }}>
-          {attachments.map((item) => (
-            <li
-              key={item.id}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "var(--space-2)",
-                maxWidth: "100%",
-                padding: "var(--space-1) var(--space-2)",
-                borderRadius: "var(--radius-md)",
-                border: `1px solid ${item.status === "error" ? "var(--color-status-error)" : "var(--color-border)"}`,
-                backgroundColor: "var(--color-bg-secondary)",
-                fontSize: "var(--text-sm)",
-                color: "var(--color-text-secondary)",
-              }}
-            >
-              <Icon name="uploadFile" size={16} aria-hidden />
-              <span style={{ minWidth: 0 }}>
-                <span
-                  style={{
-                    display: "block",
-                    maxWidth: "22rem",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={item.filename}
-                >
-                  {item.filename}
-                </span>
-                <span role={item.status === "error" ? "alert" : "status"} style={{ fontSize: "var(--text-xs)" }}>
-                  {formatFileType(item.file.type, item.filename)} · {formatSize(item.size ?? item.file.size)} · {attachmentStatus(item)}
-                </span>
-              </span>
-              {item.status === "uploading" && (
-                <progress value={item.progress} max={100} aria-label={`${item.filename} 上传进度`} />
-              )}
-              {item.status === "error" ? (
-                <button
-                  type="button"
-                  onClick={() => void retryUpload(item)}
-                  aria-label={`重试上传 ${item.filename}`}
-                  style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
-                >
-                  重试
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  aria-label={`${item.status === "uploading" ? "取消上传" : "移除附件"} ${item.filename}`}
-                  onClick={() => void removeAttachment(item)}
-                  style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
-                >
-                  <Icon name={item.status === "uploading" ? "close" : "close"} size={14} aria-hidden />
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-
       <label htmlFor="composer-input" className="sc-visually-hidden">输入消息</label>
       <textarea
         ref={textareaRef}
@@ -735,48 +457,7 @@ export function Composer({
         }}
       />
 
-      {learningProject && (
-        <div
-          data-testid="composer-learning-project-chip"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-2)",
-            alignSelf: "flex-start",
-            maxWidth: "100%",
-            padding: "var(--space-1) var(--space-2)",
-            borderRadius: "var(--radius-md)",
-            border: "1px solid var(--color-border)",
-            backgroundColor: "var(--color-bg-secondary)",
-            fontSize: "var(--text-sm)",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          <Icon name="learningProject" size={16} aria-hidden />
-          <span
-            style={{
-              minWidth: 0,
-              maxWidth: "22rem",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-            title={learningProject.name}
-          >
-            {learningProject.name}
-          </span>
-          <button
-            type="button"
-            aria-label="清除学习项目选择"
-            onClick={() => onSelectLearningProject?.(null)}
-            style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
-          >
-            <Icon name="close" size={14} aria-hidden />
-          </button>
-        </div>
-      )}
-
-      {/* Issue 36：选中的插件 chip（与学习项目 chip 平行，随对话持久化）。
+      {/* Issue 36：选中的插件 chip（随对话持久化）。
           SKILL 插件展示名称与移除；MCP 插件额外提供「调用」按钮（真实
           invoke 走消息流）。停用/卸载/撤权后由服务端清洗，此处不再出现。 */}
       {pluginSelection.length > 0 && (
@@ -849,9 +530,9 @@ export function Composer({
         </div>
       )}
 
-      {/* Issue 20：本轮启用的来源层面板（附件 → 项目 → 知识库）。
-          附件/项目仅作展示，知识库可发送前关闭；关闭后本轮检索与引用
-          均不含知识库候选。只在真实对话（有 conversationId 或延迟创建
+      {/* Issue 20：本轮启用的来源层面板（知识库/画像）。
+          知识库可发送前关闭；关闭后本轮检索与引用均不含知识库候选。
+          只在真实对话（有 conversationId 或延迟创建
           钩子）渲染：模板设计基线不引入实时功能。 */}
       {isRealChat && (
       <div
@@ -866,46 +547,6 @@ export function Composer({
           padding: "var(--space-1) 0",
         }}
       >
-        <span
-          data-testid="source-layer-attachment"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-1)",
-            padding: "2px var(--space-2)",
-            borderRadius: "999px",
-            border: "1px solid var(--color-border)",
-            backgroundColor: "var(--color-bg-secondary)",
-            fontSize: "var(--text-xs)",
-            color: "var(--color-text-secondary)",
-          }}
-        >
-          <Icon name="uploadFile" size={13} aria-hidden />
-          {uploadedAttachments.length > 0
-            ? `当前附件 ${uploadedAttachments.length} 份`
-            : "当前附件 未附加"}
-        </span>
-        <span
-          data-testid="source-layer-project"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-1)",
-            padding: "2px var(--space-2)",
-            borderRadius: "999px",
-            border: "1px solid var(--color-border)",
-            backgroundColor: "var(--color-bg-secondary)",
-            fontSize: "var(--text-xs)",
-            color: "var(--color-text-secondary)",
-            maxWidth: "16rem",
-          }}
-          title={learningProject?.name ?? "该对话未归属学习项目"}
-        >
-          <Icon name="learningProject" size={13} aria-hidden />
-          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {learningProject ? `项目：${learningProject.name}` : "当前项目 未归属"}
-          </span>
-        </span>
         <button
           type="button"
           role="switch"
@@ -1024,20 +665,6 @@ export function Composer({
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
-          tabIndex={-1}
-          aria-hidden="true"
-          data-testid="composer-file-input"
-          onChange={(event) => {
-            const files = event.target.files;
-            event.target.value = "";
-            void addSelectedFiles(files);
-          }}
-          style={{ display: "none" }}
-        />
         <Menu
           ariaLabel="更多功能"
           openUp
@@ -1049,13 +676,6 @@ export function Composer({
             border: "1px solid var(--color-border)",
           }}
           items={[
-            // Issue 36：六入口固定顺序（上传文件/图片、论文搜索、文章
-            // 人味化、生涯规划助手、选择学习项目、选择已启用插件）。
-            {
-              label: "上传文件/图片",
-              icon: "uploadFile",
-              onSelect: () => fileInputRef.current?.click(),
-            },
             // Issue 28/29：文章人味化与生涯规划进入真实任务对话框，
             // 不再只是预填前缀；论文搜索仍为结构化预填（真实 arXiv MCP）。
             ...TOOL_PROMPTS.filter(
@@ -1078,16 +698,6 @@ export function Composer({
                     : () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
-            ...(onSelectLearningProject
-              ? [
-                  {
-                    label: "选择学习项目",
-                    icon: "learningProject" as const,
-                    returnFocus: false,
-                    onSelect: () => setProjectPickerOpen(true),
-                  },
-                ]
-              : []),
             // Issue 36：占位「选择已启用插件」实现为真实选择器（可用集合
             // = 当前账户已安装且启用；选择随对话持久化）。
             ...(onSelectPlugins
@@ -1283,26 +893,14 @@ export function Composer({
           </Button>
         )}
       </div>
-      {(toolNotice || hasUploading) && (
+      {toolNotice && (
         <p
           role={toolNotice ? "alert" : "status"}
           data-testid={toolNotice ? "tool-unavailable-notice" : "composer-status"}
           style={{ margin: 0, fontSize: "var(--text-sm)", color: toolNotice ? "var(--color-status-error)" : "var(--color-text-secondary)" }}
         >
-          {toolNotice || "附件正在上传，完成后即可发送。"}
+          {toolNotice}
         </p>
-      )}
-      {projectPickerOpen && onSelectLearningProject && (
-        <LearningProjectPickerDialog
-          selectedProjectId={learningProject?.project_id ?? null}
-          onSelect={(project) => {
-            setProjectPickerOpen(false);
-            onSelectLearningProject(
-              project ? { project_id: project.project_id, name: project.name } : null
-            );
-          }}
-          onClose={() => setProjectPickerOpen(false)}
-        />
       )}
     </div>
   );
