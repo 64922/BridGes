@@ -30,6 +30,7 @@ from bridges.contracts.retrieval import RetrievalRoundProjection
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection
+from bridges.routing import CapabilityRoute
 from bridges.web_search.contracts import WebSearchProjection
 
 
@@ -210,6 +211,10 @@ class ChatMessageProjection(BaseModel):
     arxiv_search: ArxivSearchProjection | None = Field(
         default=None,
         description="本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。",
+    )
+    route: CapabilityRoute | None = Field(
+        default=None,
+        description="本条消息绑定的自然语言能力路由快照（Issue 06）。",
     )
     teaching: TeachingTurnProjection | None = Field(
         default=None,
@@ -701,6 +706,9 @@ class ChatStreamStartedData(BaseModel):
     )
     arxiv_search: ArxivSearchProjection | None = Field(
         default=None, description="arXiv 论文搜索初始状态；无触发时为 None。"
+    )
+    route: CapabilityRoute | None = Field(
+        default=None, description="本轮自然语言能力路由快照。"
     )
     teaching: TeachingTurnProjection | None = Field(
         default=None, description="学习模式教学卡片初始状态。"

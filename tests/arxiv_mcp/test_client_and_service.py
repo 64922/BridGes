@@ -68,6 +68,30 @@ def test_client_parses_real_atom_metadata_and_derives_only_matching_links() -> N
     assert paper.pdf_url == "https://arxiv.org/pdf/2401.12345v2"
 
 
+def test_client_preserves_structured_route_constraints_in_arxiv_query() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, text=ATOM_RESPONSE)
+
+    client = ArxivMcpClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    )
+
+    client.search(
+        "quantum error correction author:Ada Lovelace title:structured codes year:2020-2024",
+        max_results=3,
+    )
+
+    params = dict(requests[0].url.params.multi_items())
+    assert params["max_results"] == "3"
+    assert 'all:quantum AND all:error AND all:correction' in params["search_query"]
+    assert 'au:"Ada Lovelace"' in params["search_query"]
+    assert 'ti:"structured codes"' in params["search_query"]
+    assert "submittedDate:[202001010000 TO 202412312359]" in params["search_query"]
+
+
 @pytest.mark.parametrize(
     ("status_code", "body", "expected_code"),
     [

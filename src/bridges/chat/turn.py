@@ -105,6 +105,7 @@ from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.service import LayeredRetrievalService
+from bridges.routing import CapabilityRoute, RouteStatus
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
@@ -1228,6 +1229,72 @@ class TurnOrchestrator:
                 account_id, conversation_id, until_user_message_id
             )
             mode = ChatMode(conversation.mode) if conversation is not None else CHAT_MODE
+            route_messages = self._repo.list_messages(account_id, conversation_id)
+            route_owner = owner_user_message(route_messages, assistant_message_id)
+            route = (
+                CapabilityRoute.model_validate(current.route)
+                if current.route is not None
+                else (
+                    CapabilityRoute.model_validate(route_owner.route)
+                    if route_owner is not None and route_owner.route is not None
+                    else None
+                )
+            )
+            paper_route = route is not None and route.is_paper_search
+            if paper_route and current.arxiv_search is not None:
+                persisted_arxiv = ArxivSearchProjection(**current.arxiv_search)
+                if persisted_arxiv.status == ArxivSearchStatus.SUCCESS:
+                    arxiv_search_projection = persisted_arxiv
+                    thinking = arxiv_search_thinking(thinking, persisted_arxiv)
+            if route is not None and route.status in {
+                RouteStatus.CLARIFY,
+                RouteStatus.REJECTED,
+            }:
+                feedback = route.clarification_question or (
+                    "论文搜索请求未通过参数校验，请调整后重试。"
+                )
+                route_error = route.error_code or "route_rejected"
+                if route.status == RouteStatus.CLARIFY:
+                    self._repo.update_message_content(
+                        account_id, assistant_message_id, feedback, datetime.now(UTC)
+                    )
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=done_thinking(thinking),
+                    )
+                    yield StreamEvent(kind="delta", delta=feedback)
+                    yield StreamEvent(kind="done")
+                else:
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.ERROR,
+                        error_code=route_error,
+                        error_message=feedback,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=failed_thinking(thinking, route_error),
+                    )
+                    yield StreamEvent(
+                        kind="error",
+                        error_code=route_error,
+                        error_message=feedback,
+                    )
+                return
             # Issue 28：用户消息携带 SKILL 载荷（bridges-humanizer）时走
             # 内置 SKILL 编排路径——同一真实消息流程（持久化/重试/审计），
             # 过程卡五态经 humanizer SSE 事件下发，终态 done/error 收敛。
@@ -1436,7 +1503,7 @@ class TurnOrchestrator:
 
             # 学习模式先检查三层本地材料，再按证据门结果自动选择公开来源。
             # 普通陪伴模式继续沿用“用户明确要求/时效/核查才联网”的规则。
-            if mode == ChatMode.STUDY:
+            if mode == ChatMode.STUDY and not paper_route:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -1797,7 +1864,7 @@ class TurnOrchestrator:
             # closed（不让模型用记忆伪装成真实结论）。Issue 06 T3：彼此
             # 独立且都已确定需要的来源并行执行，总耗时接近较慢者；结果
             # 按固定顺序（先论文后公网）处理，顺序确定。
-            if mode != ChatMode.STUDY:
+            if mode != ChatMode.STUDY or paper_route:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
@@ -1813,8 +1880,12 @@ class TurnOrchestrator:
                         assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
                     )
                     calls: list[tuple[str, Callable[[], object] | None]] = []
-                    if self._arxiv_search is not None:
-                        planned = self._arxiv_search.plan(round_query, mode_for_plan)
+                    if (
+                        paper_route
+                        and self._arxiv_search is not None
+                        and arxiv_search_projection is None
+                    ):
+                        planned = self._arxiv_search.plan_from_route(route)  # type: ignore[arg-type]
                         if planned.should_search:
                             arxiv_plan = planned
                             calls.append(
@@ -1825,7 +1896,7 @@ class TurnOrchestrator:
                                     ),
                                 )
                             )
-                    if self._web_search is not None:
+                    if self._web_search is not None and not paper_route:
                         planned = self._web_search.plan(round_query, mode_for_plan)
                         if planned.should_search:
                             search_plan = planned
@@ -2062,7 +2133,7 @@ class TurnOrchestrator:
                 return
             # 生成前执行一轮分层检索：查询文本取所属用户消息正文；检索
             # 结果固化到消息投影（引用展示数据不漂移），并注入最小上下文。
-            if retrieval_round is None:
+            if retrieval_round is None and not paper_route:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""

@@ -16,6 +16,7 @@ ARXIV_API_ENDPOINT = "https://export.arxiv.org/api/query"
 _ATOM_NS = "http://www.w3.org/2005/Atom"
 _ALLOWED_HOSTS = {"arxiv.org", "export.arxiv.org"}
 _ARXIV_ID = re.compile(r"^[^\s?#]+$")
+_STRUCTURED_FIELD = re.compile(r"(?:^|\s)(author|title|id|year):", re.I)
 
 
 class ArxivMcpError(Exception):
@@ -48,13 +49,7 @@ class ArxivMcpClient:
             assert_registered_arxiv_url(ARXIV_API_ENDPOINT)
             response = self._client.get(
                 ARXIV_API_ENDPOINT,
-                params={
-                    "search_query": f"all:{query}",
-                    "start": "0",
-                    "max_results": str(max_results),
-                    "sortBy": "submittedDate",
-                    "sortOrder": "descending",
-                },
+                params=_build_search_params(query, max_results),
             )
         except httpx.TimeoutException as exc:
             raise ArxivMcpError("arxiv_timeout", "arXiv 搜索超时，请重试。") from exc
@@ -84,6 +79,47 @@ class ArxivMcpClient:
 
     def close(self) -> None:
         self._client.close()
+
+
+def _build_search_params(query: str, max_results: int) -> dict[str, str]:
+    """把路由器的约束快照转换为 arXiv API 的结构化查询。"""
+    normalized = " ".join(query.split())
+    matches = list(_STRUCTURED_FIELD.finditer(normalized))
+    fields: dict[str, str] = {}
+    topic_parts: list[str] = []
+    cursor = 0
+    for index, match in enumerate(matches):
+        topic_parts.append(normalized[cursor : match.start()].strip())
+        value_end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
+        value = normalized[match.end() : value_end].strip()
+        if value:
+            fields[match.group(1).lower()] = value
+        cursor = value_end
+    if matches:
+        topic_parts.append(normalized[cursor:].strip())
+    topic = " ".join(part for part in topic_parts if part).strip()
+
+    params = {
+        "start": "0",
+        "max_results": str(max_results),
+        "sortBy": "submittedDate",
+        "sortOrder": "descending",
+    }
+    if fields.get("id"):
+        params["id_list"] = fields["id"]
+
+    clauses = [f"all:{token}" for token in topic.split()]
+    if fields.get("author"):
+        clauses.append(f'au:"{fields["author"].replace(chr(34), " ").strip()}"')
+    if fields.get("title"):
+        clauses.append(f'ti:"{fields["title"].replace(chr(34), " ").strip()}"')
+    if fields.get("year"):
+        year_from, _, year_to = fields["year"].partition("-")
+        year_to = year_to or year_from
+        clauses.append(f"submittedDate:[{year_from}01010000 TO {year_to}12312359]")
+    if clauses:
+        params["search_query"] = " AND ".join(clauses)
+    return params
 
 
 def _parse_atom(body: str) -> list[ArxivPaper]:

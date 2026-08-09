@@ -23,7 +23,7 @@ from pydantic import ValidationError
 from bridges import __version__
 from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamEvent
-from bridges.arxiv_mcp.contracts import ArxivSearchProjection
+from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentError, ChatAttachmentService
 from bridges.chat.lifecycle import GenerationLifecycle
@@ -90,6 +90,7 @@ from bridges.contracts.chat import (
     RemovedPluginSelection,
     VideoRequestPayload,
 )
+from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
 from bridges.contracts.feedback import (
     AnswerFeedback,
     AnswerFeedbackRequest,
@@ -150,6 +151,11 @@ def _started_event_payload(
         arxiv_search=(
             ArxivSearchProjection(**message.arxiv_search)
             if message.arxiv_search is not None
+            else None
+        ),
+        route=(
+            CapabilityRoute.model_validate(message.route)
+            if message.route is not None
             else None
         ),
         teaching=(
@@ -223,6 +229,8 @@ class ChatService:
         #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用与
         #: 敏感确认；未挂载时携带 mcp_call 载荷的消息按错误收敛。
         self._mcp = mcp_service
+        #: 新聊天自然语言主能力路由；结果在消息上持久化后才允许外部调用。
+        self._router = NaturalLanguageRouter()
         #: 进行中生成的停止信号与活跃度跟踪（注册/续期/TTL/停止唯一入口）。
         self._lifecycle = GenerationLifecycle()
         #: 回合编排深模块（Issue 42）：生成管线（模式路由/检索/切片编译/
@@ -660,6 +668,13 @@ class ChatService:
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
 
         mode = ChatMode(record.mode)
+        route = self._route_for_turn(
+            content,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+        )
         (
             user_message,
             assistant_message,
@@ -674,6 +689,7 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
+            route=route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -772,6 +788,47 @@ class ChatService:
         )
         return skill_payload, image_payload, video_payload, mcp_call_payload
 
+    def _route_for_turn(
+        self,
+        content: str,
+        *,
+        skill_payload: dict[str, Any] | None,
+        image_payload: dict[str, Any] | None,
+        video_payload: dict[str, Any] | None,
+        mcp_call_payload: dict[str, Any] | None,
+    ) -> CapabilityRoute:
+        """让显式能力载荷优先于文本中的相邻意图。"""
+        explicit_capability = None
+        reason = None
+        if skill_payload is not None:
+            explicit_capability = MainCapability.HUMANIZER
+            reason = "已选择 Humanizer 能力"
+        elif image_payload is not None:
+            explicit_capability = MainCapability.IMAGE
+            reason = "已提交图片能力载荷"
+        elif video_payload is not None:
+            explicit_capability = MainCapability.VIDEO
+            reason = "已提交视频能力载荷"
+        elif mcp_call_payload is not None:
+            return CapabilityRoute(
+                status=RouteStatus.ORDINARY,
+                main_capability=MainCapability.ORDINARY_CHAT,
+                confidence=1.0,
+                reason="已提交显式 MCP 调用载荷",
+                knowledge_base_allowed=False,
+                web_search_allowed=False,
+            )
+        if explicit_capability is None:
+            return self._router.classify(content)
+        return CapabilityRoute(
+            status=RouteStatus.MATCHED,
+            main_capability=explicit_capability,
+            confidence=1.0,
+            reason=reason or "已提交显式能力载荷",
+            knowledge_base_allowed=False,
+            web_search_allowed=False,
+        )
+
     def _validate_attachments(
         self,
         account_id: str,
@@ -804,6 +861,7 @@ class ChatService:
         image_payload: dict[str, Any] | None,
         video_payload: dict[str, Any] | None,
         mcp_call_payload: dict[str, Any] | None,
+        route: CapabilityRoute,
         use_knowledge_base: bool,
         use_profile: bool,
         now: datetime,
@@ -819,17 +877,28 @@ class ChatService:
         # 人味化编排按需执行），避免把任务摘要误当搜索查询。
         web_search = (
             self._web_search.initial_projection(self._web_search.plan(content, mode))
-            if self._web_search is not None and skill_payload is None
+            if self._web_search is not None
+            and skill_payload is None
+            and not route.is_paper_search
+            and route.status not in {RouteStatus.CLARIFY, RouteStatus.REJECTED}
             else None
         )
         arxiv_search = (
-            self._arxiv_search.initial_projection(self._arxiv_search.plan(content, mode))
-            if self._arxiv_search is not None and skill_payload is None
+            self._arxiv_search.initial_projection(
+                self._arxiv_search.plan_from_route(route)
+            )
+            if self._arxiv_search is not None
+            and skill_payload is None
+            and route.is_paper_search
             else None
         )
         teaching = (
             self._teaching.initial(content)
-            if mode == ChatMode.STUDY and skill_payload is None
+            if (
+                mode == ChatMode.STUDY
+                and skill_payload is None
+                and not route.is_paper_search
+            )
             else None
         )
         user_message = MessageRecord(
@@ -852,6 +921,7 @@ class ChatService:
             image=image_payload,
             video=video_payload,
             mcp_call=mcp_call_payload,
+            route=route.model_dump(mode="json"),
         )
         assistant_message = MessageRecord(
             message_id=secrets.token_urlsafe(16),
@@ -872,6 +942,7 @@ class ChatService:
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
+            route=route.model_dump(mode="json"),
         )
         # Issue 02：同一事务创建消息、queued 运行、started 事件与队列行。
         run_id = secrets.token_urlsafe(16)
@@ -1005,6 +1076,13 @@ class ChatService:
             )
         # Issue 04：SKILL 任务契约引用的附件必须与消息绑定集合一致。
         self._validate_skill_attachment_consistency(skill_payload, attachment_ids)
+        route = self._route_for_turn(
+            content,
+            skill_payload=skill_payload,
+            image_payload=image_payload,
+            video_payload=video_payload,
+            mcp_call_payload=mcp_call_payload,
+        )
         title = content if len(content) <= _TITLE_MAX else content[:_TITLE_MAX] + "…"
         target_conversation_id = conversation_id or secrets.token_urlsafe(16)
         (
@@ -1021,6 +1099,7 @@ class ChatService:
             image_payload=image_payload,
             video_payload=video_payload,
             mcp_call_payload=mcp_call_payload,
+            route=route,
             use_knowledge_base=use_knowledge_base,
             use_profile=use_profile,
             now=now,
@@ -1308,21 +1387,43 @@ class ChatService:
         )
         now = datetime.now(UTC)
         mode = ChatMode(record.mode)
+        route = (
+            CapabilityRoute.model_validate(owner.route)
+            if owner.route is not None
+            else None
+        )
+        reusable_arxiv_search: ArxivSearchProjection | None = None
+        for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
+            if previous_attempt.arxiv_search is None:
+                continue
+            previous_projection = ArxivSearchProjection(**previous_attempt.arxiv_search)
+            if previous_projection.status == ArxivSearchStatus.SUCCESS:
+                reusable_arxiv_search = previous_projection
+                break
         web_search = (
             self._web_search.initial_projection(self._web_search.plan(owner.content, mode))
             if self._web_search is not None
+            and route is not None
+            and not route.is_paper_search
+            and route.status not in {RouteStatus.CLARIFY, RouteStatus.REJECTED}
             else None
         )
         arxiv_search = (
-            self._arxiv_search.initial_projection(
-                self._arxiv_search.plan(owner.content, mode), recovery=True
+            reusable_arxiv_search
+            or self._arxiv_search.initial_projection(
+                self._arxiv_search.plan_from_route(route), recovery=True
             )
             if self._arxiv_search is not None
+            and route is not None
+            and route.is_paper_search
             else None
         )
         teaching = (
             self._teaching.initial(owner.content, recovery=True)
-            if mode == ChatMode.STUDY
+            if (
+                mode == ChatMode.STUDY
+                and not (route is not None and route.is_paper_search)
+            )
             else None
         )
         new_attempt = MessageRecord(
@@ -1347,6 +1448,7 @@ class ChatService:
             web_search=(web_search.model_dump(mode="json") if web_search else None),
             arxiv_search=(arxiv_search.model_dump(mode="json") if arxiv_search else None),
             teaching=(teaching.model_dump(mode="json") if teaching else None),
+            route=owner.route,
         )
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
@@ -1826,6 +1928,11 @@ class ChatService:
                 ArxivSearchProjection(**message.arxiv_search)
                 if message.arxiv_search is not None
                 and message.role == ChatMessageRole.ASSISTANT
+                else None
+            ),
+            route=(
+                CapabilityRoute.model_validate(message.route)
+                if message.route is not None
                 else None
             ),
             teaching=(

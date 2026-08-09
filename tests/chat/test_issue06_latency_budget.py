@@ -199,7 +199,7 @@ def test_stage_events_in_expected_order_with_desensitized_payloads(
     _install_search_fakes(sqlite_app, web=fake_web, arxiv=fake_arxiv)
     conversation_id = _create_conversation(client)
     created = generation_helpers["send"](
-        client, conversation_id, content="请联网搜索最新消息并查一下论文"
+        client, conversation_id, content="Please search the latest news"
     )
     message_id = created["assistant_message"]["message_id"]
     generation_helpers["drive"](sqlite_app)
@@ -224,9 +224,9 @@ def test_stage_events_in_expected_order_with_desensitized_payloads(
         if name == "stage":
             assert "content" not in payload, "阶段事件不得携带正文"
             assert "query" not in payload, "阶段事件不得携带查询"
-    # 两个公开来源都被触发（并行）
+    # 单主能力路由：网页请求不附带论文副作用。
     assert fake_web.calls == 1
-    assert fake_arxiv.calls == 1
+    assert fake_arxiv.calls == 0
 
 
 def test_parallel_searches_wall_clock_approaches_slower_source(
@@ -258,7 +258,7 @@ def test_parallel_searches_wall_clock_approaches_slower_source(
             output_schema_version="chat-completion-v1",
         )
     )
-    adapter = _ChunkedAdapter(chunks=1, citation_text="[web-1] [arxiv-1]")
+    adapter = _ChunkedAdapter(chunks=1, citation_text="[web-1]")
     gateway = ModelGateway(registry)
     gateway.register_adapter("qwen_text_chat", "1", adapter)
     service = ChatService(repository=repository, gateway=gateway)
@@ -268,7 +268,7 @@ def test_parallel_searches_wall_clock_approaches_slower_source(
     service._turn._arxiv_search = fake_arxiv  # noqa: SLF001
     conversation = service.create_conversation("alice")
     user, assistant = service.start_generation(
-        "alice", conversation.conversation_id, "请联网搜索最新进展并查论文"
+        "alice", conversation.conversation_id, "Please search the latest progress"
     )
     context = RunContextEnvelope(
         run_id="parallel-run-1",
@@ -290,16 +290,14 @@ def test_parallel_searches_wall_clock_approaches_slower_source(
         )
     )
     elapsed = time.monotonic() - started
-    assert fake_web.calls == 1 and fake_arxiv.calls == 1
-    # 并行：≈ max(0.8, 1.5) + 检索/模型开销；串行则为 0.8 + 1.5 + 开销
+    assert fake_web.calls == 1 and fake_arxiv.calls == 0
+    # 单一主能力只等待选中的来源，不能因论文副作用额外等待。
     assert elapsed < 2.2, f"并行搜索总耗时 {elapsed:.2f}s 应接近较慢来源"
     assert events[-1].kind == "done"
     final = service.message_projection("alice", assistant.message_id)
     assert final is not None and final.status.value == "done"
     assert final.web_search is not None and final.web_search.status == WebSearchStatus.SUCCESS
-    assert (
-        final.arxiv_search is not None and final.arxiv_search.status == ArxivSearchStatus.SUCCESS
-    )
+    assert final.arxiv_search is None
 
 
 def test_slow_search_degrades_within_stage_budget_not_waiting(

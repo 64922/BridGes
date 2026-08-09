@@ -19,6 +19,12 @@ from bridges.arxiv_mcp.process import ArxivMcpProcessClient
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.observability.service import ObservabilityService
+from bridges.routing import (
+    CapabilityRoute,
+    NaturalLanguageRouter,
+    PaperSearchConstraints,
+    RouteStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -28,6 +34,9 @@ class ArxivSearchPlan:
     should_search: bool
     query: str
     reason: str
+    max_results: int = 5
+    constraints: PaperSearchConstraints | None = None
+    route_version: str = "2026.08.09"
 
 
 class ArxivClient(Protocol):
@@ -42,6 +51,27 @@ class ArxivClient(Protocol):
 
 class ArxivQueryPlanner:
     """识别论文意图并删除身份、私密材料与凭据。"""
+
+    def __init__(self, router: NaturalLanguageRouter | None = None) -> None:
+        self._router = router or NaturalLanguageRouter()
+
+    def route(self, content: str) -> CapabilityRoute:
+        """只分类一次，供聊天入口持久化并在后续重放复用。"""
+        return self._router.classify(content)
+
+    def plan_from_route(self, route: CapabilityRoute) -> ArxivSearchPlan:
+        """把已持久化的路由快照编译为论文 worker 计划，不重新分类。"""
+        if route.status != RouteStatus.MATCHED or route.paper_search is None:
+            return ArxivSearchPlan(False, "", "本轮未触发 arXiv 论文搜索")
+        paper_plan = route.paper_search
+        return ArxivSearchPlan(
+            True,
+            paper_plan.normalized_query,
+            route.reason,
+            paper_plan.constraints.max_results,
+            paper_plan.constraints,
+            paper_plan.version,
+        )
 
     _ARXIV = re.compile(r"arxiv|论文|文献", re.IGNORECASE)
     _ACTION = re.compile(
@@ -80,17 +110,28 @@ class ArxivQueryPlanner:
         *,
         force: bool = False,
     ) -> ArxivSearchPlan:
-        explicit = bool(re.search(r"论文搜索|搜索论文|查论文|找论文", content, re.IGNORECASE))
-        natural = bool(self._ARXIV.search(content) and self._ACTION.search(content))
-        should_search = force or explicit or natural
-        reason = (
-            "学习模式本地证据不足，自动补充 arXiv 论文"
-            if force and not (explicit or natural)
-            else "用户明确要求搜索论文"
-            if should_search
-            else "本轮未触发 arXiv 论文搜索"
-        )
-        return ArxivSearchPlan(should_search, self._scrub(content) if should_search else "", reason)
+        route = self.route(content)
+        if route.status == RouteStatus.MATCHED and route.paper_search is not None:
+            paper_plan = route.paper_search
+            return ArxivSearchPlan(
+                True,
+                paper_plan.normalized_query,
+                route.reason,
+                paper_plan.constraints.max_results,
+                paper_plan.constraints,
+                paper_plan.version,
+            )
+        if force:
+            query = self._scrub(content)
+            constraints = PaperSearchConstraints(topic_terms=[query or "公开论文主题"])
+            return ArxivSearchPlan(
+                True,
+                query or "公开论文主题",
+                "学习模式本地证据不足，自动补充 arXiv 论文",
+                constraints.max_results,
+                constraints,
+            )
+        return ArxivSearchPlan(False, "", "本轮未触发 arXiv 论文搜索")
 
     def _scrub(self, content: str) -> str:
         cleaned = self._CODE.sub(" ", content)
@@ -130,6 +171,9 @@ class ArxivSearchService:
     ) -> ArxivSearchPlan:
         return self._planner.plan(content, mode, force=force)
 
+    def plan_from_route(self, route: CapabilityRoute) -> ArxivSearchPlan:
+        return self._planner.plan_from_route(route)
+
     def close(self) -> None:
         """关闭受限 worker，避免应用重载后遗留子进程。"""
         close = getattr(self._client, "close", None)
@@ -161,8 +205,22 @@ class ArxivSearchService:
             result = self._cancelled_projection(plan)
             self._audit(account_id, plan, result)
             return result
+        if not 1 <= plan.max_results <= 10 or not plan.query.strip():
+            result = ArxivSearchProjection(
+                status=ArxivSearchStatus.ERROR,
+                trigger_reason=plan.reason,
+                query_summary=plan.query,
+                searched_at=datetime.now(UTC),
+                error_code="arxiv_request",
+                error_message="论文搜索参数不合法，请调整主题、年份或结果数量后重试。",
+                can_retry=False,
+            )
+            self._audit(account_id, plan, result)
+            return result
         try:
-            papers = self._client.search(plan.query, max_results=5, stop_event=stop_event)
+            papers = self._client.search(
+                plan.query, max_results=plan.max_results, stop_event=stop_event
+            )
         except ArxivMcpError as exc:
             if exc.code == "arxiv_cancelled":
                 # 搜索期间用户取消：投影为 cancelled，而不是折叠成启动失败
@@ -191,7 +249,7 @@ class ArxivSearchService:
             return result
         projection = [
             self._project_paper(index, paper, plan.query)
-            for index, paper in enumerate(papers, 1)
+            for index, paper in enumerate(_deduplicate_papers(papers), 1)
         ]
         result = ArxivSearchProjection(
             status=ArxivSearchStatus.SUCCESS if projection else ArxivSearchStatus.EMPTY,
@@ -277,3 +335,15 @@ class ArxivSearchService:
             ),
             learning_advice_zh="建议先阅读摘要和引言，随后核对方法、实验条件与局限；如需深入，再从该论文的参考文献和后续版本继续学习。",
         )
+
+
+def _deduplicate_papers(papers: list[ArxivPaper]) -> list[ArxivPaper]:
+    """按原始 arXiv 标识去重并保持供应商返回顺序。"""
+    seen: set[str] = set()
+    unique: list[ArxivPaper] = []
+    for paper in papers:
+        if paper.arxiv_id in seen:
+            continue
+        seen.add(paper.arxiv_id)
+        unique.append(paper)
+    return unique
