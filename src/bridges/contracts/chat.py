@@ -18,6 +18,7 @@ from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
 )
+from bridges.contracts.routing import RouteDecision
 from bridges.contracts.humanizer import (
     HumanizerProcessState,
     HumanizerResultProjection,
@@ -28,7 +29,6 @@ from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
 from bridges.contracts.profile_extraction import ProfilePrivacyNotice
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import RetrievalRoundProjection
-from bridges.contracts.routing import RouteDecision
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.video import VideoTaskProjection

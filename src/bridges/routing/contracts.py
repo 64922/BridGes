@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from bridges.contracts.career import CareerPlanningRouteContract
 from bridges.video.constants import (
     VIDEO_MODEL_ID,
     VIDEO_SUPPORTED_DURATIONS_SECONDS,
@@ -111,8 +112,10 @@ class CapabilityRoute(BaseModel):
     main_capability: MainCapability
     confidence: Annotated[float, Field(ge=0, le=1)]
     reason: str = Field(min_length=1, max_length=240)
+    normalized_query: str | None = Field(default=None, max_length=2_000)
     paper_search: PaperSearchPlan | None = None
     video: VideoGenerationPlan | None = None
+    career_contract: CareerPlanningRouteContract | None = None
     clarification_question: str | None = Field(default=None, max_length=240)
     error_code: str | None = Field(default=None, max_length=80)
     knowledge_base_allowed: bool = True
@@ -135,6 +138,13 @@ class CapabilityRoute(BaseModel):
                 raise ValueError("未命中视频路由不能携带生成合同。")
         elif self.video is not None:
             raise ValueError("非视频主能力不能携带视频生成合同。")
+        if self.main_capability == MainCapability.CAREER:
+            if self.status == RouteStatus.MATCHED and self.career_contract is None:
+                raise ValueError("生涯规划路由命中必须携带规划合同。")
+            if self.status != RouteStatus.MATCHED and self.career_contract is not None:
+                raise ValueError("未命中生涯规划不能携带规划合同。")
+        elif self.career_contract is not None:
+            raise ValueError("非生涯规划主能力不能携带规划合同。")
         if self.status in {RouteStatus.CLARIFY, RouteStatus.REJECTED} and not (
             self.clarification_question or self.error_code
         ):
@@ -159,4 +169,13 @@ class CapabilityRoute(BaseModel):
             self.status == RouteStatus.MATCHED
             and self.main_capability == MainCapability.VIDEO
             and self.video is not None
+        )
+
+    @property
+    def is_career(self) -> bool:
+        """当前快照是否代表可执行的生涯规划主能力。"""
+        return (
+            self.status == RouteStatus.MATCHED
+            and self.main_capability == MainCapability.CAREER
+            and self.career_contract is not None
         )

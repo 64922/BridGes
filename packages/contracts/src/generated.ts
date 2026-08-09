@@ -359,7 +359,7 @@ export interface paths {
          * Create Conversation
          * @description 新建对话；标题可选，缺省由首条消息自动推导。
          *
-         *     ``mode`` 缺省为日常陪伴；学习项目新建学习对话时传 ``study``。
+         *     ``mode`` 缺省为日常陪伴；历史学习项目会话仅通过读取接口兼容。
          *     ``plugin_selection`` 为初始插件选择（新聊天首页先选插件再建对话），
          *     逐项校验当前账户已安装且启用，非法项 422 拒绝并说明原因。
          */
@@ -387,8 +387,7 @@ export interface paths {
          *     首页发送第一条消息或调用任一功能时使用——客户端收到成功响应后再
          *     导航，``sessionStorage`` 不再承担业务真相。``idempotency_key`` 抵御
          *     双击与网络重放：同键重放返回 200 与既有数据；新建返回 201。
-         *     ``conversation_id`` 可选指定已预建的空会话（附件上传路径先建会话
-         *     再发送），缺省在事务内新建会话；``mode``/``project_id``/
+         *     ``conversation_id`` 可选指定已预建的空会话，缺省在事务内新建会话；``mode``/``project_id``/
          *     ``plugin_selection`` 随首轮写入会话。失败整事务回滚，不留空草稿。
          */
         post: operations["create_first_turn_chat_first_turn_post"];
@@ -471,10 +470,7 @@ export interface paths {
         put?: never;
         /**
          * Upload Attachment
-         * @description 接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
-         *
-         *     上传成功即把对象入队摄取（Issue 17）：解析、分块与索引由后台
-         *     执行器完成；不支持解析的类型不创建摄取记录，附件投影显示"未索引"。
+         * @description 聊天附件上传已退役；文件必须先进入全局知识库。
          */
         post: operations["upload_attachment_chat_conversations__conversation_id__attachments_post"];
         delete?: never;
@@ -515,7 +511,7 @@ export interface paths {
         post?: never;
         /**
          * Delete Message Attachment
-         * @description 解除消息引用并按对象引用计数安全清理附件。
+         * @description 聊天附件删除已退役；历史附件仅保留读取兼容。
          */
         delete: operations["delete_message_attachment_chat_conversations__conversation_id__messages__message_id__attachments__object_id__delete"];
         options?: never;
@@ -535,7 +531,7 @@ export interface paths {
         post?: never;
         /**
          * Cancel Attachment Upload
-         * @description 按上传幂等标识取消未绑定项，覆盖客户端中止后的服务端竞态。
+         * @description 聊天附件上传取消已退役。
          */
         delete: operations["cancel_attachment_upload_chat_conversations__conversation_id__attachments_by_upload__upload_id__delete"];
         options?: never;
@@ -555,7 +551,7 @@ export interface paths {
         post?: never;
         /**
          * Cancel Attachment
-         * @description 删除尚未绑定消息的上传项，用于取消或移除待发送附件。
+         * @description 聊天附件取消已退役。
          */
         delete: operations["cancel_attachment_chat_conversations__conversation_id__attachments__object_id__delete"];
         options?: never;
@@ -822,7 +818,7 @@ export interface paths {
         put?: never;
         /**
          * Retry Attachment Ingestion
-         * @description 把失败文档重新入队；非失败状态幂等返回当前投影。
+         * @description 聊天附件摄取重试已退役；知识库材料由知识库流程重建派生索引。
          */
         post: operations["retry_attachment_ingestion_chat_conversations__conversation_id__attachments__object_id__ingestion_retry_post"];
         delete?: never;
@@ -1023,7 +1019,7 @@ export interface paths {
         put?: never;
         /**
          * Create Project
-         * @description 新建学习项目；名称必填，描述可选。
+         * @description 学习项目创建已退役；历史项目仍由只读投影读取。
          */
         post: operations["create_project_learning_projects_post"];
         delete?: never;
@@ -1048,14 +1044,14 @@ export interface paths {
         post?: never;
         /**
          * Delete Project
-         * @description 删除项目；``keep`` 保留对话（解除归属），``delete`` 连同对话删除。
+         * @description 学习项目删除已退役，物理清理必须走独立审计。
          */
         delete: operations["delete_project_learning_projects__project_id__delete"];
         options?: never;
         head?: never;
         /**
          * Update Project
-         * @description 更新项目名称或描述；字段缺省保持不变，显式 null 清空描述（名称显式 null 为 422）。
+         * @description 学习项目更新已退役，避免触碰历史对象。
          */
         patch: operations["update_project_learning_projects__project_id__patch"];
         trace?: never;
@@ -1075,11 +1071,7 @@ export interface paths {
         put?: never;
         /**
          * Upload File
-         * @description 接收原始文件字节；类型、扩展名、大小与文件名均由服务端校验。
-         *
-         *     上传成功即入队摄取（source=project_file）：解析、分块与索引由后台
-         *     执行器完成。同项目同名同内容的重复上传幂等复用——客户端安全重试
-         *     同一上传只会得到已有文件的 200 投影，绝不重复摄取。
+         * @description 项目文件上传已退役；不读取请求体，也不访问对象库。
          */
         post: operations["upload_file_learning_projects__project_id__files_post"];
         delete?: never;
@@ -1120,7 +1112,7 @@ export interface paths {
         post?: never;
         /**
          * Delete File
-         * @description 级联删除项目文件与派生索引数据；被后台任务使用时返回 409。
+         * @description 项目文件删除已退役，物理清理必须单独审计。
          */
         delete: operations["delete_file_learning_projects__project_id__files__object_id__delete"];
         options?: never;
@@ -6854,7 +6846,11 @@ export interface components {
             confidence: number;
             /** Reason */
             reason: string;
+            /** Normalized Query */
+            normalized_query?: string | null;
             paper_search?: components["schemas"]["PaperSearchPlan"] | null;
+            video?: components["schemas"]["VideoGenerationPlan"] | null;
+            career_contract?: components["schemas"]["CareerPlanningRouteContract"] | null;
             /** Clarification Question */
             clarification_question?: string | null;
             /** Error Code */
@@ -7212,6 +7208,8 @@ export interface components {
              * @description 用户原始生涯问题（截断）。
              */
             intent: string;
+            /** @description 自然语言路由编译的规划合同快照。 */
+            route_contract?: components["schemas"]["CareerPlanningRouteContract"] | null;
             /** @description 终态。 */
             status: components["schemas"]["CareerPlanningStatus"];
             /**
@@ -7267,6 +7265,57 @@ export interface components {
              * @description 创建时间。
              */
             created_at: string;
+        };
+        /**
+         * CareerPlanningRouteContract
+         * @description 自然语言进入生涯规划时固化的最小规划合同。
+         */
+        CareerPlanningRouteContract: {
+            /**
+             * Version
+             * @default career-route-1
+             * @constant
+             */
+            version: "career-route-1";
+            /**
+             * Target
+             * @description 本轮要做出的职业方向决策目标。
+             */
+            target: string;
+            /**
+             * Time Horizon
+             * @description 规划时间范围；未明确时使用稳定默认值。
+             */
+            time_horizon: string;
+            /**
+             * Constraints
+             * @description 用户已经表达的地点、时间或资源约束。
+             */
+            constraints?: string[];
+            /**
+             * Evidence Requirements
+             * @description 允许进入本轮规划的证据类别。
+             */
+            evidence_requirements?: ("user_statement" | "authorized_knowledge_base" | "current_search")[];
+            /**
+             * Profile Usage
+             * @description 画像只能按当前任务使用最小切片。
+             * @default minimal_task_slice
+             * @constant
+             */
+            profile_usage: "minimal_task_slice";
+            /**
+             * Image Usage
+             * @description 图片只可调整建议层次、例子和约束，不可充当事实。
+             * @default none
+             * @enum {string}
+             */
+            image_usage: "none" | "task_relevant_minimal_slice";
+            /**
+             * Open Questions
+             * @description 尚未决定且会影响方案的事项。
+             */
+            open_questions?: string[];
         };
         /**
          * CareerPlanningStatus
@@ -8026,8 +8075,11 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description 本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
-            /** @description 本条消息绑定的自然语言能力路由快照（Issue 06）。 */
-            route?: components["schemas"]["CapabilityRoute"] | null;
+            /**
+             * Route
+             * @description 本条消息绑定的自然语言能力路由快照（Issue 06）。
+             */
+            route?: components["schemas"]["CapabilityRoute"] | components["schemas"]["RouteDecision"] | null;
             /** @description 本条学习模式消息的教学编排与证据门投影（Issue 23）。 */
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
             /** @description 本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。 */
@@ -8496,10 +8548,11 @@ export interface components {
         };
         /**
          * ChatStreamProfileData
-         * @description profile 事件载荷：本轮用户消息触发的画像通知（Issue 26）。
+         * @description profile 事件载荷：一次性隐私说明或兼容期画像通知。
          *
-         *     通知已持久化并按账户隔离；聊天内即时展示，画像中心可追溯。每条
-         *     自动写入通知携带一键撤回入口。
+         *     Issue 15 的自动写入不发送写入通知；``privacy_notice`` 只在账户首次
+         *     触发自动画像时出现一次。``notifications`` 仅保留旧画像兼容测试和
+         *     历史事件的读取形状。
          */
         ChatStreamProfileData: {
             /**
@@ -8517,6 +8570,8 @@ export interface components {
              * @description 本轮产生的画像通知。
              */
             notifications?: components["schemas"]["ProfileNotification"][];
+            /** @description 账户级首次自动画像隐私说明。 */
+            privacy_notice?: components["schemas"]["ProfilePrivacyNotice"] | null;
         };
         /**
          * ChatStreamStageData
@@ -13240,6 +13295,36 @@ export interface components {
          */
         HumanizerResultStatus: "done" | "needs_human" | "error";
         /**
+         * HumanizerRouteDecision
+         * @description 自然语言路由的不可变快照。
+         */
+        HumanizerRouteDecision: {
+            /** @description 任务进入人味化能力的来源。 */
+            source: components["schemas"]["HumanizerRouteSource"];
+            /**
+             * Version
+             * @description 路由规则版本。
+             */
+            version: string;
+            /**
+             * Reason
+             * @description 命中的中文意图说明。
+             */
+            reason: string;
+            /**
+             * External Evidence Requested
+             * @description 用户是否明确要求补充或核验外部事实；默认不联网。
+             * @default false
+             */
+            external_evidence_requested: boolean;
+        };
+        /**
+         * HumanizerRouteSource
+         * @description 人味化任务的入口来源。
+         * @enum {string}
+         */
+        HumanizerRouteSource: "explicit_skill" | "natural_language";
+        /**
          * HumanizerSkillInput
          * @description 发送消息时携带的 SKILL 载荷（skill_id 须为内置注册标识）。
          */
@@ -13256,13 +13341,15 @@ export interface components {
              * @description 请求声明版本；空则使用注册的默认版本。
              */
             version?: string | null;
+            /** @description 进入能力前保存的路由决策快照。 */
+            route?: components["schemas"]["HumanizerRouteDecision"] | null;
         };
         /**
          * HumanizerTaskContract
          * @description 一次人味化任务对目标、受众、体裁、渠道与硬约束的共同约定。
          *
          *     与 CONTEXT.md「表达任务契约」一致：拒绝“写得自然一点”式模糊提示。
-         *     改写路径必带 source_text 或附件；生成路径必带 topic。
+         *     改写路径必带 source_text、知识库引用或历史兼容附件；生成路径必带 topic。
          */
         HumanizerTaskContract: {
             /** @description 改写或生成路径。 */
@@ -13309,6 +13396,11 @@ export interface components {
              * @description 来源显示名（文件名或用户粘贴说明）。
              */
             source_label?: string | null;
+            /**
+             * Knowledge Base Reference
+             * @description 用户明确引用的当前账户知识库文档名；为空时不得泛化检索。
+             */
+            knowledge_base_reference?: string | null;
         };
         /**
          * ImageAltTextSource
@@ -13359,6 +13451,12 @@ export interface components {
              * @default 0
              */
             version_count: number;
+            /**
+             * Synthetic
+             * @description 该资产是否由图片模型生成或编辑产生。
+             * @default true
+             */
+            synthetic: boolean;
             /**
              * Versions
              * @description 版本列表（按创建时间升序）。
@@ -13432,6 +13530,69 @@ export interface components {
              * @description 编辑来源全局知识库图片对象标识（kind=edit 时可选）。
              */
             source_object_id?: string | null;
+            /**
+             * Source Scope
+             * @description 自然语言编辑来源范围；仅允许当前账户知识库。
+             */
+            source_scope?: "knowledge_base" | null;
+            /**
+             * Size
+             * @description 图片尺寸合同。
+             * @default 1024*1024
+             */
+            size: string;
+        };
+        /**
+         * ImageRouteContract
+         * @description 图片生成/编辑提交给图片域的稳定输入合同。
+         */
+        ImageRouteContract: {
+            /**
+             * Version
+             * @description 图片路由合同版本。
+             * @default image-route-v1
+             */
+            version: string;
+            /** @default image */
+            capability: components["schemas"]["RouteCapability"];
+            /** @description generate 或 edit。 */
+            operation: components["schemas"]["RouteOperation"];
+            /**
+             * Prompt
+             * @description 图片提示词或编辑指令。
+             */
+            prompt: string;
+            /**
+             * Source Object Id
+             * @description 编辑时当前账户知识库中的图片对象标识。
+             */
+            source_object_id?: string | null;
+            /** @description 尺寸与输出约束。 */
+            parameters?: components["schemas"]["ImageRouteParameters"];
+            /**
+             * Output Version
+             * @description 输出资产合同版本。
+             * @default image-output-v1
+             */
+            output_version: string;
+        };
+        /**
+         * ImageRouteParameters
+         * @description 图片模型可接受的稳定参数快照。
+         */
+        ImageRouteParameters: {
+            /**
+             * Size
+             * @description 图片尺寸；只允许已登记模型支持的尺寸。
+             * @default 1024*1024
+             */
+            size: string;
+            /**
+             * N
+             * @description 输出张数；当前固定为 1。
+             * @default 1
+             */
+            n: number;
         };
         /**
          * ImageTaskKind
@@ -13452,6 +13613,12 @@ export interface components {
              * @description 任务标识。
              */
             task_id: string;
+            /**
+             * Attempt Number
+             * @description 该图片任务的显式提交轮次；手动重试时递增。
+             * @default 1
+             */
+            attempt_number: number;
             /** @description 任务类型：生成或编辑。 */
             kind: components["schemas"]["ImageTaskKind"];
             /**
@@ -13508,6 +13675,12 @@ export interface components {
              * @default false
              */
             deleted: boolean;
+            /**
+             * Synthetic
+             * @description 结果是否为图片模型生成的合成内容。
+             * @default true
+             */
+            synthetic: boolean;
             /**
              * Created At
              * Format: date-time
@@ -13581,6 +13754,12 @@ export interface components {
              * @description 图片字节数。
              */
             content_length: number;
+            /**
+             * Synthetic
+             * @description 该版本是否为图片模型生成的合成内容。
+             * @default true
+             */
+            synthetic: boolean;
             /**
              * Created At
              * Format: date-time
@@ -14848,22 +15027,6 @@ export interface components {
             updated_at: string;
         };
         /**
-         * LearningProjectCreateRequest
-         * @description 新建学习项目请求；名称必填，描述可选。
-         */
-        LearningProjectCreateRequest: {
-            /**
-             * Name
-             * @description 项目名称。
-             */
-            name: string;
-            /**
-             * Description
-             * @description 可选项目描述。
-             */
-            description?: string | null;
-        };
-        /**
          * LearningProjectDetail
          * @description 单个学习项目的完整投影（含归属对话列表）。
          */
@@ -15217,25 +15380,6 @@ export interface components {
              * @description 最近更新时间。
              */
             updated_at: string;
-        };
-        /**
-         * LearningProjectUpdateRequest
-         * @description 更新项目名称或描述；至少提供一个字段。
-         *
-         *     字段缺省表示保持不变；``description`` 显式传 null 表示清空描述；
-         *     ``name`` 显式传 null 非法（名称永远不能为空），按 422 拒绝。
-         */
-        LearningProjectUpdateRequest: {
-            /**
-             * Name
-             * @description 新名称。
-             */
-            name?: string | null;
-            /**
-             * Description
-             * @description 新描述；显式 null 表示清空。
-             */
-            description?: string | null;
         };
         /**
          * LearningRecord
@@ -17858,6 +18002,21 @@ export interface components {
             enabled: boolean;
         };
         /**
+         * ProfilePrivacyNotice
+         * @description 首次启用自动画像时的一次性非交互说明。
+         */
+        ProfilePrivacyNotice: {
+            /** Version */
+            version: string;
+            /** Text */
+            text: string;
+            /**
+             * Shown At
+             * Format: date-time
+             */
+            shown_at: string;
+        };
+        /**
          * ProfileSensitivityClass
          * @description Sensitivity classification that governs retention and promotion.
          * @enum {string}
@@ -17958,6 +18117,12 @@ export interface components {
              * @default slice-1.0
              */
             compiled_policy_version: string;
+            /**
+             * Length Budget
+             * @description Maximum number of profile items allowed in this slice.
+             * @default 6
+             */
+            length_budget: number;
             /**
              * @description Lifecycle status of the slice.
              * @default active
@@ -19389,6 +19554,66 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * RouteCapability
+         * @description 统一聊天主能力名。
+         * @enum {string}
+         */
+        RouteCapability: "image" | "paper_search" | "humanizer" | "video" | "career";
+        /**
+         * RouteDecision
+         * @description 一条消息的路由快照；持久化后重试与恢复不得重新分类。
+         */
+        RouteDecision: {
+            /**
+             * Version
+             * @description 路由合同版本。
+             * @default chat-route-v1
+             */
+            version: string;
+            /** @description 选中的主能力。 */
+            capability: components["schemas"]["RouteCapability"];
+            /** @description 本次路由动作。 */
+            operation: components["schemas"]["RouteOperation"];
+            /**
+             * Confidence
+             * @description 确定性路由置信度。
+             */
+            confidence: number;
+            /**
+             * Reason
+             * @description 路由判定原因。
+             */
+            reason: string;
+            /** @description 图片能力的输入合同；其他能力暂不携带。 */
+            contract?: components["schemas"]["ImageRouteContract"] | null;
+            /**
+             * Clarification Question
+             * @description 需要用户补充时唯一的中文问题。
+             */
+            clarification_question?: string | null;
+            /**
+             * Error Code
+             * @description 拒绝路由时的稳定错误码。
+             */
+            error_code?: string | null;
+            /**
+             * Error Message
+             * @description 拒绝路由时的可操作中文说明。
+             */
+            error_message?: string | null;
+            /**
+             * Competing Capabilities
+             * @description 检测到的互斥能力集合。
+             */
+            competing_capabilities?: components["schemas"]["RouteCapability"][];
+        };
+        /**
+         * RouteOperation
+         * @description 一次路由的执行动作。
+         * @enum {string}
+         */
+        RouteOperation: "generate" | "edit" | "clarify" | "reject";
         /**
          * RouteStatus
          * @description 路由裁决状态。
@@ -22868,6 +23093,13 @@ export interface components {
              */
             asset_id: string;
             /**
+             * Synthetic Media
+             * @description 合成媒体标记；视频不是实拍、新闻或科学证据。
+             * @default true
+             * @constant
+             */
+            synthetic_media: true;
+            /**
              * Description
              * @description 可访问文字说明（可修改）。
              * @default
@@ -22977,6 +23209,48 @@ export interface components {
             description: string;
         };
         /**
+         * VideoGenerationPlan
+         * @description 已规范化、可重放的文生视频生成合同。
+         */
+        VideoGenerationPlan: {
+            /**
+             * Version
+             * @default 2026.08.09
+             */
+            version: string;
+            /**
+             * Model Id
+             * @default wan2.7-t2v-2026-06-12
+             */
+            model_id: string;
+            /** Prompt */
+            prompt: string;
+            /**
+             * Aspect Ratio
+             * @default 16:9
+             * @enum {string}
+             */
+            aspect_ratio: "16:9" | "9:16";
+            /**
+             * Size
+             * @default 1280*720
+             * @enum {string}
+             */
+            size: "1280*720" | "720*1280";
+            /**
+             * Duration Seconds
+             * @default 5
+             * @enum {integer}
+             */
+            duration_seconds: 5 | 10;
+            /**
+             * Account Object Domain
+             * @default account
+             * @constant
+             */
+            account_object_domain: "account";
+        };
+        /**
          * VideoRequestPayload
          * @description 文生视频请求（Issue 32）。
          *
@@ -22991,6 +23265,27 @@ export interface components {
              * @description 视频生成要求。
              */
             prompt: string;
+            /**
+             * Aspect Ratio
+             * @description 视频画面比例。
+             * @default 16:9
+             * @enum {string}
+             */
+            aspect_ratio: "16:9" | "9:16";
+            /**
+             * Size
+             * @description 视频画面尺寸。
+             * @default 1280*720
+             * @enum {string}
+             */
+            size: "1280*720" | "720*1280";
+            /**
+             * Duration Seconds
+             * @description 视频时长（秒）。
+             * @default 5
+             * @enum {integer}
+             */
+            duration_seconds: 5 | 10;
         };
         /**
          * VideoTaskProjection
@@ -23010,6 +23305,13 @@ export interface components {
              * @description 用户提交的生成要求（用于追溯与前端展示）。
              */
             prompt: string;
+            /**
+             * Synthetic Media
+             * @description 合成媒体标记；视频不是实拍、新闻或科学证据。
+             * @default true
+             * @constant
+             */
+            synthetic_media: true;
             /**
              * Model Id
              * @description 实际使用的固定视频模型快照（Wan 例外）。
@@ -25028,15 +25330,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatAttachmentProjection"][];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -25048,6 +25341,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25088,33 +25390,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatAttachmentProjection"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ChatError"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -25133,8 +25408,8 @@ export interface operations {
                     "application/json": components["schemas"]["ChatError"];
                 };
             };
-            /** @description Content Too Large */
-            413: {
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25238,13 +25513,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -25256,6 +25524,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25297,13 +25574,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -25324,6 +25594,15 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25365,13 +25644,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -25383,6 +25655,15 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26117,15 +26398,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["DocumentIngestionProjection"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -26139,6 +26411,17 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -26970,21 +27253,8 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LearningProjectCreateRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningProjectSummary"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -26996,15 +27266,22 @@ export interface operations {
                     };
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Successful Response */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Service Unavailable */
@@ -27088,9 +27365,7 @@ export interface operations {
     };
     delete_project_learning_projects__project_id__delete: {
         parameters: {
-            query?: {
-                contents?: "keep" | "delete";
-            };
+            query?: never;
             header?: never;
             path: {
                 project_id: string;
@@ -27101,13 +27376,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -27119,26 +27387,13 @@ export interface operations {
                     };
                 };
             };
-            /** @description Not Found */
-            404: {
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
                 };
             };
             /** @description Validation Error */
@@ -27174,21 +27429,8 @@ export interface operations {
                 bridges_session?: string | null;
             };
         };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["LearningProjectUpdateRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningProjectSummary"];
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -27200,26 +27442,22 @@ export interface operations {
                     };
                 };
             };
-            /** @description Not Found */
-            404: {
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
                 };
             };
-            /** @description Unprocessable Content */
+            /** @description Validation Error */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
             /** @description Service Unavailable */
@@ -27314,35 +27552,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Created */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["LearningProjectFile"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -27354,26 +27563,13 @@ export interface operations {
                     };
                 };
             };
-            /** @description Not Found */
-            404: {
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Content Too Large */
-            413: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
                 };
             };
             /** @description Validation Error */
@@ -27479,13 +27675,6 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
-            204: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
             /** @description Unauthorized */
             401: {
                 headers: {
@@ -27497,26 +27686,13 @@ export interface operations {
                     };
                 };
             };
-            /** @description Not Found */
-            404: {
+            /** @description Successful Response */
+            410: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Conflict */
-            409: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
                 };
             };
             /** @description Validation Error */

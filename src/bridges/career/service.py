@@ -29,6 +29,7 @@ from bridges.contracts.career import (
     CareerPlanningOutputContract,
     CareerPlanningProcessState,
     CareerPlanningProjection,
+    CareerPlanningRouteContract,
     CareerPlanningStatus,
     CareerRisk,
     CareerRunEvent,
@@ -118,6 +119,7 @@ class CareerPlannerService:
         retrieval_round: Any | None = None,
         web_search_projection: Any | None = None,
         arxiv_search_projection: Any | None = None,
+        route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
     ) -> Iterator[CareerRunEvent]:
         """执行一次生涯规划：yield 过程事件，最后 yield 结果事件。
@@ -184,6 +186,7 @@ class CareerPlannerService:
                 mode,
                 evidence,
                 run_context,
+                route_contract=route_contract,
                 budget=budget,
             )
             progress.append("生成六类规划结果")
@@ -209,6 +212,7 @@ class CareerPlannerService:
             projection = CareerPlanningProjection(
                 plan_id=assistant_message_id,
                 intent=_truncate(intent, 240),
+                route_contract=route_contract,
                 status=CareerPlanningStatus.DONE,
                 profile_enabled=profile_enabled,
                 profile_used=profile_used and bool(profile_items),
@@ -254,6 +258,7 @@ class CareerPlannerService:
                 retryable=exc.retryable,
                 process_steps=progress,
                 state=state,
+                route_contract=route_contract,
             )
             self._audit(
                 account_id,
@@ -454,6 +459,7 @@ class CareerPlannerService:
         mode: str,
         evidence: list[CareerEvidenceSource],
         run_context: Any,
+        route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
     ) -> CareerPlanningOutputContract:
         intent_text = intent.strip()
@@ -463,7 +469,7 @@ class CareerPlannerService:
                 retryable=True,
             )
         system_prompt = _build_system_prompt(mode, evidence)
-        user_prompt = _build_user_prompt(intent_text, evidence)
+        user_prompt = _build_user_prompt(intent_text, evidence, route_contract)
         output, failure = self._invoke_structured(
             run_context, system_prompt, user_prompt
         )
@@ -574,10 +580,12 @@ class CareerPlannerService:
         retryable: bool,
         process_steps: list[str],
         state: CareerPlanningProcessState,
+        route_contract: CareerPlanningRouteContract | None = None,
     ) -> CareerPlanningProjection:
         return CareerPlanningProjection(
             plan_id=assistant_message_id,
             intent=_truncate(intent, 240),
+            route_contract=route_contract,
             status=CareerPlanningStatus.ERROR,
             profile_enabled=profile_enabled,
             profile_used=profile_used,
@@ -978,7 +986,11 @@ def _build_system_prompt(mode: str, evidence: list[CareerEvidenceSource]) -> str
 "boundary_statement": 保证边界声明, "open_questions": [未决问题与核查方式]}}"""
 
 
-def _build_user_prompt(intent: str, evidence: list[CareerEvidenceSource]) -> str:
+def _build_user_prompt(
+    intent: str,
+    evidence: list[CareerEvidenceSource],
+    route_contract: CareerPlanningRouteContract | None = None,
+) -> str:
     profile_lines: list[str] = []
     learning_lines: list[str] = []
     for source in evidence:
@@ -992,6 +1004,17 @@ def _build_user_prompt(intent: str, evidence: list[CareerEvidenceSource]) -> str
             )
     parts = [
         f"用户的问题：{intent}",
+        (
+            "路由编译的规划合同（必须遵守，未决问题不得假装已解决）：\n"
+            f"目标：{route_contract.target}\n"
+            f"时间范围：{route_contract.time_horizon}\n"
+            f"约束：{'；'.join(route_contract.constraints) or '未明确'}\n"
+            f"允许证据：{'、'.join(route_contract.evidence_requirements)}\n"
+            f"图片使用：{route_contract.image_usage}\n"
+            f"未决问题：{'；'.join(route_contract.open_questions) or '无'}"
+            if route_contract is not None
+            else "本轮没有额外的路由合同；仍须遵守生涯规划边界。"
+        ),
         "已授权画像切片（只使用这些最小记录，不得推断更多）：\n"
         + ("\n".join(profile_lines) if profile_lines else "（本轮未使用画像或没有相关记录）"),
         "学习记录（使命与知识状态）：\n"

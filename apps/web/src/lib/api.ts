@@ -68,6 +68,11 @@ export type PluginFileEntry = components["schemas"]["PluginFileEntry"];
 export type PluginFileKind = components["schemas"]["PluginFileKind"];
 export type PluginDemoProjection = components["schemas"]["PluginDemoProjection"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
+export type CareerPlanningRouteContract = components["schemas"]["CareerPlanningRouteContract"];
+export type CapabilityRoute = components["schemas"]["CapabilityRoute"];
+export type MainCapability = components["schemas"]["MainCapability"];
+export type RouteStatus = components["schemas"]["RouteStatus"];
+export type RouteDecision = components["schemas"]["RouteDecision"];
 export type CareerPlanningProjection = components["schemas"]["CareerPlanningProjection"];
 export type CareerPlanningProcessState = components["schemas"]["CareerPlanningProcessState"];
 export type CareerPlanningStatus = components["schemas"]["CareerPlanningStatus"];

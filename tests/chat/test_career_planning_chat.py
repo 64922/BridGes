@@ -527,6 +527,83 @@ def test_career_model_failure_is_recoverable_and_retry_keeps_input(
     assert retry_message["career_planning"]["output"]["facts"]
 
 
+def test_natural_language_career_route_is_persisted_before_generation(
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
+) -> None:
+    """无工具前缀的生涯问题在副作用前落盘路由与规划合同。"""
+    _register(client)
+    _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
+    conversation_id = _create_conversation(client)
+    content = "我大二在读计算机科学，喜欢数据分析，怎么规划接下来的职业方向"
+
+    created = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": content},
+    )
+    assert created.status_code == 200, created.text
+    route = created.json()["assistant_message"]["route"]
+    assert route["main_capability"] == "career"
+    assert route["status"] == "matched"
+    assert route["career_contract"]["target"]
+    assert route["career_contract"]["time_horizon"]
+
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created.json()["assistant_message"]["message_id"]
+    )
+    final_message = events[-1][1]["message"]
+    assert final_message["route"] == route
+    assert final_message["career_planning"]["route_contract"] == route["career_contract"]
+
+
+def test_conflicting_natural_language_tasks_only_ask_one_question(
+    sqlite_app: Any, client: TestClient,
+    generation_helpers: dict[str, Any],
+) -> None:
+    _register(client)
+    adapter = _ProgrammableStructuredAdapter(output=_good_output())
+    _swap_gateways(sqlite_app, adapter)
+    conversation_id = _create_conversation(client)
+
+    created = client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"content": "帮我规划职业方向，顺便润色一下简历"},
+    )
+    assert created.status_code == 200, created.text
+    generation_helpers["drive"](sqlite_app)
+    events = generation_helpers["subscribe"](
+        client, conversation_id, created.json()["assistant_message"]["message_id"]
+    )
+    assert [name for name, _ in events][-1] == "done"
+    history = client.get(f"/chat/conversations/{conversation_id}").json()
+    assistant = next(m for m in history["messages"] if m["role"] == "assistant")
+    assert assistant["route"]["main_capability"] == "clarification"
+    assert assistant["route"]["status"] == "clarify"
+    assert assistant["route"]["clarification_question"]
+    assert assistant["career_planning"] is None
+    assert assistant["content"] == assistant["route"]["clarification_question"]
+    assert adapter.requests == []
+
+
+def test_career_chat_rejects_message_attachments(
+    sqlite_app: Any, client: TestClient
+) -> None:
+    _register(client)
+    conversation_id = _create_conversation(client)
+    uploaded = client.post(
+        f"/chat/conversations/{conversation_id}/attachments",
+        content=b"%PDF-1.7\ncareer notes",
+        headers={
+            "Content-Type": "application/pdf",
+            "X-Bridges-Filename": "career.pdf",
+            "X-Bridges-Upload-Id": "career-upload",
+        },
+    )
+    assert uploaded.status_code == 410, uploaded.text
+    assert uploaded.json()["detail"]["error"] == "legacy_file_source_retired"
+
+
 def test_career_boundary_violation_blocks_delivery(
     sqlite_app: Any, client: TestClient,
     generation_helpers: dict[str, Any],

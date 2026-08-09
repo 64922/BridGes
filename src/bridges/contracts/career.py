@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -57,6 +58,34 @@ class CareerEvidenceKind(StrEnum):
     WEB_SEARCH = "web_search"            # DuckDuckGo 公开来源
     ARXIV = "arxiv"                      # arXiv 论文来源
     USER_STATEMENT = "user_statement"    # 用户陈述（本轮消息或会话内可见片段）
+
+
+class CareerPlanningRouteContract(BaseModel):
+    """自然语言进入生涯规划时固化的最小规划合同。"""
+
+    version: Literal["career-route-1"] = Field(default="career-route-1")
+    target: str = Field(description="本轮要做出的职业方向决策目标。")
+    time_horizon: str = Field(description="规划时间范围；未明确时使用稳定默认值。")
+    constraints: list[str] = Field(
+        default_factory=list, description="用户已经表达的地点、时间或资源约束。"
+    )
+    evidence_requirements: list[
+        Literal["user_statement", "authorized_knowledge_base", "current_search"]
+    ] = Field(
+        default_factory=lambda: ["user_statement"],
+        description="允许进入本轮规划的证据类别。",
+    )
+    profile_usage: Literal["minimal_task_slice"] = Field(
+        default="minimal_task_slice",
+        description="画像只能按当前任务使用最小切片。",
+    )
+    image_usage: Literal["none", "task_relevant_minimal_slice"] = Field(
+        default="none",
+        description="图片只可调整建议层次、例子和约束，不可充当事实。",
+    )
+    open_questions: list[str] = Field(
+        default_factory=list, description="尚未决定且会影响方案的事项。"
+    )
 
 
 class CareerEvidenceSource(BaseModel):
@@ -224,6 +253,9 @@ class CareerPlanningProjection(BaseModel):
 
     plan_id: str = Field(description="稳定规划标识（与助手消息绑定）。")
     intent: str = Field(description="用户原始生涯问题（截断）。")
+    route_contract: CareerPlanningRouteContract | None = Field(
+        default=None, description="自然语言路由编译的规划合同快照。"
+    )
     status: CareerPlanningStatus = Field(description="终态。")
     profile_enabled: bool = Field(description="发送前是否启用了画像使用。")
     profile_used: bool = Field(description="本轮是否实际使用了画像切片。")

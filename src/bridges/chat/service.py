@@ -836,6 +836,10 @@ class ChatService:
         routed = route_humanizer_message(content)
         if routed is None:
             return skill_id, skill_input, use_knowledge_base
+        # 统一主能力路由优先识别复合任务；否则人味化快捷路由会先把
+        # 「规划职业方向并润色简历」拆成单一 SKILL，绕过澄清合同。
+        if self._router.classify(content).status == RouteStatus.CLARIFY:
+            return skill_id, skill_input, use_knowledge_base
         if attachment_ids:
             raise ChatDomainError(
                 "humanizer_attachment_not_supported",

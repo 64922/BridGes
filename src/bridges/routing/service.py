@@ -8,6 +8,9 @@ from typing import Literal, cast
 
 from pydantic import ValidationError
 
+from bridges.career.intake import assess_intake
+from bridges.career.intent import is_career_intent
+from bridges.contracts.career import CareerPlanningRouteContract
 from bridges.routing.contracts import (
     CapabilityRoute,
     MainCapability,
@@ -147,6 +150,53 @@ class NaturalLanguageRouter:
     )
     _VIDEO_TRAILING_WORD = re.compile(r"(?:短视频|视频|video|clip)\s*$", re.I)
 
+    _CAREER_ACTION_WORDS = (
+        "规划",
+        "方向",
+        "路径",
+        "选择",
+        "转行",
+        "求职",
+        "找工作",
+        "找实习",
+        "该不该",
+        "要不要",
+        "适合",
+        "打算",
+        "考虑",
+    )
+    _CAREER_INFO_WORDS = ("是什么", "什么意思", "怎么理解", "概念", "介绍一下")
+    _LEARNING_WORDS = (
+        "学习计划",
+        "学习规划",
+        "学习路线",
+        "课程规划",
+        "复习计划",
+        "怎么复习",
+        "怎么学",
+        "学习方向",
+    )
+    _HUMANIZER_WORDS = (
+        "润色",
+        "改写",
+        "改得自然",
+        "更自然",
+        "去模板腔",
+        "人味",
+        "优化简历",
+        "润色简历",
+    )
+    _PAPER_ACTION_WORDS = (
+        "搜索论文",
+        "查论文",
+        "找论文",
+        "检索论文",
+        "推荐论文",
+        "筛选论文",
+    )
+    _IMAGE_WORDS = ("生成图片", "生成一张图", "做一张海报", "画一张", "生成图像")
+    _VIDEO_WORDS = ("生成视频", "做个视频", "制作视频", "生成短片", "做成短视频")
+
     _ENGLISH_COUNT = re.compile(
         r"(?:(?:at\s+most|up\s+to|return|show|give(?:\s+me)?|maximum|max|"
         r"find|search|look(?:\s+up)?)\s*)?"
@@ -175,6 +225,10 @@ class NaturalLanguageRouter:
         text = content.strip()
         if not text:
             return self._clarify("paper_empty_query", "你想查哪一主题的论文？")
+
+        career_route = self._classify_career(text)
+        if career_route is not None:
+            return career_route
 
         if self._VIDEO.search(text) and self._VIDEO_DISCUSSION.search(text):
             return self._ordinary("当前请求是在讨论视频内容，而不是生成视频。")
@@ -231,6 +285,133 @@ class NaturalLanguageRouter:
             paper_search=plan,
             knowledge_base_allowed=False,
             web_search_allowed=False,
+        )
+
+    def _classify_career(self, text: str) -> CapabilityRoute | None:
+        """在统一路由合同中编译自然语言生涯规划意图。"""
+        if not self._is_career_request(text):
+            return None
+        signals: list[MainCapability] = [MainCapability.CAREER]
+        if self._is_learning_request(text):
+            signals.append(MainCapability.ORDINARY_CHAT)
+        if any(word in text for word in self._HUMANIZER_WORDS):
+            signals.append(MainCapability.HUMANIZER)
+        if "论文" in text and any(word in text for word in self._PAPER_ACTION_WORDS):
+            signals.append(MainCapability.PAPER_SEARCH)
+        if any(word in text for word in self._IMAGE_WORDS):
+            signals.append(MainCapability.IMAGE)
+        if any(word in text for word in self._VIDEO_WORDS):
+            signals.append(MainCapability.VIDEO)
+        if len(signals) > 1:
+            return CapabilityRoute(
+                status=RouteStatus.CLARIFY,
+                main_capability=MainCapability.CLARIFICATION,
+                confidence=0.35,
+                reason="这条消息包含多个独立任务，需要先确定主能力。",
+                clarification_question="这条消息包含多个独立任务，本轮先做哪一项？",
+                error_code="multiple_text_capabilities",
+                knowledge_base_allowed=False,
+                web_search_allowed=False,
+            )
+        contract = self._compile_career_contract(text)
+        return CapabilityRoute(
+            status=RouteStatus.MATCHED,
+            main_capability=MainCapability.CAREER,
+            confidence=0.99,
+            reason="识别到明确的生涯规划决策请求。",
+            normalized_query=text[:2_000],
+            career_contract=contract,
+            knowledge_base_allowed="authorized_knowledge_base" in contract.evidence_requirements,
+            web_search_allowed="current_search" in contract.evidence_requirements,
+        )
+
+    def _is_career_request(self, text: str) -> bool:
+        if not text or any(word in text for word in self._CAREER_INFO_WORDS):
+            return False
+        if re.fullmatch(r".{0,20}职业(?:发展|方向)?前景(?:怎么样|如何)[？?。]?", text):
+            return False
+        if self._is_learning_request(text) and not any(
+            word in text for word in ("职业", "就业", "求职", "转行", "工作方向")
+        ):
+            return False
+        if is_career_intent(text):
+            if text.startswith(("生涯规划助手：", "生涯规划：", "职业规划：")):
+                return True
+            if any(
+                word in text
+                for word in self._CAREER_ACTION_WORDS
+                if word not in {"规划", "方向", "路径", "选择"}
+            ):
+                return True
+            if any(word in text for word in ("怎么", "如何", "比较", "想做", "想规划", "帮我")):
+                return True
+            if re.search(r"规划.{0,20}(职业|就业|方向|路径|方案)", text):
+                return True
+            return False
+        return bool(
+            ("规划" in text and any(word in text for word in ("方向", "职业", "就业", "工作")))
+            or re.search(r"适合.{0,12}(工作|岗位|职业)", text)
+            or re.search(r"(科研|企业).{0,8}(选择|方向|发展)", text)
+            or re.search(r"毕业后.{0,12}(去哪|做什么|方向)", text)
+        )
+
+    def _is_learning_request(self, text: str) -> bool:
+        return any(word in text for word in self._LEARNING_WORDS)
+
+    def _compile_career_contract(self, text: str) -> CareerPlanningRouteContract:
+        target = "明确当前阶段可验证的职业方向，并比较可选路径"
+        if "转行" in text:
+            target = "评估是否转行，并比较转行与留在当前方向的可行路径"
+        elif any(word in text for word in ("求职", "找工作", "找实习")):
+            target = "规划求职方向、准备重点和近期验证行动"
+        elif "考研" in text and any(word in text for word in ("职业", "就业", "方向")):
+            target = "规划考研后的职业方向，并比较继续深造与就业选择"
+        elif "科研" in text and "企业" in text:
+            target = "比较科研与企业路径，并明确当前阶段的验证行动"
+
+        time_horizon = "未来 1-3 年（先做近 90 天验证）"
+        time_match = re.search(
+            r"(?:未来|接下来|近|之后)\s*([一二三四五六七八九十百\d]+\s*(?:个)?(?:月|年|周|天))",
+            text,
+        )
+        if time_match:
+            time_horizon = f"未来{time_match.group(1)}"
+        elif "长期" in text:
+            time_horizon = "长期（先做近 90 天验证）"
+
+        constraints: list[str] = []
+        location = re.search(
+            r"(?:地点|城市|地区)\s*(?:先)?(?:考虑|限定|选择|是|为|：|:)\s*([^，。；,;\s]+)",
+            text,
+        )
+        if location:
+            constraints.append(f"地点：{location.group(1)}")
+        for marker, label in (("不想", "用户不希望"), ("不能", "用户不能"), ("预算", "预算")):
+            index = text.find(marker)
+            if index >= 0:
+                fragment = text[index : index + 24].rstrip("，。；,;")
+                constraints.append(f"{label}：{fragment}")
+
+        evidence_requirements: list[
+            Literal["user_statement", "authorized_knowledge_base", "current_search"]
+        ] = ["user_statement"]
+        if any(word in text for word in ("知识库", "资料", "材料")):
+            evidence_requirements.append("authorized_knowledge_base")
+        if any(word in text for word in ("最新", "当前", "政策", "趋势", "岗位", "市场", "薪资")):
+            evidence_requirements.append("current_search")
+        intake = assess_intake(text)
+        open_questions = [intake.question] if not intake.enough and intake.question else []
+        return CareerPlanningRouteContract(
+            target=target,
+            time_horizon=time_horizon,
+            constraints=constraints,
+            evidence_requirements=evidence_requirements,
+            image_usage=(
+                "task_relevant_minimal_slice"
+                if any(word in text for word in ("图片", "画像", "截图"))
+                else "none"
+            ),
+            open_questions=open_questions,
         )
 
     def route_explicit_video(

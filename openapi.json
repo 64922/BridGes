@@ -28179,10 +28179,42 @@
             "minLength": 1,
             "title": "Reason"
           },
+          "normalized_query": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Normalized Query"
+          },
           "paper_search": {
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PaperSearchPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "video": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VideoGenerationPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "career_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CareerPlanningRouteContract"
               },
               {
                 "type": "null"
@@ -28779,6 +28811,17 @@
             "title": "Intent",
             "description": "用户原始生涯问题（截断）。"
           },
+          "route_contract": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CareerPlanningRouteContract"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "自然语言路由编译的规划合同快照。"
+          },
           "status": {
             "$ref": "#/components/schemas/CareerPlanningStatus",
             "description": "终态。"
@@ -28897,6 +28940,79 @@
         ],
         "title": "CareerPlanningProjection",
         "description": "一条助手消息的生涯规划结果投影（按账户隔离持久化）。\n\n刷新、退出重登与应用重启后由同一账户从消息历史恢复；其他账户不可读。"
+      },
+      "CareerPlanningRouteContract": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "const": "career-route-1",
+            "title": "Version",
+            "default": "career-route-1"
+          },
+          "target": {
+            "type": "string",
+            "title": "Target",
+            "description": "本轮要做出的职业方向决策目标。"
+          },
+          "time_horizon": {
+            "type": "string",
+            "title": "Time Horizon",
+            "description": "规划时间范围；未明确时使用稳定默认值。"
+          },
+          "constraints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Constraints",
+            "description": "用户已经表达的地点、时间或资源约束。"
+          },
+          "evidence_requirements": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "user_statement",
+                "authorized_knowledge_base",
+                "current_search"
+              ]
+            },
+            "type": "array",
+            "title": "Evidence Requirements",
+            "description": "允许进入本轮规划的证据类别。"
+          },
+          "profile_usage": {
+            "type": "string",
+            "const": "minimal_task_slice",
+            "title": "Profile Usage",
+            "description": "画像只能按当前任务使用最小切片。",
+            "default": "minimal_task_slice"
+          },
+          "image_usage": {
+            "type": "string",
+            "enum": [
+              "none",
+              "task_relevant_minimal_slice"
+            ],
+            "title": "Image Usage",
+            "description": "图片只可调整建议层次、例子和约束，不可充当事实。",
+            "default": "none"
+          },
+          "open_questions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Open Questions",
+            "description": "尚未决定且会影响方案的事项。"
+          }
+        },
+        "type": "object",
+        "required": [
+          "target",
+          "time_horizon"
+        ],
+        "title": "CareerPlanningRouteContract",
+        "description": "自然语言进入生涯规划时固化的最小规划合同。"
       },
       "CareerPlanningStatus": {
         "type": "string",
@@ -54201,6 +54317,13 @@
             "title": "Asset Id",
             "description": "资产标识。"
           },
+          "synthetic_media": {
+            "type": "boolean",
+            "const": true,
+            "title": "Synthetic Media",
+            "description": "合成媒体标记；视频不是实拍、新闻或科学证据。",
+            "default": true
+          },
           "description": {
             "type": "string",
             "title": "Description",
@@ -54354,6 +54477,66 @@
         "title": "VideoDescriptionUpdateRequest",
         "description": "修改可访问文字说明的请求。"
       },
+      "VideoGenerationPlan": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "2026.08.09"
+          },
+          "model_id": {
+            "type": "string",
+            "title": "Model Id",
+            "default": "wan2.7-t2v-2026-06-12"
+          },
+          "prompt": {
+            "type": "string",
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Prompt"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": [
+              "16:9",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "default": "16:9"
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "1280*720",
+              "720*1280"
+            ],
+            "title": "Size",
+            "default": "1280*720"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Duration Seconds",
+            "default": 5
+          },
+          "account_object_domain": {
+            "type": "string",
+            "const": "account",
+            "title": "Account Object Domain",
+            "default": "account"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prompt"
+        ],
+        "title": "VideoGenerationPlan",
+        "description": "已规范化、可重放的文生视频生成合同。"
+      },
       "VideoRequestPayload": {
         "properties": {
           "prompt": {
@@ -54362,8 +54545,39 @@
             "minLength": 1,
             "title": "Prompt",
             "description": "视频生成要求。"
+          },
+          "aspect_ratio": {
+            "type": "string",
+            "enum": [
+              "16:9",
+              "9:16"
+            ],
+            "title": "Aspect Ratio",
+            "description": "视频画面比例。",
+            "default": "16:9"
+          },
+          "size": {
+            "type": "string",
+            "enum": [
+              "1280*720",
+              "720*1280"
+            ],
+            "title": "Size",
+            "description": "视频画面尺寸。",
+            "default": "1280*720"
+          },
+          "duration_seconds": {
+            "type": "integer",
+            "enum": [
+              5,
+              10
+            ],
+            "title": "Duration Seconds",
+            "description": "视频时长（秒）。",
+            "default": 5
           }
         },
+        "additionalProperties": false,
         "type": "object",
         "required": [
           "prompt"
@@ -54382,6 +54596,13 @@
             "type": "string",
             "title": "Prompt",
             "description": "用户提交的生成要求（用于追溯与前端展示）。"
+          },
+          "synthetic_media": {
+            "type": "boolean",
+            "const": true,
+            "title": "Synthetic Media",
+            "description": "合成媒体标记；视频不是实拍、新闻或科学证据。",
+            "default": true
           },
           "model_id": {
             "anyOf": [

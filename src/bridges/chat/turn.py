@@ -51,6 +51,7 @@ from bridges.contracts.ai import ModelRunLock
 from bridges.contracts.career import (
     CareerPlanningProcessState,
     CareerPlanningProjection,
+    CareerPlanningRouteContract,
     CareerPlanningStatus,
     CareerRunEvent,
 )
@@ -380,6 +381,7 @@ class CareerPlannerOrchestrator(Protocol):
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
+        route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
     ) -> Iterator[CareerRunEvent]: ...
 
@@ -1564,20 +1566,47 @@ class TurnOrchestrator:
                 )
                 return
             # Issue 29：明确生涯规划意图（含前端「生涯规划助手」预填前缀）
-            # 走生涯规划编排——同一真实消息流程，六类输出经 career 过程事件
-            # 呈现，终态 done/error 收敛；非规划消息继续普通回答。
+            # 走生涯规划编排——路由合同已经在发送前固化，六类输出经 career
+            # 过程事件呈现，终态 done/error 收敛；非规划消息继续普通回答。
             # Issue 09：上一轮助手是澄清问题时（career_planning.clarification
             # 非空），本轮用户回复继续走生涯编排——澄清问答是同一规划的
             # 延续，不因回复不含触发词而断裂。
+            career_route = (
+                route
+                if route is not None and route.main_capability == MainCapability.CAREER
+                else None
+            )
+            career_intent = owner_message is not None and (
+                career_route is not None
+                or is_career_intent(owner_message.content)
+                or self._has_pending_career_clarification(
+                    account_id, conversation_id, until_user_message_id
+                )
+            )
+            if career_intent and self._career_planner is None:
+                finalize_message(
+                    self._repo,
+                    account_id,
+                    assistant_message_id,
+                    status=ChatMessageStatus.ERROR,
+                    error_code="career_unavailable",
+                    error_message="生涯规划能力暂不可用，请稍后重试。",
+                    duration_ms=None,
+                    model_id=None,
+                    run_lock_id=None,
+                    started=started,
+                    now=datetime.now(UTC),
+                    thinking=failed_thinking(thinking, "career_unavailable"),
+                )
+                yield StreamEvent(
+                    kind="error",
+                    error_code="career_unavailable",
+                    error_message="生涯规划能力暂不可用，请稍后重试。",
+                )
+                return
             if (
                 owner_message is not None
-                and self._career_planner is not None
-                and (
-                    is_career_intent(owner_message.content)
-                    or self._has_pending_career_clarification(
-                        account_id, conversation_id, until_user_message_id
-                    )
-                )
+                and career_intent
             ):
                 yield from self._stream_career_planning(
                     account_id,
@@ -1589,6 +1618,9 @@ class TurnOrchestrator:
                     use_knowledge_base,
                     use_profile,
                     budget,
+                    route_contract=(
+                        career_route.career_contract if career_route is not None else None
+                    ),
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
@@ -3240,6 +3272,8 @@ class TurnOrchestrator:
         use_knowledge_base: bool,
         use_profile: bool,
         budget: RunBudget,
+        *,
+        route_contract: CareerPlanningRouteContract | None = None,
     ) -> Iterator[StreamEvent]:
         """生涯规划编排（Issue 29）：证据获取 → 过程事件 → 终态收敛。
 
@@ -3251,6 +3285,25 @@ class TurnOrchestrator:
         """
         started = time.monotonic()
         if self._career_planner is None:
+            finalize_message(
+                self._repo,
+                account_id,
+                assistant_message_id,
+                status=ChatMessageStatus.ERROR,
+                error_code="career_unavailable",
+                error_message="生涯规划能力暂不可用，请稍后重试。",
+                duration_ms=None,
+                model_id=None,
+                run_lock_id=None,
+                started=started,
+                now=datetime.now(UTC),
+                thinking=failed_thinking(initial_thinking(CHAT_MODE), "career_unavailable"),
+            )
+            yield StreamEvent(
+                kind="error",
+                error_code="career_unavailable",
+                error_message="生涯规划能力暂不可用，请稍后重试。",
+            )
             return
         entry = self._lifecycle.signal_and_started(assistant_message_id)
         stop_event = (
@@ -3276,6 +3329,7 @@ class TurnOrchestrator:
                 or "请补充你的目标方向与当前阶段，我好为你规划。",
                 thinking=thinking,
                 started=started,
+                route_contract=route_contract,
             )
             return
         retrieval_round: RetrievalRoundProjection | None = None
@@ -3286,13 +3340,21 @@ class TurnOrchestrator:
             yield self._stage_event(
                 assistant_message_id, RunStage.LOCAL_RETRIEVAL, "active"
             )
+            career_use_knowledge_base = bool(
+                use_knowledge_base
+                and (
+                    route_contract is None
+                    or "authorized_knowledge_base"
+                    in route_contract.evidence_requirements
+                )
+            )
             thinking, retrieval_round = self._run_retrieval(
                 account_id,
                 conversation_id,
                 assistant_message_id,
                 until_user_message_id,
                 intent,
-                use_knowledge_base=use_knowledge_base,
+                use_knowledge_base=career_use_knowledge_base,
                 thinking=thinking,
                 stop_event=stop_event,
             )
@@ -3313,7 +3375,14 @@ class TurnOrchestrator:
                 assistant_message_id, RunStage.LOCAL_RETRIEVAL, "skipped"
             )
         public_search_entered = False
-        if not stop_event.is_set() and budget.enter(RunStage.PUBLIC_SEARCH):
+        current_search_allowed = route_contract is None or (
+            "current_search" in route_contract.evidence_requirements
+        )
+        if (
+            not stop_event.is_set()
+            and current_search_allowed
+            and budget.enter(RunStage.PUBLIC_SEARCH)
+        ):
             public_search_entered = True
             yield self._stage_event(
                 assistant_message_id, RunStage.PUBLIC_SEARCH, "active"
@@ -3469,6 +3538,7 @@ class TurnOrchestrator:
                 retrieval_round=retrieval_round,
                 web_search_projection=web_search_projection,
                 arxiv_search_projection=arxiv_search_projection,
+                route_contract=route_contract,
                 budget=budget,
             ):
                 if budget.expired():
@@ -3640,6 +3710,7 @@ class TurnOrchestrator:
         question: str,
         thinking: ChatThinkingSummary,
         started: float,
+        route_contract: CareerPlanningRouteContract | None = None,
     ) -> Iterator[StreamEvent]:
         """信息不足：只问一个关键澄清问题，不启动完整规划生成（Issue 09）。
 
@@ -3651,6 +3722,7 @@ class TurnOrchestrator:
         projection = CareerPlanningProjection(
             plan_id=assistant_message_id,
             intent=_truncate_text(intent, 240),
+            route_contract=route_contract,
             status=CareerPlanningStatus.DONE,
             profile_enabled=use_profile,
             profile_used=False,

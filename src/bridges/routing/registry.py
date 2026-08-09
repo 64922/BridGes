@@ -51,6 +51,12 @@ class CapabilityRouteRegistry:
                     100,
                     "固定 Wan 文生视频",
                 ),
+                CapabilityDefinition(
+                    MainCapability.CAREER.value,
+                    "1.0.0",
+                    100,
+                    "确定性生涯规划路由",
+                ),
             )
         )
 
