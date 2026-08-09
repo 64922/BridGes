@@ -6839,6 +6839,40 @@ export interface components {
          */
         CandidateStabilityState: "candidate" | "active" | "restricted" | "frozen" | "stale" | "deleted";
         /**
+         * CapabilityRoute
+         * @description 一次用户消息的主能力路由快照。
+         */
+        CapabilityRoute: {
+            /**
+             * Version
+             * @default 2026.08.09
+             */
+            version: string;
+            status: components["schemas"]["RouteStatus"];
+            main_capability: components["schemas"]["MainCapability"];
+            /** Confidence */
+            confidence: number;
+            /** Reason */
+            reason: string;
+            paper_search?: components["schemas"]["PaperSearchPlan"] | null;
+            /** Clarification Question */
+            clarification_question?: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Knowledge Base Allowed
+             * @default true
+             */
+            knowledge_base_allowed: boolean;
+            /**
+             * Web Search Allowed
+             * @default true
+             */
+            web_search_allowed: boolean;
+            /** Side Effects */
+            side_effects?: string[];
+        };
+        /**
          * CapsuleIssueRequest
          * @description Request to issue a temporary task capsule for a vault object.
          */
@@ -8002,6 +8036,8 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description 本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
+            /** @description 本条消息绑定的自然语言能力路由快照（Issue 06）。 */
+            route?: components["schemas"]["CapabilityRoute"] | null;
             /** @description 本条学习模式消息的教学编排与证据门投影（Issue 23）。 */
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
             /** @description 本条助手消息的「本次上下文说明」披露（Issue 27）；无披露为 None。 */
@@ -8568,6 +8604,8 @@ export interface components {
             web_search?: components["schemas"]["WebSearchProjection"] | null;
             /** @description arXiv 论文搜索初始状态；无触发时为 None。 */
             arxiv_search?: components["schemas"]["ArxivSearchProjection"] | null;
+            /** @description 本轮自然语言能力路由快照。 */
+            route?: components["schemas"]["CapabilityRoute"] | null;
             /** @description 学习模式教学卡片初始状态。 */
             teaching?: components["schemas"]["TeachingTurnProjection"] | null;
         };
@@ -15492,6 +15530,12 @@ export interface components {
             password: string;
         };
         /**
+         * MainCapability
+         * @description 当前主能力集合；后续能力只能以新注册项追加。
+         * @enum {string}
+         */
+        MainCapability: "ordinary_chat" | "paper_search" | "clarification" | "humanizer" | "image" | "video" | "career";
+        /**
          * ManualAssertionCreateRequest
          * @description Request to manually create a governed profile record.
          *
@@ -16746,6 +16790,43 @@ export interface components {
              * @default false
              */
             requires_author_confirm: boolean;
+        };
+        /**
+         * PaperSearchConstraints
+         * @description 仅允许发送给论文适配器的结构化筛选约束。
+         */
+        PaperSearchConstraints: {
+            /** Topic Terms */
+            topic_terms?: string[];
+            /** Author */
+            author?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Arxiv Id */
+            arxiv_id?: string | null;
+            /** Year From */
+            year_from?: number | null;
+            /** Year To */
+            year_to?: number | null;
+            /**
+             * Max Results
+             * @default 5
+             */
+            max_results: number;
+        };
+        /**
+         * PaperSearchPlan
+         * @description 已规范化、可重放的论文搜索计划。
+         */
+        PaperSearchPlan: {
+            /**
+             * Version
+             * @default 2026.08.09
+             */
+            version: string;
+            /** Normalized Query */
+            normalized_query: string;
+            constraints: components["schemas"]["PaperSearchConstraints"];
         };
         /**
          * PatchAction
@@ -19316,6 +19397,12 @@ export interface components {
             /** Reason */
             reason: string;
         };
+        /**
+         * RouteStatus
+         * @description 路由裁决状态。
+         * @enum {string}
+         */
+        RouteStatus: "matched" | "clarify" | "rejected" | "ordinary";
         /**
          * RunContextEnvelope
          * @description Immutable execution context carried by a run and every node.

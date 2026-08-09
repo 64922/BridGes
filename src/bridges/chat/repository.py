@@ -114,6 +114,7 @@ class MessageRecord:
     image: dict[str, Any] | None = None
     video: dict[str, Any] | None = None
     mcp_call: dict[str, Any] | None = None
+    route: dict[str, Any] | None = None
 
 
 class ConversationModeLockConflict(StorageError):
@@ -347,6 +348,15 @@ class ConversationRepository:
 
     # -- messages ----------------------------------------------------------
 
+    def _persist_message_route(self, record: MessageRecord) -> None:
+        """在消息所在事务内保存路由快照，外部能力启动前即完成。"""
+        if record.route is None:
+            return
+        self._db.scoped(record.account_id).execute(
+            "UPDATE messages SET route = ? WHERE message_id = ? AND account_id = ?",
+            (_json_dumps(record.route), record.message_id, record.account_id),
+        )
+
     def insert_message(self, record: MessageRecord) -> None:
         try:
             with self._db.transaction():
@@ -388,6 +398,7 @@ class ConversationRepository:
                         _json_dumps(record.mcp_call) if record.mcp_call else None,
                     ),
                 )
+                self._persist_message_route(record)
         except StorageError:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -441,6 +452,7 @@ class ConversationRepository:
                             _json_dumps(record.mcp_call) if record.mcp_call else None,
                         ),
                     )
+                    self._persist_message_route(record)
                 placeholders = ",".join("?" for _ in attachment_ids)
                 rows = self._db.scoped(user_record.account_id).execute(
                     "SELECT object_id FROM chat_attachments"
@@ -480,7 +492,7 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call"
+            " mcp_call, route"
             " FROM messages WHERE conversation_id = ? AND account_id = ?"
             " ORDER BY created_at, CASE role WHEN 'user' THEN 0 ELSE 1 END,"
             " attempt_number, message_id",
@@ -494,7 +506,7 @@ class ConversationRepository:
             " status, content, thinking, error_code, error_message, duration_ms,"
             " model_id, run_lock_id, created_at, updated_at, web_search, arxiv_search,"
             " teaching, context_note, skill, career_planning, read_aloud, image, video,"
-            " mcp_call"
+            " mcp_call, route"
             " FROM messages WHERE message_id = ? AND account_id = ?",
             (message_id, account_id),
         ).fetchone()
@@ -1052,6 +1064,7 @@ class ConversationRepository:
                     _json_dumps(record.mcp_call) if record.mcp_call else None,
                 ),
             )
+            self._persist_message_route(record)
         self._insert_generation_run_and_events(
             user_record.account_id, run_record, events
         )
@@ -1324,6 +1337,7 @@ class ConversationRepository:
                         else None,
                     ),
                 )
+                self._persist_message_route(assistant_record)
                 self._insert_generation_run_and_events(
                     assistant_record.account_id, run_record, events
                 )
@@ -1869,6 +1883,7 @@ class ConversationRepository:
             image=_json_loads_any(row["image"]),
             video=_json_loads_any(row["video"]),
             mcp_call=_json_loads_any(row["mcp_call"]),
+            route=_json_loads_any(row["route"]),
         )
 
 

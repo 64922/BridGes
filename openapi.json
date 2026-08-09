@@ -28291,6 +28291,95 @@
         "title": "CandidateStabilityState",
         "description": "Stability classification of a candidate."
       },
+      "CapabilityRoute": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "2026.08.09"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RouteStatus"
+          },
+          "main_capability": {
+            "$ref": "#/components/schemas/MainCapability"
+          },
+          "confidence": {
+            "type": "number",
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence"
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Reason"
+          },
+          "paper_search": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PaperSearchPlan"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "clarification_question": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Clarification Question"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "knowledge_base_allowed": {
+            "type": "boolean",
+            "title": "Knowledge Base Allowed",
+            "default": true
+          },
+          "web_search_allowed": {
+            "type": "boolean",
+            "title": "Web Search Allowed",
+            "default": true
+          },
+          "side_effects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 8,
+            "title": "Side Effects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "status",
+          "main_capability",
+          "confidence",
+          "reason"
+        ],
+        "title": "CapabilityRoute",
+        "description": "一次用户消息的主能力路由快照。"
+      },
       "CapsuleIssueRequest": {
         "properties": {
           "owner_account_id": {
@@ -30272,6 +30361,17 @@
             ],
             "description": "本条助手消息绑定的 arXiv 论文搜索状态与真实论文引用（Issue 22）。"
           },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CapabilityRoute"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本条消息绑定的自然语言能力路由快照（Issue 06）。"
+          },
           "teaching": {
             "anyOf": [
               {
@@ -31269,6 +31369,17 @@
               }
             ],
             "description": "arXiv 论文搜索初始状态；无触发时为 None。"
+          },
+          "route": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CapabilityRoute"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "本轮自然语言能力路由快照。"
           },
           "teaching": {
             "anyOf": [
@@ -42071,6 +42182,20 @@
         "title": "LoginCredential",
         "description": "Request to authenticate with the current username or QQ mailbox."
       },
+      "MainCapability": {
+        "type": "string",
+        "enum": [
+          "ordinary_chat",
+          "paper_search",
+          "clarification",
+          "humanizer",
+          "image",
+          "video",
+          "career"
+        ],
+        "title": "MainCapability",
+        "description": "当前主能力集合；后续能力只能以新注册项追加。"
+      },
       "ManualAssertionCreateRequest": {
         "properties": {
           "dimension": {
@@ -44241,6 +44366,117 @@
         ],
         "title": "PaperAssistElement",
         "description": "A structural element for the paper-assist genre contract (T027).\n\nPaper-assist elements make the system's assistance scope visible: it may\nsuggest structure, language, citation checks and argument improvements, but\nmust not fabricate data, experiments or author decisions."
+      },
+      "PaperSearchConstraints": {
+        "properties": {
+          "topic_terms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 12,
+            "title": "Topic Terms"
+          },
+          "author": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 120
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "arxiv_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Arxiv Id"
+          },
+          "year_from": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2100.0,
+                "minimum": 1900.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year From"
+          },
+          "year_to": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "maximum": 2100.0,
+                "minimum": 1900.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year To"
+          },
+          "max_results": {
+            "type": "integer",
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Results",
+            "default": 5
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "title": "PaperSearchConstraints",
+        "description": "仅允许发送给论文适配器的结构化筛选约束。"
+      },
+      "PaperSearchPlan": {
+        "properties": {
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "default": "2026.08.09"
+          },
+          "normalized_query": {
+            "type": "string",
+            "maxLength": 240,
+            "minLength": 1,
+            "title": "Normalized Query"
+          },
+          "constraints": {
+            "$ref": "#/components/schemas/PaperSearchConstraints"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "normalized_query",
+          "constraints"
+        ],
+        "title": "PaperSearchPlan",
+        "description": "已规范化、可重放的论文搜索计划。"
       },
       "PatchAction": {
         "type": "string",
@@ -48360,6 +48596,17 @@
         ],
         "title": "RollbackRequest",
         "description": "提议回滚到仍受信、依赖兼容且通过平台下限的旧版。"
+      },
+      "RouteStatus": {
+        "type": "string",
+        "enum": [
+          "matched",
+          "clarify",
+          "rejected",
+          "ordinary"
+        ],
+        "title": "RouteStatus",
+        "description": "路由裁决状态。"
       },
       "RunContextEnvelope": {
         "properties": {
