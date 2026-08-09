@@ -1777,7 +1777,82 @@ MIGRATIONS: dict[int, list[str]] = {
     35: [
         """
         ALTER TABLE messages ADD COLUMN route TEXT
+        """,
         """
+        CREATE TABLE profile_extraction_runs (
+            extraction_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            extractor_version TEXT NOT NULL,
+            source_hash TEXT NOT NULL,
+            source_snapshot TEXT NOT NULL,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            record_ids_json TEXT NOT NULL DEFAULT '[]',
+            observed_count INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, message_id, extractor_version, source_hash)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_extraction_runs_account
+        ON profile_extraction_runs(account_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE profile_extraction_tasks (
+            task_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            extractor_version TEXT NOT NULL,
+            source_hash TEXT NOT NULL,
+            status TEXT NOT NULL,
+            attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, message_id, extractor_version, source_hash)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_extraction_tasks_account
+        ON profile_extraction_tasks(account_id, status, created_at)
+        """,
+        """
+        CREATE TABLE profile_extraction_observations (
+            observation_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            extractor_version TEXT NOT NULL,
+            dimension TEXT NOT NULL,
+            normalized_value TEXT NOT NULL,
+            evidence_ref TEXT NOT NULL,
+            reliability REAL NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, message_id, extractor_version, dimension, normalized_value)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_extraction_observations_topic
+        ON profile_extraction_observations(account_id, dimension, normalized_value, created_at)
+        """,
+        """
+        CREATE TABLE profile_privacy_disclosures (
+            account_id TEXT PRIMARY KEY,
+            disclosure_version TEXT NOT NULL,
+            ever_shown INTEGER NOT NULL DEFAULT 1,
+            shown_at TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE profile_extraction_tombstones (
+            account_id TEXT NOT NULL,
+            message_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, message_id)
+        )
+        """,
     ],
 }
 

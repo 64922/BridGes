@@ -55,6 +55,7 @@ from bridges.storage.database import BridgesDatabase
 if TYPE_CHECKING:
     from bridges.chat.repository import ConversationRepository, GenerationRunRecord
     from bridges.chat.service import ChatService
+    from bridges.profiles.automatic import AutomaticProfileService
 
 #: 领取循环默认轮询间隔（秒）——停止请求在 ≤2 秒内可见。
 DEFAULT_POLL_INTERVAL_SECONDS = 0.5
@@ -101,6 +102,7 @@ class GenerationRunExecutor:
         poll_interval: float = DEFAULT_POLL_INTERVAL_SECONDS,
         lease_seconds: float = DEFAULT_LEASE_SECONDS,
         max_attempts: int = MAX_EXECUTION_ATTEMPTS,
+        profile_extraction_service: AutomaticProfileService | None = None,
     ) -> None:
         self._service = service
         self._repo = service._repo  # noqa: SLF001 - 执行器是服务编排的组成部分
@@ -111,6 +113,7 @@ class GenerationRunExecutor:
         self._poll_interval = poll_interval
         self._lease_seconds = lease_seconds
         self._max_attempts = max_attempts
+        self._profile_extraction = profile_extraction_service
         #: 最近一轮执行的中文摘要（受监督循环输出）。
         self._last_summary = "generation: 执行器就绪。"
 
@@ -130,6 +133,12 @@ class GenerationRunExecutor:
             self._reap_message(run)
         claim = self._queue.claim_next(GENERATION_QUEUE, self._worker_name)
         if claim is None:
+            if self._profile_extraction is not None:
+                try:
+                    self._last_summary = self._profile_extraction.run_retry_tick()
+                except Exception as exc:  # noqa: BLE001 - 后台重试不应终止生成 worker
+                    self._last_summary = f"profile-extraction: 本轮处理出错：{exc}"
+                return self._last_summary
             if expired:
                 self._last_summary = f"generation: 收尸 {len(expired)} 个失联运行。"
             else:
@@ -139,6 +148,12 @@ class GenerationRunExecutor:
             self._execute(claim)
         except Exception as exc:  # noqa: BLE001 - 单轮失败记录但不退出循环
             self._last_summary = f"generation: 本轮运行处理出错：{exc}"
+        if self._profile_extraction is not None:
+            try:
+                profile_summary = self._profile_extraction.run_retry_tick()
+            except Exception as exc:  # noqa: BLE001 - 后台重试不应终止生成 worker
+                profile_summary = f"profile-extraction: 本轮处理出错：{exc}"
+            self._last_summary = f"{self._last_summary}；{profile_summary}"
         return self._last_summary
 
     def _reap_message(self, run: GenerationRunRecord) -> None:

@@ -13,6 +13,16 @@ from bridges.profiles.four_dimensions import (
     InMemoryFourDimensionProfileRepository,
     SqliteFourDimensionProfileRepository,
 )
+from bridges.profiles.automatic import (
+    AUTOMATIC_EXTRACTOR_VERSION,
+    AutomaticProfileError,
+    AutomaticProfileService,
+    GatewayAutomaticProfileExtractor,
+    InMemoryAutomaticProfileRepository,
+    RuleBasedAutomaticProfileExtractor,
+    SqliteAutomaticProfileRepository,
+)
+from bridges.contracts.profile_extraction import ProfileExtractionOutput
 
 __all__ = [
     "ProfileRepository",
@@ -24,4 +34,12 @@ __all__ = [
     "FourDimensionProfileService",
     "InMemoryFourDimensionProfileRepository",
     "SqliteFourDimensionProfileRepository",
+    "AUTOMATIC_EXTRACTOR_VERSION",
+    "AutomaticProfileError",
+    "AutomaticProfileService",
+    "GatewayAutomaticProfileExtractor",
+    "InMemoryAutomaticProfileRepository",
+    "RuleBasedAutomaticProfileExtractor",
+    "SqliteAutomaticProfileRepository",
+    "ProfileExtractionOutput",
 ]

@@ -965,6 +965,7 @@ class ProfileService:
         run_id: str,
         project_id: str | None = None,
         sensitivity_classes: list[ProfileSensitivityClass] | None = None,
+        persist_usage: bool = True,
     ) -> ProfileSlice:
         """为一次对话轮次编译最小必要画像切片（Issue 27）。
 
@@ -1079,8 +1080,9 @@ class ProfileService:
                     expires_at=assertion.expires_at,
                 )
             )
-            assertion.last_used_at = now
-            self._repository.save_assertion(assertion)
+            if persist_usage:
+                assertion.last_used_at = now
+                self._repository.save_assertion(assertion)
 
         rejected: list[RejectedSliceItem] = []
         excluded_candidate_ids: list[str] = []
@@ -1122,7 +1124,7 @@ class ProfileService:
             sensitivity_classes_allowed=list(sensitivity_classes or []),
             compiled_at=now,
         )
-        return self._repository.save_slice(slice_)
+        return self._repository.save_slice(slice_) if persist_usage else slice_
 
     def compile_memory_slice(
         self,

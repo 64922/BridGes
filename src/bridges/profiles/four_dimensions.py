@@ -580,8 +580,84 @@ class FourDimensionProfileService:
     def list_records(self, account_id: str) -> list[FourDimensionProfileRecord]:
         return self._repository.list_records(account_id)
 
+    def transaction(self) -> AbstractContextManager[None]:
+        """为自动画像批量提交暴露四维记录的事务边界。"""
+        return self._repository.transaction()
+
     def get_record(self, account_id: str, record_id: str) -> FourDimensionProfileRecord:
         return self._repository.get_record(account_id, record_id)
+
+    def upsert_automatic_record(
+        self,
+        account_id: str,
+        *,
+        dimension: FourDimension,
+        content: str,
+        action: str,
+    ) -> FourDimensionProfileRecord:
+        """提交一条 Issue 15 自动抽取结果到四维目标表。
+
+        自动记录使用稳定的「账户 + 维度 + 规范化内容」来源键：不同消息
+        的同义重复只更新同一行，不会生成副本；消息和抽取器版本由上层
+        extraction run、observation 和 retry task 分别承担幂等边界。``update`` 在同维度最近一条
+        自动记录上改写，保留首次稳定时间；撤回记录不会被自动复活。
+        """
+        normalized = content.strip()
+        if not normalized or len(normalized) > 1000:
+            raise FourDimensionProfileError("画像内容不合法。")
+        source_record_id = (
+            "auto-"
+            + hashlib.sha256(
+                f"{account_id}|{dimension.value}|{normalized.casefold()}".encode("utf-8")
+            ).hexdigest()[:32]
+        )
+        existing: FourDimensionProfileRecord | None = None
+        try:
+            existing = self._repository.get_record(account_id, source_record_id)
+        except FourDimensionProfileError:
+            existing = None
+        if existing is None and action == "update":
+            candidates = [
+                record
+                for record in self._repository.list_records(account_id, include_withdrawn=True)
+                if record.dimension == dimension and record.write_origin == "automatic"
+            ]
+            if candidates:
+                existing = max(candidates, key=lambda record: record.updated_at)
+        if existing is not None:
+            if existing.status == FourDimensionRecordStatus.WITHDRAWN:
+                raise FourDimensionProfileError("画像记录已撤回，不能自动复活。")
+            if existing.content == normalized:
+                return existing
+            existing.content = normalized
+            existing.updated_at = datetime.now(UTC)
+            existing.version += 1
+            existing.source_version += 1
+            existing.source_record_id = source_record_id
+            existing.content_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+            existing.write_origin = "automatic"
+            existing.migration_version = "profile-auto-v1"
+            return self._repository.save_record(existing)
+
+        now = datetime.now(UTC)
+        return self._repository.save_record(
+            FourDimensionProfileRecord(
+                record_id=source_record_id,
+                owner_account_id=account_id,
+                dimension=dimension,
+                label=dimension.label,
+                content=normalized,
+                first_stable_recorded_at=now,
+                updated_at=now,
+                version=1,
+                status=FourDimensionRecordStatus.ACTIVE,
+                source_record_id=source_record_id,
+                source_version=1,
+                content_hash=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
+                write_origin="automatic",
+                migration_version="profile-auto-v1",
+            )
+        )
 
     @staticmethod
     def _validate_version(record: FourDimensionProfileRecord, version: int) -> None:
