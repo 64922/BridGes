@@ -98,6 +98,13 @@ def raise_retired_capability(
         in _PROBE_HEADERS
     )
     compatibility_metrics_for(request).record(endpoint, probe=probe)
+    observability = getattr(request.app.state, "observability_service", None)
+    if observability is not None:
+        observability.record_compatibility_410(
+            endpoint_id=endpoint,
+            service_version=COMPATIBILITY_SERVICE_VERSION,
+            traffic_class="probe" if probe else "real",
+        )
     detail = RetiredCapabilityError(
         error=error,
         message=message,

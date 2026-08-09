@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 
 import { StateBlock } from "@/components/bridges/StateBlock";
-import { ChatProfileNotificationCards } from "@/components/bridges/chat/ChatProfileNotificationCards";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
@@ -20,8 +19,7 @@ import {
   createChatRun,
   getChatConversation,
   isChatStreamEventOf,
-  markProfileNotificationRead,
-  recallProfileNotification as recallProfileNotificationApi,
+  retryAttachmentIngestion,
   retryChatRun,
   stopChatMessage,
   subscribeChatRunEvents,
@@ -31,7 +29,6 @@ import {
   type ChatAttachmentProjection,
   type ChatStreamEvent,
   type ArxivSearchProjection,
-  type ProfileNotification,
   type TeachingTurnProjection,
   type WebSearchProjection,
 } from "@/lib/api";
@@ -160,9 +157,10 @@ export default function ChatConversationPage() {
   // Issue 36：对话级插件选择（随对话持久化；chip 持续显示；停用/卸载/
   // 撤权后由服务端清洗并随投影解释影响）
   // Issue 36：MCP 调用对话框目标（选中插件 chip「调用」按钮打开）
-  const [profileNotifications, setProfileNotifications] = useState<
-    ProfileNotification[]
-  >([]);
+  const [invokeMcpTarget, setInvokeMcpTarget] = useState<{
+    mcp_id: string;
+    name: string;
+  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
   const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
@@ -379,15 +377,6 @@ export default function ChatConversationPage() {
             };
             setActiveRun((run) => (run ? { ...run, mcpCallProcess: event.data } : run));
           }
-        } else if (isChatStreamEventOf(event, "profile")) {
-          // 画像通知即时展示：已持久化并按账户隔离；重试轮次会重新下发
-          // 同一份通知，本地按 notification_id 去重。
-          setProfileNotifications((current) => {
-            const incoming = event.data.notifications ?? [];
-            const known = new Set(current.map((notification) => notification.notification_id));
-            return [...current, ...incoming.filter((notification) => !known.has(notification.notification_id))];
-          });
-          setAnnouncement("已收到画像记忆通知");
         } else if (isChatStreamEventOf(event, "done") || isChatStreamEventOf(event, "error")) {
           if (isChatStreamEventOf(event, "error")) {
             // 失败/停止/断流：保留已完成正文与思考摘要的 error 态渲染
@@ -499,7 +488,6 @@ export default function ChatConversationPage() {
       mcpCall?: McpCallRequestPayload
     ): Promise<boolean> => {
       setSendError(null);
-      setProfileNotifications([]);
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
       abortRef.current = controller;
@@ -776,30 +764,6 @@ export default function ChatConversationPage() {
     subscribeWithRetry,
   ]);
 
-  // 画像通知：一键撤回（自动写入记录）与关闭（标记已读）。失败可安全重试，
-  // 本地状态只在成功后收敛，不显示假成功。
-  const dismissProfileNotification = useCallback((notificationId: string) => {
-    setProfileNotifications((current) =>
-      current.filter((notification) => notification.notification_id !== notificationId)
-    );
-    markProfileNotificationRead(notificationId).catch(() => {
-      // 标记已读失败不影响聊天主流程；画像中心仍可查看该通知。
-    });
-  }, []);
-
-  const recallProfileNotification = useCallback(
-    async (notification: ProfileNotification): Promise<void> => {
-      const recalled = await recallProfileNotificationApi(notification.notification_id);
-      setProfileNotifications((current) =>
-        current.map((item) =>
-          item.notification_id === recalled.notification_id ? recalled : item
-        )
-      );
-      setAnnouncement("已撤回自动写入的画像记录");
-    },
-    []
-  );
-
   // 组装渲染消息：服务端历史 + 进行中的乐观消息 + 错误收敛后的终态渲染。
   // Issue 02：resume 恢复时权威历史已含该 streaming 消息（部分内容），
   // 由 ActiveRun 接管渲染，先从历史中移除同 messageId 项避免双份。
@@ -896,13 +860,6 @@ export default function ChatConversationPage() {
                 onRefreshMessages={() => void load(true)}
                 announcement={announcement}
               />
-              {profileNotifications.length > 0 && (
-                <ChatProfileNotificationCards
-                  notifications={profileNotifications}
-                  onRecall={recallProfileNotification}
-                  onDismiss={dismissProfileNotification}
-                />
-              )}
               {sendError && (
                 <ChatSendErrorBanner message={sendError.message} />
               )}

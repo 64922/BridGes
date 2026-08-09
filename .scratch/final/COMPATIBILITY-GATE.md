@@ -47,6 +47,31 @@ Status: pending-runtime-evidence
 应用内 `ObservabilityService.compatibility_gate_snapshot()` 输出上述稳定字段，供发布
 代理填入真实运行窗口的计数与证据；单元测试只验证字段和隐私边界，不替代运行时门禁。
 
+## Issue 16 四维画像治理 410 观测契约
+
+Issue 16 的旧画像观察、候选、手动写入、权限、通知、历史、切片检查器与旧迁移接口
+统一返回 `410 profile_governance_retired`，替代入口为 `/account/profile`；服务版本为
+`0.1.0`。运行时计数通过 `ObservabilityService.compatibility_gate_snapshot()` 取得，
+只保留稳定 endpoint ID、服务版本、流量类别与状态码，不记录账户、画像 ID、请求正文或
+查询参数。`X-Bridges-Compatibility-Probe: 1` 归类为 `probe`，其余归类为 `real`。
+
+| endpoint_id | service_version | traffic_class | status_code | count |
+| --- | --- | --- | ---: | ---: |
+| `profiles.observations.create` / `profiles.observations.list` / `profiles.observations.detail` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.candidates.create` / `profiles.candidates.list` / `profiles.candidates.detail` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.candidates.decision` / `profiles.candidates.batch-decision` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.assertions.list` / `profiles.assertions.detail` / `profiles.assertions.manual` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.assertions.freeze` / `profiles.assertions.withdraw` / `profiles.assertions.unfreeze` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.assertions.modify` / `profiles.assertions.rollback` / `profiles.assertions.delete` / `profiles.assertions.history` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.export` / `profiles.permissions.list` / `profiles.permissions.update` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.notifications.list` / `profiles.notifications.read` / `profiles.notifications.recall` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.memory-slice.compile` / `profiles.memory-slice.detail` / `profiles.memory-slice.inspector` / `profiles.memory-slice.access-check` | `0.1.0` | `real` | 410 | 待运行时观测 |
+| `profiles.four-dimensions.migration-report` / `profiles.four-dimensions.migrate` | `0.1.0` | `real` | 410 | 待运行时观测 |
+
+探针运行时应为上表每个 endpoint ID 追加一条 `probe` 计数；探针响应也必须满足同一稳定
+错误结构，且不得写入画像、通知或兼容性以外的业务数据。该章节保持 `待运行时观测`，
+在真实兼容窗口采样完成前不得把文档状态改为 `passed`。
+
 ## 发布证据
 
 - 兼容版本：待填写

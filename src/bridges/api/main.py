@@ -170,6 +170,7 @@ from bridges.profiles import (
     SqliteFourDimensionProfileRepository,
 )
 from bridges.profiles.api import router as profiles_router
+from bridges.profiles.legacy_api import router as legacy_profiles_router
 from bridges.profiles.sqlite_repository import SqliteProfileRepository
 from bridges.projects import ProjectService
 from bridges.retirement import CompatibilityMetrics, run_reminder_retirement
@@ -1613,6 +1614,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.include_router(sync.router)
     app.include_router(institution.router)
     app.include_router(profiles_router)
+    app.include_router(legacy_profiles_router)
     app.include_router(workflows.router)
     app.include_router(scope.router)
     app.include_router(evaluation.router)

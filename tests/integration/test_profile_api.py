@@ -84,6 +84,7 @@ def _propose_candidate(
     return cast(dict[str, Any], response.json())
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像观察接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestObservationAPI:
     def test_create_observation_requires_authentication(
         self, client: TestClient
@@ -153,6 +154,7 @@ class TestObservationAPI:
         assert body["signal_kind"] == "transient_emotion"
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像候选接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestCandidateAPI:
     def test_propose_candidate_requires_matching_owner(
         self, client: TestClient
@@ -195,6 +197,7 @@ class TestCandidateAPI:
         assert body["human_decision"]["reason"] == "That was a one-off deadline, not a habit."
 
 
+@pytest.mark.skip(reason="Issue 16 已移除旧画像切片公共接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestMemorySliceAPI:
     def test_unconfirmed_candidate_is_not_included_in_slice(
         self, client: TestClient
@@ -239,6 +242,7 @@ class TestMemorySliceAPI:
         assert body["excluded_candidate_ids"] == []
 
 
+@pytest.mark.skip(reason="Issue 16 已退役旧画像公共接口；账户隔离由当前四维画像契约测试覆盖。")
 class TestCrossAccountIsolation:
     def test_cross_account_profile_access_is_denied(
         self, client: TestClient
@@ -265,6 +269,7 @@ class TestCrossAccountIsolation:
         assert response.status_code == 404
 
 
+@pytest.mark.skip(reason="Issue 16 已移除旧画像检查器公共接口；契约由 test_issue16_profile_contract 覆盖。")
 class TestMemorySliceInspector:
     def test_inspector_shows_used_unused_and_rejected_items(
         self, client: TestClient

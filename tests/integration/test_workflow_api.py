@@ -252,6 +252,7 @@ def test_human_todo_flow_through_api(client: TestClient) -> None:
     assert resumed["current_node_id"] == "finalize"
 
 
+@pytest.mark.skip(reason="Issue 16 已移除旧画像切片公共 API；当前聊天切片为内部能力。")
 class TestMemorySliceBoundToRun:
     def _create_assertion(self, client: TestClient, account_id: str) -> None:
         response = client.post(

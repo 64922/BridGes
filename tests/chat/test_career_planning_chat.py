@@ -199,26 +199,31 @@ def _create_conversation(client: TestClient) -> str:
 
 
 def _seed_assertion(
-    client: TestClient,
+    sqlite_app: Any,
+    account_id: str,
     dimension: str,
     value: str,
     *,
     sensitivity: str = "preference",
 ) -> str:
-    response = client.post(
-        "/profiles/assertions/manual",
-        json={
-            "dimension": dimension,
-            "value_or_rule": value,
-            "applicable_scenes": ["companion", "study"],
-            "sensitivity_class": sensitivity,
-            "authorization_scope": "general",
-            "source_note": "测试播种",
-        },
+    from bridges.contracts.profiles import (
+        ManualAssertionCreateRequest,
+        ProfileDimension,
+        ProfileSensitivityClass,
     )
-    assert response.status_code == 201, response.text
-    assertion_id: str = response.json()["assertion_id"]
-    return assertion_id
+
+    assertion = sqlite_app.state.profile_service.manual_create_assertion(
+        account_id,
+        ManualAssertionCreateRequest(
+            dimension=ProfileDimension(dimension),
+            value_or_rule=value,
+            applicable_scenes=["companion", "study"],
+            sensitivity_class=ProfileSensitivityClass(sensitivity),
+            authorization_scope="general",
+            source_note="测试播种",
+        ),
+    )
+    return assertion.assertion_id
 
 
 def _seed_learning_mission(sqlite_app: Any, account_id: str) -> None:
@@ -376,15 +381,16 @@ def test_career_uses_minimal_authorized_profile_slice(
     generation_helpers: dict[str, Any],
 ) -> None:
     """只使用当前账户授权的最小画像切片；敏感记录绝不进入模型请求。"""
-    _register(client)
+    account = _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
 
-    _seed_assertion(client, "interest_preference", "喜欢数据分析与可视化。")
+    _seed_assertion(sqlite_app, account["id"], "interest_preference", "喜欢数据分析与可视化。")
     # 敏感断言（如重要经历）必须被切片编译器排除
     _seed_assertion(
-        client,
+        sqlite_app,
+        account["id"],
         "important_experience",
         "曾因方向选择焦虑休学半年。",
         sensitivity="sensitive",
@@ -399,8 +405,7 @@ def test_career_uses_minimal_authorized_profile_slice(
     # 披露：READY 态且只含 1 条授权切片（敏感记录被排除）
     context_note = message["context_note"]
     assert context_note["state"] == "ready"
-    assert len(context_note["profile_items"]) == 1
-    assert context_note["excluded_count"] >= 1
+    assert context_note["profile_item_count"] == 1
     # 模型请求只含最小切片，不含敏感记录正文
     assert adapter.requests, "生涯规划必须调用结构化模型"
     payload_text = json.dumps(adapter.requests[0], ensure_ascii=False)
@@ -417,11 +422,11 @@ def test_career_with_profile_disabled_uses_nothing(
     generation_helpers: dict[str, Any],
 ) -> None:
     """发送前关闭画像：请求、披露与规划投影均不含画像内容。"""
-    _register(client)
+    account = _register(client)
     adapter = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter)
     conversation_id = _create_conversation(client)
-    _seed_assertion(client, "interest_preference", "喜欢数据分析与可视化。")
+    _seed_assertion(sqlite_app, account["id"], "interest_preference", "喜欢数据分析与可视化。")
 
     created = _send_career(client, conversation_id, use_profile=False)
     generation_helpers["drive"](sqlite_app)
@@ -431,7 +436,7 @@ def test_career_with_profile_disabled_uses_nothing(
     message = done_data["message"]
     context_note = message["context_note"]
     assert context_note["state"] == "off"
-    assert context_note["profile_items"] == []
+    assert context_note["profile_item_count"] == 0
     payload_text = json.dumps(adapter.requests[0], ensure_ascii=False)
     assert "喜欢数据分析与可视化" not in payload_text
     career = message["career_planning"]
@@ -444,7 +449,7 @@ def test_career_without_profile_has_empty_disclosure(
     generation_helpers: dict[str, Any],
 ) -> None:
     """启用画像但无相关记录：合法空态（empty 披露，回答照常）。"""
-    _register(client)
+    account_a = _register(client)
     _swap_gateways(sqlite_app, _ProgrammableStructuredAdapter(output=_good_output()))
     conversation_id = _create_conversation(client)
 
@@ -732,11 +737,11 @@ def test_second_account_planning_is_isolated_from_first(
     generation_helpers: dict[str, Any],
 ) -> None:
     """两个账户执行相同问题：只受各自授权画像影响，缓存/引用不串号。"""
-    _register(client)
+    account_a = _register(client)
     adapter_a = _ProgrammableStructuredAdapter(output=_good_output())
     _swap_gateways(sqlite_app, adapter_a)
     conversation_a = _create_conversation(client)
-    _seed_assertion(client, "interest_preference", "账户 A 明确偏好金融行业。")
+    _seed_assertion(sqlite_app, account_a["id"], "interest_preference", "账户 A 明确偏好金融行业。")
     _send_career(client, conversation_a)
     generation_helpers["drive"](sqlite_app)
     assert "金融行业" in json.dumps(adapter_a.requests[0], ensure_ascii=False)

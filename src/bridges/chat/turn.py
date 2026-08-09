@@ -66,7 +66,6 @@ from bridges.contracts.chat import (
     ChatStreamStageData,
     ChatStreamVideoData,
     ChatThinkingSummary,
-    ContextNoteProfileItem,
     ContextNoteProjection,
     ContextNoteState,
     ImageRequestPayload,
@@ -90,6 +89,7 @@ from bridges.contracts.profiles import (
     FourDimension,
     ProfileDimension,
     ProfileSlice,
+    ProfileSliceItem,
 )
 from bridges.contracts.retrieval import (
     CitationProjection,
@@ -378,7 +378,7 @@ class CareerPlannerOrchestrator(Protocol):
         run_context: RunContextEnvelope,
         profile_enabled: bool,
         profile_used: bool,
-        profile_items: list[ContextNoteProfileItem],
+        profile_items: list[ProfileSliceItem],
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
@@ -877,9 +877,9 @@ def dimension_label(dimension: str) -> str:
             return dimension
 
 
-def context_note_ready_text(items: list[ContextNoteProfileItem]) -> str:
+def context_note_ready_text(items: list[ProfileSliceItem]) -> str:
     """披露卡的中文一句话说明（ready 态）。"""
-    categories = "、".join(dict.fromkeys(item.dimension_label for item in items))
+    categories = "、".join(dict.fromkeys(dimension_label(item.dimension) for item in items))
     return (
         f"本轮回答使用了 {len(items)} 条画像记录（{categories}），"
         "仅包含与当前任务相关的最小切片。"
@@ -893,7 +893,7 @@ def context_note_thinking(
     tools = list(thinking.tools)
     if context_note.state == ContextNoteState.READY:
         tools.append(
-            f"已使用 {len(context_note.profile_items)} 条画像记录（最小切片，仅限当前任务）"
+            f"已使用 {context_note.profile_item_count} 条画像记录（最小切片，仅限当前任务）"
         )
     elif context_note.state == ContextNoteState.OFF:
         tools.append("本轮未使用画像记录（发送前已关闭）")
@@ -2400,7 +2400,7 @@ class TurnOrchestrator:
             # 用户发送前关闭画像时本轮不编译、不注入，披露与审计都不含
             # 画像内容。编译/披露失败一律静默降级（回答照常，披露 error
             # 态可解释），绝不阻断生成。
-            context_note, profile_context = self._compile_profile_slice(
+            context_note, profile_context, _profile_items = self._compile_profile_slice(
                 account_id,
                 conversation_id,
                 assistant_message_id,
@@ -3519,7 +3519,7 @@ class TurnOrchestrator:
             )
         # 最小画像切片编译与「本次上下文说明」披露：模型提示词由编排服务
         # 自行组装（这里只复用编译/披露/审计，切片上下文不在本路径注入）。
-        context_note, _profile_context = self._compile_profile_slice(
+        context_note, _profile_context, profile_items = self._compile_profile_slice(
             account_id,
             conversation_id,
             assistant_message_id,
@@ -3531,7 +3531,6 @@ class TurnOrchestrator:
         )
         if context_note is not None:
             thinking = context_note_thinking(thinking, context_note)
-        profile_items = list(context_note.profile_items) if context_note else []
         profile_used = (
             context_note.state == ContextNoteState.READY if context_note else False
         )
@@ -4356,7 +4355,7 @@ class TurnOrchestrator:
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
-    ) -> tuple[ContextNoteProjection | None, str | None]:
+    ) -> tuple[ContextNoteProjection | None, str | None, list[ProfileSliceItem]]:
         """编译本轮最小画像切片并落库上下文说明披露。
 
         关闭画像（``use_profile=False``）时：不编译、不注入，披露为 off
@@ -4374,7 +4373,7 @@ class TurnOrchestrator:
         # 行为与旧版一致（thinking 不追加画像说明）。
         profile_source = self._automatic_profiles or self._profiles
         if profile_source is None:
-            return None, None
+            return None, None, []
         if not use_profile:
             self._audit_slice_usage(
                 account_id,
@@ -4395,11 +4394,11 @@ class TurnOrchestrator:
                         mode=mode,
                         used_at=now,
                         material_categories=material_categories,
-                        excluded_count=0,
                         note="本轮未使用你的画像记录（发送前已关闭）。回答不基于任何画像信息。",
                     ),
                 ),
                 None,
+                [],
             )
         try:
             current_messages = self._repo.list_messages(account_id, conversation_id)
@@ -4469,59 +4468,18 @@ class TurnOrchestrator:
                         mode=mode,
                         used_at=now,
                         material_categories=material_categories,
-                        excluded_count=0,
                         note="本轮画像切片编译失败，回答已在不使用画像的情况下正常生成。",
                     ),
                 ),
                 None,
+                [],
             )
         profile_context = (
             profile_slice_context(profile_slice)
             if profile_slice.included_items
             else None
         )
-        profile_items: list[ContextNoteProfileItem] = []
-        for item in profile_slice.included_items:
-            status = "active"
-            version = 1
-            applicable_scenes: list[str] = []
-            with contextlib.suppress(Exception):  # noqa: BLE001 - 披露项尽力而为
-                if self._automatic_profiles is not None:
-                    try:
-                        record = self._automatic_profiles.get_record(
-                            account_id, item.assertion_id
-                        )
-                        status = record.status.value
-                        version = record.version
-                    except Exception:
-                        if self._profiles is not None:
-                            assertion = self._profiles.get_assertion(
-                                account_id, item.assertion_id
-                            )
-                            status = assertion.status.value
-                            version = assertion.version
-                            applicable_scenes = list(assertion.applicable_scenes)
-                else:
-                    assert self._profiles is not None
-                    assertion = self._profiles.get_assertion(
-                        account_id, item.assertion_id
-                    )
-                    status = assertion.status.value
-                    version = assertion.version
-                    applicable_scenes = list(assertion.applicable_scenes)
-            profile_items.append(
-                ContextNoteProfileItem(
-                    assertion_id=item.assertion_id,
-                    dimension=item.dimension,
-                    dimension_label=dimension_label(item.dimension),
-                    value_summary=item.value_or_rule,
-                    inclusion_reason=item.inclusion_reason,
-                    used_at=now,
-                    status=status,
-                    version=version,
-                    applicable_scenes=applicable_scenes,
-                )
-            )
+        profile_items = list(profile_slice.included_items)
         self._audit_slice_usage(
             account_id,
             mode=mode.value,
@@ -4537,10 +4495,8 @@ class TurnOrchestrator:
             profile_enabled=True,
             mode=mode,
             used_at=now,
-            profile_items=profile_items,
+            profile_item_count=len(profile_items),
             material_categories=material_categories,
-            excluded_count=len(profile_slice.unused_items)
-            + len(profile_slice.rejected_items),
             note=(
                 context_note_ready_text(profile_items)
                 if profile_items
@@ -4550,6 +4506,7 @@ class TurnOrchestrator:
         return (
             self._persist_context_note(account_id, assistant_message_id, context_note),
             profile_context,
+            profile_items,
         )
 
     def _persist_context_note(

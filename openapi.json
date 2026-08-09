@@ -12104,2271 +12104,13 @@
         }
       }
     },
-    "/profiles/observations": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Create Observation",
-        "description": "Record a traceable profile observation owned by the current account.",
-        "operationId": "create_observation_profiles_observations_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileObservationCreateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileObservation"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "List Observations",
-        "description": "List profile observations for the current account.",
-        "operationId": "list_observations_profiles_observations_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProfileObservation"
-                  },
-                  "title": "Response List Observations Profiles Observations Get"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/observations/{observation_id}": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Get Observation",
-        "description": "Get a single profile observation.",
-        "operationId": "get_observation_profiles_observations__observation_id__get",
-        "parameters": [
-          {
-            "name": "observation_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Observation Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileObservation"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/candidates": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Propose Candidate",
-        "description": "Propose a candidate profile from existing observations.",
-        "operationId": "propose_candidate_profiles_candidates_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileCandidateCreateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileCandidate"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      },
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "List Candidates",
-        "description": "List candidate profiles for the current account.",
-        "operationId": "list_candidates_profiles_candidates_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProfileCandidate"
-                  },
-                  "title": "Response List Candidates Profiles Candidates Get"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/candidates/{candidate_id}": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Get Candidate",
-        "description": "Get a single candidate profile.",
-        "operationId": "get_candidate_profiles_candidates__candidate_id__get",
-        "parameters": [
-          {
-            "name": "candidate_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Candidate Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileCandidate"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/candidates/{candidate_id}/decision": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Decide Candidate",
-        "description": "Accept, reject or modify a candidate profile.",
-        "operationId": "decide_candidate_profiles_candidates__candidate_id__decision_post",
-        "parameters": [
-          {
-            "name": "candidate_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Candidate Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CandidateDecision"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileCandidate"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "List Assertions",
-        "description": "List promoted profile assertions for the current account.",
-        "operationId": "list_assertions_profiles_assertions_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProfileAssertion"
-                  },
-                  "title": "Response List Assertions Profiles Assertions Get"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/memory-slice": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Compile Memory Slice",
-        "description": "Compile the minimal profile slice for a run.\n\nThe slice is bound to the run and filtered by purpose, project scope,\nauthorization snapshot, key epoch, expiration and sensitivity class.\nUnconfirmed candidates are explicitly excluded so they are never used as\nstable facts in downstream tasks.",
-        "operationId": "compile_memory_slice_profiles_memory_slice_get",
-        "parameters": [
-          {
-            "name": "purpose",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Declared processing purpose.",
-              "title": "Purpose"
-            },
-            "description": "Declared processing purpose."
-          },
-          {
-            "name": "run_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Run identifier.",
-              "title": "Run Id"
-            },
-            "description": "Run identifier."
-          },
-          {
-            "name": "project_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Project scope.",
-              "title": "Project Id"
-            },
-            "description": "Project scope."
-          },
-          {
-            "name": "sensitivity_class",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProfileSensitivityClass"
-                  }
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "Allowed sensitivity classes.",
-              "title": "Sensitivity Class"
-            },
-            "description": "Allowed sensitivity classes."
-          },
-          {
-            "name": "ttl_seconds",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "integer",
-              "description": "Slice time-to-live in seconds.",
-              "default": 3600,
-              "title": "Ttl Seconds"
-            },
-            "description": "Slice time-to-live in seconds."
-          },
-          {
-            "name": "authorization_version",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Authorization policy version snapshot.",
-              "default": "authz-1.0",
-              "title": "Authorization Version"
-            },
-            "description": "Authorization policy version snapshot."
-          },
-          {
-            "name": "key_epoch",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "type": "string",
-              "description": "Key epoch.",
-              "default": "epoch-0",
-              "title": "Key Epoch"
-            },
-            "description": "Key epoch."
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileSlice"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/memory-slices/{slice_id}": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Get Memory Slice",
-        "description": "Return a compiled memory slice owned by the current account.",
-        "operationId": "get_memory_slice_profiles_memory_slices__slice_id__get",
-        "parameters": [
-          {
-            "name": "slice_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Slice Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileSlice"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/memory-slices/{slice_id}/inspector": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Inspect Memory Slice",
-        "description": "Inspect a memory slice: used, unused and rejected items with reasons.\n\nThe context inspector uses this view to explain why each profile entry was\nor was not included in the run context.",
-        "operationId": "inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get",
-        "parameters": [
-          {
-            "name": "slice_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Slice Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileSlice"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/memory-slices/{slice_id}/access-check": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Check Memory Slice Access",
-        "description": "Verify that a model or worker node can access only the bound slice.\n\nThis endpoint fails closed when the slice is not bound to the run, has\nexpired, or has been revoked/cancelled. It proves that downstream nodes\ncannot browse the full profile vault.",
-        "operationId": "check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post",
-        "parameters": [
-          {
-            "name": "slice_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Slice Id"
-            }
-          },
-          {
-            "name": "run_id",
-            "in": "query",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "description": "Run identifier the slice must be bound to.",
-              "title": "Run Id"
-            },
-            "description": "Run identifier the slice must be bound to."
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response Check Memory Slice Access Profiles Memory Slices  Slice Id  Access Check Post"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "403": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Forbidden"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Get Assertion",
-        "description": "Return a single promoted profile assertion.",
-        "operationId": "get_assertion_profiles_assertions__assertion_id__get",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/assertions/manual": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Create Manual Assertion",
-        "description": "Manually create a governed profile record declared by the current account.\n\nThe user declares the fact together with its applicable scenes, sensitivity\nand authorization scope; the record is promoted immediately with a\ntraceable observation and candidate chain.",
-        "operationId": "create_manual_assertion_profiles_assertions_manual_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ManualAssertionCreateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/freeze": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Freeze Assertion",
-        "description": "Freeze a profile assertion so it is no longer used in new runs.",
-        "operationId": "freeze_assertion_profiles_assertions__assertion_id__freeze_post",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileFreezeRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/withdraw": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Withdraw Assertion",
-        "description": "Withdraw a profile assertion so it is no longer used in answers.",
-        "operationId": "withdraw_assertion_profiles_assertions__assertion_id__withdraw_post",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileFreezeRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/unfreeze": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Unfreeze Assertion",
-        "description": "Restore a frozen or withdrawn profile assertion to active use.",
-        "operationId": "unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileFreezeRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/modify": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Modify Assertion",
-        "description": "Modify a profile assertion, creating a new version.",
-        "operationId": "modify_assertion_profiles_assertions__assertion_id__modify_post",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileAssertionModifyRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/rollback": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Rollback Assertion",
-        "description": "Roll a profile assertion back to a previous version.",
-        "operationId": "rollback_assertion_profiles_assertions__assertion_id__rollback_post",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileAssertionRollbackRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/delete": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Delete Assertion",
-        "description": "Delete a profile assertion and propagate the deletion downstream.",
-        "operationId": "delete_assertion_profiles_assertions__assertion_id__delete_post",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileDeleteRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertion"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/assertions/{assertion_id}/history": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Get Assertion History",
-        "description": "Return the version history of one profile assertion.\n\nThe history lets the user compare versions and see whether a change was\nmade by a user operation or by a candidate promotion, without erasing\nprovenance on overwrite.",
-        "operationId": "get_assertion_history_profiles_assertions__assertion_id__history_get",
-        "parameters": [
-          {
-            "name": "assertion_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Assertion Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileAssertionHistory"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/export": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Export Profile",
-        "description": "Export the current account's profile assertions and governance history.",
-        "operationId": "export_profile_profiles_export_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileExport"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/permissions": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "List Permissions",
-        "description": "List low-risk automatic-update permissions for the current account.",
-        "operationId": "list_permissions_profiles_permissions_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProfilePermission"
-                  },
-                  "title": "Response List Permissions Profiles Permissions Get"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Update Permission",
-        "description": "Enable or disable one low-risk automatic-update permission.\n\nOnly the authenticated user can change permissions; the model or any\nbackground task has no path to grant authorization (ADR-0002).",
-        "operationId": "update_permission_profiles_permissions_put",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfilePermissionUpdateRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfilePermission"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/notifications": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "List Notifications",
-        "description": "List profile notifications for the current account, newest first.",
-        "operationId": "list_notifications_profiles_notifications_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "$ref": "#/components/schemas/ProfileNotification"
-                  },
-                  "title": "Response List Notifications Profiles Notifications Get"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/notifications/{notification_id}/read": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Mark Notification Read",
-        "description": "Mark one profile notification as read.",
-        "operationId": "mark_notification_read_profiles_notifications__notification_id__read_post",
-        "parameters": [
-          {
-            "name": "notification_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Notification Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileNotification"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/notifications/{notification_id}/recall": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Recall Notification",
-        "description": "One-click recall of an auto-written profile record.\n\nThe recall withdraws the record (auditable history is kept), blocks\nfuture automatic writes of the same fact, and is idempotent so a failed\nretry does not duplicate anything.",
-        "operationId": "recall_notification_profiles_notifications__notification_id__recall_post",
-        "parameters": [
-          {
-            "name": "notification_id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "type": "string",
-              "title": "Notification Id"
-            }
-          },
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileNotification"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
-    "/profiles/candidates/batch-decision": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Batch Decide Candidates",
-        "description": "Apply one decision to multiple candidates (idempotent, retry-safe).\n\nCandidates already in the target state are reported as ``already_decided``\nrather than failed, so a failed batch can be retried safely without\nduplicate writes.",
-        "operationId": "batch_decide_candidates_profiles_candidates_batch_decision_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ProfileBatchCandidateDecisionRequest"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileBatchCandidateResult"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
     "/profiles/four-dimensions": {
       "get": {
         "tags": [
           "profiles"
         ],
         "summary": "List Four Dimension Records",
-        "description": "列出当前账户的活动四维画像记录。",
+        "description": "List active four-dimension records for the current account.",
         "operationId": "list_four_dimension_records_profiles_four_dimensions_get",
         "parameters": [
           {
@@ -14426,143 +12168,13 @@
         }
       }
     },
-    "/profiles/four-dimensions/migration-report": {
-      "get": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Get Four Dimension Migration Report",
-        "description": "返回当前账户的迁移汇总，不包含画像正文。",
-        "operationId": "get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FourDimensionMigrationReport"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Not Found"
-          },
-          "422": {
-            "description": "Validation Error",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/profiles/four-dimensions/migrate": {
-      "post": {
-        "tags": [
-          "profiles"
-        ],
-        "summary": "Migrate Four Dimension Records",
-        "description": "执行账户级、确定性的 expand/migrate 投影。",
-        "operationId": "migrate_four_dimension_records_profiles_four_dimensions_migrate_post",
-        "parameters": [
-          {
-            "name": "bridges_session",
-            "in": "cookie",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Bridges Session"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/FourDimensionMigrationReport"
-                }
-              }
-            }
-          },
-          "401": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unauthorized"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileError"
-                }
-              }
-            },
-            "description": "Unprocessable Content"
-          }
-        }
-      }
-    },
     "/profiles/four-dimensions/{record_id}": {
       "patch": {
         "tags": [
           "profiles"
         ],
         "summary": "Modify Four Dimension Record",
-        "description": "修改已有记录；此处刻意不提供新增路由。",
+        "description": "Modify one existing record without resetting its stable timestamp.",
         "operationId": "modify_four_dimension_record_profiles_four_dimensions__record_id__patch",
         "parameters": [
           {
@@ -14661,7 +12273,7 @@
           "profiles"
         ],
         "summary": "Withdraw Four Dimension Record",
-        "description": "撤回一条记录并保留内部墓碑。",
+        "description": "Withdraw one record while retaining its internal tombstone.",
         "operationId": "withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post",
         "parameters": [
           {
@@ -14750,6 +12362,1854 @@
               }
             },
             "description": "Unprocessable Content"
+          }
+        }
+      }
+    },
+    "/profiles/observations": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Create Observation",
+        "operationId": "create_observation_profiles_observations_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "List Observations",
+        "operationId": "list_observations_profiles_observations_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/observations/{observation_id}": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Get Observation",
+        "operationId": "get_observation_profiles_observations__observation_id__get",
+        "parameters": [
+          {
+            "name": "observation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Observation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Propose Candidate",
+        "operationId": "propose_candidate_profiles_candidates_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "List Candidates",
+        "operationId": "list_candidates_profiles_candidates_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates/{candidate_id}": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Get Candidate",
+        "operationId": "get_candidate_profiles_candidates__candidate_id__get",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates/{candidate_id}/decision": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Decide Candidate",
+        "operationId": "decide_candidate_profiles_candidates__candidate_id__decision_post",
+        "parameters": [
+          {
+            "name": "candidate_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Candidate Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/candidates/batch-decision": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Batch Decide Candidates",
+        "operationId": "batch_decide_candidates_profiles_candidates_batch_decision_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "List Assertions",
+        "operationId": "list_assertions_profiles_assertions_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Get Assertion",
+        "operationId": "get_assertion_profiles_assertions__assertion_id__get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/manual": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Create Manual Assertion",
+        "operationId": "create_manual_assertion_profiles_assertions_manual_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/freeze": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Freeze Assertion",
+        "operationId": "freeze_assertion_profiles_assertions__assertion_id__freeze_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/withdraw": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Withdraw Assertion",
+        "operationId": "withdraw_assertion_profiles_assertions__assertion_id__withdraw_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/unfreeze": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Unfreeze Assertion",
+        "operationId": "unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/modify": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Modify Assertion",
+        "operationId": "modify_assertion_profiles_assertions__assertion_id__modify_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/rollback": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Rollback Assertion",
+        "operationId": "rollback_assertion_profiles_assertions__assertion_id__rollback_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/delete": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Delete Assertion",
+        "operationId": "delete_assertion_profiles_assertions__assertion_id__delete_post",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/assertions/{assertion_id}/history": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Get Assertion History",
+        "operationId": "get_assertion_history_profiles_assertions__assertion_id__history_get",
+        "parameters": [
+          {
+            "name": "assertion_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Assertion Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/export": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Export Profile",
+        "operationId": "export_profile_profiles_export_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/permissions": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "List Permissions",
+        "operationId": "list_permissions_profiles_permissions_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Update Permission",
+        "operationId": "update_permission_profiles_permissions_put",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/notifications": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "List Notifications",
+        "operationId": "list_notifications_profiles_notifications_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/notifications/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Mark Notification Read",
+        "operationId": "mark_notification_read_profiles_notifications__notification_id__read_post",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Notification Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/notifications/{notification_id}/recall": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Recall Notification",
+        "operationId": "recall_notification_profiles_notifications__notification_id__recall_post",
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Notification Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slice": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Compile Memory Slice",
+        "operationId": "compile_memory_slice_profiles_memory_slice_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slices/{slice_id}": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Get Memory Slice",
+        "operationId": "get_memory_slice_profiles_memory_slices__slice_id__get",
+        "parameters": [
+          {
+            "name": "slice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slice Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slices/{slice_id}/inspector": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Inspect Memory Slice",
+        "operationId": "inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get",
+        "parameters": [
+          {
+            "name": "slice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slice Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/memory-slices/{slice_id}/access-check": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Check Memory Slice Access",
+        "operationId": "check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post",
+        "parameters": [
+          {
+            "name": "slice_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Slice Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/four-dimensions/migration-report": {
+      "get": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Get Four Dimension Migration Report",
+        "operationId": "get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/profiles/four-dimensions/migrate": {
+      "post": {
+        "tags": [
+          "profiles-retired"
+        ],
+        "summary": "Migrate Four Dimension Records",
+        "operationId": "migrate_four_dimension_records_profiles_four_dimensions_migrate_post",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "410": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetiredCapabilityError"
+                }
+              }
+            },
+            "description": "Gone"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
           }
         }
       }
@@ -27715,18 +27175,6 @@
         "title": "ArxivSearchStatus",
         "description": "一次论文搜索的用户可见状态。"
       },
-      "AssertionStatus": {
-        "type": "string",
-        "enum": [
-          "active",
-          "frozen",
-          "withdrawn",
-          "stale",
-          "deleted"
-        ],
-        "title": "AssertionStatus",
-        "description": "Lifecycle status of a promoted profile assertion.\n\n``WITHDRAWN`` stops further answer use while keeping the auditable history;\n``FROZEN`` additionally prevents automatic updates (enforced from Issue 26)."
-      },
       "AssetRegion": {
         "properties": {
           "region_id": {
@@ -28081,78 +27529,6 @@
         ],
         "title": "BoundingBox",
         "description": "Normalized or pixel bounding box within an image."
-      },
-      "CandidateDecision": {
-        "properties": {
-          "decision": {
-            "$ref": "#/components/schemas/DecisionType",
-            "description": "Decision type."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable rationale."
-          },
-          "modified_value_or_rule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Value Or Rule"
-          },
-          "modified_applicable_scenes": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Applicable Scenes"
-          }
-        },
-        "type": "object",
-        "required": [
-          "decision",
-          "reason"
-        ],
-        "title": "CandidateDecision",
-        "description": "Request to accept, reject or modify a candidate profile."
-      },
-      "CandidateReviewStatus": {
-        "type": "string",
-        "enum": [
-          "proposed",
-          "accepted",
-          "rejected",
-          "modified",
-          "conflicted",
-          "stale",
-          "discarded"
-        ],
-        "title": "CandidateReviewStatus",
-        "description": "Where the candidate is in the human-review loop."
-      },
-      "CandidateStabilityState": {
-        "type": "string",
-        "enum": [
-          "candidate",
-          "active",
-          "restricted",
-          "frozen",
-          "stale",
-          "deleted"
-        ],
-        "title": "CandidateStabilityState",
-        "description": "Stability classification of a candidate."
       },
       "CapabilityRoute": {
         "properties": {
@@ -31020,9 +30396,6 @@
                 "$ref": "#/components/schemas/ChatStreamDoneData"
               },
               {
-                "$ref": "#/components/schemas/ChatStreamProfileData"
-              },
-              {
                 "$ref": "#/components/schemas/ChatStreamHumanizerData"
               },
               {
@@ -31050,7 +30423,6 @@
                 "humanizer": "#/components/schemas/ChatStreamHumanizerData",
                 "image": "#/components/schemas/ChatStreamImageData",
                 "mcp_call": "#/components/schemas/ChatStreamMcpData",
-                "profile": "#/components/schemas/ChatStreamProfileData",
                 "stage": "#/components/schemas/ChatStreamStageData",
                 "started": "#/components/schemas/ChatStreamStartedData",
                 "video": "#/components/schemas/ChatStreamVideoData"
@@ -31074,7 +30446,6 @@
           "delta",
           "error",
           "done",
-          "profile",
           "humanizer",
           "career",
           "image",
@@ -31193,46 +30564,6 @@
         ],
         "title": "ChatStreamMcpData",
         "description": "mcp_call 事件载荷：驱动消息内 MCP 调用卡（Issue 36）。\n\n调用为同步执行：loading 状态随 started 后下发，成功/失败/敏感挂起\n为终态投影（写入消息列，刷新可恢复）；敏感挂起由前端确认对话框\n继续（approve/deny 走 chat 域路由，结果写回同一投影）。"
-      },
-      "ChatStreamProfileData": {
-        "properties": {
-          "kind": {
-            "type": "string",
-            "const": "profile",
-            "title": "Kind",
-            "default": "profile"
-          },
-          "message_id": {
-            "type": "string",
-            "title": "Message Id",
-            "description": "本轮用户消息标识。"
-          },
-          "notifications": {
-            "items": {
-              "$ref": "#/components/schemas/ProfileNotification"
-            },
-            "type": "array",
-            "title": "Notifications",
-            "description": "本轮产生的画像通知。"
-          },
-          "privacy_notice": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProfilePrivacyNotice"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "账户级首次自动画像隐私说明。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "message_id"
-        ],
-        "title": "ChatStreamProfileData",
-        "description": "profile 事件载荷：一次性隐私说明或兼容期画像通知。\n\nIssue 15 的自动写入不发送写入通知；``privacy_notice`` 只在账户首次\n触发自动画像时出现一次。``notifications`` 仅保留旧画像兼容测试和\n历史事件的读取形状。"
       },
       "ChatStreamStageData": {
         "properties": {
@@ -33118,72 +32449,6 @@
         "title": "ContentAuthority",
         "description": "Where the authoritative plaintext of a vault object resides.\n\n- DEVICE_LOCAL: the full content is authoritative on the user's device. The\n  cloud only holds a control projection (hash and metadata).\n- SERVER_REPLICA: the server holds an encrypted replica for synchronization;\n  the device is not required for every read.\n- PROJECT_COPY: a minimized copy owned by a shared project, detached from the\n  personal vault original."
       },
-      "ContextNoteProfileItem": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "来源画像记录标识（链接到画像中心）。"
-          },
-          "dimension": {
-            "type": "string",
-            "title": "Dimension",
-            "description": "画像类别（ProfileDimension 值）。"
-          },
-          "dimension_label": {
-            "type": "string",
-            "title": "Dimension Label",
-            "description": "画像类别中文标签。"
-          },
-          "value_summary": {
-            "type": "string",
-            "title": "Value Summary",
-            "description": "本次使用的值摘要（截断，不超长）。"
-          },
-          "inclusion_reason": {
-            "type": "string",
-            "title": "Inclusion Reason",
-            "description": "用途：为什么本轮使用这条记录。"
-          },
-          "used_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Used At",
-            "description": "本次使用时间（切片编译时间）。"
-          },
-          "status": {
-            "type": "string",
-            "title": "Status",
-            "description": "使用时的记录状态快照（active/frozen/...）。"
-          },
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "description": "使用时的记录版本快照（可对比当前版本）。"
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes",
-            "description": "使用时的适用场景快照（修正时回传，不漂移授权范围）。"
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "dimension",
-          "dimension_label",
-          "value_summary",
-          "inclusion_reason",
-          "used_at",
-          "status",
-          "version"
-        ],
-        "title": "ContextNoteProfileItem",
-        "description": "上下文说明中的一条画像切片披露。\n\n披露记录的是回答当时使用的快照（值摘要、状态与版本），修正后历史\n回答保留此快照；``assertion_id`` 是来源记录链接，可跳转画像中心。"
-      },
       "ContextNoteProjection": {
         "properties": {
           "state": {
@@ -33205,13 +32470,12 @@
             "title": "Used At",
             "description": "披露生成时间。"
           },
-          "profile_items": {
-            "items": {
-              "$ref": "#/components/schemas/ContextNoteProfileItem"
-            },
-            "type": "array",
-            "title": "Profile Items",
-            "description": "本轮使用的画像切片披露列表。"
+          "profile_item_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Profile Item Count",
+            "description": "本轮使用的画像记录数量，不包含记录详情。",
+            "default": 0
           },
           "material_categories": {
             "items": {
@@ -33220,12 +32484,6 @@
             "type": "array",
             "title": "Material Categories",
             "description": "本轮使用的材料类别（检索层/联网来源等中文名）。"
-          },
-          "excluded_count": {
-            "type": "integer",
-            "title": "Excluded Count",
-            "description": "因范围/敏感/过期/冻结/撤回等排除的记录数。",
-            "default": 0
           },
           "note": {
             "type": "string",
@@ -33242,7 +32500,7 @@
           "note"
         ],
         "title": "ContextNoteProjection",
-        "description": "「本次上下文说明」可展开披露（Issue 27，ADR-0015）。\n\n回答展示使用的画像类别、材料类别、用途与来源链接；不暴露系统提示、\n隐藏提示或原始思维链。画像正文不复制到审计日志，这里只披露摘要。"
+        "description": "普通聊天可见的上下文摘要。\n\n画像切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与\n审计域，不再进入普通聊天响应。"
       },
       "ContextNoteState": {
         "type": "string",
@@ -33727,16 +32985,6 @@
         ],
         "title": "DecideKnowledgeStateProposalRequest",
         "description": "Request to accept, reject or modify a knowledge-state proposal."
-      },
-      "DecisionType": {
-        "type": "string",
-        "enum": [
-          "accept",
-          "reject",
-          "modify"
-        ],
-        "title": "DecisionType",
-        "description": "Human decision on a candidate profile."
       },
       "DeleteAccountRequest": {
         "properties": {
@@ -37822,111 +37070,6 @@
         ],
         "title": "FourDimension",
         "description": "扩展合同中的四个产品画像维度。\n\nExpand/migrate 期间旧的 :class:`ProfileDimension` 仍可解码。新画像记录使用\n独立枚举，避免旧治理维度成为新的写入目标。"
-      },
-      "FourDimensionMigrationReport": {
-        "properties": {
-          "report_id": {
-            "type": "string",
-            "title": "Report Id",
-            "description": "Stable migration report identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Account migrated by this report."
-          },
-          "migration_version": {
-            "type": "string",
-            "title": "Migration Version",
-            "description": "Migration contract version."
-          },
-          "status": {
-            "$ref": "#/components/schemas/FourDimensionMigrationStatus",
-            "description": "Migration outcome."
-          },
-          "four_dimension_migrated": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Four Dimension Migrated",
-            "description": "New four-dimension records created."
-          },
-          "teaching_records_migrated": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Teaching Records Migrated",
-            "description": "Knowledge records handed to teaching."
-          },
-          "legacy_preserved": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Legacy Preserved",
-            "description": "Records retained in the legacy archive."
-          },
-          "skipped": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Skipped",
-            "description": "Already migrated or intentionally skipped records."
-          },
-          "failed": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Failed",
-            "description": "Records that failed deterministic migration."
-          },
-          "stable_record_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Stable Record Ids",
-            "description": "Stable target ids for audit tracing; never profile正文."
-          },
-          "failure_codes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Failure Codes",
-            "description": "Safe retry diagnostics."
-          },
-          "retryable": {
-            "type": "boolean",
-            "title": "Retryable",
-            "description": "Whether the same account migration may be retried."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Report creation time."
-          }
-        },
-        "type": "object",
-        "required": [
-          "report_id",
-          "owner_account_id",
-          "migration_version",
-          "status",
-          "four_dimension_migrated",
-          "teaching_records_migrated",
-          "legacy_preserved",
-          "skipped",
-          "failed",
-          "retryable",
-          "created_at"
-        ],
-        "title": "FourDimensionMigrationReport",
-        "description": "Account-scoped migration result without profile正文泄露."
-      },
-      "FourDimensionMigrationStatus": {
-        "type": "string",
-        "enum": [
-          "completed",
-          "retryable"
-        ],
-        "title": "FourDimensionMigrationStatus",
-        "description": "一次账户级确定性迁移尝试的结果。"
       },
       "FourDimensionProfileModifyRequest": {
         "properties": {
@@ -42306,53 +41449,6 @@
         "title": "MainCapability",
         "description": "当前主能力集合；后续能力只能以新注册项追加。"
       },
-      "ManualAssertionCreateRequest": {
-        "properties": {
-          "dimension": {
-            "$ref": "#/components/schemas/ProfileDimension",
-            "description": "One of the nine profile dimensions."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "maxLength": 1000,
-            "minLength": 1,
-            "title": "Value Or Rule",
-            "description": "The declared value or rule."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes"
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity classification governing slice inclusion.",
-            "default": "preference"
-          },
-          "authorization_scope": {
-            "type": "string",
-            "title": "Authorization Scope",
-            "description": "Authorization scope; set by the user, never inferred.",
-            "default": "general"
-          },
-          "source_note": {
-            "type": "string",
-            "maxLength": 500,
-            "title": "Source Note",
-            "description": "User-declared provenance note for the record.",
-            "default": "用户手动记录"
-          }
-        },
-        "type": "object",
-        "required": [
-          "dimension",
-          "value_or_rule"
-        ],
-        "title": "ManualAssertionCreateRequest",
-        "description": "Request to manually create a governed profile record.\n\nThe user declares the fact, its applicable scenes, sensitivity, authorization\nscope and a source note; the record is promoted immediately because the\ndeclarer is the owner, and every field is retained for audit."
-      },
       "McpAttachmentSlice": {
         "properties": {
           "filename": {
@@ -43892,15 +42988,6 @@
         "title": "ObjectRef",
         "description": "Stable reference to an owned object.\n\nObjectRef carries enough context to re-authenticate and re-authorize a deep\nlink without relying on ambient session state alone."
       },
-      "ObservationStatus": {
-        "type": "string",
-        "enum": [
-          "active",
-          "discarded"
-        ],
-        "title": "ObservationStatus",
-        "description": "Lifecycle status of a profile observation."
-      },
       "PackImpactAction": {
         "type": "string",
         "enum": [
@@ -44839,666 +43926,6 @@
         "title": "PopularScienceElement",
         "description": "A structural element required by the popular-science genre contract.\n\nThe element distinguishes the core concept from analogies, marks the boundary\nwhere an analogy stops being a mechanism, and links the content to audience\naction relevance."
       },
-      "ProfileAssertion": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "Stable assertion identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "canonical_dimension": {
-            "type": "string",
-            "title": "Canonical Dimension",
-            "description": "Profile dimension."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Confirmed value or rule."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes"
-          },
-          "supporting_observation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Supporting Observation Ids"
-          },
-          "contradicting_observation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Contradicting Observation Ids"
-          },
-          "authorization_scope": {
-            "type": "string",
-            "title": "Authorization Scope",
-            "description": "Authorization scope for use."
-          },
-          "status": {
-            "$ref": "#/components/schemas/AssertionStatus",
-            "description": "Lifecycle status."
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity classification governing slice inclusion.",
-            "default": "preference"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At",
-            "description": "Optional expiration after which the assertion cannot be recalled."
-          },
-          "promoted_from_candidate_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Promoted From Candidate Id",
-            "description": "Candidate from which this assertion was promoted."
-          },
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "description": "Optimistic concurrency version.",
-            "default": 1
-          },
-          "last_used_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Used At",
-            "description": "When the assertion was last included in an answer slice."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Creation timestamp."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last update timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "owner_account_id",
-          "canonical_dimension",
-          "value_or_rule",
-          "authorization_scope",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ProfileAssertion",
-        "description": "Stable, promoted profile entry that may enter a memory slice."
-      },
-      "ProfileAssertionHistory": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "Assertion identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "current_version": {
-            "type": "integer",
-            "title": "Current Version",
-            "description": "Current optimistic concurrency version."
-          },
-          "versions": {
-            "items": {
-              "$ref": "#/components/schemas/ProfileAssertionVersion"
-            },
-            "type": "array",
-            "title": "Versions",
-            "description": "Historical snapshots, oldest first."
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "owner_account_id",
-          "current_version"
-        ],
-        "title": "ProfileAssertionHistory",
-        "description": "Version history of a single profile assertion."
-      },
-      "ProfileAssertionModifyRequest": {
-        "properties": {
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "New value or rule."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes"
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable reason for the change."
-          }
-        },
-        "type": "object",
-        "required": [
-          "value_or_rule",
-          "reason"
-        ],
-        "title": "ProfileAssertionModifyRequest",
-        "description": "Request to modify an active profile assertion, creating a new version."
-      },
-      "ProfileAssertionRollbackRequest": {
-        "properties": {
-          "to_version": {
-            "type": "integer",
-            "minimum": 1.0,
-            "title": "To Version",
-            "description": "Target historical version number."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable reason for the rollback."
-          }
-        },
-        "type": "object",
-        "required": [
-          "to_version",
-          "reason"
-        ],
-        "title": "ProfileAssertionRollbackRequest",
-        "description": "Request to roll an assertion back to a previous version."
-      },
-      "ProfileAssertionVersion": {
-        "properties": {
-          "version_id": {
-            "type": "string",
-            "title": "Version Id",
-            "description": "Stable version snapshot identifier."
-          },
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "Assertion this version belongs to."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "description": "Assertion version number this snapshot records."
-          },
-          "canonical_dimension": {
-            "type": "string",
-            "title": "Canonical Dimension",
-            "description": "Profile dimension."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Value or rule at this version."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes"
-          },
-          "status": {
-            "$ref": "#/components/schemas/AssertionStatus",
-            "description": "Assertion status at this version."
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "default": "preference"
-          },
-          "promoted_from_candidate_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Promoted From Candidate Id"
-          },
-          "content_hash": {
-            "type": "string",
-            "title": "Content Hash",
-            "description": "SHA-256 hash of value and scenes."
-          },
-          "changed_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Changed At",
-            "description": "When this version was created."
-          },
-          "changed_by": {
-            "type": "string",
-            "title": "Changed By",
-            "description": "Actor that created this version."
-          },
-          "change_reason": {
-            "type": "string",
-            "title": "Change Reason",
-            "description": "Human-readable reason for the change."
-          }
-        },
-        "type": "object",
-        "required": [
-          "version_id",
-          "assertion_id",
-          "owner_account_id",
-          "version",
-          "canonical_dimension",
-          "value_or_rule",
-          "status",
-          "content_hash",
-          "changed_at",
-          "changed_by",
-          "change_reason"
-        ],
-        "title": "ProfileAssertionVersion",
-        "description": "Immutable snapshot of a profile assertion at a point in its history.\n\nRollback creates a new active version from a prior snapshot without erasing\nthe audit chain. Each version stores the value and metadata at that point so\nthat rollback is possible, but audit events and exports retain only the\ncontent hash rather than the full value, ensuring deleted content body is not\npreserved in the governance audit trail."
-      },
-      "ProfileBatchCandidateDecisionRequest": {
-        "properties": {
-          "candidate_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "maxItems": 50,
-            "minItems": 1,
-            "title": "Candidate Ids",
-            "description": "Candidate identifiers to decide (owned by the account)."
-          },
-          "decision": {
-            "$ref": "#/components/schemas/DecisionType",
-            "description": "Decision applied to each candidate."
-          },
-          "reason": {
-            "type": "string",
-            "maxLength": 200,
-            "minLength": 1,
-            "title": "Reason",
-            "description": "Shared human-readable rationale recorded for each decision."
-          },
-          "modified_value_or_rule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Value Or Rule",
-            "description": "Modified value when decision is 'modify'."
-          },
-          "modified_applicable_scenes": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Applicable Scenes",
-            "description": "Modified applicable scenes when decision is 'modify' (mirrors the single-decision contract)."
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_ids",
-          "decision",
-          "reason"
-        ],
-        "title": "ProfileBatchCandidateDecisionRequest",
-        "description": "Request to apply one decision to multiple candidates at once.\n\nBatch decisions are idempotent: already-decided candidates whose status\nalready reflects the requested decision are reported as succeeded, so a\nfailed batch can be safely retried without duplicate writes."
-      },
-      "ProfileBatchCandidateResult": {
-        "properties": {
-          "succeeded": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Succeeded",
-            "description": "Candidate ids successfully decided."
-          },
-          "already_decided": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Already Decided",
-            "description": "Candidate ids already in the target state (idempotent retry)."
-          },
-          "failed": {
-            "items": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "type": "array",
-            "title": "Failed",
-            "description": "Failed candidate ids with a safe Chinese reason."
-          }
-        },
-        "type": "object",
-        "title": "ProfileBatchCandidateResult",
-        "description": "Result of a batch candidate decision."
-      },
-      "ProfileCandidate": {
-        "properties": {
-          "candidate_id": {
-            "type": "string",
-            "title": "Candidate Id",
-            "description": "Stable candidate identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "canonical_dimension": {
-            "type": "string",
-            "title": "Canonical Dimension",
-            "description": "Profile dimension (e.g. 'expression_brevity')."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Proposed value or rule."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes",
-            "description": "Scenes in which the candidate may apply."
-          },
-          "non_applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Non Applicable Scenes",
-            "description": "Scenes in which the candidate must not apply."
-          },
-          "supporting_observation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Supporting Observation Ids",
-            "description": "Observations that support the candidate."
-          },
-          "contradicting_observation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Contradicting Observation Ids",
-            "description": "Observations that contradict the candidate."
-          },
-          "evidence_summary": {
-            "type": "string",
-            "title": "Evidence Summary",
-            "description": "Structured evidence summary."
-          },
-          "authorization_scope": {
-            "type": "string",
-            "title": "Authorization Scope",
-            "description": "Authorization scope for use."
-          },
-          "promotion_policy_version": {
-            "type": "string",
-            "title": "Promotion Policy Version",
-            "description": "Promotion policy version used to evaluate the candidate.",
-            "default": "promotion-1.0"
-          },
-          "review_status": {
-            "$ref": "#/components/schemas/CandidateReviewStatus",
-            "description": "Review status."
-          },
-          "stability_state": {
-            "$ref": "#/components/schemas/CandidateStabilityState",
-            "description": "Stability classification.",
-            "default": "candidate"
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity classification governing retention and slice inclusion.",
-            "default": "preference"
-          },
-          "proposed_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Proposed At",
-            "description": "When the candidate was proposed."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last update timestamp."
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At",
-            "description": "Optional expiration after which the candidate goes stale."
-          },
-          "human_decision": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/bridges__contracts__profiles__HumanDecision"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Recorded human decision, if any."
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_id",
-          "owner_account_id",
-          "canonical_dimension",
-          "value_or_rule",
-          "evidence_summary",
-          "authorization_scope",
-          "review_status",
-          "proposed_at",
-          "updated_at"
-        ],
-        "title": "ProfileCandidate",
-        "description": "Explainable candidate profile awaiting human review."
-      },
-      "ProfileCandidateCreateRequest": {
-        "properties": {
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "canonical_dimension": {
-            "type": "string",
-            "title": "Canonical Dimension",
-            "description": "Profile dimension."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Proposed value or rule."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes"
-          },
-          "non_applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Non Applicable Scenes"
-          },
-          "supporting_observation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Supporting Observation Ids"
-          },
-          "contradicting_observation_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Contradicting Observation Ids"
-          },
-          "evidence_summary": {
-            "type": "string",
-            "title": "Evidence Summary",
-            "description": "Structured evidence summary for the candidate.",
-            "default": ""
-          },
-          "authorization_scope": {
-            "type": "string",
-            "title": "Authorization Scope",
-            "description": "Authorization scope.",
-            "default": "general"
-          },
-          "promotion_policy_version": {
-            "type": "string",
-            "title": "Promotion Policy Version",
-            "default": "promotion-1.0"
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity classification of the candidate.",
-            "default": "preference"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "owner_account_id",
-          "canonical_dimension",
-          "value_or_rule"
-        ],
-        "title": "ProfileCandidateCreateRequest",
-        "description": "Request to propose a candidate profile from observations."
-      },
-      "ProfileDeleteRequest": {
-        "properties": {
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable reason for deletion."
-          }
-        },
-        "type": "object",
-        "required": [
-          "reason"
-        ],
-        "title": "ProfileDeleteRequest",
-        "description": "Request to delete a profile assertion."
-      },
-      "ProfileDimension": {
-        "type": "string",
-        "enum": [
-          "basic_information",
-          "stage_goal",
-          "interest_preference",
-          "expression_habit",
-          "knowledge_state",
-          "emotion_trend",
-          "important_experience",
-          "current_problem",
-          "authorization_scope"
-        ],
-        "title": "ProfileDimension",
-        "description": "The nine governable profile dimensions of the digital twin center.\n\nIssue 25: each dimension is a separately governed record category with its\nown assertions, authorization and history, rather than a merged long text."
-      },
       "ProfileError": {
         "properties": {
           "error": {
@@ -45525,928 +43952,6 @@
         ],
         "title": "ProfileError",
         "description": "Uniform profile error response."
-      },
-      "ProfileExport": {
-        "properties": {
-          "export_id": {
-            "type": "string",
-            "title": "Export Id",
-            "description": "Stable export identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Account the export belongs to."
-          },
-          "exported_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Exported At",
-            "description": "Export generation timestamp."
-          },
-          "assertions": {
-            "items": {
-              "$ref": "#/components/schemas/ProfileExportAssertion"
-            },
-            "type": "array",
-            "title": "Assertions",
-            "description": "Current assertions."
-          },
-          "history": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/ProfileAssertionHistory"
-            },
-            "type": "object",
-            "title": "History",
-            "description": "Version history keyed by assertion identifier."
-          },
-          "audit_event_refs": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Audit Event Refs",
-            "description": "References to governance audit events included in this export."
-          }
-        },
-        "type": "object",
-        "required": [
-          "export_id",
-          "owner_account_id",
-          "exported_at"
-        ],
-        "title": "ProfileExport",
-        "description": "Structured, portable export of a user's evidence-backed profile.\n\nExports include assertion metadata and content hashes so the user can verify\nintegrity, but they omit deleted observed content and audit-unfriendly body\ncopies. The export is itself scope-bound to the requesting account."
-      },
-      "ProfileExportAssertion": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "Stable assertion identifier."
-          },
-          "canonical_dimension": {
-            "type": "string",
-            "title": "Canonical Dimension",
-            "description": "Profile dimension."
-          },
-          "status": {
-            "$ref": "#/components/schemas/AssertionStatus",
-            "description": "Current lifecycle status."
-          },
-          "value_or_rule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Value Or Rule",
-            "description": "Current value; redacted when the assertion has been deleted."
-          },
-          "applicable_scenes": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Applicable Scenes"
-          },
-          "version": {
-            "type": "integer",
-            "title": "Version",
-            "description": "Current optimistic concurrency version."
-          },
-          "content_hash": {
-            "type": "string",
-            "title": "Content Hash",
-            "description": "SHA-256 hash of current value and scenes."
-          },
-          "promoted_from_candidate_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Promoted From Candidate Id"
-          },
-          "last_used_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Used At",
-            "description": "When the assertion was last included in an answer slice."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "When the assertion was first promoted."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "When the assertion was last changed."
-          },
-          "deleted_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Deleted At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "canonical_dimension",
-          "status",
-          "version",
-          "content_hash",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ProfileExportAssertion",
-        "description": "One assertion as it appears in a user export."
-      },
-      "ProfileFreezeRequest": {
-        "properties": {
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable reason for the operation."
-          }
-        },
-        "type": "object",
-        "required": [
-          "reason"
-        ],
-        "title": "ProfileFreezeRequest",
-        "description": "Request carrying a reason for freeze / withdraw / unfreeze operations."
-      },
-      "ProfileNotification": {
-        "properties": {
-          "notification_id": {
-            "type": "string",
-            "title": "Notification Id",
-            "description": "Stable notification identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "kind": {
-            "$ref": "#/components/schemas/ProfileNotificationKind",
-            "description": "Notification kind."
-          },
-          "title": {
-            "type": "string",
-            "title": "Title",
-            "description": "Short Chinese title."
-          },
-          "message": {
-            "type": "string",
-            "title": "Message",
-            "description": "Chinese message body."
-          },
-          "source_ref": {
-            "type": "string",
-            "title": "Source Ref",
-            "description": "Reference to the source, e.g. '<conversation_id>:<message_id>'."
-          },
-          "source_text": {
-            "type": "string",
-            "title": "Source Text",
-            "description": "Source message text the notification refers to."
-          },
-          "dimension": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/ProfileDimension"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Profile dimension the notification refers to."
-          },
-          "scene": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scene",
-            "description": "Applicable scene."
-          },
-          "assertion_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Assertion Id",
-            "description": "Target assertion for one-click recall."
-          },
-          "candidate_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Candidate Id",
-            "description": "Target candidate, when proposed."
-          },
-          "recallable": {
-            "type": "boolean",
-            "title": "Recallable",
-            "description": "Whether one-click recall applies.",
-            "default": false
-          },
-          "recalled_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recalled At",
-            "description": "When the record was recalled, if ever."
-          },
-          "read_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Read At",
-            "description": "When the user marked the notification read."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Creation timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "notification_id",
-          "owner_account_id",
-          "kind",
-          "title",
-          "message",
-          "source_ref",
-          "source_text",
-          "created_at"
-        ],
-        "title": "ProfileNotification",
-        "description": "Visible, source-backed notification produced by profile processing.\n\n``recallable`` is true for auto-written records so the user can recall them\nwith one click; the recall withdraws the record and blocks re-writing the\nsame fact automatically."
-      },
-      "ProfileNotificationKind": {
-        "type": "string",
-        "enum": [
-          "auto_write",
-          "candidate_proposed",
-          "intent_recorded",
-          "transient_emotion"
-        ],
-        "title": "ProfileNotificationKind",
-        "description": "Kind of a profile notification delivered to the user."
-      },
-      "ProfileObservation": {
-        "properties": {
-          "observation_id": {
-            "type": "string",
-            "title": "Observation Id",
-            "description": "Stable observation identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project context when the observation belongs to a project."
-          },
-          "source_type": {
-            "$ref": "#/components/schemas/ProfileSourceType"
-          },
-          "source_ref": {
-            "type": "string",
-            "title": "Source Ref",
-            "description": "Reference to the source object (conversation, run, import, etc.)."
-          },
-          "source_span_or_event": {
-            "type": "string",
-            "title": "Source Span Or Event",
-            "description": "Specific span or event within the source (message id, turn, etc.)."
-          },
-          "scene": {
-            "type": "string",
-            "title": "Scene",
-            "description": "Scene or situation in which the signal occurred."
-          },
-          "purpose": {
-            "type": "string",
-            "title": "Purpose",
-            "description": "Declared purpose for which the observation was collected."
-          },
-          "observed_content": {
-            "type": "string",
-            "title": "Observed Content",
-            "description": "Literal or summarized observed content."
-          },
-          "signal_kind": {
-            "$ref": "#/components/schemas/ProfileSignalKind",
-            "description": "Kind of signal."
-          },
-          "extractor_and_version": {
-            "type": "string",
-            "title": "Extractor And Version",
-            "description": "Extractor and version that produced the observation."
-          },
-          "model_rationale": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Rationale",
-            "description": "Structured rationale when produced by a model extractor."
-          },
-          "reliability_factors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Reliability Factors",
-            "description": "Factors that support or weaken the observation."
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity classification governing retention and promotion."
-          },
-          "retention_policy": {
-            "type": "string",
-            "title": "Retention Policy",
-            "description": "Retention policy for this observation."
-          },
-          "authorization_version": {
-            "type": "string",
-            "title": "Authorization Version",
-            "description": "Authorization policy version at collection time.",
-            "default": "authz-1.0"
-          },
-          "content_hash": {
-            "type": "string",
-            "title": "Content Hash",
-            "description": "SHA-256 hash of observed_content and source metadata."
-          },
-          "status": {
-            "$ref": "#/components/schemas/ObservationStatus",
-            "description": "Lifecycle status."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "Creation timestamp."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last update timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "observation_id",
-          "owner_account_id",
-          "source_type",
-          "source_ref",
-          "source_span_or_event",
-          "scene",
-          "purpose",
-          "observed_content",
-          "signal_kind",
-          "extractor_and_version",
-          "sensitivity_class",
-          "retention_policy",
-          "content_hash",
-          "status",
-          "created_at",
-          "updated_at"
-        ],
-        "title": "ProfileObservation",
-        "description": "Traceable atomic signal that may support a candidate profile."
-      },
-      "ProfileObservationCreateRequest": {
-        "properties": {
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Optional project context."
-          },
-          "source_type": {
-            "$ref": "#/components/schemas/ProfileSourceType"
-          },
-          "source_ref": {
-            "type": "string",
-            "title": "Source Ref",
-            "description": "Reference to the source object."
-          },
-          "source_span_or_event": {
-            "type": "string",
-            "title": "Source Span Or Event",
-            "description": "Specific span or event within the source."
-          },
-          "scene": {
-            "type": "string",
-            "title": "Scene",
-            "description": "Scene or situation."
-          },
-          "purpose": {
-            "type": "string",
-            "title": "Purpose",
-            "description": "Declared purpose."
-          },
-          "observed_content": {
-            "type": "string",
-            "title": "Observed Content",
-            "description": "Observed content."
-          },
-          "signal_kind": {
-            "$ref": "#/components/schemas/ProfileSignalKind",
-            "description": "Kind of signal."
-          },
-          "extractor_and_version": {
-            "type": "string",
-            "title": "Extractor And Version",
-            "description": "Extractor and version."
-          },
-          "model_rationale": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Model Rationale",
-            "description": "Extractor rationale."
-          },
-          "reliability_factors": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Reliability Factors",
-            "description": "Reliability factors."
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity class."
-          },
-          "retention_policy": {
-            "type": "string",
-            "title": "Retention Policy",
-            "description": "Retention policy."
-          },
-          "authorization_version": {
-            "type": "string",
-            "title": "Authorization Version",
-            "description": "Authorization policy version.",
-            "default": "authz-1.0"
-          }
-        },
-        "type": "object",
-        "required": [
-          "owner_account_id",
-          "source_type",
-          "source_ref",
-          "source_span_or_event",
-          "scene",
-          "purpose",
-          "observed_content",
-          "signal_kind",
-          "extractor_and_version",
-          "sensitivity_class",
-          "retention_policy"
-        ],
-        "title": "ProfileObservationCreateRequest",
-        "description": "Request to record a new profile observation."
-      },
-      "ProfilePermission": {
-        "properties": {
-          "account_id": {
-            "type": "string",
-            "title": "Account Id",
-            "description": "Owning account identifier."
-          },
-          "dimension": {
-            "$ref": "#/components/schemas/ProfileDimension",
-            "description": "Auto-writable category (AUTO_WRITABLE_DIMENSIONS)."
-          },
-          "scene": {
-            "type": "string",
-            "title": "Scene",
-            "description": "Applicable scene, e.g. 'companion' or 'study'."
-          },
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled",
-            "description": "Whether automatic updates are permitted."
-          },
-          "updated_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Updated At",
-            "description": "Last change timestamp."
-          }
-        },
-        "type": "object",
-        "required": [
-          "account_id",
-          "dimension",
-          "scene",
-          "enabled",
-          "updated_at"
-        ],
-        "title": "ProfilePermission",
-        "description": "User-granted permission for low-risk automatic profile updates.\n\nIssue 26 (ADR-0002): a permission is bound to one auto-writable category and\none applicable scene, defaults to off, and can only be set by the user\nthrough the account-scoped API — never inferred from silence, tone or past\nbehavior."
-      },
-      "ProfilePermissionUpdateRequest": {
-        "properties": {
-          "dimension": {
-            "$ref": "#/components/schemas/ProfileDimension",
-            "description": "Auto-writable category (AUTO_WRITABLE_DIMENSIONS)."
-          },
-          "scene": {
-            "type": "string",
-            "title": "Scene",
-            "description": "Applicable scene, e.g. 'companion' or 'study'."
-          },
-          "enabled": {
-            "type": "boolean",
-            "title": "Enabled",
-            "description": "True to enable, False to disable."
-          }
-        },
-        "type": "object",
-        "required": [
-          "dimension",
-          "scene",
-          "enabled"
-        ],
-        "title": "ProfilePermissionUpdateRequest",
-        "description": "Request to enable or disable one low-risk automatic-update permission."
-      },
-      "ProfilePrivacyNotice": {
-        "properties": {
-          "version": {
-            "type": "string",
-            "title": "Version"
-          },
-          "text": {
-            "type": "string",
-            "title": "Text"
-          },
-          "shown_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Shown At"
-          }
-        },
-        "type": "object",
-        "required": [
-          "version",
-          "text",
-          "shown_at"
-        ],
-        "title": "ProfilePrivacyNotice",
-        "description": "首次启用自动画像时的一次性非交互说明。"
-      },
-      "ProfileSensitivityClass": {
-        "type": "string",
-        "enum": [
-          "public",
-          "preference",
-          "learning",
-          "sensitive",
-          "prohibited"
-        ],
-        "title": "ProfileSensitivityClass",
-        "description": "Sensitivity classification that governs retention and promotion."
-      },
-      "ProfileSignalKind": {
-        "type": "string",
-        "enum": [
-          "preference",
-          "goal",
-          "style",
-          "prior_knowledge",
-          "misconception",
-          "transient_emotion",
-          "role_play",
-          "third_party_story",
-          "sensitive_identity",
-          "other"
-        ],
-        "title": "ProfileSignalKind",
-        "description": "Kind of signal the observation carries."
-      },
-      "ProfileSlice": {
-        "properties": {
-          "slice_id": {
-            "type": "string",
-            "title": "Slice Id",
-            "description": "Stable slice identifier."
-          },
-          "owner_account_id": {
-            "type": "string",
-            "title": "Owner Account Id",
-            "description": "Owning account identifier."
-          },
-          "run_id": {
-            "type": "string",
-            "title": "Run Id",
-            "description": "Run the slice is bound to."
-          },
-          "purpose": {
-            "type": "string",
-            "title": "Purpose",
-            "description": "Declared processing purpose."
-          },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "Project scope for which the slice was compiled."
-          },
-          "included_items": {
-            "items": {
-              "$ref": "#/components/schemas/ProfileSliceItem"
-            },
-            "type": "array",
-            "title": "Included Items",
-            "description": "Promoted assertions included in the slice."
-          },
-          "unused_items": {
-            "items": {
-              "$ref": "#/components/schemas/UnusedSliceItem"
-            },
-            "type": "array",
-            "title": "Unused Items",
-            "description": "Active assertions excluded from the slice with reasons."
-          },
-          "excluded_candidate_ids": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array",
-            "title": "Excluded Candidate Ids",
-            "description": "Candidates explicitly excluded from the slice."
-          },
-          "exclusion_reasons": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object",
-            "title": "Exclusion Reasons",
-            "description": "Reason each candidate was excluded."
-          },
-          "rejected_items": {
-            "items": {
-              "$ref": "#/components/schemas/RejectedSliceItem"
-            },
-            "type": "array",
-            "title": "Rejected Items",
-            "description": "Candidates rejected or not yet promoted with reasons."
-          },
-          "authorization_snapshot": {
-            "type": "string",
-            "title": "Authorization Snapshot",
-            "description": "Authorization policy version at compile time.",
-            "default": "authz-1.0"
-          },
-          "key_epoch": {
-            "type": "string",
-            "title": "Key Epoch",
-            "description": "Key epoch under which the slice is bound.",
-            "default": "epoch-0"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At",
-            "description": "Expiration after which the slice must not be used."
-          },
-          "sensitivity_classes_allowed": {
-            "items": {
-              "$ref": "#/components/schemas/ProfileSensitivityClass"
-            },
-            "type": "array",
-            "title": "Sensitivity Classes Allowed",
-            "description": "Sensitivity classes permitted in this slice."
-          },
-          "compiled_policy_version": {
-            "type": "string",
-            "title": "Compiled Policy Version",
-            "description": "Version of the slice compilation policy used.",
-            "default": "slice-1.0"
-          },
-          "length_budget": {
-            "type": "integer",
-            "minimum": 0.0,
-            "title": "Length Budget",
-            "description": "Maximum number of profile items allowed in this slice.",
-            "default": 6
-          },
-          "status": {
-            "$ref": "#/components/schemas/SliceStatus",
-            "description": "Lifecycle status of the slice.",
-            "default": "active"
-          },
-          "invalidated_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invalidated At",
-            "description": "When the slice was invalidated."
-          },
-          "invalidation_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Invalidation Reason",
-            "description": "Why the slice was invalidated."
-          },
-          "compiled_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Compiled At",
-            "description": "When the slice was compiled."
-          }
-        },
-        "type": "object",
-        "required": [
-          "slice_id",
-          "owner_account_id",
-          "run_id",
-          "purpose",
-          "compiled_at"
-        ],
-        "title": "ProfileSlice",
-        "description": "Minimal, authorized profile information compiled for a single run.\n\nA slice is the only long-term information carrier allowed into a model\ncontext. It records why each item was included, excluded or rejected so the\ncontext inspector can explain the personalization decision."
-      },
-      "ProfileSliceItem": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "Stable assertion identifier."
-          },
-          "dimension": {
-            "type": "string",
-            "title": "Dimension",
-            "description": "Profile dimension."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Value or rule used in the slice."
-          },
-          "inclusion_reason": {
-            "type": "string",
-            "title": "Inclusion Reason",
-            "description": "Why the entry was included."
-          },
-          "sensitivity_class": {
-            "$ref": "#/components/schemas/ProfileSensitivityClass",
-            "description": "Sensitivity classification of the source assertion.",
-            "default": "preference"
-          },
-          "expires_at": {
-            "anyOf": [
-              {
-                "type": "string",
-                "format": "date-time"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expires At",
-            "description": "Expiration of the source assertion."
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "dimension",
-          "value_or_rule",
-          "inclusion_reason"
-        ],
-        "title": "ProfileSliceItem",
-        "description": "One entry included in a compiled memory slice."
-      },
-      "ProfileSourceType": {
-        "type": "string",
-        "enum": [
-          "explicit_statement",
-          "correction",
-          "choice",
-          "task_behavior",
-          "assessment",
-          "imported",
-          "system_inference"
-        ],
-        "title": "ProfileSourceType",
-        "description": "How the observation originated."
       },
       "Project": {
         "properties": {
@@ -47383,39 +44888,6 @@
         ],
         "title": "RegisterPackRequest",
         "description": "登记一个已注册的领域包版本到专家工作台。"
-      },
-      "RejectedSliceItem": {
-        "properties": {
-          "candidate_id": {
-            "type": "string",
-            "title": "Candidate Id",
-            "description": "Stable candidate identifier."
-          },
-          "dimension": {
-            "type": "string",
-            "title": "Dimension",
-            "description": "Profile dimension."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Proposed value or rule."
-          },
-          "rejection_reason": {
-            "type": "string",
-            "title": "Rejection Reason",
-            "description": "Why the candidate was not used."
-          }
-        },
-        "type": "object",
-        "required": [
-          "candidate_id",
-          "dimension",
-          "value_or_rule",
-          "rejection_reason"
-        ],
-        "title": "RejectedSliceItem",
-        "description": "One candidate that was not promoted and therefore not used."
       },
       "ReleaseEligibilityStatus": {
         "type": "string",
@@ -51079,17 +48551,6 @@
         "title": "SignatureRequest",
         "description": "提交签名时的意见与结论。"
       },
-      "SliceStatus": {
-        "type": "string",
-        "enum": [
-          "active",
-          "expired",
-          "revoked",
-          "cancelled"
-        ],
-        "title": "SliceStatus",
-        "description": "Lifecycle status of a compiled memory slice bound to a run."
-      },
       "Source": {
         "properties": {
           "source_id": {
@@ -53884,39 +51345,6 @@
         "title": "TranscriptWord",
         "description": "A single word inside a transcript segment."
       },
-      "UnusedSliceItem": {
-        "properties": {
-          "assertion_id": {
-            "type": "string",
-            "title": "Assertion Id",
-            "description": "Stable assertion identifier."
-          },
-          "dimension": {
-            "type": "string",
-            "title": "Dimension",
-            "description": "Profile dimension."
-          },
-          "value_or_rule": {
-            "type": "string",
-            "title": "Value Or Rule",
-            "description": "Value or rule of the assertion."
-          },
-          "exclusion_reason": {
-            "type": "string",
-            "title": "Exclusion Reason",
-            "description": "Why the assertion was not included."
-          }
-        },
-        "type": "object",
-        "required": [
-          "assertion_id",
-          "dimension",
-          "value_or_rule",
-          "exclusion_reason"
-        ],
-        "title": "UnusedSliceItem",
-        "description": "One active assertion that was not included in the slice, with a reason."
-      },
       "UserFeedback": {
         "properties": {
           "feedback_id": {
@@ -55667,78 +53095,6 @@
         ],
         "title": "ValidationReport",
         "description": "分镜沙箱运行的完整验证报告。"
-      },
-      "bridges__contracts__profiles__HumanDecision": {
-        "properties": {
-          "decision_id": {
-            "type": "string",
-            "title": "Decision Id",
-            "description": "Stable decision identifier."
-          },
-          "candidate_id": {
-            "type": "string",
-            "title": "Candidate Id",
-            "description": "Candidate the decision applies to."
-          },
-          "account_id": {
-            "type": "string",
-            "title": "Account Id",
-            "description": "Account that made the decision."
-          },
-          "decision": {
-            "$ref": "#/components/schemas/DecisionType",
-            "description": "Decision type."
-          },
-          "reason": {
-            "type": "string",
-            "title": "Reason",
-            "description": "Human-readable rationale."
-          },
-          "modified_value_or_rule": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Value Or Rule",
-            "description": "Modified value when decision is 'modify'."
-          },
-          "modified_applicable_scenes": {
-            "anyOf": [
-              {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Modified Applicable Scenes",
-            "description": "Modified applicable scenes when decision is 'modify'."
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time",
-            "title": "Created At",
-            "description": "When the decision was recorded."
-          }
-        },
-        "type": "object",
-        "required": [
-          "decision_id",
-          "candidate_id",
-          "account_id",
-          "decision",
-          "reason",
-          "created_at"
-        ],
-        "title": "HumanDecision",
-        "description": "Named human decision on a candidate profile."
       },
       "bridges__contracts__science__ValidationReport": {
         "properties": {

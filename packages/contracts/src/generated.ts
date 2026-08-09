@@ -2526,549 +2526,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/profiles/observations": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Observations
-         * @description List profile observations for the current account.
-         */
-        get: operations["list_observations_profiles_observations_get"];
-        put?: never;
-        /**
-         * Create Observation
-         * @description Record a traceable profile observation owned by the current account.
-         */
-        post: operations["create_observation_profiles_observations_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/observations/{observation_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Observation
-         * @description Get a single profile observation.
-         */
-        get: operations["get_observation_profiles_observations__observation_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/candidates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Candidates
-         * @description List candidate profiles for the current account.
-         */
-        get: operations["list_candidates_profiles_candidates_get"];
-        put?: never;
-        /**
-         * Propose Candidate
-         * @description Propose a candidate profile from existing observations.
-         */
-        post: operations["propose_candidate_profiles_candidates_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/candidates/{candidate_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Candidate
-         * @description Get a single candidate profile.
-         */
-        get: operations["get_candidate_profiles_candidates__candidate_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/candidates/{candidate_id}/decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Decide Candidate
-         * @description Accept, reject or modify a candidate profile.
-         */
-        post: operations["decide_candidate_profiles_candidates__candidate_id__decision_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Assertions
-         * @description List promoted profile assertions for the current account.
-         */
-        get: operations["list_assertions_profiles_assertions_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/memory-slice": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Compile Memory Slice
-         * @description Compile the minimal profile slice for a run.
-         *
-         *     The slice is bound to the run and filtered by purpose, project scope,
-         *     authorization snapshot, key epoch, expiration and sensitivity class.
-         *     Unconfirmed candidates are explicitly excluded so they are never used as
-         *     stable facts in downstream tasks.
-         */
-        get: operations["compile_memory_slice_profiles_memory_slice_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/memory-slices/{slice_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Memory Slice
-         * @description Return a compiled memory slice owned by the current account.
-         */
-        get: operations["get_memory_slice_profiles_memory_slices__slice_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/memory-slices/{slice_id}/inspector": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Inspect Memory Slice
-         * @description Inspect a memory slice: used, unused and rejected items with reasons.
-         *
-         *     The context inspector uses this view to explain why each profile entry was
-         *     or was not included in the run context.
-         */
-        get: operations["inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/memory-slices/{slice_id}/access-check": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Check Memory Slice Access
-         * @description Verify that a model or worker node can access only the bound slice.
-         *
-         *     This endpoint fails closed when the slice is not bound to the run, has
-         *     expired, or has been revoked/cancelled. It proves that downstream nodes
-         *     cannot browse the full profile vault.
-         */
-        post: operations["check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Assertion
-         * @description Return a single promoted profile assertion.
-         */
-        get: operations["get_assertion_profiles_assertions__assertion_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/manual": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Create Manual Assertion
-         * @description Manually create a governed profile record declared by the current account.
-         *
-         *     The user declares the fact together with its applicable scenes, sensitivity
-         *     and authorization scope; the record is promoted immediately with a
-         *     traceable observation and candidate chain.
-         */
-        post: operations["create_manual_assertion_profiles_assertions_manual_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/freeze": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Freeze Assertion
-         * @description Freeze a profile assertion so it is no longer used in new runs.
-         */
-        post: operations["freeze_assertion_profiles_assertions__assertion_id__freeze_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/withdraw": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Withdraw Assertion
-         * @description Withdraw a profile assertion so it is no longer used in answers.
-         */
-        post: operations["withdraw_assertion_profiles_assertions__assertion_id__withdraw_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/unfreeze": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Unfreeze Assertion
-         * @description Restore a frozen or withdrawn profile assertion to active use.
-         */
-        post: operations["unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/modify": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Modify Assertion
-         * @description Modify a profile assertion, creating a new version.
-         */
-        post: operations["modify_assertion_profiles_assertions__assertion_id__modify_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/rollback": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Rollback Assertion
-         * @description Roll a profile assertion back to a previous version.
-         */
-        post: operations["rollback_assertion_profiles_assertions__assertion_id__rollback_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/delete": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Delete Assertion
-         * @description Delete a profile assertion and propagate the deletion downstream.
-         */
-        post: operations["delete_assertion_profiles_assertions__assertion_id__delete_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/assertions/{assertion_id}/history": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Assertion History
-         * @description Return the version history of one profile assertion.
-         *
-         *     The history lets the user compare versions and see whether a change was
-         *     made by a user operation or by a candidate promotion, without erasing
-         *     provenance on overwrite.
-         */
-        get: operations["get_assertion_history_profiles_assertions__assertion_id__history_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/export": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Export Profile
-         * @description Export the current account's profile assertions and governance history.
-         */
-        get: operations["export_profile_profiles_export_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/permissions": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Permissions
-         * @description List low-risk automatic-update permissions for the current account.
-         */
-        get: operations["list_permissions_profiles_permissions_get"];
-        /**
-         * Update Permission
-         * @description Enable or disable one low-risk automatic-update permission.
-         *
-         *     Only the authenticated user can change permissions; the model or any
-         *     background task has no path to grant authorization (ADR-0002).
-         */
-        put: operations["update_permission_profiles_permissions_put"];
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/notifications": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * List Notifications
-         * @description List profile notifications for the current account, newest first.
-         */
-        get: operations["list_notifications_profiles_notifications_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/notifications/{notification_id}/read": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Mark Notification Read
-         * @description Mark one profile notification as read.
-         */
-        post: operations["mark_notification_read_profiles_notifications__notification_id__read_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/notifications/{notification_id}/recall": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Recall Notification
-         * @description One-click recall of an auto-written profile record.
-         *
-         *     The recall withdraws the record (auditable history is kept), blocks
-         *     future automatic writes of the same fact, and is idempotent so a failed
-         *     retry does not duplicate anything.
-         */
-        post: operations["recall_notification_profiles_notifications__notification_id__recall_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/candidates/batch-decision": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Batch Decide Candidates
-         * @description Apply one decision to multiple candidates (idempotent, retry-safe).
-         *
-         *     Candidates already in the target state are reported as ``already_decided``
-         *     rather than failed, so a failed batch can be retried safely without
-         *     duplicate writes.
-         */
-        post: operations["batch_decide_candidates_profiles_candidates_batch_decision_post"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/profiles/four-dimensions": {
         parameters: {
             query?: never;
@@ -3078,51 +2535,11 @@ export interface paths {
         };
         /**
          * List Four Dimension Records
-         * @description 列出当前账户的活动四维画像记录。
+         * @description List active four-dimension records for the current account.
          */
         get: operations["list_four_dimension_records_profiles_four_dimensions_get"];
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/four-dimensions/migration-report": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * Get Four Dimension Migration Report
-         * @description 返回当前账户的迁移汇总，不包含画像正文。
-         */
-        get: operations["get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/profiles/four-dimensions/migrate": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * Migrate Four Dimension Records
-         * @description 执行账户级、确定性的 expand/migrate 投影。
-         */
-        post: operations["migrate_four_dimension_records_profiles_four_dimensions_migrate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3144,7 +2561,7 @@ export interface paths {
         head?: never;
         /**
          * Modify Four Dimension Record
-         * @description 修改已有记录；此处刻意不提供新增路由。
+         * @description Modify one existing record without resetting its stable timestamp.
          */
         patch: operations["modify_four_dimension_record_profiles_four_dimensions__record_id__patch"];
         trace?: never;
@@ -3160,9 +2577,471 @@ export interface paths {
         put?: never;
         /**
          * Withdraw Four Dimension Record
-         * @description 撤回一条记录并保留内部墓碑。
+         * @description Withdraw one record while retaining its internal tombstone.
          */
         post: operations["withdraw_four_dimension_record_profiles_four_dimensions__record_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/observations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Observations */
+        get: operations["list_observations_profiles_observations_get"];
+        put?: never;
+        /** Create Observation */
+        post: operations["create_observation_profiles_observations_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/observations/{observation_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Observation */
+        get: operations["get_observation_profiles_observations__observation_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Candidates */
+        get: operations["list_candidates_profiles_candidates_get"];
+        put?: never;
+        /** Propose Candidate */
+        post: operations["propose_candidate_profiles_candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates/{candidate_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Candidate */
+        get: operations["get_candidate_profiles_candidates__candidate_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates/{candidate_id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decide Candidate */
+        post: operations["decide_candidate_profiles_candidates__candidate_id__decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/candidates/batch-decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Batch Decide Candidates */
+        post: operations["batch_decide_candidates_profiles_candidates_batch_decision_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Assertions */
+        get: operations["list_assertions_profiles_assertions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Assertion */
+        get: operations["get_assertion_profiles_assertions__assertion_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/manual": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Manual Assertion */
+        post: operations["create_manual_assertion_profiles_assertions_manual_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/freeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Freeze Assertion */
+        post: operations["freeze_assertion_profiles_assertions__assertion_id__freeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Withdraw Assertion */
+        post: operations["withdraw_assertion_profiles_assertions__assertion_id__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/unfreeze": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Unfreeze Assertion */
+        post: operations["unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/modify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Modify Assertion */
+        post: operations["modify_assertion_profiles_assertions__assertion_id__modify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Rollback Assertion */
+        post: operations["rollback_assertion_profiles_assertions__assertion_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Delete Assertion */
+        post: operations["delete_assertion_profiles_assertions__assertion_id__delete_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/assertions/{assertion_id}/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Assertion History */
+        get: operations["get_assertion_history_profiles_assertions__assertion_id__history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Export Profile */
+        get: operations["export_profile_profiles_export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/permissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Permissions */
+        get: operations["list_permissions_profiles_permissions_get"];
+        /** Update Permission */
+        put: operations["update_permission_profiles_permissions_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Notifications */
+        get: operations["list_notifications_profiles_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Notification Read */
+        post: operations["mark_notification_read_profiles_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/notifications/{notification_id}/recall": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Recall Notification */
+        post: operations["recall_notification_profiles_notifications__notification_id__recall_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slice": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compile Memory Slice */
+        get: operations["compile_memory_slice_profiles_memory_slice_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slices/{slice_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Memory Slice */
+        get: operations["get_memory_slice_profiles_memory_slices__slice_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slices/{slice_id}/inspector": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Inspect Memory Slice */
+        get: operations["inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/memory-slices/{slice_id}/access-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Check Memory Slice Access */
+        post: operations["check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/four-dimensions/migration-report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Four Dimension Migration Report */
+        get: operations["get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/profiles/four-dimensions/migrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Migrate Four Dimension Records */
+        post: operations["migrate_four_dimension_records_profiles_four_dimensions_migrate_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6554,15 +6433,6 @@ export interface components {
          */
         ArxivSearchStatus: "loading" | "success" | "empty" | "error" | "permission" | "recovery" | "cancelled";
         /**
-         * AssertionStatus
-         * @description Lifecycle status of a promoted profile assertion.
-         *
-         *     ``WITHDRAWN`` stops further answer use while keeping the auditable history;
-         *     ``FROZEN`` additionally prevents automatic updates (enforced from Issue 26).
-         * @enum {string}
-         */
-        AssertionStatus: "active" | "frozen" | "withdrawn" | "stale" | "deleted";
-        /**
          * AssetRegion
          * @description A detected region inside an image or scan.
          */
@@ -6801,35 +6671,6 @@ export interface components {
              */
             unit: string;
         };
-        /**
-         * CandidateDecision
-         * @description Request to accept, reject or modify a candidate profile.
-         */
-        CandidateDecision: {
-            /** @description Decision type. */
-            decision: components["schemas"]["DecisionType"];
-            /**
-             * Reason
-             * @description Human-readable rationale.
-             */
-            reason: string;
-            /** Modified Value Or Rule */
-            modified_value_or_rule?: string | null;
-            /** Modified Applicable Scenes */
-            modified_applicable_scenes?: string[] | null;
-        };
-        /**
-         * CandidateReviewStatus
-         * @description Where the candidate is in the human-review loop.
-         * @enum {string}
-         */
-        CandidateReviewStatus: "proposed" | "accepted" | "rejected" | "modified" | "conflicted" | "stale" | "discarded";
-        /**
-         * CandidateStabilityState
-         * @description Stability classification of a candidate.
-         * @enum {string}
-         */
-        CandidateStabilityState: "candidate" | "active" | "restricted" | "frozen" | "stale" | "deleted";
         /**
          * CapabilityRoute
          * @description 一次用户消息的主能力路由快照。
@@ -8454,14 +8295,14 @@ export interface components {
              * Data
              * @description 事件载荷。
              */
-            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamProfileData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
+            data: components["schemas"]["ChatStreamStartedData"] | components["schemas"]["ChatStreamStageData"] | components["schemas"]["ChatStreamDeltaData"] | components["schemas"]["ChatStreamErrorData"] | components["schemas"]["ChatStreamDoneData"] | components["schemas"]["ChatStreamHumanizerData"] | components["schemas"]["ChatStreamCareerData"] | components["schemas"]["ChatStreamImageData"] | components["schemas"]["ChatStreamVideoData"] | components["schemas"]["ChatStreamMcpData"];
         };
         /**
          * ChatStreamEventKind
          * @description SSE 流事件类型（Issue 11/14 起稳定的事件名）。
          * @enum {string}
          */
-        ChatStreamEventKind: "started" | "stage" | "delta" | "error" | "done" | "profile" | "humanizer" | "career" | "image" | "video" | "mcp_call";
+        ChatStreamEventKind: "started" | "stage" | "delta" | "error" | "done" | "humanizer" | "career" | "image" | "video" | "mcp_call";
         /**
          * ChatStreamHumanizerData
          * @description humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
@@ -8547,33 +8388,6 @@ export interface components {
             message_id: string;
             /** @description 调用状态投影。 */
             call: components["schemas"]["McpCallMessageProjection"];
-        };
-        /**
-         * ChatStreamProfileData
-         * @description profile 事件载荷：一次性隐私说明或兼容期画像通知。
-         *
-         *     Issue 15 的自动写入不发送写入通知；``privacy_notice`` 只在账户首次
-         *     触发自动画像时出现一次。``notifications`` 仅保留旧画像兼容测试和
-         *     历史事件的读取形状。
-         */
-        ChatStreamProfileData: {
-            /**
-             * @description discriminator enum property added by openapi-typescript
-             * @enum {string}
-             */
-            kind: "profile";
-            /**
-             * Message Id
-             * @description 本轮用户消息标识。
-             */
-            message_id: string;
-            /**
-             * Notifications
-             * @description 本轮产生的画像通知。
-             */
-            notifications?: components["schemas"]["ProfileNotification"][];
-            /** @description 账户级首次自动画像隐私说明。 */
-            privacy_notice?: components["schemas"]["ProfilePrivacyNotice"] | null;
         };
         /**
          * ChatStreamStageData
@@ -9635,66 +9449,11 @@ export interface components {
          */
         ContentAuthority: "device_local" | "server_replica" | "project_copy";
         /**
-         * ContextNoteProfileItem
-         * @description 上下文说明中的一条画像切片披露。
-         *
-         *     披露记录的是回答当时使用的快照（值摘要、状态与版本），修正后历史
-         *     回答保留此快照；``assertion_id`` 是来源记录链接，可跳转画像中心。
-         */
-        ContextNoteProfileItem: {
-            /**
-             * Assertion Id
-             * @description 来源画像记录标识（链接到画像中心）。
-             */
-            assertion_id: string;
-            /**
-             * Dimension
-             * @description 画像类别（ProfileDimension 值）。
-             */
-            dimension: string;
-            /**
-             * Dimension Label
-             * @description 画像类别中文标签。
-             */
-            dimension_label: string;
-            /**
-             * Value Summary
-             * @description 本次使用的值摘要（截断，不超长）。
-             */
-            value_summary: string;
-            /**
-             * Inclusion Reason
-             * @description 用途：为什么本轮使用这条记录。
-             */
-            inclusion_reason: string;
-            /**
-             * Used At
-             * Format: date-time
-             * @description 本次使用时间（切片编译时间）。
-             */
-            used_at: string;
-            /**
-             * Status
-             * @description 使用时的记录状态快照（active/frozen/...）。
-             */
-            status: string;
-            /**
-             * Version
-             * @description 使用时的记录版本快照（可对比当前版本）。
-             */
-            version: number;
-            /**
-             * Applicable Scenes
-             * @description 使用时的适用场景快照（修正时回传，不漂移授权范围）。
-             */
-            applicable_scenes?: string[];
-        };
-        /**
          * ContextNoteProjection
-         * @description 「本次上下文说明」可展开披露（Issue 27，ADR-0015）。
+         * @description 普通聊天可见的上下文摘要。
          *
-         *     回答展示使用的画像类别、材料类别、用途与来源链接；不暴露系统提示、
-         *     隐藏提示或原始思维链。画像正文不复制到审计日志，这里只披露摘要。
+         *     画像切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与
+         *     审计域，不再进入普通聊天响应。
          */
         ContextNoteProjection: {
             /** @description 披露状态（ready/empty/off/error）。 */
@@ -9713,21 +9472,16 @@ export interface components {
              */
             used_at: string;
             /**
-             * Profile Items
-             * @description 本轮使用的画像切片披露列表。
+             * Profile Item Count
+             * @description 本轮使用的画像记录数量，不包含记录详情。
+             * @default 0
              */
-            profile_items?: components["schemas"]["ContextNoteProfileItem"][];
+            profile_item_count: number;
             /**
              * Material Categories
              * @description 本轮使用的材料类别（检索层/联网来源等中文名）。
              */
             material_categories?: string[];
-            /**
-             * Excluded Count
-             * @description 因范围/敏感/过期/冻结/撤回等排除的记录数。
-             * @default 0
-             */
-            excluded_count: number;
             /**
              * Note
              * @description 面向用户的中文说明（含各状态的合法文案）。
@@ -10053,12 +9807,6 @@ export interface components {
             /** @description Modified confidence when decision is 'modify'. */
             modified_confidence?: components["schemas"]["KnowledgeConfidence"] | null;
         };
-        /**
-         * DecisionType
-         * @description Human decision on a candidate profile.
-         * @enum {string}
-         */
-        DecisionType: "accept" | "reject" | "modify";
         /**
          * DeleteAccountRequest
          * @description 账户删除请求：强确认文本 + 最近认证（API 层敏感门）。
@@ -12672,81 +12420,6 @@ export interface components {
          * @enum {string}
          */
         FourDimension: "academic_status" | "knowledge_interest" | "hobby" | "stage_goal";
-        /**
-         * FourDimensionMigrationReport
-         * @description Account-scoped migration result without profile正文泄露.
-         */
-        FourDimensionMigrationReport: {
-            /**
-             * Report Id
-             * @description Stable migration report identifier.
-             */
-            report_id: string;
-            /**
-             * Owner Account Id
-             * @description Account migrated by this report.
-             */
-            owner_account_id: string;
-            /**
-             * Migration Version
-             * @description Migration contract version.
-             */
-            migration_version: string;
-            /** @description Migration outcome. */
-            status: components["schemas"]["FourDimensionMigrationStatus"];
-            /**
-             * Four Dimension Migrated
-             * @description New four-dimension records created.
-             */
-            four_dimension_migrated: number;
-            /**
-             * Teaching Records Migrated
-             * @description Knowledge records handed to teaching.
-             */
-            teaching_records_migrated: number;
-            /**
-             * Legacy Preserved
-             * @description Records retained in the legacy archive.
-             */
-            legacy_preserved: number;
-            /**
-             * Skipped
-             * @description Already migrated or intentionally skipped records.
-             */
-            skipped: number;
-            /**
-             * Failed
-             * @description Records that failed deterministic migration.
-             */
-            failed: number;
-            /**
-             * Stable Record Ids
-             * @description Stable target ids for audit tracing; never profile正文.
-             */
-            stable_record_ids?: string[];
-            /**
-             * Failure Codes
-             * @description Safe retry diagnostics.
-             */
-            failure_codes?: string[];
-            /**
-             * Retryable
-             * @description Whether the same account migration may be retried.
-             */
-            retryable: boolean;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Report creation time.
-             */
-            created_at: string;
-        };
-        /**
-         * FourDimensionMigrationStatus
-         * @description 一次账户级确定性迁移尝试的结果。
-         * @enum {string}
-         */
-        FourDimensionMigrationStatus: "completed" | "retryable";
         /**
          * FourDimensionProfileModifyRequest
          * @description 修改已有四维记录的乐观锁请求。
@@ -15674,42 +15347,6 @@ export interface components {
          */
         MainCapability: "ordinary_chat" | "paper_search" | "clarification" | "humanizer" | "image" | "video" | "career";
         /**
-         * ManualAssertionCreateRequest
-         * @description Request to manually create a governed profile record.
-         *
-         *     The user declares the fact, its applicable scenes, sensitivity, authorization
-         *     scope and a source note; the record is promoted immediately because the
-         *     declarer is the owner, and every field is retained for audit.
-         */
-        ManualAssertionCreateRequest: {
-            /** @description One of the nine profile dimensions. */
-            dimension: components["schemas"]["ProfileDimension"];
-            /**
-             * Value Or Rule
-             * @description The declared value or rule.
-             */
-            value_or_rule: string;
-            /** Applicable Scenes */
-            applicable_scenes?: string[];
-            /**
-             * @description Sensitivity classification governing slice inclusion.
-             * @default preference
-             */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /**
-             * Authorization Scope
-             * @description Authorization scope; set by the user, never inferred.
-             * @default general
-             */
-            authorization_scope: string;
-            /**
-             * Source Note
-             * @description User-declared provenance note for the record.
-             * @default 用户手动记录
-             */
-            source_note: string;
-        };
-        /**
          * McpAttachmentSlice
          * @description 调用数据切片中的一条附件：只含元数据与已授权正文片段。
          */
@@ -16658,12 +16295,6 @@ export interface components {
             version: number;
         };
         /**
-         * ObservationStatus
-         * @description Lifecycle status of a profile observation.
-         * @enum {string}
-         */
-        ObservationStatus: "active" | "discarded";
-        /**
          * PackImpactAction
          * @description 失效对单个下游对象要求的动作。
          * @enum {string}
@@ -17135,435 +16766,6 @@ export interface components {
             action_relevance?: string | null;
         };
         /**
-         * ProfileAssertion
-         * @description Stable, promoted profile entry that may enter a memory slice.
-         */
-        ProfileAssertion: {
-            /**
-             * Assertion Id
-             * @description Stable assertion identifier.
-             */
-            assertion_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Canonical Dimension
-             * @description Profile dimension.
-             */
-            canonical_dimension: string;
-            /**
-             * Value Or Rule
-             * @description Confirmed value or rule.
-             */
-            value_or_rule: string;
-            /** Applicable Scenes */
-            applicable_scenes?: string[];
-            /** Supporting Observation Ids */
-            supporting_observation_ids?: string[];
-            /** Contradicting Observation Ids */
-            contradicting_observation_ids?: string[];
-            /**
-             * Authorization Scope
-             * @description Authorization scope for use.
-             */
-            authorization_scope: string;
-            /** @description Lifecycle status. */
-            status: components["schemas"]["AssertionStatus"];
-            /**
-             * @description Sensitivity classification governing slice inclusion.
-             * @default preference
-             */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /**
-             * Expires At
-             * @description Optional expiration after which the assertion cannot be recalled.
-             */
-            expires_at?: string | null;
-            /**
-             * Promoted From Candidate Id
-             * @description Candidate from which this assertion was promoted.
-             */
-            promoted_from_candidate_id?: string | null;
-            /**
-             * Version
-             * @description Optimistic concurrency version.
-             * @default 1
-             */
-            version: number;
-            /**
-             * Last Used At
-             * @description When the assertion was last included in an answer slice.
-             */
-            last_used_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp.
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp.
-             */
-            updated_at: string;
-        };
-        /**
-         * ProfileAssertionHistory
-         * @description Version history of a single profile assertion.
-         */
-        ProfileAssertionHistory: {
-            /**
-             * Assertion Id
-             * @description Assertion identifier.
-             */
-            assertion_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Current Version
-             * @description Current optimistic concurrency version.
-             */
-            current_version: number;
-            /**
-             * Versions
-             * @description Historical snapshots, oldest first.
-             */
-            versions?: components["schemas"]["ProfileAssertionVersion"][];
-        };
-        /**
-         * ProfileAssertionModifyRequest
-         * @description Request to modify an active profile assertion, creating a new version.
-         */
-        ProfileAssertionModifyRequest: {
-            /**
-             * Value Or Rule
-             * @description New value or rule.
-             */
-            value_or_rule: string;
-            /** Applicable Scenes */
-            applicable_scenes?: string[];
-            /**
-             * Reason
-             * @description Human-readable reason for the change.
-             */
-            reason: string;
-        };
-        /**
-         * ProfileAssertionRollbackRequest
-         * @description Request to roll an assertion back to a previous version.
-         */
-        ProfileAssertionRollbackRequest: {
-            /**
-             * To Version
-             * @description Target historical version number.
-             */
-            to_version: number;
-            /**
-             * Reason
-             * @description Human-readable reason for the rollback.
-             */
-            reason: string;
-        };
-        /**
-         * ProfileAssertionVersion
-         * @description Immutable snapshot of a profile assertion at a point in its history.
-         *
-         *     Rollback creates a new active version from a prior snapshot without erasing
-         *     the audit chain. Each version stores the value and metadata at that point so
-         *     that rollback is possible, but audit events and exports retain only the
-         *     content hash rather than the full value, ensuring deleted content body is not
-         *     preserved in the governance audit trail.
-         */
-        ProfileAssertionVersion: {
-            /**
-             * Version Id
-             * @description Stable version snapshot identifier.
-             */
-            version_id: string;
-            /**
-             * Assertion Id
-             * @description Assertion this version belongs to.
-             */
-            assertion_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Version
-             * @description Assertion version number this snapshot records.
-             */
-            version: number;
-            /**
-             * Canonical Dimension
-             * @description Profile dimension.
-             */
-            canonical_dimension: string;
-            /**
-             * Value Or Rule
-             * @description Value or rule at this version.
-             */
-            value_or_rule: string;
-            /** Applicable Scenes */
-            applicable_scenes?: string[];
-            /** @description Assertion status at this version. */
-            status: components["schemas"]["AssertionStatus"];
-            /** @default preference */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /** Promoted From Candidate Id */
-            promoted_from_candidate_id?: string | null;
-            /**
-             * Content Hash
-             * @description SHA-256 hash of value and scenes.
-             */
-            content_hash: string;
-            /**
-             * Changed At
-             * Format: date-time
-             * @description When this version was created.
-             */
-            changed_at: string;
-            /**
-             * Changed By
-             * @description Actor that created this version.
-             */
-            changed_by: string;
-            /**
-             * Change Reason
-             * @description Human-readable reason for the change.
-             */
-            change_reason: string;
-        };
-        /**
-         * ProfileBatchCandidateDecisionRequest
-         * @description Request to apply one decision to multiple candidates at once.
-         *
-         *     Batch decisions are idempotent: already-decided candidates whose status
-         *     already reflects the requested decision are reported as succeeded, so a
-         *     failed batch can be safely retried without duplicate writes.
-         */
-        ProfileBatchCandidateDecisionRequest: {
-            /**
-             * Candidate Ids
-             * @description Candidate identifiers to decide (owned by the account).
-             */
-            candidate_ids: string[];
-            /** @description Decision applied to each candidate. */
-            decision: components["schemas"]["DecisionType"];
-            /**
-             * Reason
-             * @description Shared human-readable rationale recorded for each decision.
-             */
-            reason: string;
-            /**
-             * Modified Value Or Rule
-             * @description Modified value when decision is 'modify'.
-             */
-            modified_value_or_rule?: string | null;
-            /**
-             * Modified Applicable Scenes
-             * @description Modified applicable scenes when decision is 'modify' (mirrors the single-decision contract).
-             */
-            modified_applicable_scenes?: string[] | null;
-        };
-        /**
-         * ProfileBatchCandidateResult
-         * @description Result of a batch candidate decision.
-         */
-        ProfileBatchCandidateResult: {
-            /**
-             * Succeeded
-             * @description Candidate ids successfully decided.
-             */
-            succeeded?: string[];
-            /**
-             * Already Decided
-             * @description Candidate ids already in the target state (idempotent retry).
-             */
-            already_decided?: string[];
-            /**
-             * Failed
-             * @description Failed candidate ids with a safe Chinese reason.
-             */
-            failed?: {
-                [key: string]: string;
-            }[];
-        };
-        /**
-         * ProfileCandidate
-         * @description Explainable candidate profile awaiting human review.
-         */
-        ProfileCandidate: {
-            /**
-             * Candidate Id
-             * @description Stable candidate identifier.
-             */
-            candidate_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Canonical Dimension
-             * @description Profile dimension (e.g. 'expression_brevity').
-             */
-            canonical_dimension: string;
-            /**
-             * Value Or Rule
-             * @description Proposed value or rule.
-             */
-            value_or_rule: string;
-            /**
-             * Applicable Scenes
-             * @description Scenes in which the candidate may apply.
-             */
-            applicable_scenes?: string[];
-            /**
-             * Non Applicable Scenes
-             * @description Scenes in which the candidate must not apply.
-             */
-            non_applicable_scenes?: string[];
-            /**
-             * Supporting Observation Ids
-             * @description Observations that support the candidate.
-             */
-            supporting_observation_ids?: string[];
-            /**
-             * Contradicting Observation Ids
-             * @description Observations that contradict the candidate.
-             */
-            contradicting_observation_ids?: string[];
-            /**
-             * Evidence Summary
-             * @description Structured evidence summary.
-             */
-            evidence_summary: string;
-            /**
-             * Authorization Scope
-             * @description Authorization scope for use.
-             */
-            authorization_scope: string;
-            /**
-             * Promotion Policy Version
-             * @description Promotion policy version used to evaluate the candidate.
-             * @default promotion-1.0
-             */
-            promotion_policy_version: string;
-            /** @description Review status. */
-            review_status: components["schemas"]["CandidateReviewStatus"];
-            /**
-             * @description Stability classification.
-             * @default candidate
-             */
-            stability_state: components["schemas"]["CandidateStabilityState"];
-            /**
-             * @description Sensitivity classification governing retention and slice inclusion.
-             * @default preference
-             */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /**
-             * Proposed At
-             * Format: date-time
-             * @description When the candidate was proposed.
-             */
-            proposed_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp.
-             */
-            updated_at: string;
-            /**
-             * Expires At
-             * @description Optional expiration after which the candidate goes stale.
-             */
-            expires_at?: string | null;
-            /** @description Recorded human decision, if any. */
-            human_decision?: components["schemas"]["bridges__contracts__profiles__HumanDecision"] | null;
-        };
-        /**
-         * ProfileCandidateCreateRequest
-         * @description Request to propose a candidate profile from observations.
-         */
-        ProfileCandidateCreateRequest: {
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Canonical Dimension
-             * @description Profile dimension.
-             */
-            canonical_dimension: string;
-            /**
-             * Value Or Rule
-             * @description Proposed value or rule.
-             */
-            value_or_rule: string;
-            /** Applicable Scenes */
-            applicable_scenes?: string[];
-            /** Non Applicable Scenes */
-            non_applicable_scenes?: string[];
-            /** Supporting Observation Ids */
-            supporting_observation_ids?: string[];
-            /** Contradicting Observation Ids */
-            contradicting_observation_ids?: string[];
-            /**
-             * Evidence Summary
-             * @description Structured evidence summary for the candidate.
-             * @default
-             */
-            evidence_summary: string;
-            /**
-             * Authorization Scope
-             * @description Authorization scope.
-             * @default general
-             */
-            authorization_scope: string;
-            /**
-             * Promotion Policy Version
-             * @default promotion-1.0
-             */
-            promotion_policy_version: string;
-            /**
-             * @description Sensitivity classification of the candidate.
-             * @default preference
-             */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /** Expires At */
-            expires_at?: string | null;
-        };
-        /**
-         * ProfileDeleteRequest
-         * @description Request to delete a profile assertion.
-         */
-        ProfileDeleteRequest: {
-            /**
-             * Reason
-             * @description Human-readable reason for deletion.
-             */
-            reason: string;
-        };
-        /**
-         * ProfileDimension
-         * @description The nine governable profile dimensions of the digital twin center.
-         *
-         *     Issue 25: each dimension is a separately governed record category with its
-         *     own assertions, authorization and history, rather than a merged long text.
-         * @enum {string}
-         */
-        ProfileDimension: "basic_information" | "stage_goal" | "interest_preference" | "expression_habit" | "knowledge_state" | "emotion_trend" | "important_experience" | "current_problem" | "authorization_scope";
-        /**
          * ProfileError
          * @description Uniform profile error response.
          */
@@ -17586,609 +16788,6 @@ export interface components {
                 [key: string]: unknown;
             };
         };
-        /**
-         * ProfileExport
-         * @description Structured, portable export of a user's evidence-backed profile.
-         *
-         *     Exports include assertion metadata and content hashes so the user can verify
-         *     integrity, but they omit deleted observed content and audit-unfriendly body
-         *     copies. The export is itself scope-bound to the requesting account.
-         */
-        ProfileExport: {
-            /**
-             * Export Id
-             * @description Stable export identifier.
-             */
-            export_id: string;
-            /**
-             * Owner Account Id
-             * @description Account the export belongs to.
-             */
-            owner_account_id: string;
-            /**
-             * Exported At
-             * Format: date-time
-             * @description Export generation timestamp.
-             */
-            exported_at: string;
-            /**
-             * Assertions
-             * @description Current assertions.
-             */
-            assertions?: components["schemas"]["ProfileExportAssertion"][];
-            /**
-             * History
-             * @description Version history keyed by assertion identifier.
-             */
-            history?: {
-                [key: string]: components["schemas"]["ProfileAssertionHistory"];
-            };
-            /**
-             * Audit Event Refs
-             * @description References to governance audit events included in this export.
-             */
-            audit_event_refs?: string[];
-        };
-        /**
-         * ProfileExportAssertion
-         * @description One assertion as it appears in a user export.
-         */
-        ProfileExportAssertion: {
-            /**
-             * Assertion Id
-             * @description Stable assertion identifier.
-             */
-            assertion_id: string;
-            /**
-             * Canonical Dimension
-             * @description Profile dimension.
-             */
-            canonical_dimension: string;
-            /** @description Current lifecycle status. */
-            status: components["schemas"]["AssertionStatus"];
-            /**
-             * Value Or Rule
-             * @description Current value; redacted when the assertion has been deleted.
-             */
-            value_or_rule?: string | null;
-            /** Applicable Scenes */
-            applicable_scenes?: string[];
-            /**
-             * Version
-             * @description Current optimistic concurrency version.
-             */
-            version: number;
-            /**
-             * Content Hash
-             * @description SHA-256 hash of current value and scenes.
-             */
-            content_hash: string;
-            /** Promoted From Candidate Id */
-            promoted_from_candidate_id?: string | null;
-            /**
-             * Last Used At
-             * @description When the assertion was last included in an answer slice.
-             */
-            last_used_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When the assertion was first promoted.
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description When the assertion was last changed.
-             */
-            updated_at: string;
-            /** Deleted At */
-            deleted_at?: string | null;
-        };
-        /**
-         * ProfileFreezeRequest
-         * @description Request carrying a reason for freeze / withdraw / unfreeze operations.
-         */
-        ProfileFreezeRequest: {
-            /**
-             * Reason
-             * @description Human-readable reason for the operation.
-             */
-            reason: string;
-        };
-        /**
-         * ProfileNotification
-         * @description Visible, source-backed notification produced by profile processing.
-         *
-         *     ``recallable`` is true for auto-written records so the user can recall them
-         *     with one click; the recall withdraws the record and blocks re-writing the
-         *     same fact automatically.
-         */
-        ProfileNotification: {
-            /**
-             * Notification Id
-             * @description Stable notification identifier.
-             */
-            notification_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /** @description Notification kind. */
-            kind: components["schemas"]["ProfileNotificationKind"];
-            /**
-             * Title
-             * @description Short Chinese title.
-             */
-            title: string;
-            /**
-             * Message
-             * @description Chinese message body.
-             */
-            message: string;
-            /**
-             * Source Ref
-             * @description Reference to the source, e.g. '<conversation_id>:<message_id>'.
-             */
-            source_ref: string;
-            /**
-             * Source Text
-             * @description Source message text the notification refers to.
-             */
-            source_text: string;
-            /** @description Profile dimension the notification refers to. */
-            dimension?: components["schemas"]["ProfileDimension"] | null;
-            /**
-             * Scene
-             * @description Applicable scene.
-             */
-            scene?: string | null;
-            /**
-             * Assertion Id
-             * @description Target assertion for one-click recall.
-             */
-            assertion_id?: string | null;
-            /**
-             * Candidate Id
-             * @description Target candidate, when proposed.
-             */
-            candidate_id?: string | null;
-            /**
-             * Recallable
-             * @description Whether one-click recall applies.
-             * @default false
-             */
-            recallable: boolean;
-            /**
-             * Recalled At
-             * @description When the record was recalled, if ever.
-             */
-            recalled_at?: string | null;
-            /**
-             * Read At
-             * @description When the user marked the notification read.
-             */
-            read_at?: string | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp.
-             */
-            created_at: string;
-        };
-        /**
-         * ProfileNotificationKind
-         * @description Kind of a profile notification delivered to the user.
-         * @enum {string}
-         */
-        ProfileNotificationKind: "auto_write" | "candidate_proposed" | "intent_recorded" | "transient_emotion";
-        /**
-         * ProfileObservation
-         * @description Traceable atomic signal that may support a candidate profile.
-         */
-        ProfileObservation: {
-            /**
-             * Observation Id
-             * @description Stable observation identifier.
-             */
-            observation_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Project Id
-             * @description Project context when the observation belongs to a project.
-             */
-            project_id?: string | null;
-            source_type: components["schemas"]["ProfileSourceType"];
-            /**
-             * Source Ref
-             * @description Reference to the source object (conversation, run, import, etc.).
-             */
-            source_ref: string;
-            /**
-             * Source Span Or Event
-             * @description Specific span or event within the source (message id, turn, etc.).
-             */
-            source_span_or_event: string;
-            /**
-             * Scene
-             * @description Scene or situation in which the signal occurred.
-             */
-            scene: string;
-            /**
-             * Purpose
-             * @description Declared purpose for which the observation was collected.
-             */
-            purpose: string;
-            /**
-             * Observed Content
-             * @description Literal or summarized observed content.
-             */
-            observed_content: string;
-            /** @description Kind of signal. */
-            signal_kind: components["schemas"]["ProfileSignalKind"];
-            /**
-             * Extractor And Version
-             * @description Extractor and version that produced the observation.
-             */
-            extractor_and_version: string;
-            /**
-             * Model Rationale
-             * @description Structured rationale when produced by a model extractor.
-             */
-            model_rationale?: string | null;
-            /**
-             * Reliability Factors
-             * @description Factors that support or weaken the observation.
-             */
-            reliability_factors?: string[];
-            /** @description Sensitivity classification governing retention and promotion. */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /**
-             * Retention Policy
-             * @description Retention policy for this observation.
-             */
-            retention_policy: string;
-            /**
-             * Authorization Version
-             * @description Authorization policy version at collection time.
-             * @default authz-1.0
-             */
-            authorization_version: string;
-            /**
-             * Content Hash
-             * @description SHA-256 hash of observed_content and source metadata.
-             */
-            content_hash: string;
-            /** @description Lifecycle status. */
-            status: components["schemas"]["ObservationStatus"];
-            /**
-             * Created At
-             * Format: date-time
-             * @description Creation timestamp.
-             */
-            created_at: string;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last update timestamp.
-             */
-            updated_at: string;
-        };
-        /**
-         * ProfileObservationCreateRequest
-         * @description Request to record a new profile observation.
-         */
-        ProfileObservationCreateRequest: {
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Project Id
-             * @description Optional project context.
-             */
-            project_id?: string | null;
-            source_type: components["schemas"]["ProfileSourceType"];
-            /**
-             * Source Ref
-             * @description Reference to the source object.
-             */
-            source_ref: string;
-            /**
-             * Source Span Or Event
-             * @description Specific span or event within the source.
-             */
-            source_span_or_event: string;
-            /**
-             * Scene
-             * @description Scene or situation.
-             */
-            scene: string;
-            /**
-             * Purpose
-             * @description Declared purpose.
-             */
-            purpose: string;
-            /**
-             * Observed Content
-             * @description Observed content.
-             */
-            observed_content: string;
-            /** @description Kind of signal. */
-            signal_kind: components["schemas"]["ProfileSignalKind"];
-            /**
-             * Extractor And Version
-             * @description Extractor and version.
-             */
-            extractor_and_version: string;
-            /**
-             * Model Rationale
-             * @description Extractor rationale.
-             */
-            model_rationale?: string | null;
-            /**
-             * Reliability Factors
-             * @description Reliability factors.
-             */
-            reliability_factors?: string[];
-            /** @description Sensitivity class. */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /**
-             * Retention Policy
-             * @description Retention policy.
-             */
-            retention_policy: string;
-            /**
-             * Authorization Version
-             * @description Authorization policy version.
-             * @default authz-1.0
-             */
-            authorization_version: string;
-        };
-        /**
-         * ProfilePermission
-         * @description User-granted permission for low-risk automatic profile updates.
-         *
-         *     Issue 26 (ADR-0002): a permission is bound to one auto-writable category and
-         *     one applicable scene, defaults to off, and can only be set by the user
-         *     through the account-scoped API — never inferred from silence, tone or past
-         *     behavior.
-         */
-        ProfilePermission: {
-            /**
-             * Account Id
-             * @description Owning account identifier.
-             */
-            account_id: string;
-            /** @description Auto-writable category (AUTO_WRITABLE_DIMENSIONS). */
-            dimension: components["schemas"]["ProfileDimension"];
-            /**
-             * Scene
-             * @description Applicable scene, e.g. 'companion' or 'study'.
-             */
-            scene: string;
-            /**
-             * Enabled
-             * @description Whether automatic updates are permitted.
-             */
-            enabled: boolean;
-            /**
-             * Updated At
-             * Format: date-time
-             * @description Last change timestamp.
-             */
-            updated_at: string;
-        };
-        /**
-         * ProfilePermissionUpdateRequest
-         * @description Request to enable or disable one low-risk automatic-update permission.
-         */
-        ProfilePermissionUpdateRequest: {
-            /** @description Auto-writable category (AUTO_WRITABLE_DIMENSIONS). */
-            dimension: components["schemas"]["ProfileDimension"];
-            /**
-             * Scene
-             * @description Applicable scene, e.g. 'companion' or 'study'.
-             */
-            scene: string;
-            /**
-             * Enabled
-             * @description True to enable, False to disable.
-             */
-            enabled: boolean;
-        };
-        /**
-         * ProfilePrivacyNotice
-         * @description 首次启用自动画像时的一次性非交互说明。
-         */
-        ProfilePrivacyNotice: {
-            /** Version */
-            version: string;
-            /** Text */
-            text: string;
-            /**
-             * Shown At
-             * Format: date-time
-             */
-            shown_at: string;
-        };
-        /**
-         * ProfileSensitivityClass
-         * @description Sensitivity classification that governs retention and promotion.
-         * @enum {string}
-         */
-        ProfileSensitivityClass: "public" | "preference" | "learning" | "sensitive" | "prohibited";
-        /**
-         * ProfileSignalKind
-         * @description Kind of signal the observation carries.
-         * @enum {string}
-         */
-        ProfileSignalKind: "preference" | "goal" | "style" | "prior_knowledge" | "misconception" | "transient_emotion" | "role_play" | "third_party_story" | "sensitive_identity" | "other";
-        /**
-         * ProfileSlice
-         * @description Minimal, authorized profile information compiled for a single run.
-         *
-         *     A slice is the only long-term information carrier allowed into a model
-         *     context. It records why each item was included, excluded or rejected so the
-         *     context inspector can explain the personalization decision.
-         */
-        ProfileSlice: {
-            /**
-             * Slice Id
-             * @description Stable slice identifier.
-             */
-            slice_id: string;
-            /**
-             * Owner Account Id
-             * @description Owning account identifier.
-             */
-            owner_account_id: string;
-            /**
-             * Run Id
-             * @description Run the slice is bound to.
-             */
-            run_id: string;
-            /**
-             * Purpose
-             * @description Declared processing purpose.
-             */
-            purpose: string;
-            /**
-             * Project Id
-             * @description Project scope for which the slice was compiled.
-             */
-            project_id?: string | null;
-            /**
-             * Included Items
-             * @description Promoted assertions included in the slice.
-             */
-            included_items?: components["schemas"]["ProfileSliceItem"][];
-            /**
-             * Unused Items
-             * @description Active assertions excluded from the slice with reasons.
-             */
-            unused_items?: components["schemas"]["UnusedSliceItem"][];
-            /**
-             * Excluded Candidate Ids
-             * @description Candidates explicitly excluded from the slice.
-             */
-            excluded_candidate_ids?: string[];
-            /**
-             * Exclusion Reasons
-             * @description Reason each candidate was excluded.
-             */
-            exclusion_reasons?: {
-                [key: string]: string;
-            };
-            /**
-             * Rejected Items
-             * @description Candidates rejected or not yet promoted with reasons.
-             */
-            rejected_items?: components["schemas"]["RejectedSliceItem"][];
-            /**
-             * Authorization Snapshot
-             * @description Authorization policy version at compile time.
-             * @default authz-1.0
-             */
-            authorization_snapshot: string;
-            /**
-             * Key Epoch
-             * @description Key epoch under which the slice is bound.
-             * @default epoch-0
-             */
-            key_epoch: string;
-            /**
-             * Expires At
-             * @description Expiration after which the slice must not be used.
-             */
-            expires_at?: string | null;
-            /**
-             * Sensitivity Classes Allowed
-             * @description Sensitivity classes permitted in this slice.
-             */
-            sensitivity_classes_allowed?: components["schemas"]["ProfileSensitivityClass"][];
-            /**
-             * Compiled Policy Version
-             * @description Version of the slice compilation policy used.
-             * @default slice-1.0
-             */
-            compiled_policy_version: string;
-            /**
-             * Length Budget
-             * @description Maximum number of profile items allowed in this slice.
-             * @default 6
-             */
-            length_budget: number;
-            /**
-             * @description Lifecycle status of the slice.
-             * @default active
-             */
-            status: components["schemas"]["SliceStatus"];
-            /**
-             * Invalidated At
-             * @description When the slice was invalidated.
-             */
-            invalidated_at?: string | null;
-            /**
-             * Invalidation Reason
-             * @description Why the slice was invalidated.
-             */
-            invalidation_reason?: string | null;
-            /**
-             * Compiled At
-             * Format: date-time
-             * @description When the slice was compiled.
-             */
-            compiled_at: string;
-        };
-        /**
-         * ProfileSliceItem
-         * @description One entry included in a compiled memory slice.
-         */
-        ProfileSliceItem: {
-            /**
-             * Assertion Id
-             * @description Stable assertion identifier.
-             */
-            assertion_id: string;
-            /**
-             * Dimension
-             * @description Profile dimension.
-             */
-            dimension: string;
-            /**
-             * Value Or Rule
-             * @description Value or rule used in the slice.
-             */
-            value_or_rule: string;
-            /**
-             * Inclusion Reason
-             * @description Why the entry was included.
-             */
-            inclusion_reason: string;
-            /**
-             * @description Sensitivity classification of the source assertion.
-             * @default preference
-             */
-            sensitivity_class: components["schemas"]["ProfileSensitivityClass"];
-            /**
-             * Expires At
-             * @description Expiration of the source assertion.
-             */
-            expires_at?: string | null;
-        };
-        /**
-         * ProfileSourceType
-         * @description How the observation originated.
-         * @enum {string}
-         */
-        ProfileSourceType: "explicit_statement" | "correction" | "choice" | "task_behavior" | "assessment" | "imported" | "system_inference";
         /**
          * Project
          * @description Public project projection.
@@ -18741,32 +17340,6 @@ export interface components {
             version: string;
         };
         /**
-         * RejectedSliceItem
-         * @description One candidate that was not promoted and therefore not used.
-         */
-        RejectedSliceItem: {
-            /**
-             * Candidate Id
-             * @description Stable candidate identifier.
-             */
-            candidate_id: string;
-            /**
-             * Dimension
-             * @description Profile dimension.
-             */
-            dimension: string;
-            /**
-             * Value Or Rule
-             * @description Proposed value or rule.
-             */
-            value_or_rule: string;
-            /**
-             * Rejection Reason
-             * @description Why the candidate was not used.
-             */
-            rejection_reason: string;
-        };
-        /**
          * ReleaseEligibilityStatus
          * @description High-level release eligibility state derived from release gate checks.
          * @enum {string}
@@ -19060,11 +17633,105 @@ export interface components {
             source_status: components["schemas"]["SourceStatus"];
         };
         /**
+         * RetrievalCandidateFile
+         * @description 两阶段检索第一阶段选出的文件摘要。
+         */
+        RetrievalCandidateFile: {
+            /**
+             * Document Id
+             * @description 稳定索引文档身份。
+             */
+            document_id: string;
+            /**
+             * Object Id
+             * @description 稳定对象身份；用于授权校验。
+             */
+            object_id: string;
+            /**
+             * Filename
+             * @description 用户可理解的文件名。
+             */
+            filename: string;
+            /**
+             * Media Type
+             * @description 文件媒体类型。
+             */
+            media_type: string;
+        };
+        /**
          * RetrievalChannel
          * @description Channel that produced a retrieval candidate.
          * @enum {string}
          */
         RetrievalChannel: "lexical" | "vector";
+        /**
+         * RetrievalDecisionAction
+         * @description 全局知识库是否进入本轮证据编排。
+         * @enum {string}
+         */
+        RetrievalDecisionAction: "retrieve" | "skip";
+        /**
+         * RetrievalDecisionProjection
+         * @description 一轮聊天在任何索引副作用前形成的可恢复检索决策。
+         */
+        RetrievalDecisionProjection: {
+            /**
+             * Decision Id
+             * @description 稳定决策标识；重试同一用户回合时复用。
+             */
+            decision_id: string;
+            /**
+             * Assistant Message Id
+             * @description 首次绑定的助手消息标识。
+             */
+            assistant_message_id: string;
+            /**
+             * User Message Id
+             * @description 触发决策的用户消息标识。
+             */
+            user_message_id?: string | null;
+            /**
+             * Conversation Id
+             * @description 所属对话标识。
+             */
+            conversation_id: string;
+            /** @description retrieve 或 skip。 */
+            action: components["schemas"]["RetrievalDecisionAction"];
+            /** @description 确定性决策原因。 */
+            reason: components["schemas"]["RetrievalDecisionReason"];
+            /**
+             * Rules Version
+             * @description 决策规则版本；只影响新回合。
+             */
+            rules_version: string;
+            /**
+             * Capability Route
+             * @description 能力路由快照，不是模型输出。
+             */
+            capability_route: string;
+            /**
+             * Mode
+             * @description 决策时锁定的对话模式。
+             */
+            mode: string;
+            /**
+             * Query Fingerprint
+             * @description 用户请求的不可逆指纹，不保存原文。
+             */
+            query_fingerprint: string;
+            /**
+             * Created At
+             * Format: date-time
+             * @description 决策形成时间。
+             */
+            created_at: string;
+        };
+        /**
+         * RetrievalDecisionReason
+         * @description 检索决策的稳定原因枚举。
+         * @enum {string}
+         */
+        RetrievalDecisionReason: "explicit_knowledge_base" | "uploaded_material" | "study_explanation" | "knowledge_base_required" | "user_disabled" | "specialized_capability" | "companion_default";
         /**
          * RetrievalExercise
          * @description A single retrieval-practice exercise bound to evidence and fact locks.
@@ -19135,8 +17802,11 @@ export interface components {
              * @description 该层去重后的候选数。
              * @default 0
              */
-             candidates: number;
-            /** @description 候选文件元数据摘要；不包含文件正文。 */
+            candidates: number;
+            /**
+             * Candidate Files
+             * @description 候选文件元数据摘要；不包含文件正文。
+             */
             candidate_files?: components["schemas"]["RetrievalCandidateFile"][];
             /**
              * Note
@@ -19144,67 +17814,6 @@ export interface components {
              */
             note?: string | null;
         };
-        /**
-         * RetrievalCandidateFile
-         * @description 两阶段检索第一阶段选出的文件摘要。
-         */
-        RetrievalCandidateFile: {
-            /** @description 稳定索引文档身份。 */
-            document_id: string;
-            /** @description 稳定对象身份；用于授权校验。 */
-            object_id: string;
-            /** @description 用户可理解的文件名。 */
-            filename: string;
-            /** @description 文件媒体类型。 */
-            media_type: string;
-        };
-        /**
-         * RetrievalDecisionAction
-         * @description 全局知识库是否进入本轮证据编排。
-         * @enum {string}
-         */
-        RetrievalDecisionAction: "retrieve" | "skip";
-        /**
-         * RetrievalDecisionProjection
-         * @description 一轮聊天在任何索引副作用前形成的可恢复检索决策。
-         */
-        RetrievalDecisionProjection: {
-            /** @description 稳定决策标识；重试同一用户回合时复用。 */
-            decision_id: string;
-            /** @description 首次绑定的助手消息标识。 */
-            assistant_message_id: string;
-            /** @description 触发决策的用户消息标识。 */
-            user_message_id?: string | null;
-            /** @description 所属对话标识。 */
-            conversation_id: string;
-            /** @description retrieve 或 skip。 */
-            action: components["schemas"]["RetrievalDecisionAction"];
-            /** @description 确定性决策原因。 */
-            reason: components["schemas"]["RetrievalDecisionReason"];
-            /** @description 决策规则版本；只影响新回合。 */
-            rules_version: string;
-            /** @description 能力路由快照，不是模型输出。 */
-            capability_route: string;
-            /** @description 决策时锁定的对话模式。 */
-            mode: string;
-            /** @description 用户请求的不可逆指纹，不保存原文。 */
-            query_fingerprint: string;
-            /** @description 决策形成时间。 */
-            created_at: string;
-        };
-        /**
-         * RetrievalDecisionReason
-         * @description 检索决策的稳定原因枚举。
-         * @enum {string}
-         */
-        RetrievalDecisionReason:
-            | "explicit_knowledge_base"
-            | "uploaded_material"
-            | "study_explanation"
-            | "knowledge_base_required"
-            | "user_disabled"
-            | "specialized_capability"
-            | "companion_default";
         /**
          * RetrievalLayerStatus
          * @description 单层检索的对外状态。
@@ -21053,12 +19662,6 @@ export interface components {
             conclusion: components["schemas"]["AttestationConclusion"];
         };
         /**
-         * SliceStatus
-         * @description Lifecycle status of a compiled memory slice bound to a run.
-         * @enum {string}
-         */
-        SliceStatus: "active" | "expired" | "revoked" | "cancelled";
-        /**
          * Source
          * @description A source entry: the identity and ownership of one scientific work.
          *
@@ -22739,32 +21342,6 @@ export interface components {
             confidence: number;
         };
         /**
-         * UnusedSliceItem
-         * @description One active assertion that was not included in the slice, with a reason.
-         */
-        UnusedSliceItem: {
-            /**
-             * Assertion Id
-             * @description Stable assertion identifier.
-             */
-            assertion_id: string;
-            /**
-             * Dimension
-             * @description Profile dimension.
-             */
-            dimension: string;
-            /**
-             * Value Or Rule
-             * @description Value or rule of the assertion.
-             */
-            value_or_rule: string;
-            /**
-             * Exclusion Reason
-             * @description Why the assertion was not included.
-             */
-            exclusion_reason: string;
-        };
-        /**
          * UserFeedback
          * @description A single piece of user feedback with explicit routing.
          *
@@ -23916,50 +22493,6 @@ export interface components {
              * Created At
              * Format: date-time
              * @description 报告创建时间戳。
-             */
-            created_at: string;
-        };
-        /**
-         * HumanDecision
-         * @description Named human decision on a candidate profile.
-         */
-        bridges__contracts__profiles__HumanDecision: {
-            /**
-             * Decision Id
-             * @description Stable decision identifier.
-             */
-            decision_id: string;
-            /**
-             * Candidate Id
-             * @description Candidate the decision applies to.
-             */
-            candidate_id: string;
-            /**
-             * Account Id
-             * @description Account that made the decision.
-             */
-            account_id: string;
-            /** @description Decision type. */
-            decision: components["schemas"]["DecisionType"];
-            /**
-             * Reason
-             * @description Human-readable rationale.
-             */
-            reason: string;
-            /**
-             * Modified Value Or Rule
-             * @description Modified value when decision is 'modify'.
-             */
-            modified_value_or_rule?: string | null;
-            /**
-             * Modified Applicable Scenes
-             * @description Modified applicable scenes when decision is 'modify'.
-             */
-            modified_applicable_scenes?: string[] | null;
-            /**
-             * Created At
-             * Format: date-time
-             * @description When the decision was recorded.
              */
             created_at: string;
         };
@@ -32134,1397 +30667,6 @@ export interface operations {
             };
         };
     };
-    list_observations_profiles_observations_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileObservation"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_observation_profiles_observations_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileObservationCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileObservation"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    get_observation_profiles_observations__observation_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                observation_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileObservation"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_candidates_profiles_candidates_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileCandidate"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    propose_candidate_profiles_candidates_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileCandidateCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileCandidate"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    get_candidate_profiles_candidates__candidate_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                candidate_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileCandidate"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    decide_candidate_profiles_candidates__candidate_id__decision_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                candidate_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["CandidateDecision"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileCandidate"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    list_assertions_profiles_assertions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    compile_memory_slice_profiles_memory_slice_get: {
-        parameters: {
-            query: {
-                /** @description Declared processing purpose. */
-                purpose: string;
-                /** @description Run identifier. */
-                run_id: string;
-                /** @description Project scope. */
-                project_id?: string | null;
-                /** @description Allowed sensitivity classes. */
-                sensitivity_class?: components["schemas"]["ProfileSensitivityClass"][] | null;
-                /** @description Slice time-to-live in seconds. */
-                ttl_seconds?: number;
-                /** @description Authorization policy version snapshot. */
-                authorization_version?: string;
-                /** @description Key epoch. */
-                key_epoch?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileSlice"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_memory_slice_profiles_memory_slices__slice_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slice_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileSlice"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                slice_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileSlice"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post: {
-        parameters: {
-            query: {
-                /** @description Run identifier the slice must be bound to. */
-                run_id: string;
-            };
-            header?: never;
-            path: {
-                slice_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Forbidden */
-            403: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_assertion_profiles_assertions__assertion_id__get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    create_manual_assertion_profiles_assertions_manual_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ManualAssertionCreateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            201: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    freeze_assertion_profiles_assertions__assertion_id__freeze_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileFreezeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    withdraw_assertion_profiles_assertions__assertion_id__withdraw_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileFreezeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileFreezeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    modify_assertion_profiles_assertions__assertion_id__modify_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileAssertionModifyRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    rollback_assertion_profiles_assertions__assertion_id__rollback_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileAssertionRollbackRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    delete_assertion_profiles_assertions__assertion_id__delete_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileDeleteRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertion"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    get_assertion_history_profiles_assertions__assertion_id__history_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                assertion_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileAssertionHistory"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    export_profile_profiles_export_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileExport"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    list_permissions_profiles_permissions_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfilePermission"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    update_permission_profiles_permissions_put: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfilePermissionUpdateRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfilePermission"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    list_notifications_profiles_notifications_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileNotification"][];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    mark_notification_read_profiles_notifications__notification_id__read_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                notification_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileNotification"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    recall_notification_profiles_notifications__notification_id__recall_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                notification_id: string;
-            };
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileNotification"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
-    batch_decide_candidates_profiles_candidates_batch_decision_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["ProfileBatchCandidateDecisionRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileBatchCandidateResult"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-        };
-    };
     list_four_dimension_records_profiles_four_dimensions_get: {
         parameters: {
             query?: never;
@@ -33561,95 +30703,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FourDimensionMigrationReport"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Not Found */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    migrate_four_dimension_records_profiles_four_dimensions_migrate_post: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: {
-                bridges_session?: string | null;
-            };
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FourDimensionMigrationReport"];
-                };
-            };
-            /** @description Unauthorized */
-            401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
-                };
-            };
-            /** @description Unprocessable Content */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProfileError"];
                 };
             };
         };
@@ -33778,6 +30831,1238 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+        };
+    };
+    list_observations_profiles_observations_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_observation_profiles_observations_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_observation_profiles_observations__observation_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                observation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_candidates_profiles_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    propose_candidate_profiles_candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_candidate_profiles_candidates__candidate_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decide_candidate_profiles_candidates__candidate_id__decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                candidate_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    batch_decide_candidates_profiles_candidates_batch_decision_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_assertions_profiles_assertions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_assertion_profiles_assertions__assertion_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_manual_assertion_profiles_assertions_manual_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    freeze_assertion_profiles_assertions__assertion_id__freeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    withdraw_assertion_profiles_assertions__assertion_id__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unfreeze_assertion_profiles_assertions__assertion_id__unfreeze_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    modify_assertion_profiles_assertions__assertion_id__modify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    rollback_assertion_profiles_assertions__assertion_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_assertion_profiles_assertions__assertion_id__delete_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_assertion_history_profiles_assertions__assertion_id__history_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                assertion_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    export_profile_profiles_export_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_permissions_profiles_permissions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_permission_profiles_permissions_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_notifications_profiles_notifications_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_notification_read_profiles_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    recall_notification_profiles_notifications__notification_id__recall_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    compile_memory_slice_profiles_memory_slice_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_memory_slice_profiles_memory_slices__slice_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slice_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    inspect_memory_slice_profiles_memory_slices__slice_id__inspector_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slice_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    check_memory_slice_access_profiles_memory_slices__slice_id__access_check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slice_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_four_dimension_migration_report_profiles_four_dimensions_migration_report_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    migrate_four_dimension_records_profiles_four_dimensions_migrate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Gone */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetiredCapabilityError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

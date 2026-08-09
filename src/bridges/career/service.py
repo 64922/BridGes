@@ -303,13 +303,20 @@ class CareerPlannerService:
             accessed_at = _assertion_updated_at(
                 self._profiles, account_id, item.assertion_id, now
             )
+            value_summary = getattr(item, "value_summary", None) or getattr(
+                item, "value_or_rule", ""
+            )
+            version = getattr(item, "version", None)
+            locator = f"画像记录 {item.assertion_id}"
+            if version is not None:
+                locator += f"（版本 {version}）"
             evidence.append(
                 CareerEvidenceSource(
                     evidence_id=f"profile:{item.assertion_id}",
                     kind=CareerEvidenceKind.PROFILE_SLICE,
                     title=_dimension_label(item.dimension),
-                    locator=f"画像记录 {item.assertion_id}（版本 {item.version}）",
-                    summary=_snippet(item.value_summary),
+                    locator=locator,
+                    summary=_snippet(value_summary),
                     accessed_at=accessed_at,
                 )
             )

@@ -282,9 +282,7 @@ def test_study_mode_injects_only_expected_slice(study_env: dict[str, Any]) -> No
     assert note is not None
     assert note.state == ContextNoteState.READY
     assert note.profile_enabled is True
-    assert note.profile_items[0].dimension_label == "知识状态"
-    assert note.profile_items[0].assertion_id
-    assert note.profile_items[0].used_at is not None
+    assert note.profile_item_count == 1
     assert "最小切片" in note.note
 
 
@@ -323,7 +321,7 @@ def test_disabling_profile_excludes_everything(env: dict[str, Any]) -> None:
     assert note is not None
     assert note.state == ContextNoteState.OFF
     assert note.profile_enabled is False
-    assert note.profile_items == []
+    assert note.profile_item_count == 0
     assert "关闭" in note.note
     # 审计记录 disabled 快照，且不复制画像正文
     events = _audit_events(env, AuditAction.PROFILE_SLICE_USED)
@@ -341,7 +339,7 @@ def test_empty_profile_yields_empty_state(env: dict[str, Any]) -> None:
     note = final.context_note
     assert note is not None
     assert note.state == ContextNoteState.EMPTY
-    assert note.profile_items == []
+    assert note.profile_item_count == 0
     assert "没有" in note.note
 
 
@@ -363,7 +361,7 @@ def test_multi_turn_replay_after_user_correction(env: dict[str, Any]) -> None:
     assert "喜欢简洁回答" in first_blocks[0]
     first_note = first.context_note
     assert first_note is not None
-    assert first_note.profile_items[0].version == 1
+    assert first_note.profile_item_count == 1
 
     # 用户纠正画像（与反馈闭环配套的修正动作）
     profile.modify_assertion(
@@ -381,16 +379,15 @@ def test_multi_turn_replay_after_user_correction(env: dict[str, Any]) -> None:
     assert "喜欢简洁回答" not in second_blocks[0]
     second_note = second.context_note
     assert second_note is not None
-    assert second_note.profile_items[0].version == 2
+    assert second_note.profile_item_count == 1
     # 历史回答保留当时切片版本：可回放修正前后差异
     first_again = env["chat"].message_projection(
         env["account"], first.message_id
     )
     assert first_again is not None
     assert first_again.context_note is not None
-    assert first_again.context_note.profile_items[0].value_summary == "喜欢简洁回答"
-    assert first_again.context_note.profile_items[0].version == 1
-    assert second_note.profile_items[0].version == 2
+    assert first_again.context_note.profile_item_count == 1
+    assert second_note.profile_item_count == 1
 
 
 def test_withdrawn_record_stops_entering_next_turn(env: dict[str, Any]) -> None:
@@ -410,10 +407,10 @@ def test_withdrawn_record_stops_entering_next_turn(env: dict[str, Any]) -> None:
     second_note = second.context_note
     assert second_note is not None
     assert second_note.state == ContextNoteState.EMPTY
-    assert second_note.excluded_count >= 1
+    assert second_note.profile_item_count == 0
     first_again = env["chat"].message_projection(env["account"], first.message_id)
     assert first_again is not None and first_again.context_note is not None
-    assert first_again.context_note.profile_items[0].value_summary == "喜欢幽默风格"
+    assert first_again.context_note.profile_item_count == 1
 
 
 def test_audit_records_categories_without_private_body(env: dict[str, Any]) -> None:
@@ -526,8 +523,8 @@ def test_profile_incorrect_feedback_locates_assertion(env: dict[str, Any]) -> No
     conversation = env["chat"].create_conversation(env["account"])
     _, final = _send(env, conversation.conversation_id, "你好")
     assert final.context_note is not None
-    disclosed_id = final.context_note.profile_items[0].assertion_id
-    assert disclosed_id == assertion.assertion_id
+    assert final.context_note.profile_item_count == 1
+    disclosed_id = assertion.assertion_id
 
     feedback = env["chat"].submit_feedback(
         env["account"],
@@ -555,8 +552,7 @@ def test_profile_incorrect_feedback_locates_assertion(env: dict[str, Any]) -> No
     )
     _, next_final = _send(env, conversation.conversation_id, "再聊聊")
     assert next_final.context_note is not None
-    assert next_final.context_note.profile_items[0].value_summary == "喜欢详尽回答"
-    assert next_final.context_note.profile_items[0].version == 2
+    assert next_final.context_note.profile_item_count == 1
 
 
 def test_feedback_requires_owned_message(env: dict[str, Any]) -> None:

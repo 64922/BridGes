@@ -26,8 +26,6 @@ from bridges.contracts.humanizer import (
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
 from bridges.contracts.mcp import McpDataSlice, McpSensitiveConfirmation
-from bridges.contracts.profile_extraction import ProfilePrivacyNotice
-from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.retrieval import (
     RetrievalDecisionProjection,
     RetrievalRoundProjection,
@@ -141,46 +139,22 @@ class ContextNoteState(StrEnum):
     ERROR = "error"
 
 
-class ContextNoteProfileItem(BaseModel):
-    """上下文说明中的一条画像切片披露。
-
-    披露记录的是回答当时使用的快照（值摘要、状态与版本），修正后历史
-    回答保留此快照；``assertion_id`` 是来源记录链接，可跳转画像中心。
-    """
-
-    assertion_id: str = Field(description="来源画像记录标识（链接到画像中心）。")
-    dimension: str = Field(description="画像类别（ProfileDimension 值）。")
-    dimension_label: str = Field(description="画像类别中文标签。")
-    value_summary: str = Field(description="本次使用的值摘要（截断，不超长）。")
-    inclusion_reason: str = Field(description="用途：为什么本轮使用这条记录。")
-    used_at: datetime = Field(description="本次使用时间（切片编译时间）。")
-    status: str = Field(description="使用时的记录状态快照（active/frozen/...）。")
-    version: int = Field(description="使用时的记录版本快照（可对比当前版本）。")
-    applicable_scenes: list[str] = Field(
-        default_factory=list,
-        description="使用时的适用场景快照（修正时回传，不漂移授权范围）。",
-    )
-
-
 class ContextNoteProjection(BaseModel):
-    """「本次上下文说明」可展开披露（Issue 27，ADR-0015）。
+    """普通聊天可见的上下文摘要。
 
-    回答展示使用的画像类别、材料类别、用途与来源链接；不暴露系统提示、
-    隐藏提示或原始思维链。画像正文不复制到审计日志，这里只披露摘要。
+    画像切片的来源引用、版本、适用范围和撤回账本只保留在内部切片与
+    审计域，不再进入普通聊天响应。
     """
 
     state: ContextNoteState = Field(description="披露状态（ready/empty/off/error）。")
     profile_enabled: bool = Field(description="本轮是否启用了画像使用。")
     mode: ChatMode = Field(description="回答时的对话模式。")
     used_at: datetime = Field(description="披露生成时间。")
-    profile_items: list[ContextNoteProfileItem] = Field(
-        default_factory=list, description="本轮使用的画像切片披露列表。"
+    profile_item_count: int = Field(
+        default=0, ge=0, description="本轮使用的画像记录数量，不包含记录详情。"
     )
     material_categories: list[str] = Field(
         default_factory=list, description="本轮使用的材料类别（检索层/联网来源等中文名）。"
-    )
-    excluded_count: int = Field(
-        default=0, description="因范围/敏感/过期/冻结/撤回等排除的记录数。"
     )
     note: str = Field(description="面向用户的中文说明（含各状态的合法文案）。")
 
@@ -720,7 +694,6 @@ class ChatStreamEventKind(StrEnum):
     DELTA = "delta"
     ERROR = "error"
     DONE = "done"
-    PROFILE = "profile"
     HUMANIZER = "humanizer"
     CAREER = "career"
     IMAGE = "image"
@@ -819,24 +792,6 @@ class ChatStreamDoneData(BaseModel):
     )
 
 
-class ChatStreamProfileData(BaseModel):
-    """profile 事件载荷：一次性隐私说明或兼容期画像通知。
-
-    Issue 15 的自动写入不发送写入通知；``privacy_notice`` 只在账户首次
-    触发自动画像时出现一次。``notifications`` 仅保留旧画像兼容测试和
-    历史事件的读取形状。
-    """
-
-    kind: Literal["profile"] = "profile"
-    message_id: str = Field(description="本轮用户消息标识。")
-    notifications: list[ProfileNotification] = Field(
-        default_factory=list, description="本轮产生的画像通知。"
-    )
-    privacy_notice: ProfilePrivacyNotice | None = Field(
-        default=None, description="账户级首次自动画像隐私说明。"
-    )
-
-
 class ChatStreamHumanizerData(BaseModel):
     """humanizer 事件载荷：驱动人味化过程卡五态（Issue 28）。
 
@@ -927,7 +882,6 @@ class ChatStreamEvent(BaseModel):
         | ChatStreamDeltaData
         | ChatStreamErrorData
         | ChatStreamDoneData
-        | ChatStreamProfileData
         | ChatStreamHumanizerData
         | ChatStreamCareerData
         | ChatStreamImageData

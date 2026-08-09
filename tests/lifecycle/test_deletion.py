@@ -44,6 +44,56 @@ def test_delete_removes_every_table_row_and_identity(tmp_path) -> None:
     )
 
 
+def test_delete_removes_four_dimension_records_and_migration_ledgers(tmp_path) -> None:
+    """四维画像正文、教学记录、归档与迁移账本都随账户物理删除。"""
+    harness = Harness(tmp_path)
+    harness.seed_everything()
+    account_id = harness.acc1
+    now = "2026-08-10T00:00:00+00:00"
+    with harness.database.transaction():
+        harness.database.connection.execute(
+            "INSERT INTO profile_four_dimension_records "
+            "(record_id, account_id, dimension, label, content, "
+            "first_stable_recorded_at, updated_at, version, status, "
+            "source_record_id, source_version, content_hash, write_origin, migration_version) "
+            "VALUES (?, ?, 'hobby', '爱好', '摄影', ?, ?, 1, 'active', ?, 1, 'hash', 'test', 'v1')",
+            ("four-record", account_id, now, now, "legacy-source"),
+        )
+        harness.database.connection.execute(
+            "INSERT INTO profile_four_dimension_learning_records "
+            "(record_id, account_id, source_record_id, source_version, content_hash, created_at) "
+            "VALUES (?, ?, ?, 1, 'hash', ?)",
+            ("learning-record", account_id, "four-record", now),
+        )
+        harness.database.connection.execute(
+            "INSERT INTO profile_four_dimension_legacy "
+            "(archive_id, account_id, source_record_id, source_dimension, content, "
+            "content_hash, reason_code, created_at) "
+            "VALUES (?, ?, ?, 'old_dimension', '旧记录', 'hash', 'ambiguous', ?)",
+            ("legacy-record", account_id, "old-source", now),
+        )
+        harness.database.connection.execute(
+            "INSERT INTO profile_four_dimension_migrations "
+            "(report_id, account_id, migration_version, status, four_dimension_migrated, "
+            "teaching_records_migrated, legacy_preserved, skipped, failed, created_at) "
+            "VALUES (?, ?, 'v1', 'completed', 1, 0, 1, 0, 0, ?)",
+            ("migration-report", account_id, now),
+        )
+
+    harness.delete_account(account_id)
+    for table in (
+        "profile_four_dimension_records",
+        "profile_four_dimension_learning_records",
+        "profile_four_dimension_legacy",
+        "profile_four_dimension_migrations",
+    ):
+        row = harness.database.connection.execute(
+            f"SELECT COUNT(*) AS count FROM {table} WHERE account_id = ?",
+            (account_id,),
+        ).fetchone()
+        assert int(row["count"]) == 0, table
+
+
 def test_delete_removes_object_files_and_credentials(tmp_path) -> None:
     harness = Harness(tmp_path)
     harness.seed_everything()
