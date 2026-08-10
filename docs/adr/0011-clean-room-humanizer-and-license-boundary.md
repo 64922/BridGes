@@ -18,3 +18,10 @@ BridGes 将建立原创只读内置 `bridges-humanizer` SKILL，重新编写规�
 原创，参考项目 `Humanizer-zh-main`、`human-writing-main` 与
 `scientific-humanization-main` 未贡献任何可复制资产；对应来源清洁记录见
 `src/bridges/skills/humanizer/skill/CLEAN_ROOM.md`。
+
+## Issue 17 增量决策（2026-08-10）
+
+- 将原有完整文章人味化任务与普通回复拆开：普通自然语言正文使用 `global-humanized-writing-v1` 轻量策略，沿用现有唯一模型生成调用；Issue 07 文章最终结果跳过全局策略二次改写。
+- 全局策略只影响解释深度、例子和称呼等表达层；代码、公式、JSON、引用、链接、确定性错误、工具原始结果、加载/停止状态和协议字段不进入改写范围。模型输出落库前对已知保护区执行确定性恢复，原始事实和机器契约优先。
+- 每个运行记录绑定一次策略/模式/最小画像切片快照，重试沿用旧快照；策略资源或画像切片不可用时使用安全基线。审计仅保存版本、模式、切片标识、条目数量和降级原因，不保存画像正文或系统提示词。
+- 本次仍执行净室原则：`scientific-humanization`、`cognitive-profile`、`Humanizer-zh`、`human-writing`、`nuwa-skill` 只作为研究/审计对象，未复制代码、提示词、文本、示例、测试、素材或结构；未声明许可的资料不作为实现来源，MIT 资料默认零复用。新增实现、夹具与版本记录均为 BridGes 原创。

@@ -658,6 +658,9 @@ class ChatRunView(BaseModel):
     stage: str | None = Field(
         default=None, description="运行当前阶段（Issue 06 统一阶段枚举）。"
     )
+    global_writing_policy_version: str | None = Field(
+        default=None, description="全局表达策略版本（仅用于诊断，不展示策略正文）。"
+    )
     cursor: int = Field(description="已持久化的最后事件游标；从下一游标恢复订阅。")
     attempt_count: int = Field(default=0, description="领取执行次数（租约恢复递增）。")
     created_at: datetime = Field(description="运行创建时间。")

@@ -67,6 +67,7 @@ class _ProgrammableStreamAdapter:
         self._chunks = chunks or []
         self._connect_error = connect_error
         self._slow = slow
+        self.payloads: list[dict[str, Any]] = []
 
     def call(
         self,
@@ -89,6 +90,7 @@ class _ProgrammableStreamAdapter:
         run_context: RunContextEnvelope,
         payload: dict[str, Any],
     ):
+        self.payloads.append(payload)
         if self._connect_error is not None:
             raise self._connect_error
         for chunk in self._chunks:
@@ -260,6 +262,77 @@ def test_stream_done_persists_content_duration_and_run_lock(
     assert row is not None
     assert row["account_id"] == "alice"
     assert row["capability_name"] == "qwen_text_chat"
+
+
+def test_ordinary_generation_uses_one_global_policy_snapshot(
+    service: ChatService,
+) -> None:
+    adapter = _ProgrammableStreamAdapter(
+        chunks=[StreamChunk(kind="delta", delta="普通回答")]
+    )
+    registry = CapabilityRegistry()
+    registry.register(_chat_capability())
+    gateway = ModelGateway(registry)
+    gateway.register_adapter("qwen_text_chat", "1", adapter)
+    service._gateway = gateway
+
+    created = service.create_conversation("alice")
+    _, assistant = _start(service, created.conversation_id, "解释一下这个概念")
+    queued = service.run_view_of("alice", assistant.message_id)
+    assert queued is not None
+    assert queued.global_writing_policy_version == "global-humanized-writing-v1"
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+
+    assert len(adapter.payloads) == 1
+    payload = adapter.payloads[0]
+    metadata = payload["global_writing_policy"]
+    assert metadata["version"] == "global-humanized-writing-v1"
+    assert any(
+        message["role"] == "system"
+        and "全局轻量有人味表达策略" in message["content"]
+        for message in payload["messages"]
+    )
+    run = service._repo.get_run_by_message("alice", assistant.message_id)
+    assert run is not None
+    assert run.config["global_writing_policy"]["version"] == metadata["version"]
+
+
+def test_ordinary_generation_restores_protected_contract_fragments(
+    service: ChatService,
+) -> None:
+    service._gateway = _with_chunks(
+        service,
+        [
+            StreamChunk(
+                kind="delta",
+                delta=(
+                    "结果见 `result = 0`、$E=mc^2$、"
+                    "https://example.com/changed 和 {\"answer\": 0}"
+                ),
+            )
+        ],
+    )
+    created = service.create_conversation("alice")
+    _, assistant = _start(
+        service,
+        created.conversation_id,
+        "请保留 `result = 42`、$E=mc^2$、https://example.com/a?q=1 和 {\"answer\": 42}",
+    )
+    list(
+        service.stream_generation(
+            "alice", created.conversation_id, assistant.message_id, _context()
+        )
+    )
+
+    final = service.message_projection("alice", assistant.message_id)
+    assert final is not None
+    assert "`result = 42`" in final.content
+    assert "https://example.com/a?q=1" in final.content
+    assert '{"answer": 42}' in final.content
 
 
 def test_stream_error_persists_actionable_chinese_message(service: ChatService) -> None:

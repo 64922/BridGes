@@ -577,6 +577,20 @@ class ModelGateway:
         for key in ("voice", "language_type", "format", "sample_rate"):
             if payload and key in payload:
                 params[key] = payload[key]
+        policy = payload.get("global_writing_policy") if payload else None
+        if isinstance(policy, dict):
+            # 只记录版本、模式、切片数量等脱敏诊断字段，绝不把画像正文
+            # 或系统提示写进模型运行锁。
+            for source_key, target_key in (
+                ("version", "global_writing_policy_version"),
+                ("mode", "global_writing_policy_mode"),
+                ("profile_slice_id", "global_writing_policy_profile_slice_id"),
+                ("profile_item_count", "global_writing_policy_profile_item_count"),
+                ("snapshot_complete", "global_writing_policy_snapshot_complete"),
+                ("fallback_reason", "global_writing_policy_fallback_reason"),
+            ):
+                if source_key in policy:
+                    params[target_key] = policy[source_key]
         if not params:
             params = {"temperature": 0.7, "max_tokens": 1024}
         return params
