@@ -22,6 +22,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ALL_COMPLETED, ThreadPoolExecutor, wait
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -45,6 +46,11 @@ from bridges.chat.budget import (
     RunStage,
 )
 from bridges.chat.lifecycle import GenerationLifecycle
+from bridges.chat.global_writing_policy import (
+    GlobalWritingPolicyCompiler,
+    GlobalWritingPolicySnapshot,
+    restore_protected_regions,
+)
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.contracts.ai import ModelRunLock
@@ -395,6 +401,7 @@ class CareerPlannerOrchestrator(Protocol):
         arxiv_search_projection: ArxivSearchProjection | None,
         route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
     ) -> Iterator[CareerRunEvent]: ...
 
 
@@ -1149,6 +1156,7 @@ def assemble_payload(
     arxiv_search_projection: ArxivSearchProjection | None = None,
     teaching_projection: TeachingTurnProjection | None = None,
     profile_context: str | None = None,
+    writing_policy: GlobalWritingPolicySnapshot | None = None,
 ) -> dict[str, Any]:
     """提示词组装单点：上下文按固定顺序以独立 system 块注入。
 
@@ -1186,7 +1194,16 @@ def assemble_payload(
     for block in blocks:
         if block:
             messages.insert(1, {"role": "system", "content": block})
-    return {"messages": messages, "temperature": 0.7, "max_tokens": 1024}
+    if writing_policy is not None:
+        messages.insert(1, {"role": "system", "content": writing_policy.system_block})
+    payload: dict[str, Any] = {
+        "messages": messages,
+        "temperature": 0.7,
+        "max_tokens": 1024,
+    }
+    if writing_policy is not None:
+        payload["global_writing_policy"] = writing_policy.metadata()
+    return payload
 
 
 # ---------------------------------------------------------------------------
@@ -1266,6 +1283,7 @@ class TurnOrchestrator:
         video_service: VideoOrchestrator | None = None,
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
+        writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
     ) -> None:
         self._repo = repository
         self._lifecycle = lifecycle
@@ -1296,6 +1314,9 @@ class TurnOrchestrator:
         self._selections = selections_service
         #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用。
         self._mcp = mcp_service
+        #: Issue 17：普通自然语言正文的一次性表达策略编译器；文章任务
+        #: 在更早的 humanizer 分支返回，不经过此策略。
+        self._writing_policy = writing_policy_compiler or GlobalWritingPolicyCompiler()
 
     # ------------------------------------------------------------------
     # 回合入口（对外唯一 interface）
@@ -2489,18 +2510,34 @@ class TurnOrchestrator:
             # 用户发送前关闭画像时本轮不编译、不注入，披露与审计都不含
             # 画像内容。编译/披露失败一律静默降级（回答照常，披露 error
             # 态可解释），绝不阻断生成。
-            context_note, profile_context, _profile_items = self._compile_profile_slice(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                mode,
-                use_profile=use_profile,
-                retrieval_round=retrieval_round,
-                web_search_projection=web_search_projection,
-                arxiv_search_projection=arxiv_search_projection,
+            context_note, profile_context, _profile_items, profile_slice_id = (
+                self._compile_profile_slice(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    mode,
+                    use_profile=use_profile,
+                    retrieval_round=retrieval_round,
+                    web_search_projection=web_search_projection,
+                    arxiv_search_projection=arxiv_search_projection,
+                )
             )
             if context_note is not None:
                 thinking = context_note_thinking(thinking, context_note)
+            writing_policy = self._compile_writing_policy(
+                account_id=account_id,
+                assistant_message_id=assistant_message_id,
+                mode=mode,
+                profile_slice_id=profile_slice_id,
+                profile_items=_profile_items,
+                profile_context=profile_context,
+                profile_failed=(
+                    context_note is not None
+                    and context_note.state == ContextNoteState.ERROR
+                ),
+            )
+            if writing_policy.profile_context is not None:
+                profile_context = writing_policy.profile_context
             payload = assemble_payload(
                 history,
                 tools_context=tools_context,
@@ -2509,7 +2546,17 @@ class TurnOrchestrator:
                 arxiv_search_projection=arxiv_search_projection,
                 teaching_projection=teaching_projection,
                 profile_context=profile_context,
+                writing_policy=writing_policy,
             )
+            protected_sources = tuple(
+                result.url for result in web_search_projection.results
+            ) if web_search_projection is not None else ()
+            if arxiv_search_projection is not None:
+                protected_sources += tuple(
+                    url
+                    for paper in arxiv_search_projection.papers
+                    for url in (paper.abs_url, paper.pdf_url)
+                )
             generation_entered = budget.enter(RunStage.MODEL_GENERATION)
             generation_started = time.monotonic()
             if generation_entered:
@@ -2588,12 +2635,23 @@ class TurnOrchestrator:
                         first_token_ms = max(
                             1, int((time.monotonic() - generation_started) * 1000)
                         )
-                    content += event.delta
+                    candidate_content = content + event.delta
+                    protected_content = restore_protected_regions(
+                        owner_query,
+                        candidate_content,
+                        append_missing=False,
+                        additional_sources=protected_sources,
+                    )
+                    if protected_content.startswith(content):
+                        safe_delta = protected_content[len(content) :]
+                    else:
+                        safe_delta = protected_content
+                    content = protected_content
                     self._repo.update_message_content(
                         account_id, assistant_message_id, content, datetime.now(UTC)
                     )
                     self._lifecycle.touch(assistant_message_id)
-                    yield event
+                    yield replace(event, delta=safe_delta)
                     if budget.expired():
                         # 预算到期：停止后续模型输出，按草稿交付（T5）
                         budget.mark_exhausted()
@@ -2620,6 +2678,19 @@ class TurnOrchestrator:
                     return
                 elif event.kind == "done":
                     self._persist_lock(account_id, event.lock)
+                    protected_content = restore_protected_regions(
+                        owner_query,
+                        content,
+                        additional_sources=protected_sources,
+                    )
+                    if protected_content != content:
+                        content = protected_content
+                        self._repo.update_message_content(
+                            account_id,
+                            assistant_message_id,
+                            content,
+                            datetime.now(UTC),
+                        )
                     # 模型阶段关闭事件（在质量检查前发出，duration 只含
                     # 模型流式本身；脱敏首 token 指标随事件持久化，供本地
                     # 性能摘要聚合；错误路径由 finally 关闭计时）
@@ -3338,7 +3409,10 @@ class TurnOrchestrator:
                     return
                 final_text = result.output.final_text if result.output else ""
                 self._repo.update_message_content(
-                    account_id, assistant_message_id, final_text, now
+                    account_id,
+                    assistant_message_id,
+                    final_text,
+                    now,
                 )
                 if quality_entered:
                     budget.exit(
@@ -3619,18 +3693,31 @@ class TurnOrchestrator:
             )
         # 最小画像切片编译与「本次上下文说明」披露：模型提示词由编排服务
         # 自行组装（这里只复用编译/披露/审计，切片上下文不在本路径注入）。
-        context_note, _profile_context, profile_items = self._compile_profile_slice(
-            account_id,
-            conversation_id,
-            assistant_message_id,
-            mode,
-            use_profile=use_profile,
-            retrieval_round=retrieval_round,
-            web_search_projection=web_search_projection,
-            arxiv_search_projection=arxiv_search_projection,
+        context_note, profile_context, profile_items, profile_slice_id = (
+            self._compile_profile_slice(
+                account_id,
+                conversation_id,
+                assistant_message_id,
+                mode,
+                use_profile=use_profile,
+                retrieval_round=retrieval_round,
+                web_search_projection=web_search_projection,
+                arxiv_search_projection=arxiv_search_projection,
+            )
         )
         if context_note is not None:
             thinking = context_note_thinking(thinking, context_note)
+        writing_policy = self._compile_writing_policy(
+            account_id=account_id,
+            assistant_message_id=assistant_message_id,
+            mode=mode,
+            profile_slice_id=profile_slice_id,
+            profile_items=profile_items,
+            profile_context=profile_context,
+            profile_failed=(
+                context_note is not None and context_note.state == ContextNoteState.ERROR
+            ),
+        )
         profile_used = (
             context_note.state == ContextNoteState.READY if context_note else False
         )
@@ -3668,22 +3755,41 @@ class TurnOrchestrator:
                 yield self._stage_event(
                     assistant_message_id, RunStage.QUALITY_CHECK, "active"
                 )
-            for run_event in self._career_planner.run_task(
-                account_id,
-                conversation_id,
-                assistant_message_id,
-                intent,
-                mode=mode.value,
-                run_context=run_context,
-                profile_enabled=use_profile,
-                profile_used=profile_used,
-                profile_items=profile_items,
-                retrieval_round=retrieval_round,
-                web_search_projection=web_search_projection,
-                arxiv_search_projection=arxiv_search_projection,
-                route_contract=route_contract,
-                budget=budget,
-            ):
+            career_run_kwargs: dict[str, Any] = {
+                "mode": mode.value,
+                "run_context": run_context,
+                "profile_enabled": use_profile,
+                "profile_used": profile_used,
+                "profile_items": profile_items,
+                "retrieval_round": retrieval_round,
+                "web_search_projection": web_search_projection,
+                "arxiv_search_projection": arxiv_search_projection,
+                "route_contract": route_contract,
+                "budget": budget,
+                "writing_policy": writing_policy,
+            }
+            try:
+                career_events = self._career_planner.run_task(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    intent,
+                    **career_run_kwargs,
+                )
+            except TypeError as exc:
+                # 兼容尚未声明 Issue 17 可选参数的旧编排替身；生产服务
+                # 已接收策略，不能把内部 TypeError 静默为第二次模型调用。
+                if "writing_policy" not in str(exc):
+                    raise
+                career_run_kwargs.pop("writing_policy")
+                career_events = self._career_planner.run_task(
+                    account_id,
+                    conversation_id,
+                    assistant_message_id,
+                    intent,
+                    **career_run_kwargs,
+                )
+            for run_event in career_events:
                 if budget.expired():
                     # 预算检查点：技能循环内不得绕开总预算（审查修复 C）
                     budget.mark_exhausted()
@@ -4455,7 +4561,12 @@ class TurnOrchestrator:
         retrieval_round: RetrievalRoundProjection | None,
         web_search_projection: WebSearchProjection | None,
         arxiv_search_projection: ArxivSearchProjection | None,
-    ) -> tuple[ContextNoteProjection | None, str | None, list[ProfileSliceItem]]:
+    ) -> tuple[
+        ContextNoteProjection | None,
+        str | None,
+        list[ProfileSliceItem],
+        str | None,
+    ]:
         """编译本轮最小画像切片并落库上下文说明披露。
 
         关闭画像（``use_profile=False``）时：不编译、不注入，披露为 off
@@ -4477,7 +4588,7 @@ class TurnOrchestrator:
             or self._profiles
         )
         if profile_service is None:
-            return None, None, []
+            return None, None, [], None
         if not use_profile:
             self._audit_slice_usage(
                 account_id,
@@ -4503,6 +4614,7 @@ class TurnOrchestrator:
                 ),
                 None,
                 [],
+                None,
             )
         try:
             if self._four_dimension_profiles is not None:
@@ -4588,6 +4700,7 @@ class TurnOrchestrator:
                 ),
                 None,
                 [],
+                None,
             )
         profile_context = (
             profile_slice_context(profile_slice)
@@ -4622,7 +4735,41 @@ class TurnOrchestrator:
             self._persist_context_note(account_id, assistant_message_id, context_note),
             profile_context,
             profile_items,
+            profile_slice.slice_id,
         )
+
+    def _compile_writing_policy(
+        self,
+        *,
+        account_id: str,
+        assistant_message_id: str,
+        mode: ChatMode,
+        profile_slice_id: str | None,
+        profile_items: list[ProfileSliceItem],
+        profile_context: str | None,
+        profile_failed: bool,
+    ) -> GlobalWritingPolicySnapshot:
+        """编译并保存本次运行唯一的全局表达策略快照。"""
+        run = self._repo.get_run_by_message(account_id, assistant_message_id)
+        existing_data = (
+            (run.config or {}).get("global_writing_policy") if run is not None else None
+        )
+        try:
+            snapshot = self._writing_policy.compile(
+                mode,
+                profile_slice_id=profile_slice_id,
+                profile_items=profile_items,
+                profile_context=profile_context,
+                profile_failed=profile_failed,
+                existing_snapshot=existing_data,
+            )
+        except Exception:  # noqa: BLE001 - 编译失败必须静默回退安全基线
+            snapshot = GlobalWritingPolicyCompiler(resource=None).compile(mode)
+        if run is not None:
+            config = dict(run.config or {})
+            config["global_writing_policy"] = snapshot.model_dump(mode="json")
+            self._repo.update_generation_config(account_id, run.run_id, config)
+        return snapshot
 
     def _persist_context_note(
         self,

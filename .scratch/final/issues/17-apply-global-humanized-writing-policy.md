@@ -1,6 +1,6 @@
 # 17 — 为所有模型回复应用全局人性化表达策略
 
-Status: ready-for-agent
+Status: claimed
 Type: task
 
 ## What to build
@@ -52,6 +52,18 @@ Type: task
 - 外部参考的硬词表和标点禁令不可直接成为全局硬门；如做检测，只能作为体裁相关软警告并有反例测试。
 - 来源清洁记录与策略版本必须同一变更更新，否则验收失败。
 
+## Answer
+
+已在分支 `codex/17-global-humanized-writing-policy` 的独立 worktree 中完成：
+
+- 新增版本化全局轻量表达策略编译器，按陪伴/学习模式与当前账户最小画像切片生成单次运行快照；策略资源、画像切片异常时回退安全基线。
+- 接入普通聊天既有唯一模型生成调用，并将脱敏版本元数据写入运行配置与模型运行锁；重试复用旧快照，避免策略热更新漂移。
+- 生涯结构化生成沿用原有调用，仅追加同一策略快照；Issue 07 文章人味化分支保持独立，不经过全局二次改写。
+- 普通生成完成前确定性恢复代码、公式、JSON、引用、链接等保护区；新增净室记录、ADR 0011 增量记录和能力注册版本记录。
+- 新增策略单元测试、普通聊天单次调用/快照/保护区测试；相关定向测试通过。仓库已有 `test_conversation_lifecycle_persists_pin_rename_project_and_order` 仍因项目归属已退役而失败，与本次改动无关。Issue 15 仍处于 `ready-for-agent`，因此依赖解除前保留 `claimed` 状态。
+
 ## Comments
+
+- 2026-08-10：实现完成；策略版本为 `global-humanized-writing-v1`，安全基线为 `global-humanized-writing-safe-baseline-v1`。
 
 - 2026-08-09：用户已确认原创人味化能力影响每一条回复；本 Issue 将其实现为零额外模型调用的全局轻量策略。

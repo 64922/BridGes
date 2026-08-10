@@ -51,9 +51,9 @@ class ModeEventRecord:
 class GenerationRunRecord:
     """一次持久化生成运行（Issue 02：queued → running → done | failed | stopped）。
 
-    ``config`` 保存本轮发送/重试参数（知识库开关、画像开关），执行器
-    重跑时按同一份任务契约执行；``attempt_count`` 是领取执行次数（租约
-    超时恢复会递增），终态原因与脱敏耗时随运行落库。
+    ``config`` 保存本轮发送/重试参数（知识库开关、画像开关和表达策略
+    快照），执行器重跑时按同一份任务契约执行；``attempt_count`` 是领取
+    执行次数（租约超时恢复会递增），终态原因与脱敏耗时随运行落库。
     """
 
     run_id: str
@@ -1621,6 +1621,24 @@ class ConversationRepository:
                 "UPDATE generation_runs SET stage = ?, updated_at = ?"
                 " WHERE run_id = ? AND account_id = ? AND status = 'running'",
                 (stage, _iso(datetime.now(UTC)), run_id, account_id),
+            )
+            return cursor.rowcount
+
+    def update_generation_config(
+        self, account_id: str, run_id: str, config: dict[str, Any]
+    ) -> int:
+        """保存运行的确定性输入快照，供恢复与用户重试复用。"""
+        with self._db.transaction():
+            cursor = self._db.scoped(account_id).execute(
+                "UPDATE generation_runs SET config_json = ?, updated_at = ?"
+                " WHERE run_id = ? AND account_id = ?"
+                " AND status IN ('queued', 'running')",
+                (
+                    _json_dumps(config),
+                    _iso(datetime.now(UTC)),
+                    run_id,
+                    account_id,
+                ),
             )
             return cursor.rowcount
 

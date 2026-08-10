@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from bridges.ai.model_gateway import ModelGateway
+from bridges.chat.global_writing_policy import GlobalWritingPolicySnapshot
 from bridges.chat.budget import RunBudget
 from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.career import (
@@ -121,6 +122,7 @@ class CareerPlannerService:
         arxiv_search_projection: Any | None = None,
         route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
     ) -> Iterator[CareerRunEvent]:
         """执行一次生涯规划：yield 过程事件，最后 yield 结果事件。
 
@@ -186,6 +188,7 @@ class CareerPlannerService:
                 mode,
                 evidence,
                 run_context,
+                writing_policy=writing_policy,
                 route_contract=route_contract,
                 budget=budget,
             )
@@ -466,6 +469,7 @@ class CareerPlannerService:
         mode: str,
         evidence: list[CareerEvidenceSource],
         run_context: Any,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
         route_contract: CareerPlanningRouteContract | None = None,
         budget: RunBudget | None = None,
     ) -> CareerPlanningOutputContract:
@@ -476,9 +480,11 @@ class CareerPlannerService:
                 retryable=True,
             )
         system_prompt = _build_system_prompt(mode, evidence)
+        if writing_policy is not None:
+            system_prompt = f"{system_prompt}\n\n{writing_policy.system_block}"
         user_prompt = _build_user_prompt(intent_text, evidence, route_contract)
         output, failure = self._invoke_structured(
-            run_context, system_prompt, user_prompt
+            run_context, system_prompt, user_prompt, writing_policy
         )
         if failure is None:
             return output
@@ -496,6 +502,7 @@ class CareerPlannerService:
             run_context,
             system_prompt,
             _build_repair_user_prompt(user_prompt, output, failure),
+            writing_policy,
         )
         if failure is not None:
             raise CareerError(
@@ -510,6 +517,7 @@ class CareerPlannerService:
         run_context: Any,
         system_prompt: str,
         user_prompt: str,
+        writing_policy: GlobalWritingPolicySnapshot | None = None,
     ) -> tuple[CareerPlanningOutputContract, str | None]:
         """调用固定结构化模型，返回 (输出, 可修复失败原因)。
 
@@ -528,6 +536,8 @@ class CareerPlannerService:
             "temperature": 0.4,
             "max_tokens": 4096,
         }
+        if writing_policy is not None:
+            payload["global_writing_policy"] = writing_policy.metadata()
         call_result = self._gateway.invoke(
             CAREER_CAPABILITY_NAME,
             CAREER_CAPABILITY_VERSION,

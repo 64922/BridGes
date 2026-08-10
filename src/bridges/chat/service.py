@@ -26,6 +26,7 @@ from bridges.ai.adapters import StreamEvent
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentService
+from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.routing import NaturalLanguageImageRouter, image_request_from_decision
 from bridges.chat.repository import (
@@ -213,6 +214,7 @@ class ChatService:
         selections_service: ChatSelectionsService | None = None,
         mcp_service: McpService | None = None,
         natural_language_router: NaturalLanguageImageRouter | None = None,
+        writing_policy_compiler: GlobalWritingPolicyCompiler | None = None,
     ) -> None:
         self._repo = repository
         self._gateway = gateway
@@ -249,6 +251,8 @@ class ChatService:
         #: MCP 服务器服务（Issue 36）：聊天内对选中 MCP 的真实调用与
         #: 敏感确认；未挂载时携带 mcp_call 载荷的消息按错误收敛。
         self._mcp = mcp_service
+        #: Issue 17：普通自然语言回复共享的版本化轻量表达策略。
+        self._writing_policy = writing_policy_compiler or GlobalWritingPolicyCompiler()
         #: 新聊天自然语言主能力路由；结果在消息上持久化后才允许外部调用。
         self._router = NaturalLanguageRouter()
         #: 普通自然语言图片路由（Issue 08）；路由快照随用户消息落库，
@@ -275,6 +279,7 @@ class ChatService:
             video_service=self._video,
             selections_service=self._selections,
             mcp_service=self._mcp,
+            writing_policy_compiler=self._writing_policy,
         )
 
     def _ensure_extension_payload_allowed(
@@ -1096,6 +1101,19 @@ class ChatService:
         )
         # Issue 02：同一事务创建消息、queued 运行、started 事件与队列行。
         run_id = secrets.token_urlsafe(16)
+        run_config: dict[str, Any] = {
+            "use_knowledge_base": use_knowledge_base,
+            "use_profile": use_profile,
+        }
+        if (
+            skill_payload is None
+            and image_payload is None
+            and video_payload is None
+            and mcp_call_payload is None
+        ):
+            run_config["global_writing_policy"] = self._writing_policy.seed(
+                mode
+            ).model_dump(mode="json")
         run_record = GenerationRunRecord(
             run_id=run_id,
             account_id=account_id,
@@ -1104,7 +1122,7 @@ class ChatService:
             assistant_message_id=assistant_message.message_id,
             attempt_number=assistant_message.attempt_number,
             status=ChatRunStatus.QUEUED.value,
-            config={"use_knowledge_base": use_knowledge_base, "use_profile": use_profile},
+            config=run_config,
             stage=None,
             lease_owner=None,
             lease_expires_at=None,
@@ -1671,6 +1689,23 @@ class ChatService:
         # Issue 02：新尝试同一事务创建 queued 运行与 started 事件并入队，
         # 由后台执行器领取执行（重试沿用旧轮次的知识库/画像开关）。
         run_id = secrets.token_urlsafe(16)
+        previous_run = self._repo.get_run_by_message(account_id, message_id)
+        previous_config = previous_run.config if previous_run is not None else None
+        policy_snapshot = (previous_config or {}).get("global_writing_policy")
+        if (
+            policy_snapshot is None
+            and owner.skill is None
+            and owner.image is None
+            and owner.video is None
+            and owner.mcp_call is None
+        ):
+            policy_snapshot = self._writing_policy.seed(mode).model_dump(mode="json")
+        run_config: dict[str, Any] = {
+            "use_knowledge_base": use_knowledge_base,
+            "use_profile": use_profile,
+        }
+        if policy_snapshot is not None:
+            run_config["global_writing_policy"] = policy_snapshot
         run_record = GenerationRunRecord(
             run_id=run_id,
             account_id=account_id,
@@ -1679,7 +1714,7 @@ class ChatService:
             assistant_message_id=new_attempt.message_id,
             attempt_number=new_attempt.attempt_number,
             status=ChatRunStatus.QUEUED.value,
-            config={"use_knowledge_base": use_knowledge_base, "use_profile": use_profile},
+            config=run_config,
             stage=None,
             lease_owner=None,
             lease_expires_at=None,
@@ -2129,10 +2164,14 @@ class ChatService:
 
     def _run_view(self, run: GenerationRunRecord, account_id: str) -> ChatRunView:
         """由运行记录构造外部视图；游标取已持久化的最后事件 seq。"""
+        policy = (run.config or {}).get("global_writing_policy")
         return ChatRunView(
             run_id=run.run_id,
             status=ChatRunStatus(run.status),
             stage=run.stage,
+            global_writing_policy_version=(
+                policy.get("version") if isinstance(policy, dict) else None
+            ),
             cursor=self._repo.last_generation_event_seq(account_id, run.run_id),
             attempt_count=run.attempt_count,
             created_at=run.created_at,
