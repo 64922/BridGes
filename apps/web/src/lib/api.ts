@@ -25,6 +25,14 @@ export type ChatStreamEvent = components["schemas"]["ChatStreamEvent"];
 export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
 export type ChatRunStartedResponse = components["schemas"]["ChatRunStartedResponse"];
 export type ChatFirstTurnRequest = components["schemas"]["ChatFirstTurnRequest"];
+/**
+ * 新聊天首页的最小首轮请求：能力意图由服务端根据自然语言路由，
+ * 首页不提交历史项目、插件或来源开关字段。
+ */
+export type NewChatFirstTurnRequest = Pick<
+  ChatFirstTurnRequest,
+  "content" | "idempotency_key" | "mode" | "conversation_id"
+>;
 export type ChatFirstTurnResponse = components["schemas"]["ChatFirstTurnResponse"];
 export type ChatRunView = components["schemas"]["ChatRunView"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
@@ -1172,7 +1180,7 @@ export async function createChatRun(
  * 无须区分即可导航到同一会话。
  */
 export async function startFirstTurn(
-  body: ChatFirstTurnRequest
+  body: ChatFirstTurnRequest | NewChatFirstTurnRequest
 ): Promise<ChatFirstTurnResponse> {
   const res = await fetch(`${API_BASE}/chat/first-turn`, {
     method: "POST",

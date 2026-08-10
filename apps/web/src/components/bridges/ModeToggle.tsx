@@ -11,6 +11,7 @@ interface ModeToggleProps {
   value: ChatMode;
   onChange?: (mode: ChatMode) => void;
   locked?: boolean;
+  disabled?: boolean;
 }
 
 /**
@@ -18,7 +19,7 @@ interface ModeToggleProps {
  *
  * 空白会话允许首轮前选择；首条消息提交后只展示持久化模式，不再提供按钮。
  */
-export function ModeToggle({ value, onChange, locked = false }: ModeToggleProps) {
+export function ModeToggle({ value, onChange, locked = false, disabled = false }: ModeToggleProps) {
   const selectedLabel = MODES.find((mode) => mode.key === value)?.label ?? value;
   return (
     <div
@@ -57,6 +58,7 @@ export function ModeToggle({ value, onChange, locked = false }: ModeToggleProps)
           type="button"
           aria-pressed={value === mode.key}
           data-mode={mode.key}
+          disabled={disabled}
           onClick={() => onChange?.(mode.key)}
           style={{
             minHeight: "var(--target-size)",
@@ -64,7 +66,8 @@ export function ModeToggle({ value, onChange, locked = false }: ModeToggleProps)
             border: "none",
             borderRadius: "var(--radius-sm)",
             fontSize: "var(--text-sm)",
-            cursor: "pointer",
+            cursor: disabled ? "not-allowed" : "pointer",
+            opacity: disabled ? 0.65 : 1,
             backgroundColor: value === mode.key ? "var(--color-surface)" : "transparent",
             color:
               value === mode.key

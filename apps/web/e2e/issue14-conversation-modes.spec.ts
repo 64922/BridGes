@@ -334,7 +334,7 @@ async function installMockChatApi(
 async function registerAndEnterHome(page: Page): Promise<void> {
   const credentials = uniqueCredentials("issue14");
   await signUp(page, credentials.username, credentials.qqEmail, "Passw0rd123!");
-  await expect(page.getByRole("heading", { name: "有什么可以帮你的？" })).toBeVisible();
+  await expect(page.getByTestId("new-chat-home")).toBeVisible();
 }
 
 test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
