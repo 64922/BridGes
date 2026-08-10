@@ -43,7 +43,7 @@ const SECTIONS: ListSection[] = [
   },
   {
     key: "knowledge",
-    title: "本地知识库",
+    title: "知识库",
     icon: "knowledgeBase",
     description: "加密保存在本机的个人材料与索引，只属于你的账户。",
     items: [
@@ -64,46 +64,6 @@ const SECTIONS: ListSection[] = [
         title: "实验数据-曲线图-2026-08-02.png",
         subtitle: "图片 · 2.4 MB",
         badge: { status: "waiting", label: "待索引" },
-      },
-    ],
-  },
-  {
-    key: "projects",
-    title: "学习项目",
-    icon: "learningProject",
-    description: "围绕一个学习主题组织相关对话和项目文件的文件夹。",
-    items: [
-      {
-        id: "p1",
-        title: "分析力学专题",
-        subtitle: "6 条对话 · 3 个文件",
-        badge: { status: "running", label: "进行中" },
-      },
-      {
-        id: "p2",
-        title: "量子信息入门",
-        subtitle: "2 条对话 · 5 个文件",
-        badge: { status: "pass", label: "阶段完成" },
-      },
-    ],
-  },
-  {
-    key: "plugins",
-    title: "插件",
-    icon: "plugins",
-    description: "已安装的声明式 SKILL 与 MCP 服务，按账户隔离。",
-    items: [
-      {
-        id: "s1",
-        title: "BridGes 人性化表达 SKILL",
-        subtitle: "内置只读 · v0.3.1",
-        badge: { status: "pass", label: "已启用" },
-      },
-      {
-        id: "s2",
-        title: "arXiv 论文检索（MCP）",
-        subtitle: "已声明权限：网络 arxiv.org",
-        badge: { status: "waiting", label: "待授权" },
       },
     ],
   },
@@ -136,7 +96,6 @@ const SECTIONS: ListSection[] = [
 export function ListTemplate() {
   const searchParams = useSearchParams();
   const sectionKey = searchParams.get("section") ?? "conversations";
-  const isRetiredTasks = sectionKey === "tasks";
   const section = SECTIONS.find((item) => item.key === sectionKey) ?? SECTIONS[0];
 
   const [state, setState] = useTemplateState("normal");
@@ -162,19 +121,6 @@ export function ListTemplate() {
   }, [items, query]);
 
   const renderBody = () => {
-    if (sectionKey === "plugins") {
-      return (
-        <section aria-labelledby="retired-extensions-title">
-          <h2 id="retired-extensions-title">能力管理已退役</h2>
-          <p>用户上传、安装、启停和调用 SKILL、插件与通用 MCP 已停止。</p>
-          <p>内置能力会随应用版本自动适用；论文检索仍可在聊天中直接使用。</p>
-          <nav aria-label="继续使用 BridGes" style={{ display: "flex", gap: "var(--space-3)" }}>
-            <Link href="/templates/chat">返回聊天</Link>
-            <Link href="/templates/list?section=knowledge">打开知识库</Link>
-          </nav>
-        </section>
-      );
-    }
     if (state === "loading") {
       return <StateBlock kind="loading" title={`正在加载${section.title}…`} />;
     }
@@ -341,32 +287,6 @@ export function ListTemplate() {
       </ul>
     );
   };
-
-  if (isRetiredTasks) {
-    return (
-      <TemplateShell activeModule="tasks">
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "var(--chat-column-width)",
-            margin: "0 auto",
-            padding: "var(--space-6)",
-          }}
-        >
-          <h1 style={{ fontSize: "var(--text-2xl)" }}>任务安排已退役</h1>
-          <p style={{ color: "var(--color-text-secondary)" }}>
-            学习任务、复习计划和邮件提醒已停止使用。
-          </p>
-          <p style={{ color: "var(--color-text-secondary)" }}>
-            请在学习模式聊天中继续，学习进度会保留在连续教学回合里。
-          </p>
-          <Link href="/" className="sc-button sc-button-primary">
-            返回聊天学习
-          </Link>
-        </div>
-      </TemplateShell>
-    );
-  }
 
   return (
     <TemplateShell activeModule={section.key}>

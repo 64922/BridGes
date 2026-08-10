@@ -25,9 +25,7 @@ interface SidebarModule {
 
 /** 侧边栏功能模块（与 1.txt 的侧边栏模块清单一一对应） */
 export const SIDEBAR_MODULES: SidebarModule[] = [
-  { key: "knowledge", label: "本地知识库", icon: "knowledgeBase", href: "/templates/list?section=knowledge" },
-  { key: "projects", label: "学习项目", icon: "learningProject", href: "/templates/list?section=projects" },
-  { key: "tasks", label: "任务安排", icon: "tasks", href: "/templates/list?section=tasks" },
+  { key: "knowledge", label: "知识库", icon: "knowledgeBase", href: "/templates/list?section=knowledge" },
   { key: "profile", label: "用户画像", icon: "profile", href: "/templates/list?section=profile" },
 ];
 
@@ -45,7 +43,7 @@ interface ChatSidebarProps {
  * docs/design/0001-chatgpt-desktop-baseline-2026-08-02.md）。
  *
  * 自上而下：Logo 与折叠按钮、新聊天、搜索对话、功能模块
- * （本地知识库 / 学习项目 / 任务安排 / 插件 / 用户画像）、最近对话、
+ * （知识库 / 用户画像）、最近对话、
  * 底部账户菜单（切换账号 / 个人资料 / 退出登录，GQ-06 无密钥入口）。
  * 折叠后为仅图标的窄轨，全部控件保持键盘可达；
  * Logo 点击 / 键盘激活进入新聊天（NAV-01）。
@@ -158,9 +156,9 @@ export function ChatSidebar({
           minHeight: "var(--target-size)",
           padding: collapsed ? 0 : "var(--space-2) var(--space-3)",
           borderRadius: "var(--radius-md)",
-          border: "1px solid var(--color-border-strong)",
-          backgroundColor: "var(--color-surface)",
-          color: "var(--color-text-primary)",
+          border: "1px solid transparent",
+          backgroundColor: "transparent",
+          color: "var(--color-text-secondary)",
           fontSize: "var(--text-sm)",
           fontWeight: 500,
           textDecoration: "none",

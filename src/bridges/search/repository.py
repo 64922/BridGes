@@ -2,7 +2,7 @@
 
 所有查询都通过 ``db.scoped(account_id)`` 执行：SQL 层强制账户过滤，
 跨账户内容从"约定"升级为"不可能"。全部为实时 SQL（无新表、无缓存），
-改名/删除/项目移动后下一次查询即反映。
+改名/删除后下一次查询即反映。
 
 正文检索取舍：文档与图片元数据分块使用参数化 LIKE 子串匹配（含 ``%``、
 ``_``、``\\`` 转义），而不是复用 FTS5 trigram 索引。原因：FTS5 trigram
@@ -66,17 +66,16 @@ class SearchRepository:
         account_id: str,
         pattern: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[sqlite3.Row]:
         sql = (
-            "SELECT conversation_id, title, project_id, updated_at"
+            "SELECT conversation_id, title, updated_at"
             " FROM conversations"
             " WHERE account_id = ? AND title LIKE ? ESCAPE '\\'"
         )
         params: list[object] = [account_id, pattern]
-        sql, params = _apply_filters(sql, params, "project_id", "updated_at", project_id, from_, to)
+        sql, params = _apply_filters(sql, params, "updated_at", from_, to)
         return self._database.scoped(account_id).execute(
             f"{sql} ORDER BY updated_at DESC, conversation_id", params
         ).fetchall()
@@ -86,21 +85,18 @@ class SearchRepository:
         account_id: str,
         pattern: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[sqlite3.Row]:
         sql = (
             "SELECT m.message_id, m.conversation_id, m.content, m.updated_at,"
-            " c.title AS conversation_title, c.project_id AS project_id"
+            " c.title AS conversation_title"
             " FROM messages m"
             " JOIN conversations c ON c.conversation_id = m.conversation_id"
             " WHERE m.account_id = ? AND m.content LIKE ? ESCAPE '\\'"
         )
         params: list[object] = [account_id, pattern]
-        sql, params = _apply_filters(
-            sql, params, "c.project_id", "m.updated_at", project_id, from_, to
-        )
+        sql, params = _apply_filters(sql, params, "m.updated_at", from_, to)
         return self._database.scoped(account_id).execute(
             f"{sql} ORDER BY m.updated_at DESC, m.message_id", params
         ).fetchall()
@@ -114,12 +110,11 @@ class SearchRepository:
         account_id: str,
         pattern: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[sqlite3.Row]:
         sql = (
-            "SELECT r.document_id, r.object_id, r.title, r.updated_at, r.project_id,"
+            "SELECT r.document_id, r.object_id, r.title, r.updated_at,"
             " o.original_filename"
             " FROM document_records r"
             " JOIN objects o ON o.object_id = r.object_id"
@@ -128,9 +123,7 @@ class SearchRepository:
             " AND (r.title LIKE ? ESCAPE '\\' OR o.original_filename LIKE ? ESCAPE '\\')"
         )
         params: list[object] = [account_id, pattern, pattern]
-        sql, params = _apply_filters(
-            sql, params, "r.project_id", "r.updated_at", project_id, from_, to
-        )
+        sql, params = _apply_filters(sql, params, "r.updated_at", from_, to)
         return self._database.scoped(account_id).execute(
             f"{sql} ORDER BY r.updated_at DESC, r.document_id", params
         ).fetchall()
@@ -140,13 +133,12 @@ class SearchRepository:
         account_id: str,
         pattern: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[sqlite3.Row]:
         # 按文档与分块序排列，服务层每份文档取第一处命中分块作锚点。
         sql = (
-            "SELECT r.document_id, r.object_id, r.title, r.updated_at, r.project_id,"
+            "SELECT r.document_id, r.object_id, r.title, r.updated_at,"
             " o.original_filename, c.content, c.page_number, c.section_title"
             " FROM document_chunks c"
             " JOIN document_records r ON r.document_id = c.document_id"
@@ -156,9 +148,7 @@ class SearchRepository:
             " AND c.content LIKE ? ESCAPE '\\'"
         )
         params: list[object] = [account_id, pattern]
-        sql, params = _apply_filters(
-            sql, params, "r.project_id", "r.updated_at", project_id, from_, to
-        )
+        sql, params = _apply_filters(sql, params, "r.updated_at", from_, to)
         return self._database.scoped(account_id).execute(
             f"{sql} ORDER BY r.document_id, c.chunk_index", params
         ).fetchall()
@@ -172,7 +162,6 @@ class SearchRepository:
         account_id: str,
         pattern: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[sqlite3.Row]:
@@ -184,15 +173,7 @@ class SearchRepository:
             " AND o.original_filename LIKE ? ESCAPE '\\'"
         )
         params: list[object] = [account_id, pattern]
-        sql, params = _apply_filters(sql, params, None, "o.updated_at", project_id, from_, to)
-        if project_id is not None:
-            # 图片对象本身不直接归属项目；项目筛选只保留经摄取记录归属该项目的图片。
-            sql += (
-                " AND EXISTS (SELECT 1 FROM document_records dr"
-                " WHERE dr.account_id = o.account_id AND dr.object_id = o.object_id"
-                " AND dr.project_id = ?)"
-            )
-            params.append(project_id)
+        sql, params = _apply_filters(sql, params, "o.updated_at", from_, to)
         return self._database.scoped(account_id).execute(
             f"{sql} ORDER BY o.updated_at DESC, o.object_id", params
         ).fetchall()
@@ -202,13 +183,11 @@ class SearchRepository:
         account_id: str,
         pattern: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[sqlite3.Row]:
         sql = (
-            "SELECT o.object_id, o.original_filename, o.updated_at, c.content,"
-            " r.project_id"
+            "SELECT o.object_id, o.original_filename, o.updated_at, c.content"
             " FROM document_chunks c"
             " JOIN document_records r ON r.document_id = c.document_id"
             " JOIN objects o ON o.object_id = r.object_id"
@@ -217,53 +196,14 @@ class SearchRepository:
             " AND c.content LIKE ? ESCAPE '\\'"
         )
         params: list[object] = [account_id, pattern]
-        sql, params = _apply_filters(
-            sql, params, "r.project_id", "r.updated_at", project_id, from_, to
-        )
+        sql, params = _apply_filters(sql, params, "r.updated_at", from_, to)
         return self._database.scoped(account_id).execute(
             f"{sql} ORDER BY o.object_id, c.chunk_index", params
         ).fetchall()
 
     # ------------------------------------------------------------------
-    # 学习项目：名称 + 描述
+    # 索引就绪信号
     # ------------------------------------------------------------------
-
-    def project_hits(
-        self,
-        account_id: str,
-        pattern: str,
-        *,
-        project_id: str | None,
-        from_: datetime | None,
-        to: datetime | None,
-    ) -> list[sqlite3.Row]:
-        # 项目筛选对项目类结果同样生效：只保留该项目自身（若名称/描述命中）。
-        sql = (
-            "SELECT project_id, name, description, updated_at"
-            " FROM learning_projects"
-            " WHERE account_id = ?"
-            " AND (name LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\')"
-        )
-        params: list[object] = [account_id, pattern, pattern]
-        sql, params = _apply_filters(
-            sql, params, "project_id", "updated_at", project_id, from_, to
-        )
-        return self._database.scoped(account_id).execute(
-            f"{sql} ORDER BY updated_at DESC, project_id", params
-        ).fetchall()
-
-    # ------------------------------------------------------------------
-    # 归属校验与索引就绪信号
-    # ------------------------------------------------------------------
-
-    def project_exists(self, account_id: str, project_id: str) -> bool:
-        """项目是否属于当前账户（跨账户与不存在同样为 False，不泄漏归属）。"""
-        row = self._database.scoped(account_id).execute(
-            "SELECT 1 AS ok FROM learning_projects"
-            " WHERE account_id = ? AND project_id = ?",
-            (account_id, project_id),
-        ).fetchone()
-        return row is not None
 
     def index_ready(self, account_id: str) -> bool:
         """账户索引是否就绪：无待处理/处理中文档、无构建中版本，且已有
@@ -297,20 +237,15 @@ class SearchRepository:
 def _apply_filters(
     sql: str,
     params: list[object],
-    project_column: str | None,
     time_column: str,
-    project_id: str | None,
     from_: datetime | None,
     to: datetime | None,
 ) -> tuple[str, list[object]]:
-    """拼接项目归属与时间范围筛选（参数化，列名由调用方固定给出）。
+    """拼接时间范围筛选（参数化，列名由调用方固定给出）。
 
     时间比较两侧都截断到秒级前缀：库存时间格式不恒定（部分表带微秒），
     但全部为 UTC，秒级前缀的字典序即时间序（见 :func:`_iso` 注释）。
     """
-    if project_id is not None and project_column is not None:
-        sql += f" AND {project_column} = ?"
-        params.append(project_id)
     if from_ is not None:
         sql += f" AND substr({time_column}, 1, {_SECONDS_PREFIX_LEN}) >= ?"
         params.append(_iso(from_))

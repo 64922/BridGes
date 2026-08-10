@@ -29,27 +29,27 @@ test.describe("T002 — 电脑端布局与无障碍基线", () => {
     await page.getByLabel("密码").fill("correct-horse-12");
     await page.getByRole("button", { name: "注册" }).press("Enter");
     await page.waitForURL("/");
-    // 注册成功落在新聊天首页；经全局侧栏进入学习项目（客户端导航触发
+    // 注册成功落在新聊天首页；经全局侧栏进入知识库（客户端导航触发
     // 路由公告），账户主壳页面保持直链可达。
     const sidebar = page.getByTestId("app-sidebar");
-    await sidebar.getByRole("link", { name: "学习项目" }).click();
-    await page.waitForURL("/account/projects");
-    await expect(page.getByTestId("route-announcer")).toContainText("/account/projects");
+    await sidebar.getByRole("link", { name: "知识库" }).click();
+    await page.waitForURL("/knowledge-base");
+    await expect(page.getByTestId("route-announcer")).toContainText("/knowledge-base");
     await page.goto("/account");
     await expect(page.getByRole("heading", { name: /欢迎回来/ })).toBeVisible();
   });
 
-  test("全局侧栏高亮当前页并提供学习项目入口", async ({ page }) => {
+  test("全局侧栏高亮当前页并提供知识库入口", async ({ page }) => {
     const creds = uniqueCredentials("t002-nav");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
 
     // Issue 12：普通用户导航为固定顺序的全局侧栏。
     const sidebar = page.getByTestId("app-sidebar");
     await expect(sidebar).toBeVisible();
-    await sidebar.getByRole("link", { name: "学习项目" }).click();
-    await page.waitForURL("/account/projects");
-    await expect(page.getByRole("heading", { name: "学习项目" })).toBeVisible();
-    await expect(sidebar.getByRole("link", { name: "学习项目" })).toHaveAttribute(
+    await sidebar.getByRole("link", { name: "知识库" }).click();
+    await page.waitForURL("/knowledge-base");
+    await expect(page.getByRole("heading", { name: "知识库" })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "知识库" })).toHaveAttribute(
       "aria-current",
       "page"
     );
@@ -86,7 +86,7 @@ test.describe("T002 — 电脑端布局与无障碍基线", () => {
     const scrollWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     const viewportWidth = await page.evaluate(() => window.innerWidth);
     expect(scrollWidth).toBeLessThanOrEqual(viewportWidth);
-    await expect(page.getByTestId("main-content").getByRole("link", { name: "查看项目列表" })).toBeVisible();
+    await expect(page.getByTestId("main-content").getByRole("link", { name: "返回新聊天" })).toBeVisible();
   });
 
 });

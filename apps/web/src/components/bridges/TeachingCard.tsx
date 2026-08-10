@@ -37,7 +37,7 @@ const evidenceLabel: Record<string, string> = {
 
 const sourceLabel: Record<string, string> = {
   attachment: "当前对话附件",
-  project: "学习项目文件",
+  project: "历史材料",
   knowledge_base: "已授权知识库",
   local: "本地材料",
   duckduckgo: "DuckDuckGo",
@@ -86,7 +86,7 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
       }}
     >
       <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "flex-start" }}>
-        <Icon name="learningProject" size={20} aria-hidden />
+        <Icon name="knowledgeBase" size={20} aria-hidden />
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "baseline", flexWrap: "wrap" }}>
             <h3 style={{ margin: 0, fontSize: "var(--text-base)" }}>

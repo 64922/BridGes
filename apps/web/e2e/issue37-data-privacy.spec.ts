@@ -88,10 +88,10 @@ test("设置中心入口与导出范围表（确认前可见）", async ({ page 
   await expect(table).toContainText("对话");
   await expect(table).toContainText("消息");
   await expect(table).toContainText("画像与版本");
-  await expect(table).toContainText("学习项目");
-  await expect(table).toContainText("提醒与投递记录");
-  await expect(table).toContainText("插件清单");
-  await expect(table).toContainText("授权记录");
+  await expect(table).toContainText("历史归档材料");
+  await expect(table).toContainText("历史投递审计");
+  await expect(table).toContainText("扩展停用审计");
+  await expect(table).toContainText("扩展调用审计");
   await expect(table).toContainText("资产清单");
   await expect(table).toContainText("总计");
   // GQ-06/07：账户百炼 Key 已整体移除，导出范围表不再出现该文案；

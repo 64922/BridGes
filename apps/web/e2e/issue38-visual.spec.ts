@@ -14,7 +14,7 @@ import { signUp, uniqueCredentials } from "./helpers/auth";
  * - 打开前模拟 prefers-reduced-motion: reduce（新聊天首页的轮换名言
  *   静止在第一条、过渡即时完成）；
  * - 快照使用 animations: "disabled"（Playwright 官方约定）；
- * - 其余区域均为真实内容（空态 / 未配置态 / 内置插件卡等确定性状态）。
+ * - 其余区域均为真实内容（空态 / 未配置态等确定性状态）。
  */
 
 const VIEWPORTS = [
@@ -29,12 +29,6 @@ function sidebarMask(page: Page): Locator[] {
     page.getByRole("button", { name: /账户菜单：/ }),
     page.locator('section[aria-label="最近对话"]'),
   ];
-}
-
-/** 任务安排页：SMTP 卡说明段落含当前账户 QQ 邮箱（每次注册不同，
- *  数字长度差异会改变段落换行从而偏移整个布局），遮罩该段落。 */
-function tasksMask(page: Page): Locator[] {
-  return [];
 }
 
 /**
@@ -99,32 +93,11 @@ test.describe("Issue 38 — 正式路由视觉回归", () => {
     await expectScreenshots(page, "search");
   });
 
-  test("本地知识库页三视口", async ({ page }) => {
+  test("知识库页三视口", async ({ page }) => {
     const creds = uniqueCredentials("i38v-kb");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
     await openStable(page, "/knowledge-base", page.getByTestId("kb-upload-button"));
     await expectScreenshots(page, "knowledge-base");
-  });
-
-  test("任务安排页三视口", async ({ page }) => {
-    const creds = uniqueCredentials("i38v-tasks");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await openStable(page, "/tasks", page.getByRole("heading", { name: "任务安排已退役" }));
-    await expectScreenshots(page, "tasks", tasksMask(page));
-  });
-
-  test("插件页三视口", async ({ page }) => {
-    const creds = uniqueCredentials("i38v-plugins");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await openStable(page, "/plugins", page.getByRole("heading", { name: "插件中心" }));
-    await expectScreenshots(page, "plugins");
-  });
-
-  test("学习项目页三视口", async ({ page }) => {
-    const creds = uniqueCredentials("i38v-projects");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await openStable(page, "/account/projects", page.getByRole("heading", { name: "学习项目" }));
-    await expectScreenshots(page, "learning-projects");
   });
 
   test("画像中心页三视口", async ({ page }) => {

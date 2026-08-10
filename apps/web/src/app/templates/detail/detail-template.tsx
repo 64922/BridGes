@@ -12,7 +12,7 @@ import { StatusBadge } from "@/components/design-system/StatusBadge";
 import { copyTextToClipboard } from "@/lib/clipboard";
 
 const META_ROWS: [string, string][] = [
-  ["来源类型", "本地知识库文档"],
+  ["来源类型", "知识库文档"],
   ["所属账户", "示例账户"],
   ["索引版本", "emb-v2（Embedding qwen-text-embedding-v3 · 1024 维）"],
   ["最近更新", "2026-08-01 21:14"],
@@ -81,38 +81,6 @@ export function DetailTemplate() {
     },
     [],
   );
-
-  if (section === "tasks") {
-    return (
-      <TemplateShell activeModule="tasks">
-        <div
-          style={{
-            width: "100%",
-            maxWidth: "var(--chat-column-width)",
-            margin: "0 auto",
-            padding: "var(--space-6)",
-          }}
-        >
-          <h1 style={{ fontSize: "var(--text-2xl)" }}>任务安排已退役</h1>
-          <p style={{ color: "var(--color-text-secondary)" }}>
-            学习任务、复习计划和邮件提醒已停止使用。
-          </p>
-          <p style={{ color: "var(--color-text-secondary)" }}>
-            请在学习模式聊天中继续，学习进度会保留在连续教学回合里。
-          </p>
-          <button
-            type="button"
-            className="sc-button sc-button-primary"
-            onClick={() => {
-              window.location.href = "/";
-            }}
-          >
-            返回聊天学习
-          </button>
-        </div>
-      </TemplateShell>
-    );
-  }
 
   const renderBody = () => {
     if (state === "loading") {

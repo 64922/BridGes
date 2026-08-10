@@ -1318,6 +1318,42 @@
         }
       }
     },
+    "/compatibility/pages/{endpoint_id}": {
+      "post": {
+        "tags": [
+          "compatibility"
+        ],
+        "summary": "Observe Retired Page Redirect",
+        "description": "记录一次旧页面重定向，不读取账户、查询参数或请求正文。",
+        "operationId": "observe_retired_page_redirect_compatibility_pages__endpoint_id__post",
+        "parameters": [
+          {
+            "name": "endpoint_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Endpoint Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/chat/conversations": {
       "get": {
         "tags": [
@@ -5605,28 +5641,10 @@
                   "type": "null"
                 }
               ],
-              "description": "结果类型筛选：chat/image/document/project，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。",
+              "description": "结果类型筛选：chat/image/document，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。",
               "title": "Types"
             },
-            "description": "结果类型筛选：chat/image/document/project，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。"
-          },
-          {
-            "name": "project_id",
-            "in": "query",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "description": "限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。",
-              "title": "Project Id"
-            },
-            "description": "限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。"
+            "description": "结果类型筛选：chat/image/document，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。"
           },
           {
             "name": "from",
@@ -5719,18 +5737,6 @@
               }
             },
             "description": "Unauthorized"
-          },
-          "404": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "additionalProperties": true,
-                  "title": "Response 404 Unified Search Search Get"
-                }
-              }
-            },
-            "description": "Not Found"
           },
           "422": {
             "content": {
@@ -47512,7 +47518,7 @@
             },
             "type": "object",
             "title": "Counts",
-            "description": "四类结果各自的总命中数（不受 limit 截断），用于筛选 tab 计数。"
+            "description": "三类结果各自的总命中数（不受 limit 截断），用于筛选 tab 计数。"
           }
         },
         "type": "object",
@@ -47588,8 +47594,7 @@
             "enum": [
               "chat",
               "image",
-              "document",
-              "project"
+              "document"
             ],
             "title": "Result Type",
             "description": "结果类型。"
@@ -47602,7 +47607,7 @@
           "title": {
             "type": "string",
             "title": "Title",
-            "description": "结果标题（会话/项目名、文档或图片名）。"
+            "description": "结果标题（会话、文档或图片名）。"
           },
           "snippet": {
             "items": {
@@ -47654,18 +47659,6 @@
             "title": "Object Id",
             "description": "图片/文档结果的对象标识。"
           },
-          "project_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Project Id",
-            "description": "项目标识（项目结果或归属项目）。"
-          },
           "page_number": {
             "anyOf": [
               {
@@ -47699,7 +47692,7 @@
           "updated_at"
         ],
         "title": "SearchResultItem",
-        "description": "单条搜索结果（扁平结构，代码生成友好）。\n\n``result_id`` 在类型内唯一：消息命中为消息标识，会话标题命中为会话\n标识，图片为对象标识，文档为文档标识，项目为项目标识。跳转锚点字段\n按类型填充，不适用时为 null。"
+        "description": "单条搜索结果（扁平结构，代码生成友好）。\n\n``result_id`` 在类型内唯一：消息命中为消息标识，会话标题命中为会话\n标识，图片为对象标识，文档为文档标识。跳转锚点字段按类型填充，\n不适用时为 null。"
       },
       "SearchSegment": {
         "properties": {

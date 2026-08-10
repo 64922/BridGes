@@ -46,6 +46,7 @@ import type {
   ChatStreamMcpData,
   ChatStreamStageData,
   ChatStreamVideoData,
+  McpCallRequestPayload,
 } from "@/lib/api";
 import type { VideoRequestPayload } from "@/lib/api";
 
@@ -641,7 +642,12 @@ export default function ChatConversationPage() {
   void confirmMessageMcp;
   const handleVideoSubmit = useCallback(
     async (payload: { prompt: string }): Promise<boolean> => {
-      const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
+      const videoPayload: VideoRequestPayload = {
+        prompt: payload.prompt,
+        aspect_ratio: "16:9",
+        size: "1280*720",
+        duration_seconds: 5,
+      };
       return sendMessage(payload.prompt, true, undefined, undefined, videoPayload);
     },
     [sendMessage]

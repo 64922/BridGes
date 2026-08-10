@@ -145,12 +145,22 @@ def raise_retired_file_source(request: Request, *, endpoint: str) -> NoReturn:
     )
 
 
-def record_compatibility_observation(request: Request, endpoint: str) -> None:
+def record_compatibility_observation(
+    request: Request, endpoint: str, *, status_code: int = 410
+) -> None:
     probe = (
         request.headers.get("x-bridges-compatibility-probe", "").lower()
         in _PROBE_HEADERS
     )
     compatibility_metrics_for(request).record(endpoint, probe=probe)
+    observability = getattr(request.app.state, "observability_service", None)
+    if observability is not None:
+        observability.record_compatibility(
+            endpoint_id=endpoint,
+            service_version=COMPATIBILITY_SERVICE_VERSION,
+            traffic_class="probe" if probe else "real",
+            status_code=status_code,
+        )
 
 
 def _retirement_accounts(database: BridgesDatabase) -> list[str]:

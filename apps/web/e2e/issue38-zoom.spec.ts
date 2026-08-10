@@ -149,35 +149,13 @@ test.describe("Issue 38 — 浏览器缩放 100–200% 桌面路径", () => {
     await fullMatrix(page, checks);
   });
 
-  test("本地知识库页：3 视口 × 4 缩放，无水平滚动、上传入口可达", async ({ page }) => {
+  test("知识库页：3 视口 × 4 缩放，无水平滚动、上传入口可达", async ({ page }) => {
     const creds = uniqueCredentials("i38z-kb");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
     await page.goto("/knowledge-base");
     const checks: PageChecks = {
       controls: [page.getByTestId("kb-upload-button"), page.getByTestId("main-content")],
       targetControls: [page.getByTestId("kb-upload-button")],
-    };
-    await fullMatrix(page, checks);
-  });
-
-  test("任务安排页：3 视口 × 4 缩放，无水平滚动、主内容可达", async ({ page }) => {
-    const creds = uniqueCredentials("i38z-tasks");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await page.goto("/tasks");
-    const checks: PageChecks = {
-      controls: [page.getByTestId("main-content")],
-      targetControls: [page.getByRole("heading", { name: "任务安排已退役" })],
-    };
-    await fullMatrix(page, checks);
-  });
-
-  test("插件页：3 视口 × 4 缩放，无水平滚动、主内容可达", async ({ page }) => {
-    const creds = uniqueCredentials("i38z-plugins");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await page.goto("/plugins");
-    const checks: PageChecks = {
-      controls: [page.getByTestId("main-content")],
-      targetControls: [page.getByRole("link", { name: "插件" })],
     };
     await fullMatrix(page, checks);
   });
@@ -204,17 +182,6 @@ test.describe("Issue 38 — 浏览器缩放 100–200% 桌面路径", () => {
     await fullMatrix(page, checks);
   });
 
-  test("学习项目页：3 视口 × 4 缩放，无水平滚动、主内容可达", async ({ page }) => {
-    const creds = uniqueCredentials("i38z-projects");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await page.goto("/account/projects");
-    const checks: PageChecks = {
-      controls: [page.getByTestId("main-content")],
-      targetControls: [page.getByRole("link", { name: "学习项目" })],
-    };
-    await fullMatrix(page, checks);
-  });
-
   test("对话页：3 视口 × 4 缩放，无水平滚动、输入区与发送可达", async ({ page }) => {
     const creds = uniqueCredentials("i38z-chat");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
@@ -230,36 +197,4 @@ test.describe("Issue 38 — 浏览器缩放 100–200% 桌面路径", () => {
     await fullMatrix(page, checks);
   });
 
-  test("对话框在 200% 缩放（640×360 CSS 视口）下可达：无水平滚动、操作按钮完整可见", async ({ page }) => {
-    const creds = uniqueCredentials("i38z-dialog");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await page.goto("/account/projects");
-    // 1280×720 @ 200% = 640×360 CSS 像素（最极端组合）
-    await page.setViewportSize({ width: 640, height: 360 });
-    await expect(page.getByTestId("learning-project-create")).toBeVisible();
-
-    await page.getByTestId("learning-project-create").click();
-    const dialog = page.getByRole("dialog", { name: /新建学习项目/ });
-    await expect(dialog).toBeVisible();
-
-    // 对话框内操作可达：取消 / 创建按钮完整在视口内（可纵向滚动到达）
-    for (const button of ["取消", "创建"]) {
-      await expect(dialog.getByRole("button", { name: button })).toBeVisible();
-      const box = await dialog.getByRole("button", { name: button }).boundingBox();
-      expect(box, `对话框内「${button}」应有布局盒`).not.toBeNull();
-      expect(
-        box!.x + box!.width,
-        `200% 缩放下对话框「${button}」右缘越出视口`
-      ).toBeLessThanOrEqual(640 + 1);
-    }
-    // 页面无水平滚动
-    const overflow = await page.evaluate(() => ({
-      scrollWidth: document.documentElement.scrollWidth,
-      clientWidth: document.documentElement.clientWidth,
-    }));
-    expect(overflow.scrollWidth).toBeLessThanOrEqual(overflow.clientWidth + 1);
-    // Escape 关闭对话框（200% 缩放下对话框仍可键盘关闭）
-    await page.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0);
-  });
 });

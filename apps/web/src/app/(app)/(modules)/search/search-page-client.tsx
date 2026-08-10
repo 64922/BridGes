@@ -17,19 +17,19 @@ import {
   type SearchSegment,
 } from "@/lib/api";
 import { useApiQuery } from "@/lib/data";
-import { useLearningProjects } from "@/lib/learning-projects";
 import { restoreSearchReturnFocus } from "@/lib/search-shortcut";
 
 const DEBOUNCE_MS = 300;
 const SEARCH_LIMIT = 50;
 
-const TYPE_ORDER: SearchResultType[] = ["chat", "image", "document", "project"];
+type VisibleSearchResultType = SearchResultType;
 
-const TYPE_META: Record<SearchResultType, { label: string; icon: IconName }> = {
+const TYPE_ORDER: VisibleSearchResultType[] = ["chat", "image", "document"];
+
+const TYPE_META: Record<VisibleSearchResultType, { label: string; icon: IconName }> = {
   chat: { label: "聊天", icon: "chatBubble" },
   image: { label: "图片", icon: "imagePicture" },
   document: { label: "文档", icon: "documentPage" },
-  project: { label: "项目", icon: "projectFolder" },
 };
 
 /** 时间范围筛选的起止日期输入框共用样式。 */
@@ -43,7 +43,7 @@ const dateInputStyle: React.CSSProperties = {
   fontSize: "var(--text-sm)",
 };
 
-type TypeFilter = SearchResultType | "all";
+type TypeFilter = VisibleSearchResultType | "all";
 
 function formatRelativeTime(iso: string): string {
   const date = new Date(iso);
@@ -161,20 +161,18 @@ function ImagePreviewDialog({
  * 统一桌面搜索页（Issue 24，ChatGPT 搜索面板启发的整页形态）。
  *
  * 真实行为：输入防抖 300ms 边输边搜（过期响应被丢弃）；类型 tab（带计数）、
- * 学习项目与时间范围组合筛选，一键清除筛选；结果按类型分组并高亮真实命中
- * 片段；聊天跳到消息锚点、图片就地预览、文档定位知识库详情页码、项目进入
- * 详情。键盘：↑/↓ 选择、Enter 打开、Esc 返回原上下文并归还焦点。
+ * 时间范围组合筛选，一键清除筛选；结果按类型分组并高亮真实命中
+ * 片段；聊天跳到消息锚点、图片就地预览、文档定位知识库详情页码。
+ * 键盘：↑/↓ 选择、Enter 打开、Esc 返回原上下文并归还焦点。
  * 状态覆盖：空查询引导 / 加载中 / 无结果（含建议）/ 索引未就绪 /
  * 错误可重试（保留查询与筛选）/ 权限不足。
  */
 export default function SearchPageClient() {
   const router = useRouter();
-  const { projects } = useLearningProjects();
 
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<TypeFilter>("all");
-  const [projectFilter, setProjectFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
@@ -201,12 +199,11 @@ export default function SearchPageClient() {
   // 查询词或筛选变化时重新搜索：竞态由 useApiQuery 的 key 切换清理旧请求
   // 保证（不再需要序号 + AbortController 双重守卫）；空查询时禁用请求。
   const { data: response, error: queryError, isFetching, reload } = useApiQuery(
-    `search:${submittedQuery}|${typeFilter}|${projectFilter}|${fromDate}|${toDate}`,
+    `search:${submittedQuery}|${typeFilter}|${fromDate}|${toDate}`,
     () =>
       searchUnified({
         q: submittedQuery,
         types: typeFilter === "all" ? undefined : [typeFilter],
-        projectId: projectFilter || undefined,
         from: dayStartIso(fromDate),
         to: dayEndIso(toDate),
         limit: SEARCH_LIMIT,
@@ -214,12 +211,10 @@ export default function SearchPageClient() {
     { enabled: submittedQuery.trim() !== "" }
   );
 
-  // 项目筛选指向已删除的项目时重试无意义：识别后引导清除筛选。
   const errorState = queryError
     ? {
         kind: classifyApiError(queryError) === "other" ? "error" : "permission",
         message: queryError.message,
-        projectGone: queryError.code === "project_not_found",
       }
     : null;
 
@@ -251,12 +246,10 @@ export default function SearchPageClient() {
   const counts = response?.counts ?? {};
   const totalCount = TYPE_ORDER.reduce((sum, type) => sum + (counts[type] ?? 0), 0);
 
-  const hasActiveFilters =
-    typeFilter !== "all" || projectFilter !== "" || fromDate !== "" || toDate !== "";
+  const hasActiveFilters = typeFilter !== "all" || fromDate !== "" || toDate !== "";
 
   const clearFilters = useCallback(() => {
     setTypeFilter("all");
-    setProjectFilter("");
     setFromDate("");
     setToDate("");
   }, []);
@@ -273,8 +266,6 @@ export default function SearchPageClient() {
         router.push(`/knowledge-base?${params.toString()}`);
       } else if (item.result_type === "image" && item.object_id) {
         setPreview({ objectId: item.object_id, title: item.title });
-      } else if (item.result_type === "project" && item.project_id) {
-        router.push(`/account/projects/${encodeURIComponent(item.project_id)}`);
       }
     },
     [router]
@@ -313,7 +304,7 @@ export default function SearchPageClient() {
   const renderRow = (item: SearchResultItem) => {
     const index = resultIndex.get(item) ?? 0;
     const active = index === activeIndex;
-    const meta = TYPE_META[item.result_type];
+    const meta = TYPE_META[item.result_type as VisibleSearchResultType];
     const anchorText =
       item.result_type === "document"
         ? [item.page_number ? `第 ${item.page_number} 页` : "", item.section_title ?? ""]
@@ -396,8 +387,8 @@ export default function SearchPageClient() {
       return (
         <StateBlock
           kind="empty"
-          title="输入关键词，搜索聊天、图片、文档和学习项目"
-          description="输入后自动搜索；支持按类型、学习项目和时间范围筛选。上下方向键选择结果，回车打开，Esc 返回。"
+          title="输入关键词，搜索聊天、图片和文档"
+          description="输入后自动搜索；支持按类型和时间范围筛选。上下方向键选择结果，回车打开，Esc 返回。"
         />
       );
     }
@@ -414,13 +405,9 @@ export default function SearchPageClient() {
         <StateBlock
           kind="error"
           title="搜索失败"
-          description={
-            errorState.projectGone
-              ? `${errorState.message}，该学习项目可能已被删除，请清除项目筛选后重试。`
-              : errorState.message
-          }
-          actionLabel={errorState.projectGone ? "清除项目筛选" : "重试"}
-          onAction={errorState.projectGone ? clearFilters : reload}
+          description={errorState.message}
+          actionLabel="重试"
+          onAction={reload}
         />
       );
     }
@@ -430,7 +417,7 @@ export default function SearchPageClient() {
           <StateBlock
             kind="empty"
             title={`没有找到与“${response.query || submittedQuery}”相关的结果`}
-            description="换个关键词试试，或清除类型、学习项目和时间筛选后重试。"
+            description="换个关键词试试，或清除类型和时间筛选后重试。"
             actionLabel={hasActiveFilters ? "清除筛选" : undefined}
             onAction={hasActiveFilters ? clearFilters : undefined}
           />
@@ -507,7 +494,7 @@ export default function SearchPageClient() {
       );
     }
     return (
-      <StateBlock kind="loading" title="正在搜索" description="在你的聊天、图片、文档和学习项目中查找。" />
+      <StateBlock kind="loading" title="正在搜索" description="在你的聊天、图片和文档中查找。" />
     );
   };
 
@@ -570,12 +557,12 @@ export default function SearchPageClient() {
             aria-expanded={flatResults.length > 0}
             aria-controls="search-results"
             aria-activedescendant={activeIndex >= 0 ? `search-result-${activeIndex}` : undefined}
-            aria-label="搜索聊天、图片、文档和学习项目"
+            aria-label="搜索聊天、图片和文档"
             data-testid="search-input"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onInputKeyDown}
-            placeholder="搜索聊天、图片、文档和学习项目"
+            placeholder="搜索聊天、图片和文档"
             autoComplete="off"
             style={{
               width: "100%",
@@ -662,28 +649,6 @@ export default function SearchPageClient() {
                 );
               })}
             </div>
-            <select
-              aria-label="按学习项目筛选"
-              data-testid="search-project-filter"
-              value={projectFilter}
-              onChange={(event) => setProjectFilter(event.target.value)}
-              style={{
-                minHeight: "var(--target-size)",
-                padding: "0 var(--space-2)",
-                borderRadius: "var(--radius-md)",
-                border: "1px solid var(--color-border)",
-                backgroundColor: "var(--color-surface)",
-                color: "var(--color-text-primary)",
-                fontSize: "var(--text-sm)",
-              }}
-            >
-              <option value="">全部项目</option>
-              {projects.map((project) => (
-                <option key={project.project_id} value={project.project_id}>
-                  {project.name}
-                </option>
-              ))}
-            </select>
             <input
               type="date"
               aria-label="开始日期"

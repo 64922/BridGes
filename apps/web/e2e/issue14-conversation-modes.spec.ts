@@ -10,7 +10,7 @@ import { installRunEventsRoutes, runCreated } from "./helpers/chat-mock";
  * 首轮提交后模式固定且刷新后保持；思考摘要
  * 生成中自动展开、完成后折叠为「已思考（用时 X 秒）」并可再次展开；断流
  * 失败保留摘要并显示中文状态；纯键盘切换/展开折叠/停止/重试；空白态默认
- * 日常陪伴且可先切学习模式再发送；学习项目页「进入学习对话」创建学习对话。
+ * 日常陪伴且可先切学习模式再发送；模式在首轮消息后锁定。
  *
  * 与 issue11/13 同一策略：协议级替身模拟聊天 API，Key 预检拦截沿用真实
  * 后端（未启用对话存储的实例自动跳过）。
@@ -471,32 +471,4 @@ test.describe("Issue 14 — 对话双模式与可折叠思考摘要", () => {
     await expect(page.getByTestId("mode-toggle")).toHaveAttribute("data-locked", "true");
   });
 
-  test("学习项目页「新建学习对话」创建默认学习模式对话", async ({ page }) => {
-    await registerAndEnterHome(page);
-    await installMockChatApi(page, { initialMode: "study" });
-    // Issue 41：旧项目工作台已退役，学习对话入口在学习项目详情页
-    // （/account/projects/{id}）的「新建学习对话」按钮。
-    await page.route("**/api/learning-projects/demo-project", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          project_id: "demo-project",
-          name: "演示学习项目",
-          description: "",
-          created_at: NOW,
-          updated_at: NOW,
-          conversations: [],
-        }),
-      });
-    });
-
-    await page.goto("/account/projects/demo-project");
-    await expect(page.getByTestId("learning-project-new-chat")).toBeVisible();
-    await page.getByTestId("learning-project-new-chat").click();
-    await page.waitForURL(/\/chat\/mock-1/);
-    await expect(
-      page.getByTestId("mode-toggle").getByRole("button", { name: "学习模式" })
-    ).toHaveAttribute("aria-pressed", "true");
-  });
 });

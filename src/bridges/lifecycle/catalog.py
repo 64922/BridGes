@@ -118,10 +118,10 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         ),
         512,
     ),
-    ExportCategory("learning_projects", "学习项目", ("learning_projects",), 256),
+    ExportCategory("learning_projects", "历史归档材料", ("learning_projects",), 256),
     ExportCategory(
         "learning_project_migration",
-        "学习项目迁移审计",
+        "迁移审计",
         (
             "learning_project_migration_runs",
             "learning_project_migrations",
@@ -132,14 +132,14 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
     ),
     ExportCategory(
         "reminders",
-        "提醒与投递记录",
+        "历史投递审计",
         ("reminders", "reminder_deliveries", "reminder_settings"),
         512,
     ),
     ExportCategory(
-        "plugins", "插件清单", ("skill_packages", "account_skill_states"), 512
+        "plugins", "扩展停用审计", ("skill_packages", "account_skill_states"), 512
     ),
-    ExportCategory("mcp", "授权记录", ("mcp_servers", "mcp_calls"), 512),
+    ExportCategory("mcp", "扩展调用审计", ("mcp_servers", "mcp_calls"), 512),
     ExportCategory(
         "documents", "文档与检索内容", ("document_records", "document_chunks"), 1024
     ),

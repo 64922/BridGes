@@ -76,10 +76,6 @@ export function NewChatHome() {
   const [humanizerOpen, setHumanizerOpen] = useState(false);
   const [careerOpen, setCareerOpen] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
-  // Issue 36：新聊天首页暂存的插件选择（随首轮写入会话；chip 与
-  // 真实选择器共用，随对话持久化；停用/卸载/撤权由服务端清洗解释）。
-  // Issue 34：插件页「在聊天中使用 humanizer」意图——消费即删除，
-  // 防止刷新或 StrictMode 双触发重复打开。
   /** Issue 03：原子首轮统一入口——普通消息/生涯规划/图片/视频/人味化
    *  全部经同一命令提交，成功后导航到会话页并刷新侧栏最近列表。 */
   const submitFirstTurn = async (options: {
@@ -144,7 +140,12 @@ export function NewChatHome() {
 
   /** Issue 32：首页提交视频任务（video 载荷随首轮落库，任务异步执行）。 */
   const handleVideoSubmit = async (payload: { prompt: string }): Promise<boolean> => {
-    const videoPayload: VideoRequestPayload = { prompt: payload.prompt };
+    const videoPayload: VideoRequestPayload = {
+      prompt: payload.prompt,
+      aspect_ratio: "16:9",
+      size: "1280*720",
+      duration_seconds: 5,
+    };
     return submitFirstTurn({ content: payload.prompt, video: videoPayload });
   };
 
@@ -167,7 +168,7 @@ export function NewChatHome() {
     text: string,
     preparedConversationId?: string
   ): Promise<boolean> => {
-    // 新消息不再携带聊天附件或学习项目归属。
+    // 新消息统一使用全局知识库来源，不携带已退役的项目归属。
     return submitFirstTurn({
       content: text,
       conversationId: preparedConversationId ?? preparedConversationRef.current,

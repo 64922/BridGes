@@ -72,6 +72,22 @@ Issue 16 的旧画像观察、候选、手动写入、权限、通知、历史�
 错误结构，且不得写入画像、通知或兼容性以外的业务数据。该章节保持 `待运行时观测`，
 在真实兼容窗口采样完成前不得把文档状态改为 `passed`。
 
+## Issue 20 退役页面重定向观察契约
+
+旧页面入口统一以 HTTP 307 重定向到新的聊天首页 `/`。中间件只发送稳定页面
+路由 ID 和可选的 `X-Bridges-Compatibility-Probe` 标记到兼容观察端点；不读取或
+转发账户、原始 URL、查询参数或请求正文。服务版本为 `0.1.0`。
+
+| endpoint_id | service_version | traffic_class | status_code | count |
+| --- | --- | --- | ---: | ---: |
+| `legacy.pages.learning_projects.list` / `legacy.pages.learning_projects.detail` | `0.1.0` | `real` | 307 | 待运行时观测 |
+| `legacy.pages.tasks` / `legacy.pages.plugins` / `legacy.pages.mcp` | `0.1.0` | `real` | 307 | 待运行时观测 |
+| 上述全部页面路由 | `0.1.0` | `probe` | 307 | 待运行时观测 |
+
+观察接口为 `POST /compatibility/pages/{endpoint_id}`，成功返回 204；未知路由 ID
+返回 404，且不产生计数。自动化测试只验证探针字段与隐私边界，真实调用数必须在
+部署后的完整观察窗口中填写，门禁状态仍保持 `pending-runtime-evidence`。
+
 ## 发布证据
 
 - 兼容版本：待填写

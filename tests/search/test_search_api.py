@@ -25,7 +25,6 @@ from tests.search.conftest import (
     add_material,
     add_message,
     seed_conversation,
-    seed_project,
 )
 
 
@@ -83,16 +82,14 @@ class TestUnifiedSearchApi:
         add_message(api_env, account, conversation_id, "今晚复习引力波公式")
         add_material(api_env, account, "引力波讲义.txt", "激光干涉测量")
         add_image(api_env, account, "引力波示意图.png")
-        project_id = seed_project(api_env, account, "引力波专题")
-
         response = api_env["client_a"].get("/search", params={"q": "引力波"})
         assert response.status_code == 200, response.text
         payload = response.json()
         assert payload["query"] == "引力波"
         assert payload["index_ready"] is True
-        assert payload["counts"] == {"chat": 2, "image": 1, "document": 1, "project": 1}
+        assert payload["counts"] == {"chat": 2, "image": 1, "document": 1}
         by_type = {item["result_type"]: item for item in payload["results"][:20]}
-        # 四类结果都带跳转锚点。
+        # 三类结果都带跳转锚点。
         chat_items = [
             item for item in payload["results"] if item["result_type"] == "chat"
         ]
@@ -100,31 +97,24 @@ class TestUnifiedSearchApi:
         assert message_hit["conversation_id"] == conversation_id
         assert by_type["image"]["object_id"] is not None
         assert by_type["document"]["object_id"] is not None
-        assert by_type["project"]["project_id"] == project_id
         # 高亮片段：matched 段等于查询词。
         for item in payload["results"]:
             for segment in item["snippet"]:
                 if segment["matched"]:
                     assert segment["text"] == "引力波"
 
-    def test_type_and_project_filters(self, api_env: dict[str, Any]) -> None:
+    def test_type_filters(self, api_env: dict[str, Any]) -> None:
         account = api_env["account_a"]
-        project_id = seed_project(api_env, account, "筛选项目")
-        seed_conversation(api_env, account, "筛选对话", project_id=project_id)
+        seed_conversation(api_env, account, "筛选对话")
         client = api_env["client_a"]
         response = client.get(
             "/search", params=[("q", "筛选"), ("types", "chat,document")]
         )
         assert response.status_code == 200, response.text
         assert {item["result_type"] for item in response.json()["results"]} == {"chat"}
-        scoped = client.get(
-            "/search",
-            params={"q": "筛选", "types": "project", "project_id": project_id},
-        )
-        assert scoped.status_code == 200, scoped.text
-        assert [
-            item["project_id"] for item in scoped.json()["results"]
-        ] == [project_id]
+        retired = client.get("/search", params={"q": "筛选", "types": "project"})
+        assert retired.status_code == 422
+        assert "project" in retired.text
 
     def test_invalid_types_is_422(self, api_env: dict[str, Any]) -> None:
         response = api_env["client_a"].get(
@@ -132,13 +122,6 @@ class TestUnifiedSearchApi:
         )
         assert response.status_code == 422
         assert "video" in response.text
-
-    def test_other_account_project_id_is_404(self, api_env: dict[str, Any]) -> None:
-        project_b = seed_project(api_env, api_env["account_b"], "乙的私有项目")
-        response = api_env["client_a"].get(
-            "/search", params={"q": "任意", "project_id": project_b}
-        )
-        assert response.status_code == 404
 
     def test_cross_account_results_never_leak(self, api_env: dict[str, Any]) -> None:
         seed_conversation(api_env, api_env["account_b"], "绝密研究计划")

@@ -30,7 +30,7 @@ const LAYER_META: Record<
   { label: string; icon: IconName }
 > = {
   attachment: { label: "当前附件", icon: "uploadFile" },
-  project: { label: "学习项目文件", icon: "learningProject" },
+  project: { label: "历史材料", icon: "knowledgeBase" },
   knowledge_base: { label: "全局知识库", icon: "knowledgeBase" },
 };
 

@@ -132,8 +132,8 @@ export function DataPrivacy() {
                   导出数据
                 </h2>
                 <p className={styles.cardDescription}>
-                  导出当前账户的对话、消息、画像及版本、学习项目、提醒与投递记录、
-                  插件清单、授权记录和资产清单，生成可阅读且可机器处理的 JSON 文件。
+                  导出当前账户的对话、消息、画像及版本、知识库材料、文档检索与引用、
+                  资产清单和必要的迁移审计，生成可阅读且可机器处理的 JSON 文件。
                 </p>
               </div>
               <Icon name="download" size={28} aria-hidden />
@@ -296,7 +296,7 @@ export function DataPrivacy() {
             </div>
             <ul className={styles.dangerList}>
               <li>撤销全部会话并停止进行中的回答与后台任务；</li>
-              <li>一致删除对话、画像、项目、提醒、插件授权与资产记录；</li>
+              <li>一致删除对话、画像、知识库材料、迁移审计与资产记录；</li>
               <li>删除本地对象文件、索引、缓存与待执行提醒；</li>
               <li>清除 QQ SMTP 授权码（外部服务凭据一并移除）。</li>
             </ul>
@@ -859,7 +859,7 @@ function DeleteAccountDialog({
       open={open}
       onClose={onClose}
       title="删除账户"
-      description={`此操作不可撤销：将删除账户${username ? ` ${username} ` : " "}的对话、画像、项目、提醒、插件授权、资产与本地文件，并清除外部凭据。删除前请先导出数据或创建备份。`}
+      description={`此操作不可撤销：将删除账户${username ? ` ${username} ` : " "}的对话、画像、知识库材料、迁移审计、资产与本地文件，并清除外部凭据。删除前请先导出数据或创建备份。`}
     >
       <form onSubmit={(event) => void submit(event)} className={styles.dialogForm}>
         {error && <ErrorSummary title="无法删除账户" errors={[error]} />}
