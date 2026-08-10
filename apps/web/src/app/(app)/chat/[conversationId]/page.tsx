@@ -7,7 +7,6 @@ import { StateBlock } from "@/components/bridges/StateBlock";
 import { ChatSendErrorBanner } from "@/components/bridges/chat/ChatSendErrorBanner";
 import { ChatThread } from "@/components/bridges/chat/ChatThread";
 import { Composer } from "@/components/bridges/Composer";
-import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import {
   type ChatMessage as ChatMessageLike,
   type ChatThinking,
@@ -15,18 +14,15 @@ import {
 import { AppShell } from "@/components/layout/AppShell";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 import {
-  downloadChatAttachment,
   createChatRun,
   getChatConversation,
   isChatStreamEventOf,
-  retryAttachmentIngestion,
   retryChatRun,
   stopChatMessage,
   subscribeChatRunEvents,
   startFirstTurn,
   type ChatConversationProjection,
   type ChatMessageProjection,
-  type ChatAttachmentProjection,
   type ChatStreamEvent,
   type ArxivSearchProjection,
   type TeachingTurnProjection,
@@ -34,21 +30,14 @@ import {
 } from "@/lib/api";
 import { readAloudSession } from "@/lib/read-aloud";
 import type { CapabilityAvailability } from "@/components/bridges/chat/ReadAloudControls";
-import { HumanizerDialog } from "@/components/bridges/HumanizerDialog";
-import { CareerPlanningDialog } from "@/components/bridges/CareerPlanningDialog";
-import { VideoDialog } from "@/components/bridges/VideoDialog";
-import type { HumanizerSkillInput } from "@/lib/api";
 import { buildThreadMessages } from "@/lib/chat-thread";
 import type {
   ChatStreamCareerData,
   ChatStreamHumanizerData,
   ChatStreamImageData,
-  ChatStreamMcpData,
   ChatStreamStageData,
   ChatStreamVideoData,
-  McpCallRequestPayload,
 } from "@/lib/api";
-import type { VideoRequestPayload } from "@/lib/api";
 
 import styles from "@/components/bridges/chat/chat.module.css";
 
@@ -81,8 +70,6 @@ interface ActiveRun {
   imageProcess: ChatStreamImageData | null;
   /** Issue 32：流式中的视频任务状态快照（提交即下发，任务卡即时呈现）。 */
   videoProcess: ChatStreamVideoData | null;
-  /** Issue 36：流式中的 MCP 调用结果投影（同步执行终态，结果卡即时呈现）。 */
-  mcpCallProcess: ChatStreamMcpData | null;
   /** 终态标识：error 事件后保留渲染直至权威历史加载完成 */
   status: "streaming" | "error";
   errorText?: string;
@@ -125,7 +112,6 @@ function activeRunFromAssistant(
     careerProcess: null,
     imageProcess: null,
     videoProcess: null,
-    mcpCallProcess: null,
   };
 }
 /**
@@ -141,33 +127,16 @@ export default function ChatConversationPage() {
   const conversationId = params.conversationId;
 
   const [conversation, setConversation] = useState<ChatConversationProjection | null>(null);
-  const [selectedMode, setSelectedMode] = useState<ChatMode>("companion");
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [loadError, setLoadError] = useState("");
   const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [pendingUser, setPendingUser] = useState<{ id: string; text: string } | null>(null);
   const [sendError, setSendError] = useState<{ message: string } | null>(null);
   const [announcement, setAnnouncement] = useState<string | null>(null);
-  // Issue 26：本轮用户消息触发的画像通知（明确记忆/自动写入/候选/单次情绪）
-  // Issue 28：文章人味化任务对话框（改写/生成两条路径）
-  // Issue 29：生涯规划任务对话框（问题 + 画像开关）
-  const [humanizerOpen, setHumanizerOpen] = useState(false);
-  const [careerOpen, setCareerOpen] = useState(false);
-  // Issue 32：视频生成任务对话框（单一生成页签，Wan 固定绑定）
-  const [videoOpen, setVideoOpen] = useState(false);
-  // Issue 36：对话级插件选择（随对话持久化；chip 持续显示；停用/卸载/
-  // 撤权后由服务端清洗并随投影解释影响）
-  // Issue 36：MCP 调用对话框目标（选中插件 chip「调用」按钮打开）
-  const [invokeMcpTarget, setInvokeMcpTarget] = useState<{
-    mcp_id: string;
-    name: string;
-  } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
   const firstTurnIdempotencyKeyRef = useRef<string | null>(null);
   const firstTurnRetryRef = useRef(false);
-  const modeLocked = conversation?.mode_locked ?? (conversation?.messages?.length ?? 0) > 0;
-  const currentMode: ChatMode = modeLocked ? conversation?.mode ?? selectedMode : selectedMode;
   const load = useCallback(async (keepContent = false) => {
     // keepContent：本地刷新（如错误收敛后）时保留当前消息渲染，
     // 不闪 loading，避免遮蔽 error 态的思考摘要。
@@ -176,13 +145,6 @@ export default function ChatConversationPage() {
     try {
       const projection = await getChatConversation(conversationId);
       setConversation(projection);
-      if ((projection.removed_selections ?? []).length > 0) {
-        setAnnouncement(
-          `已移除失效插件：${(projection.removed_selections ?? [])
-            .map((entry) => `「${entry.name}」${entry.reason}`)
-            .join("；")}`
-        );
-      }
       setLoadState("ready");
     } catch (error) {
       setLoadState("error");
@@ -247,23 +209,6 @@ export default function ChatConversationPage() {
     };
   }, [loadState]);
 
-  // Issue 36：解析选中插件的显示名（刷新/恢复历史对话后 chip 名称不丢）。
-  // 只拉取列表接口的轻量投影；失败静默降级为显示 plugin_id。
-  /*
-
-  // Issue 36：替换本对话插件选择（选择器确认后全量 PATCH；显式空数组
-  // 清空）。只更新本地 plugin_selection 字段，避免用 PATCH 响应覆盖消息列表。
-          selection.length > 0
-            ? `已选择 ${selection.length} 个插件`
-            : "已清除插件选择"
-        );
-      } catch (error) {
-        setSendError({
-          message: error instanceof Error ? error.message : "更新插件选择失败，请稍后重试。",
-        });
-      }
-    },
-  */
   const handleStreamEvent = useCallback(
     (kind: ActiveRun["kind"], text: string) =>
       (event: ChatStreamEvent) => {
@@ -303,7 +248,6 @@ export default function ChatConversationPage() {
             careerProcess: null,
             imageProcess: null,
             videoProcess: null,
-            mcpCallProcess: null,
           };
           activeRunRef.current = run;
           if (kind === "send") {
@@ -368,16 +312,6 @@ export default function ChatConversationPage() {
             };
             setActiveRun((run) => (run ? { ...run, videoProcess: event.data } : run));
           }
-        } else if (isChatStreamEventOf(event, "mcp_call")) {
-          // Issue 36：MCP 调用结果事件（同步执行终态投影）；结果卡在
-          // 流式期间即时呈现，终态由 done 后权威历史的消息投影接管。
-          if (activeRunRef.current?.messageId === event.data.message_id) {
-            activeRunRef.current = {
-              ...activeRunRef.current,
-              mcpCallProcess: event.data,
-            };
-            setActiveRun((run) => (run ? { ...run, mcpCallProcess: event.data } : run));
-          }
         } else if (isChatStreamEventOf(event, "done") || isChatStreamEventOf(event, "error")) {
           if (isChatStreamEventOf(event, "error")) {
             // 失败/停止/断流：保留已完成正文与思考摘要的 error 态渲染
@@ -407,7 +341,6 @@ export default function ChatConversationPage() {
               careerProcess: current?.careerProcess ?? null,
               imageProcess: current?.imageProcess ?? null,
               videoProcess: current?.videoProcess ?? null,
-              mcpCallProcess: current?.mcpCallProcess ?? null,
             };
             activeRunRef.current = errorRun;
             setActiveRun(errorRun);
@@ -479,23 +412,14 @@ export default function ChatConversationPage() {
   );
 
   const sendMessage = useCallback(
-    async (
-      text: string,
-      useKnowledgeBase: boolean = true,
-      skillId?: string,
-      skillInput?: unknown,
-      video?: VideoRequestPayload,
-      mcpCall?: McpCallRequestPayload
-    ): Promise<boolean> => {
+    async (text: string): Promise<boolean> => {
       setSendError(null);
       setAnnouncement("正在生成回答");
       const controller = new AbortController();
       abortRef.current = controller;
       const isFirstTurn =
         firstTurnRetryRef.current ||
-        (conversation !== null &&
-          !modeLocked &&
-          (conversation.messages?.length ?? 0) === 0);
+        (conversation !== null && (conversation.messages?.length ?? 0) === 0);
       try {
         // Issue 02：创建运行（消息已落库、运行已入队），立即订阅持久化事件
         let userMessage: ChatMessageProjection;
@@ -507,40 +431,20 @@ export default function ChatConversationPage() {
             (firstTurnIdempotencyKeyRef.current = crypto.randomUUID());
           const firstTurn = await startFirstTurn({
             content: text,
-            idempotency_key: idempotencyKey,
-            conversation_id: conversationId,
-            mode: selectedMode,
-            use_knowledge_base: useKnowledgeBase,
-            ...(skillId !== undefined ? { skill_id: skillId } : {}),
-            ...(skillInput !== undefined
-              ? { skill_input: skillInput as HumanizerSkillInput }
-              : {}),
-            ...(video !== undefined ? { video } : {}),
-            ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
+            idempotencyKey,
+            conversationId,
+            mode: conversation?.mode ?? "companion",
           });
           setConversation(firstTurn.conversation);
-          setSelectedMode(firstTurn.conversation.mode);
           userMessage = firstTurn.user_message;
           assistantMessage = firstTurn.assistant_message;
           cursor = firstTurn.cursor;
           firstTurnRetryRef.current = true;
         } else {
-          const run = await createChatRun(
-            conversationId,
-            text,
-            useKnowledgeBase,
-            skillId,
-            skillInput,
-            undefined,
-            video,
-            mcpCall
-          );
+          const run = await createChatRun(conversationId, text);
           userMessage = run.user_message;
           assistantMessage = run.assistant_message;
           cursor = run.cursor;
-          setConversation((current) =>
-            current ? { ...current, mode_locked: true } : current
-          );
         }
         const runState = activeRunFromAssistant(assistantMessage, "send");
         activeRunRef.current = runState;
@@ -563,7 +467,10 @@ export default function ChatConversationPage() {
         setSendError({ message });
         setAnnouncement(`生成失败：${message}`);
         // 断流/内部错误时服务端已收敛消息状态：刷新展示可重试错误
-        void load();
+        // 保留 Composer 的本地正文；失败时不切换 loadState，避免卸载输入区。
+        activeRunRef.current = null;
+        setActiveRun(null);
+        setPendingUser(null);
         return false;
       } finally {
         abortRef.current = null;
@@ -575,109 +482,17 @@ export default function ChatConversationPage() {
       conversation,
       conversationId,
       handleStreamEvent,
-      load,
-      modeLocked,
-      selectedMode,
       subscribeWithRetry,
     ]
   );
 
-  /** Issue 28：提交人味化任务（真实消息流：任务契约随消息落库，可重试）。
-   *  消息正文由对话框统一组装（单一来源），这里只转发发送。 */
-  const handleHumanizerSubmit = useCallback(
-    async (
-      content: string,
-      skillInput: HumanizerSkillInput,
-      useKnowledgeBase: boolean
-    ): Promise<boolean> => {
-      return sendMessage(
-        content,
-        useKnowledgeBase,
-        skillInput.skill_id,
-        skillInput
-      );
-    },
-    [sendMessage]
-  );
-
-  /** Issue 29：提交生涯规划任务（真实消息流）。 */
-  const handleCareerSubmit = useCallback(
-    async (content: string): Promise<boolean> => {
-      return sendMessage(content, true);
-    },
-    [sendMessage]
-  );
-
-  /** Issue 36：提交对选中 MCP 插件的调用（真实消息流：mcp_call 载荷
-   *  走服务端选中校验与 invoke，结果卡在消息流中呈现，不伪造结果）。 */
-  /*
-  const handleMcpInvokeSubmit = useCallback(
-    async (payload: McpCallRequestPayload): Promise<boolean> => {
-      const target = invokeMcpTarget;
-      const ok = await sendMessage(
-        `调用 ${payload.mcp_id} 的 ${payload.tool} 工具`,
-        true,
-        undefined,
-        undefined,
-        undefined,
-        payload
-      );
-      setInvokeMcpTarget(null);
-      return ok;
-    },
-    [sendMessage, invokeMcpTarget]
-  );
-
-  /** Issue 36：消息内 MCP 敏感操作确认（approve/deny 走 chat 域路由，
-   *  结果写回消息投影；确认后刷新权威历史呈现最终结果）。 */
-  const confirmMessageMcp = useCallback(
-    async () => {
-      setSendError({ message: "MCP 调用已退役，历史调用仅供查看。" });
-    },
-    []
-  );
-
-  /** Issue 32：提交文生视频任务（真实消息流：video 载荷创建异步任务，
-   *  状态卡与资产卡在消息流中呈现，不在此处伪造视频结果）。 */
-  void confirmMessageMcp;
-  const handleVideoSubmit = useCallback(
-    async (payload: { prompt: string }): Promise<boolean> => {
-      const videoPayload: VideoRequestPayload = {
-        prompt: payload.prompt,
-        aspect_ratio: "16:9",
-        size: "1280*720",
-        duration_seconds: 5,
-      };
-      return sendMessage(payload.prompt, true, undefined, undefined, videoPayload);
-    },
-    [sendMessage]
-  );
-
-  const downloadAttachment = useCallback(
-    async (attachment: ChatAttachmentProjection) => {
-      try {
-        await downloadChatAttachment(
-          conversationId,
-          attachment.object_id,
-          attachment.original_filename
-        );
-        setAnnouncement(`已下载附件：${attachment.original_filename}`);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "附件下载失败，请重试。";
-        setSendError({ message });
-        setAnnouncement(`附件下载失败：${message}`);
-      }
-    },
-    [conversationId]
-  );
-
   const skipTeachingQuestion = useCallback(() => {
-    void sendMessage("跳过这道理解检查，我想继续学习。", true);
+    void sendMessage("跳过这道理解检查，我想继续学习。");
   }, [sendMessage]);
 
   // Issue 08：目标确认阶段一键按初学者开始（发送固定确认指令）。
   const beginnerStartTeaching = useCallback(() => {
-    void sendMessage("按初学者开始", true);
+    void sendMessage("按初学者开始");
   }, [sendMessage]);
 
   const stop = useCallback(async () => {
@@ -724,7 +539,7 @@ export default function ChatConversationPage() {
         const message = error instanceof Error ? error.message : "重试失败，请稍后再试。";
         setSendError({ message });
         setAnnouncement(`重试失败：${message}`);
-        void load();
+        void load(true);
       } finally {
         abortRef.current = null;
         window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
@@ -769,17 +584,16 @@ export default function ChatConversationPage() {
   // Issue 02：resume 恢复时权威历史已含该 streaming 消息（部分内容），
   // 由 ActiveRun 接管渲染，先从历史中移除同 messageId 项避免双份。
   const baseMessages = conversation
-    ? buildThreadMessages(conversation.messages ?? [], conversation.mode_events ?? [])
+    ? buildThreadMessages(conversation.messages ?? [])
     : [];
   const resumedMessageId = activeRun?.kind === "resume" ? activeRun.messageId : null;
   const activeSendMessageId = activeRun?.kind === "send" ? activeRun.messageId : null;
   const activeSendUserMessageId = activeRun?.kind === "send" ? pendingUser?.id : null;
   const threadMessages = baseMessages.filter(
     (item) =>
-      !("id" in item) ||
-      (item.id !== resumedMessageId &&
-        item.id !== activeSendMessageId &&
-        item.id !== activeSendUserMessageId)
+      item.id !== resumedMessageId &&
+      item.id !== activeSendMessageId &&
+      item.id !== activeSendUserMessageId
   );
   if (activeRun) {
     const isError = activeRun.status === "error";
@@ -796,7 +610,6 @@ export default function ChatConversationPage() {
       careerProcess: activeRun.careerProcess,
       image: activeRun.imageProcess?.task ?? undefined,
       video: activeRun.videoProcess?.task ?? undefined,
-      mcpCall: activeRun.mcpCallProcess?.call ?? undefined,
       content: (
         <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>
           {activeRun.content}
@@ -855,7 +668,6 @@ export default function ChatConversationPage() {
                 onStop={() => void stop()}
                 onTeachingSkip={() => skipTeachingQuestion()}
                 onTeachingBeginnerStart={() => beginnerStartTeaching()}
-                onDownloadAttachment={(attachment) => void downloadAttachment(attachment)}
                 conversationId={conversationId}
                 tts={MEDIA_ALWAYS_AVAILABLE}
                 onRefreshMessages={() => void load(true)}
@@ -866,24 +678,14 @@ export default function ChatConversationPage() {
               )}
               <div className={styles.composerWrap}>
                 <div className={styles.composerInner}>
-                  <div className={styles.modeRow}>
-                    <ModeToggle
-                      value={currentMode}
-                      locked={modeLocked}
-                      onChange={modeLocked ? undefined : setSelectedMode}
-                    />
-                  </div>
+                  <p className={styles.modeLabel} data-testid="conversation-mode">
+                    {conversation?.mode === "study" ? "学习模式" : "日常陪伴"}
+                  </p>
                   <Composer
-                    onSend={(text, _, useKnowledgeBase) =>
-                      sendMessage(text, useKnowledgeBase)
-                    }
+                    onSend={(text) => sendMessage(text)}
                     conversationId={conversationId}
                     generating={generating}
                     onStop={() => void stop()}
-                    onOpenHumanizer={() => setHumanizerOpen(true)}
-                    onOpenCareer={() => setCareerOpen(true)}
-                    onOpenVideo={() => setVideoOpen(true)}
-                    video={MEDIA_ALWAYS_AVAILABLE}
                     asr={MEDIA_ALWAYS_AVAILABLE}
                   />
                 </div>
@@ -892,22 +694,6 @@ export default function ChatConversationPage() {
           )}
         </main>
       </div>
-      <HumanizerDialog
-        open={humanizerOpen}
-        onClose={() => setHumanizerOpen(false)}
-        onSubmit={handleHumanizerSubmit}
-      />
-      <CareerPlanningDialog
-        open={careerOpen}
-        onClose={() => setCareerOpen(false)}
-        conversationId={conversationId}
-        onSubmit={handleCareerSubmit}
-      />
-      <VideoDialog
-        open={videoOpen}
-        onClose={() => setVideoOpen(false)}
-        onSubmit={handleVideoSubmit}
-      />
     </AppShell>
   );
 }

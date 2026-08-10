@@ -6,7 +6,10 @@
   display: flex;
   flex: 1;
   min-width: 0;
-  min-height: calc(100vh - var(--shell-chrome-height, var(--topbar-height)));
+  min-height: 0;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
 }
 
 /* ---- 消息主区 ---- */
@@ -16,17 +19,27 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
-  min-height: calc(100vh - var(--shell-chrome-height, var(--topbar-height)));
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background-color: var(--color-bg-primary);
 }
 
 .thread {
   flex: 1;
+  min-height: 0;
+  min-width: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-8) var(--space-6);
+  overscroll-behavior: contain;
   scroll-behavior: smooth;
 }
 
 .threadInner {
+  width: 100%;
+  min-width: 0;
   max-width: 46rem;
   margin-inline: auto;
   display: flex;
@@ -78,21 +91,31 @@
 /* ---- 输入区 ---- */
 
 .composerWrap {
+  flex-shrink: 0;
   padding: var(--space-4) var(--space-6);
   border-top: 1px solid var(--color-border);
-  background-color: var(--color-surface);
+  background-color: var(--color-bg-primary);
 }
 
 .composerInner {
+  width: 100%;
+  min-width: 0;
   max-width: 46rem;
   margin-inline: auto;
 }
 
-/* Issue 14：输入区上方的对话模式切换行（日常陪伴 / 学习模式） */
+/* 新聊天首页的模式选择行；已有会话只显示下方只读文本。 */
 .modeRow {
   display: flex;
   justify-content: center;
   margin-bottom: var(--space-3);
+}
+
+.modeLabel {
+  margin: 0 0 var(--space-3);
+  color: var(--color-text-tertiary);
+  font-size: var(--text-sm);
+  text-align: center;
 }
 
 /* 流式光标：回答正文后的闪烁竖线 */

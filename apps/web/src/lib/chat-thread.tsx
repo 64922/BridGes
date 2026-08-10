@@ -1,12 +1,8 @@
 import type {
   ChatMessage,
   ChatThinking,
-  ThreadModeEvent,
 } from "@/components/bridges/MessageList";
-import type {
-  ChatMessageProjection,
-  ChatModeEventProjection,
-} from "@/lib/api";
+import type { ChatMessageProjection } from "@/lib/api";
 
 /**
  * 把服务端消息投影组装成线程渲染项（Issue 11/14）。
@@ -14,27 +10,18 @@ import type {
  * 每轮用户消息只渲染最新一次助手尝试作为回答；历史失败/停止的尝试折叠为
  * "前 N 次尝试"，保留审计关系，不静默改写历史。助手消息携带可公开思考
  * 摘要（步骤/证据/工具/质量），耗时换算自真实生命周期 duration_ms。
- * 模式切换事件作为独立渲染项插入消息流（Issue 14，只影响后续消息）。
+ * 会话模式由首轮创建后固定，历史模式事件不进入当前消息流。
  */
-export function buildThreadMessages(
-  messages: ChatMessageProjection[],
-  modeEvents: ChatModeEventProjection[] = []
-): (ChatMessage | ThreadModeEvent)[] {
-  const items: (ChatMessage | ThreadModeEvent)[] = [];
-  const events = [...modeEvents];
+export function buildThreadMessages(messages: ChatMessageProjection[]): ChatMessage[] {
+  const items: ChatMessage[] = [];
 
   for (let index = 0; index < messages.length; index += 1) {
     const message = messages[index];
-    // 消息时间之前的模式切换事件按序插入（时间相同的切换在消息前渲染）
-    while (events.length > 0 && events[0].created_at <= message.created_at) {
-      items.push({ kind: "mode-event", ...events.shift()! });
-    }
     if (message.role === "user") {
       items.push({
         id: message.message_id,
         role: "user",
         plainText: message.content,
-        attachments: message.attachments ?? [],
         // Issue 28：用户消息的 SKILL 载荷快照（人味化任务标识）
         skill: message.skill ?? null,
         content: <p style={{ whiteSpace: "pre-wrap", overflowWrap: "break-word" }}>{message.content}</p>,
@@ -63,8 +50,6 @@ export function buildThreadMessages(
       thinking: latest.thinking ? projectionThinking(latest) : undefined,
       // Issue 20：本轮分层检索轮次（含引用）；无检索作用域时为 null
       retrieval: latest.retrieval ?? null,
-      // Issue 12：跳过决策也会持久化，用于避免专用能力闪现检索加载态
-      retrievalDecision: latest.retrieval_decision ?? null,
       webSearch: latest.web_search ?? null,
       arxivSearch: latest.arxiv_search ?? null,
       teaching: latest.teaching ?? null,
@@ -81,7 +66,6 @@ export function buildThreadMessages(
       image: latest.image ?? null,
       // Issue 32：本条助手消息的视频任务/资产状态快照（任务卡与资产卡）
       video: latest.video ?? null,
-      mcpCall: latest.mcp_call ?? null,
       status: latest.status === "streaming" ? "streaming" : latest.status === "error" ? "error" : undefined,
       errorText: latest.status === "error" ? (latest.error_message ?? "生成失败。") : undefined,
       previousAttempts: previous.map((attempt) => ({
@@ -92,17 +76,14 @@ export function buildThreadMessages(
     });
   }
   // 收尾：消息流之后剩余的模式切换事件
-  while (events.length > 0) {
-    items.push({ kind: "mode-event", ...events.shift()! });
-  }
   return items;
 }
 
 /** 该轮之前的最近一条用户消息的 SKILL 载荷（人味化任务标识）。 */
-function skillOfPreviousUser(items: (ChatMessage | ThreadModeEvent)[]): unknown {
+function skillOfPreviousUser(items: ChatMessage[]): unknown {
   for (let index = items.length - 1; index >= 0; index -= 1) {
     const item = items[index];
-    if ("role" in item && item.role === "user") return item.skill ?? null;
+    if (item.role === "user") return item.skill ?? null;
   }
   return null;
 }
