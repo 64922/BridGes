@@ -1,0 +1,207 @@
+/* 欢迎页样式：除页面专属的视觉扩展（视频遮罩、幽灵按钮、入场动效）外，
+   全部取值引用 globals.css 令牌；深色令牌值见 WelcomePage.tsx 注释。 */
+
+.root {
+  position: relative;
+  min-height: 100dvh;
+  overflow: hidden;
+  background-color: #14130f; /* 视频加载前的暖黑底色 */
+  color: #f5f2ea; /* --color-text-primary（深色主题） */
+}
+
+/* ---------- 背景视频层 ---------- */
+.bgVideo {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 铺满且不变形 */
+  filter: brightness(1.22); /* 提亮视频（设计验收第二档） */
+  pointer-events: none;
+}
+
+/* 遮罩：顶部压暗保导航可读、文字区椭圆底盘保可读性、四角 vignette 收拢视线 */
+.bgOverlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 42%, transparent 0%, rgb(10 9 7 / 0.2) 100%),
+    radial-gradient(58% 42% at 50% 47%, rgb(16 15 12 / 0.38) 0%, transparent 100%),
+    linear-gradient(
+      180deg,
+      rgb(16 15 12 / 0.38) 0%,
+      rgb(16 15 12 / 0.18) 34%,
+      rgb(16 15 12 / 0.16) 52%,
+      rgb(16 15 12 / 0.4) 100%
+    );
+}
+
+/* ---------- 顶部导航（top-nav 64px 令牌） ---------- */
+.topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10; /* 必须高于 .hero，否则被盖住无法点击 */
+  height: 4rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-inline: var(--space-8);
+  animation: fade var(--motion-duration-slow) var(--motion-easing) both;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+  opacity: 0.92;
+  transition: opacity var(--motion-duration-fast) var(--motion-easing);
+}
+
+.brand:hover {
+  opacity: 1;
+}
+
+.navActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  padding: 0 1.25rem;
+  border-radius: var(--radius-lg);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  line-height: 1;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-duration-fast) var(--motion-easing),
+    border-color var(--motion-duration-fast) var(--motion-easing),
+    box-shadow var(--motion-duration-fast) var(--motion-easing),
+    transform var(--motion-duration-fast) var(--motion-easing);
+}
+
+/* 登录：视频上的幽灵按钮（button-secondary-on-dark 的视频场景扩展） */
+.btnGhost {
+  color: #f5f2ea;
+  background: rgb(245 242 234 / 0.08);
+  border: 1px solid rgb(245 242 234 / 0.38);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.btnGhost:hover {
+  color: #f5f2ea;
+  background: rgb(245 242 234 / 0.18);
+  border-color: rgb(245 242 234 / 0.65);
+}
+
+/* 注册：主按钮（深色主题 accent 令牌 #e1936b / #eaa582） */
+.btnPrimary {
+  color: #241207; /* --color-text-on-accent（深色主题） */
+  background: #e1936b;
+  border: 1px solid transparent;
+}
+
+.btnPrimary:hover {
+  color: #241207;
+  background: #eaa582;
+  box-shadow: 0 4px 16px rgb(225 147 107 / 0.35);
+  transform: translateY(-1px);
+}
+
+.btnPrimary:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.btn:focus-visible,
+.brand:focus-visible {
+  outline: 3px solid rgb(245 242 234 / 0.9);
+  outline-offset: 2px;
+}
+
+/* ---------- 中央品牌区 ---------- */
+.hero {
+  position: relative;
+  z-index: 2;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--space-16) var(--space-6) var(--space-16);
+}
+
+.wordmark {
+  font-family: var(--font-serif);
+  font-size: clamp(4rem, 9vw, 7.5rem); /* 64–120px，桌面窗口内流式缩放 */
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.02em; /* display 负字距规范 */
+  color: #f5f2ea;
+  text-shadow: 0 2px 32px rgb(0 0 0 / 0.35);
+  animation: rise 600ms var(--motion-easing) 100ms both;
+}
+
+.tagline {
+  margin-top: var(--space-8);
+  max-width: 36em;
+  font-size: var(--text-lg);
+  font-weight: 400;
+  line-height: 2; /* 中文短句的呼吸感 */
+  letter-spacing: 0.04em;
+  color: rgb(245 242 234 / 0.94);
+  text-shadow: 0 1px 20px rgb(0 0 0 / 0.55);
+  animation: rise 600ms var(--motion-easing) 260ms both;
+}
+
+/* ---------- 入场动效（仅首绘一次；交互动效仍走 150–300ms 令牌） ---------- */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .topbar,
+  .wordmark,
+  .tagline {
+    animation: none;
+  }
+
+  .btn,
+  .brand {
+    transition: none;
+  }
+}
+
+/* 仅服务桌面端：窄窗口（如分屏）下适度收敛，不做移动端适配 */
+@media (max-width: 1023px) {
+  .topbar {
+    padding-inline: var(--space-6);
+  }
+}

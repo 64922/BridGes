@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>BridGes — 连接你与知识的桥梁</title>
+<!--
+  BridGes 启动欢迎页 · 设计 Demo（独立预览，不依赖项目构建）
+  所有取值映射自 apps/web/src/styles/globals.css 设计令牌：
+  - 深色主题文字:  #f5f2ea / #cfc9b8        (--color-text-primary/secondary [data-theme=dark])
+  - 深色主题强调色: #e1936b / hover #eaa582  (--color-accent-primary/hover [data-theme=dark])
+  - 深色主题强调文字:#241207                 (--color-text-on-accent [data-theme=dark])
+  - 圆角: 8px(--radius-lg)  按钮高 40px(--target-size 视觉对齐)
+  - 动效: 150/200/300ms + cubic-bezier(0.4,0,0.2,1)
+-->
+<style>
+  :root {
+    --on-video-text: #f5f2ea;
+    --on-video-text-soft: #cfc9b8;
+    --accent: #e1936b;
+    --accent-hover: #eaa582;
+    --on-accent: #241207;
+    --radius-btn: 8px;
+    --motion-fast: 150ms;
+    --motion-slow: 300ms;
+    --ease: cubic-bezier(0.4, 0, 0.2, 1);
+    --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-serif: "Songti SC", "SimSun", "STSong", "Noto Serif CJK SC", Georgia, serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: #14130f; /* 视频加载前的暖黑底色 */
+    color: var(--on-video-text);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- 背景视频层 ---------- */
+  .bg-video {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;          /* 铺满且不变形 */
+    filter: brightness(1.22);   /* 整体提亮视频（第二档） */
+    z-index: 0;
+    pointer-events: none;       /* 不拦截前景交互 */
+  }
+
+  /* 遮罩：整体调亮（视频仅服务桌面端，亮度优先），保留顶部/中心/四角的基础压暗 */
+  .bg-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background:
+      radial-gradient(120% 90% at 50% 42%, transparent 0%, rgb(10 9 7 / 0.20) 100%),
+      radial-gradient(58% 42% at 50% 47%, rgb(16 15 12 / 0.38) 0%, transparent 100%),
+      linear-gradient(180deg,
+        rgb(16 15 12 / 0.38) 0%,
+        rgb(16 15 12 / 0.18) 34%,
+        rgb(16 15 12 / 0.16) 52%,
+        rgb(16 15 12 / 0.40) 100%);
+  }
+
+  /* ---------- 顶部导航 ---------- */
+  .topbar {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    z-index: 10;                        /* 必须高于 .hero(2)，否则被盖住无法点击 */
+    height: 64px;                       /* top-nav 令牌 */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-inline: 32px;
+    animation: wl-fade var(--motion-slow) var(--ease) both;
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+    opacity: 0.92;
+    transition: opacity var(--motion-fast) var(--ease);
+  }
+  .brand:hover { opacity: 1; }
+  .brand svg { width: 32px; height: 32px; display: block; }
+
+  .nav-actions { display: flex; align-items: center; gap: 12px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 40px;
+    padding: 0 20px;
+    border-radius: var(--radius-btn);
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    text-decoration: none;
+    cursor: pointer;
+    transition:
+      background-color var(--motion-fast) var(--ease),
+      border-color var(--motion-fast) var(--ease),
+      box-shadow var(--motion-fast) var(--ease),
+      transform var(--motion-fast) var(--ease);
+  }
+
+  /* 登录：视频上的幽灵按钮（button-secondary-on-dark 的视频场景扩展） */
+  .btn-ghost {
+    color: var(--on-video-text);
+    background: rgb(245 242 234 / 0.08);
+    border: 1px solid rgb(245 242 234 / 0.38);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .btn-ghost:hover {
+    background: rgb(245 242 234 / 0.18);
+    border-color: rgb(245 242 234 / 0.65);
+  }
+
+  /* 注册：主按钮（深色主题 accent 令牌） */
+  .btn-primary {
+    color: var(--on-accent);
+    background: var(--accent);
+    border: 1px solid transparent;
+  }
+  .btn-primary:hover {
+    background: var(--accent-hover);
+    box-shadow: 0 4px 16px rgb(225 147 107 / 0.35);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active { transform: translateY(0); box-shadow: none; }
+
+  .btn:focus-visible, .brand:focus-visible {
+    outline: 3px solid rgb(245 242 234 / 0.9);
+    outline-offset: 2px;
+  }
+
+  /* ---------- 中央品牌区 ---------- */
+  .hero {
+    position: relative;
+    z-index: 2;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 96px 24px 64px;
+  }
+
+  .wordmark {
+    font-family: var(--font-serif);
+    font-size: clamp(64px, 9vw, 120px);   /* 桌面窗口范围内流式缩放 */
+    font-weight: 600;
+    line-height: 1.05;
+    letter-spacing: -0.02em;      /* display 负字距规范 */
+    color: var(--on-video-text);
+    text-shadow: 0 2px 32px rgb(0 0 0 / 0.35);
+    animation: wl-rise 600ms var(--ease) 100ms both;
+  }
+
+  .tagline {
+    margin-top: 28px;             /* 与 wordmark 的层级留白 */
+    max-width: 36em;
+    font-size: clamp(15px, 1.6vw, 18px);
+    font-weight: 400;
+    line-height: 2;               /* 中文短句的呼吸感 */
+    letter-spacing: 0.04em;
+    color: rgb(245 242 234 / 0.94);   /* 视频上保证 AA 可读性，与 wordmark 靠字号分层 */
+    text-shadow: 0 1px 20px rgb(0 0 0 / 0.55);
+    animation: wl-rise 600ms var(--ease) 260ms both;
+  }
+
+  /* ---------- 入场动效（仅首绘一次；交互动效仍走 150–300ms 令牌） ---------- */
+  @keyframes wl-rise {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes wl-fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .topbar, .wordmark, .tagline { animation: none; }
+    .btn { transition: none; }
+  }
+
+  /* 仅服务桌面端：窄窗口（如分屏）下适度收敛即可，不做移动端适配 */
+  @media (max-width: 1023px) {
+    .topbar { padding-inline: 24px; }
+  }
+</style>
+</head>
+<body>
+
+  <!-- 背景视频：自动播放 / 循环 / 静音 / 内联播放；对辅助技术隐藏 -->
+  <video class="bg-video" autoplay muted loop playsinline aria-hidden="true" tabindex="-1">
+    <source src="https://pollen-batch-41236914.figma.site/_components/v2/f0ee2dae7671c170c34f12e31c4cb41418976c98/769c564298c132f7919405cd9f17c1b1231f341d.769c5642.mp4" type="video/mp4" />
+  </video>
+  <div class="bg-overlay"></div>
+
+  <!-- 顶部导航 -->
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="BridGes 首页">
+      <!-- 项目 Logo（bridges-logo-icon-dark.svg 内联） -->
+      <svg viewBox="0 0 48 48" role="img" aria-label="BridGes 图标">
+        <g transform="translate(0 -3.5)">
+          <path d="M11 39 Q24 19 37 39" fill="none" stroke="#E1936B" stroke-width="3.5" stroke-linecap="round"/>
+          <line x1="10" y1="26" x2="38" y2="26" stroke="#F5F2EA" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="6" cy="26" r="4" fill="#E1936B"/>
+          <path d="M42 20.5 L43.6 24.4 L47.5 26 L43.6 27.6 L42 31.5 L40.4 27.6 L36.5 26 L40.4 24.4 Z" fill="#F5F2EA"/>
+        </g>
+      </svg>
+    </a>
+    <nav class="nav-actions" aria-label="账户">
+      <a class="btn btn-ghost" href="/login">登录</a>
+      <a class="btn btn-primary" href="/register">注册</a>
+    </nav>
+  </header>
+
+  <!-- 中央品牌区 -->
+  <main class="hero">
+    <h1 class="wordmark">BridGes</h1>
+    <p class="tagline">
+      连接你与知识的桥梁，不仅是你的益友，更是一位良师。<br />
+      在人性化的交流中越来越懂你。
+    </p>
+  </main>
+
+</body>
+</html>

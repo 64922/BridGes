@@ -3,8 +3,12 @@ import { expect, test } from "@playwright/test";
 import { signUp, uniqueCredentials } from "./helpers/auth";
 
 test.describe("T002 — 电脑端布局与无障碍基线", () => {
-  test("未登录访问根路径直接进入新版登录页", async ({ page }) => {
+  test("未登录访问根路径进入启动欢迎页，并可跳转登录", async ({ page }) => {
     await page.goto("/");
+    await expect(page).toHaveTitle("BridGes");
+    await expect(page.getByRole("heading", { name: "BridGes" })).toBeVisible();
+    // 欢迎页右上角提供登录入口，点击后进入新版登录页。
+    await page.getByRole("link", { name: "登录" }).click();
     await page.waitForURL("/login");
     await expect(page).toHaveTitle("登录 — BridGes");
     await expect(page.getByRole("heading", { name: "登录" })).toBeVisible();
