@@ -37,6 +37,7 @@ _EXTENSION_TYPES = {
     ".jpeg": "image/jpeg",
     ".jpg": "image/jpeg",
     ".json": "application/json",
+    ".markdown": "text/markdown",
     ".md": "text/markdown",
     ".pdf": "application/pdf",
     ".png": "image/png",

@@ -12,6 +12,7 @@ from zipfile import ZipFile
 from fastapi.testclient import TestClient
 
 from bridges.api.main import create_app
+from bridges.chat.attachments import sniff_media_type
 from bridges.config import get_settings
 
 
@@ -181,6 +182,12 @@ def test_upload_uses_content_sniffing_and_retries_idempotently(
     )
     assert macro_doc.status_code == 400, macro_doc.text
     assert "文件类型" in macro_doc.json()["detail"]["message"]
+
+
+def test_sniff_accepts_markdown_extension() -> None:
+    content = "# 标题\n\n正文内容。\n".encode()
+    assert sniff_media_type("笔记.markdown", content) == "text/markdown"
+    assert sniff_media_type("笔记.md", content) == "text/markdown"
 
 
 def test_attachment_binds_to_message_downloads_and_isolated_delete(
