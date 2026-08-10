@@ -818,8 +818,44 @@ def stopped_teaching_projection(
             "can_cancel": False,
             "can_retry": True,
             "quiz": None,
+            "plan": None,
+            "lesson": None,
         }
     )
+
+
+def failed_teaching_projection(
+    teaching: TeachingTurnProjection | None,
+    message: str,
+) -> TeachingTurnProjection | None:
+    """模型或运行阶段失败时只发布可重试状态，不发布半成品计划。"""
+
+    if teaching is None:
+        return None
+    failed = TeachingTurnService.discard_first_plan(teaching)
+    gate = failed.evidence_gate.model_copy(
+        update={"search_status": TeachingCardStatus.RECOVERY}
+    )
+    return failed.model_copy(
+        update={
+            "status": TeachingCardStatus.RECOVERY,
+            "evidence_gate": gate,
+            "gap_response": message,
+            "next_prompt": "本轮没有发布计划或课时，修复后可以从同一学习目标重试。",
+            "can_answer_reliably": False,
+            "can_cancel": False,
+            "can_retry": True,
+            "quiz": None,
+        }
+    )
+
+
+def teaching_payload(
+    teaching: TeachingTurnProjection | None,
+) -> dict[str, Any] | None:
+    """把可选教学投影安全转换为消息 JSON。"""
+
+    return teaching.model_dump(mode="json") if teaching is not None else None
 
 
 def cancelled_web_search(
@@ -876,6 +912,14 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
     for source in [*gate.local_sources, *gate.external_sources]:
         locator = f"（{source.locator}）" if source.locator else ""
         lines.append(f"[{source.source_id}] {source.title}{locator}")
+    if teaching.plan is not None and teaching.lesson is not None:
+        lines.extend(
+            [
+                "本轮是首次建立学习目标：必须在同一回复中交付一个版本化计划和第 1 课。",
+                f"计划版本：{teaching.plan.version}；第一课编号：{teaching.lesson.lesson_number}。",
+                "计划和第一课必须共享本轮目标与证据，不得生成第二个课时或课程索引。",
+            ]
+        )
     if gate.gap:
         lines.append(f"必须向用户明确说明缺口：{gate.gap}")
     return "\n".join(lines)
@@ -1734,6 +1778,7 @@ class TurnOrchestrator:
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
+            first_lesson_requested = False
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
                 if current.teaching is not None and mode == ChatMode.STUDY
@@ -1783,48 +1828,58 @@ class TurnOrchestrator:
                 mission = previous_turn.mission if previous_turn is not None else None
                 intent = self._teaching.classify_intent(round_query, mission)
 
-                # 建立/修改目标：只确认目标与水平，不过证据门、不调模型。
+                # 明确目标直接进入第一课；缺少目标时只询问目标本身。
                 if intent in {
                     TeachingIntent.ESTABLISH_MISSION,
                     TeachingIntent.MODIFY_MISSION,
                 }:
-                    teaching_projection = self._teaching.mission_setup(
-                        round_query, previous_mission=mission
+                    if not self._teaching.has_executable_goal(round_query):
+                        teaching_projection = self._teaching.mission_setup(
+                            round_query,
+                            previous_mission=mission,
+                            mission_id=owner.message_id if owner is not None else None,
+                        )
+                        self._repo.update_message_teaching(
+                            account_id,
+                            assistant_message_id,
+                            teaching_projection.model_dump(mode="json"),
+                            datetime.now(UTC),
+                        )
+                        mission_content = teaching_projection.next_prompt
+                        self._repo.update_message_content(
+                            account_id,
+                            assistant_message_id,
+                            mission_content,
+                            datetime.now(UTC),
+                        )
+                        finalize_message(
+                            self._repo,
+                            account_id,
+                            assistant_message_id,
+                            status=ChatMessageStatus.DONE,
+                            error_code=None,
+                            error_message=None,
+                            duration_ms=None,
+                            model_id=None,
+                            run_lock_id=None,
+                            started=started,
+                            now=datetime.now(UTC),
+                            thinking=done_thinking(thinking),
+                            teaching=teaching_projection.model_dump(mode="json"),
+                        )
+                        yield StreamEvent(kind="delta", delta=mission_content)
+                        yield StreamEvent(kind="done")
+                        return
+                    setup = self._teaching.mission_setup(
+                        round_query,
+                        previous_mission=mission,
+                        mission_id=owner.message_id if owner is not None else None,
                     )
-                    self._repo.update_message_teaching(
-                        account_id,
-                        assistant_message_id,
-                        teaching_projection.model_dump(mode="json"),
-                        datetime.now(UTC),
-                    )
-                    mission_content = (
-                        f"好的，我们一起来学：{teaching_projection.goal}。"
-                        f"{teaching_projection.next_prompt}"
-                    )
-                    self._repo.update_message_content(
-                        account_id,
-                        assistant_message_id,
-                        mission_content,
-                        datetime.now(UTC),
-                    )
-                    finalize_message(
-                        self._repo,
-                        account_id,
-                        assistant_message_id,
-                        status=ChatMessageStatus.DONE,
-                        error_code=None,
-                        error_message=None,
-                        duration_ms=None,
-                        model_id=None,
-                        run_lock_id=None,
-                        started=started,
-                        now=datetime.now(UTC),
-                        thinking=done_thinking(thinking),
-                        teaching=teaching_projection.model_dump(mode="json"),
-                    )
-                    yield StreamEvent(kind="delta", delta=mission_content)
-                    yield StreamEvent(kind="done")
-                    return
+                    if setup.mission is None:
+                        raise RuntimeError("明确学习目标未能建立教学任务。")
+                    mission = self._teaching.confirm_mission("", setup.mission)
+                    first_lesson_requested = True
+                    round_query = self._teaching.micro_lesson_query(mission)
 
                 # mission 确认：解析水平假设与首概念，检索查询用规范主题。
                 if mission is not None and mission.stage == TeachingStage.MISSION_SETUP:
@@ -2510,7 +2565,7 @@ class TurnOrchestrator:
             # 用户发送前关闭画像时本轮不编译、不注入，披露与审计都不含
             # 画像内容。编译/披露失败一律静默降级（回答照常，披露 error
             # 态可解释），绝不阻断生成。
-            context_note, profile_context, _profile_items, profile_slice_id = (
+            context_note, profile_context, profile_items, profile_slice_id = (
                 self._compile_profile_slice(
                     account_id,
                     conversation_id,
@@ -2524,12 +2579,29 @@ class TurnOrchestrator:
             )
             if context_note is not None:
                 thinking = context_note_thinking(thinking, context_note)
+            if (
+                mode == ChatMode.STUDY
+                and first_lesson_requested
+                and teaching_projection is not None
+                and mission is not None
+                and teaching_projection.can_answer_reliably
+            ):
+                teaching_projection = self._teaching.compose_first_plan_and_lesson(
+                    teaching_projection,
+                    mission,
+                    profile_items=[
+                        (item.dimension, item.value_or_rule) for item in profile_items
+                    ],
+                    profile_slice_id=profile_slice_id,
+                    owner_account_id=account_id,
+                    object_domain=run_context.object_domain.value,
+                )
             writing_policy = self._compile_writing_policy(
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
                 mode=mode,
                 profile_slice_id=profile_slice_id,
-                profile_items=_profile_items,
+                profile_items=profile_items,
                 profile_context=profile_context,
                 profile_failed=(
                     context_note is not None
@@ -2567,6 +2639,10 @@ class TurnOrchestrator:
                 # 预算耗尽（T5）：有草稿带警告交付，无草稿失败可重试——
                 # 不得保持永久 running，必须提交明确终态。
                 if content:
+                    teaching_for_budget = failed_teaching_projection(
+                        teaching_projection,
+                        "本轮教学生成超出预算；本轮没有发布完整计划或课时，请重试。",
+                    )
                     finalize_message(
                         self._repo,
                         account_id,
@@ -2580,6 +2656,7 @@ class TurnOrchestrator:
                         started=started,
                         now=datetime.now(UTC),
                         thinking=budget_warning_thinking(thinking),
+                        teaching=teaching_payload(teaching_for_budget),
                     )
                     yield StreamEvent(kind="done")
                 else:
@@ -2596,6 +2673,12 @@ class TurnOrchestrator:
                         started=started,
                         now=datetime.now(UTC),
                         thinking=failed_thinking(thinking, "budget_exceeded"),
+                        teaching=teaching_payload(
+                            failed_teaching_projection(
+                                teaching_projection,
+                                user_facing_error("budget_exceeded"),
+                            )
+                        ),
                     )
                     yield StreamEvent(
                         kind="error",
@@ -2620,6 +2703,13 @@ class TurnOrchestrator:
                         started=started,
                         now=datetime.now(UTC),
                         thinking=stopped_thinking(thinking),
+                        teaching=teaching_payload(
+                            stopped_teaching_projection(
+                                teaching_projection.model_dump(mode="json")
+                                if teaching_projection is not None
+                                else current.teaching
+                            )
+                        ),
                         web_search=cancelled_web_search(
                             (
                                 web_search_projection.model_dump(mode="json")
@@ -2673,6 +2763,12 @@ class TurnOrchestrator:
                         started=started,
                         now=datetime.now(UTC),
                         thinking=failed_thinking(thinking, event.error_code),
+                        teaching=teaching_payload(
+                            failed_teaching_projection(
+                                teaching_projection,
+                                user_facing_error(event.error_code, event.error_message),
+                            )
+                        ),
                     )
                     yield event
                     return
@@ -2761,6 +2857,12 @@ class TurnOrchestrator:
                                 web_search=invalid_web_projection.model_dump(
                                     mode="json"
                                 ),
+                                teaching=teaching_payload(
+                                    failed_teaching_projection(
+                                        teaching_projection,
+                                        citation_error,
+                                    )
+                                ),
                             )
                             if quality_entered:
                                 budget.exit(
@@ -2815,6 +2917,12 @@ class TurnOrchestrator:
                                 arxiv_search=invalid_arxiv_projection.model_dump(
                                     mode="json"
                                 ),
+                                teaching=teaching_payload(
+                                    failed_teaching_projection(
+                                        teaching_projection,
+                                        citation_error,
+                                    )
+                                ),
                             )
                             if quality_entered:
                                 budget.exit(
@@ -2852,6 +2960,13 @@ class TurnOrchestrator:
                             assistant_message_id, RunStage.FINALIZING, "active"
                         )
                     budget.exit(RunStage.FINALIZING)
+                    teaching_projection = (
+                        self._teaching.publish_lesson_content(
+                            teaching_projection, content
+                        )
+                        if teaching_projection is not None
+                        else None
+                    )
                     finalize_message(
                         self._repo,
                         account_id,
@@ -2865,6 +2980,7 @@ class TurnOrchestrator:
                         started=started,
                         now=datetime.now(UTC),
                         thinking=done_thinking(thinking),
+                        teaching=teaching_payload(teaching_projection),
                     )
                     yield event
                     return
@@ -2884,6 +3000,12 @@ class TurnOrchestrator:
                     started=started,
                     now=datetime.now(UTC),
                     thinking=budget_warning_thinking(thinking),
+                    teaching=teaching_payload(
+                        failed_teaching_projection(
+                            teaching_projection,
+                            "本轮教学生成超出预算；本轮没有发布完整计划或课时，请重试。",
+                        )
+                    ),
                 )
                 yield self._stage_event(
                     assistant_message_id,
@@ -2911,6 +3033,12 @@ class TurnOrchestrator:
                 started=started,
                 now=datetime.now(UTC),
                 thinking=failed_thinking(thinking, "stream_interrupted"),
+                teaching=teaching_payload(
+                    failed_teaching_projection(
+                        teaching_projection,
+                        STREAM_INTERRUPTED_MESSAGE,
+                    )
+                ),
             )
             raise
         except Exception:  # noqa: BLE001 - 未分类异常也须收敛，绝不滞留 streaming 僵尸
@@ -2929,6 +3057,12 @@ class TurnOrchestrator:
                 started=started,
                 now=datetime.now(UTC),
                 thinking=failed_thinking(thinking, "internal_error"),
+                teaching=teaching_payload(
+                    failed_teaching_projection(
+                        teaching_projection,
+                        "生成过程出现内部错误，请重试。",
+                    )
+                ),
             )
             yield StreamEvent(
                 kind="error",

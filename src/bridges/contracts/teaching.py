@@ -21,6 +21,13 @@ class TeachingCardStatus(StrEnum):
     RECOVERY = "recovery"
 
 
+class TeachingArtifactStatus(StrEnum):
+    """计划与课时在原子发布前后的可审计状态。"""
+
+    STAGED = "staged"
+    PUBLISHED = "published"
+
+
 class TeachingStage(StrEnum):
     """会话中持久化的教学状态机阶段（Issue 08）。
 
@@ -128,6 +135,82 @@ class TeachingQuiz(BaseModel):
     can_follow_up: bool = Field(default=True)
 
 
+class TeachingProfileUsage(BaseModel):
+    """本轮教学使用画像的最小、可审计快照。"""
+
+    schema_version: str = Field(default="teaching-profile-usage-v1")
+    used_categories: list[str] = Field(
+        default_factory=list,
+        description="实际使用的四维画像类别，不包含画像正文。",
+    )
+    applied_to: list[str] = Field(
+        default_factory=list,
+        description="画像只影响难度、路径或例子中的哪些部分。",
+    )
+    defaulted: bool = Field(
+        default=False,
+        description="没有可用画像时是否采用中性默认值。",
+    )
+
+
+class TeachingPlanSession(BaseModel):
+    """计划中的一个课时摘要。"""
+
+    lesson_number: int = Field(ge=1)
+    title: str
+    objective: str
+    checkpoint: str
+
+
+class TeachingPlanProjection(BaseModel):
+    """聊天内展示并持久化的版本化教学计划。"""
+
+    schema_version: str = Field(default="teaching-plan-v1")
+    plan_id: str
+    owner_account_id: str = Field(default="")
+    object_domain: str = Field(default="personal_vault")
+    artifact_status: TeachingArtifactStatus = Field(
+        default=TeachingArtifactStatus.STAGED
+    )
+    content_hash: str = Field(default="")
+    version: int = Field(default=1, ge=1)
+    goal_snapshot: str
+    target_concepts: list[str] = Field(default_factory=list)
+    prerequisite_assumptions: list[str] = Field(default_factory=list)
+    sessions: list[TeachingPlanSession] = Field(default_factory=list)
+    stage_checkpoints: list[str] = Field(default_factory=list)
+    completion_criteria: list[str] = Field(default_factory=list)
+    target_snapshot_id: str
+    evidence_snapshot_id: str
+    profile_slice_id: str | None = None
+    profile_usage: TeachingProfileUsage = Field(default_factory=TeachingProfileUsage)
+
+
+class TeachingLessonProjection(BaseModel):
+    """计划首次发布时交付的、可独立阅读的第一个课时。"""
+
+    schema_version: str = Field(default="teaching-lesson-v1")
+    lesson_id: str
+    plan_id: str
+    owner_account_id: str = Field(default="")
+    object_domain: str = Field(default="personal_vault")
+    artifact_status: TeachingArtifactStatus = Field(
+        default=TeachingArtifactStatus.STAGED
+    )
+    content_hash: str = Field(default="")
+    lesson_number: int = Field(default=1, ge=1)
+    title: str
+    objective: str
+    explanation: str = Field(default="")
+    examples: list[str] = Field(default_factory=list)
+    summary: list[str] = Field(default_factory=list)
+    understanding_check: TeachingQuiz | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    target_snapshot_id: str
+    evidence_snapshot_id: str
+    profile_usage: TeachingProfileUsage = Field(default_factory=TeachingProfileUsage)
+
+
 class TeachingAnswerEvidence(BaseModel):
     """把题目、回答、评价依据和知识状态候选串成可追溯记录。"""
 
@@ -194,6 +277,12 @@ class TeachingTurnProjection(BaseModel):
     steps: list[str] = Field(description="本轮教学步骤。")
     check_method: str = Field(description="理解检查方式。")
     evidence_gate: TeachingEvidenceGate = Field(description="本轮证据充足性门结果。")
+    plan: TeachingPlanProjection | None = Field(
+        default=None, description="成功发布时随本轮消息交付的版本化教学计划。"
+    )
+    lesson: TeachingLessonProjection | None = Field(
+        default=None, description="成功发布时随计划交付的第一课。"
+    )
     quiz: TeachingQuiz | None = Field(default=None, description="最多一个理解检查问题。")
     evidence: list[TeachingAnswerEvidence] = Field(default_factory=list)
     next_prompt: str = Field(description="下一步邀请。")
