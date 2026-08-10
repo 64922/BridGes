@@ -9,7 +9,6 @@ import { ModeToggle, type ChatMode } from "@/components/bridges/ModeToggle";
 import { RotatingQuote } from "@/components/bridges/RotatingQuote";
 import { AppShell } from "@/components/layout/AppShell";
 import { ApiError, createChatConversation, startFirstTurn } from "@/lib/api";
-import type { NewChatFirstTurnRequest } from "@/lib/api";
 import { CHAT_LIST_CHANGED_EVENT } from "@/lib/recent-conversations";
 
 import styles from "@/components/bridges/chat/chat.module.css";
@@ -60,14 +59,12 @@ export function NewChatHome() {
     setSendError(null);
 
     try {
-      const body: NewChatFirstTurnRequest = {
+      const result = await startFirstTurn({
         content,
-        idempotency_key: idempotencyKeyRef.current,
+        idempotencyKey: idempotencyKeyRef.current,
+        conversationId,
         mode,
-      };
-      if (conversationId) body.conversation_id = conversationId;
-
-      const result = await startFirstTurn(body);
+      });
       idempotencyKeyRef.current = null;
       window.dispatchEvent(new Event(CHAT_LIST_CHANGED_EVENT));
       router.push(`/chat/${result.conversation.conversation_id}`);

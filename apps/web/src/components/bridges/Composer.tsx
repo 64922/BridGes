@@ -4,25 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/design-system/Button";
 import { Icon } from "@/components/design-system/Icon";
-import {
-  CAREER_TOOL_LABEL,
-  CHAT_TOOL_INTENTS,
-  HUMANIZER_TOOL_LABEL,
-  IMAGE_TOOL_LABEL,
-  VIDEO_TOOL_LABEL,
-} from "@/lib/chat-tools";
-import {
-  transcribeDictation,
-} from "@/lib/api";
-import { Menu } from "./Menu";
+import { transcribeDictation } from "@/lib/api";
 import type { CapabilityAvailability } from "./chat/ReadAloudControls";
 import styles from "./chat/chat.module.css";
 
 interface ComposerProps {
   onSend: (
     text: string,
-    preparedConversationId?: string,
-    useKnowledgeBase?: boolean
+    preparedConversationId?: string
   ) => Promise<boolean> | boolean | void;
   /** 已存在的真实对话；用于发送消息与听写。 */
   conversationId?: string;
@@ -32,23 +21,13 @@ interface ComposerProps {
   onStop?: () => void;
   /** 外部预填请求（建议卡等）：nonce 变化时把 text 作为结构化意图填入并聚焦 */
   prefill?: { text: string; nonce: number } | null;
-  /** Issue 28：打开「文章人味化」任务对话框（由宿主渲染对话框）。 */
-  onOpenHumanizer?: () => void;
-  /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
-  onOpenCareer?: () => void;
-  /** Issue 32：打开「视频生成」任务对话框（由宿主渲染对话框）。 */
-  onOpenVideo?: () => void;
-  /** Issue 32：视频生成能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
-  video?: CapabilityAvailability;
   /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   asr?: CapabilityAvailability;
-  /** 新聊天首页的最小变体：只保留自然语言输入、听写与发送。 */
+  /** 新聊天首页保留原子首轮的预建会话兼容路径。 */
   variant?: "conversation" | "new-chat";
 }
 
-const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
-
-/** 对话输入区：发送文本、工具任务与听写结果。文件统一由知识库管理。 */
+/** 对话输入区：发送自然语言消息与听写结果。能力由服务端自动路由。 */
 export function Composer({
   onSend,
   conversationId,
@@ -56,10 +35,6 @@ export function Composer({
   generating = false,
   onStop,
   prefill = null,
-  onOpenHumanizer,
-  onOpenCareer,
-  onOpenVideo,
-  video = { available: true },
   asr = { available: true },
   variant = "conversation",
 }: ComposerProps) {
@@ -73,10 +48,6 @@ export function Composer({
   const [dictationError, setDictationError] = useState("");
   const [dictationSeconds, setDictationSeconds] = useState(0);
   const [dictationTranscribed, setDictationTranscribed] = useState(false);
-  const [toolNotice, setToolNotice] = useState("");
-  // Issue 20：本轮是否启用全局知识库层（发送前可关闭；关闭后本轮请求、
-  // 检索记录与引用均不含知识库候选）。
-  const [useKnowledgeBase, setUseKnowledgeBase] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -87,9 +58,6 @@ export function Composer({
   const pendingAudioRef = useRef<Blob | null>(null);
   const preparedConversationRef = useRef<string | undefined>(conversationId);
   const canSend = text.trim().length > 0 && dictationPhase === "idle";
-  const isNewChat = variant === "new-chat";
-  // 真实会话才渲染来源层；新聊天只提交自然语言首轮合同。
-  const isRealChat = !isNewChat && (conversationId !== undefined || ensureConversation !== undefined);
 
   // Issue 30：录音硬上限（服务端 ASR 同款 300 秒限制，客户端提前自动停止）。
   const MAX_RECORDING_SECONDS = 299;
@@ -119,26 +87,24 @@ export function Composer({
   const send = async () => {
     if (!canSend || generating) return;
     try {
-      const accepted = isNewChat
-        ? await onSend(text.trim(), preparedConversationRef.current)
-        : await onSend(
-            text.trim(),
-            conversationId ?? preparedConversationRef.current,
-            useKnowledgeBase
-          );
+      const accepted = await onSend(
+        text.trim(),
+        variant === "new-chat"
+          ? preparedConversationRef.current
+          : conversationId ?? preparedConversationRef.current
+      );
       if (accepted === false) return;
       setText("");
-      setToolNotice("");
       cancelRecording();
       requestAnimationFrame(autoGrow);
     } catch (error) {
-      setToolNotice(error instanceof Error ? error.message : "发送失败，请重试。");
+      // 发送错误由宿主页面统一呈现，输入正文保留在本地等待重试。
+      void error;
     }
   };
 
-  const insertToolPrefix = (prefix: string) => {
-    setText((current) => (current.startsWith(prefix) ? current : `${prefix}${current}`));
-    setToolNotice("");
+  const applyPrefill = (value: string) => {
+    setText((current) => (current.startsWith(value) ? current : `${value}${current}`));
     requestAnimationFrame(() => {
       const element = textareaRef.current;
       if (!element) return;
@@ -151,7 +117,7 @@ export function Composer({
   const prefillNonce = prefill?.nonce;
   useEffect(() => {
     if (prefillNonce === undefined || !prefill) return;
-    insertToolPrefix(prefill.text);
+    applyPrefill(prefill.text);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefillNonce]);
 
@@ -418,7 +384,6 @@ export function Composer({
         value={text}
         onChange={(event) => {
           setText(event.target.value);
-          setToolNotice("");
           autoGrow();
         }}
         onKeyDown={(event) => {
@@ -427,7 +392,7 @@ export function Composer({
             void send();
           }
         }}
-         placeholder={isNewChat ? "输入你想聊的内容" : "向 BridGes 提问，或描述你的学习目标"}
+        placeholder="向 BridGes 提问，或描述你的学习目标"
         style={{
           width: "100%",
           border: "none",
@@ -441,145 +406,7 @@ export function Composer({
         }}
       />
 
-      {/* Issue 20：本轮启用的来源层面板（知识库/画像）。
-          知识库可发送前关闭；关闭后本轮检索与引用均不含知识库候选。
-          只在真实对话（有 conversationId 或延迟创建
-          钩子）渲染：模板设计基线不引入实时功能。 */}
-      {isRealChat && (
-      <div
-        data-testid="composer-source-layers"
-        role="group"
-        aria-label="本轮检索来源"
-        style={{
-          display: "flex",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "var(--space-2)",
-          padding: "var(--space-1) 0",
-        }}
-      >
-        <button
-          type="button"
-          role="switch"
-          aria-checked={useKnowledgeBase}
-          data-testid="source-layer-knowledge-base"
-          onClick={() => setUseKnowledgeBase((value) => !value)}
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "var(--space-1)",
-            padding: "2px var(--space-2)",
-            borderRadius: "999px",
-            border: `1px solid ${
-              useKnowledgeBase ? "var(--color-accent-primary)" : "var(--color-border)"
-            }`,
-            backgroundColor: useKnowledgeBase
-              ? "var(--color-accent-primary-soft)"
-              : "var(--color-bg-secondary)",
-            fontSize: "var(--text-xs)",
-            color: useKnowledgeBase
-              ? "var(--color-accent-primary)"
-              : "var(--color-text-tertiary)",
-            cursor: "pointer",
-            font: "inherit",
-            minHeight: "var(--target-size)",
-          }}
-          title={useKnowledgeBase ? "本轮将检索全局知识库，点击关闭" : "点击开启本轮全局知识库检索"}
-        >
-          <Icon name="knowledgeBase" size={13} aria-hidden />
-          全局知识库
-          <span
-            aria-hidden="true"
-            style={{
-              display: "inline-block",
-              width: 24,
-              height: 14,
-              borderRadius: 999,
-              padding: 2,
-              backgroundColor: useKnowledgeBase
-                ? "var(--color-accent-primary)"
-                : "var(--color-border-strong)",
-              transition: "background-color 150ms ease",
-            }}
-          >
-            <span
-              style={{
-                display: "block",
-                width: 10,
-                height: 10,
-                borderRadius: "50%",
-                backgroundColor: "#FFFFFF",
-                transform: useKnowledgeBase ? "translateX(10px)" : "translateX(0)",
-                transition: "transform 150ms ease",
-              }}
-            />
-          </span>
-        </button>
-      </div>
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
-        {!isNewChat && (
-          <Menu
-            ariaLabel="更多功能"
-            openUp
-            trigger={<Icon name="plus" size={20} aria-hidden />}
-            triggerStyle={{
-              width: "var(--target-size)",
-              padding: 0,
-              justifyContent: "center",
-              border: "1px solid var(--color-border)",
-            }}
-            items={[
-              // Issue 28/29：文章人味化与生涯规划进入真实任务对话框，
-              // 不再只是预填前缀；论文搜索仍为结构化预填（真实 arXiv MCP）。
-              ...TOOL_PROMPTS.filter(
-                (tool) =>
-                  tool.label !== IMAGE_TOOL_LABEL && tool.label !== VIDEO_TOOL_LABEL
-              ).map((tool) => ({
-                label: tool.label,
-                icon: tool.icon,
-                onSelect:
-                  tool.label === HUMANIZER_TOOL_LABEL && onOpenHumanizer
-                    ? () => {
-                        setToolNotice("");
-                        onOpenHumanizer?.();
-                      }
-                    : tool.label === CAREER_TOOL_LABEL && onOpenCareer
-                      ? () => {
-                          setToolNotice("");
-                          onOpenCareer?.();
-                        }
-                      : () => insertToolPrefix(tool.prefix),
-                returnFocus: false,
-              })),
-              // 视频能力仍保留显式任务入口；图片能力由普通自然语言自动路由。
-              ...TOOL_PROMPTS.filter(
-                (tool) => tool.label === VIDEO_TOOL_LABEL
-              ).map((tool) => ({
-                label: tool.label,
-                icon: tool.icon,
-                onSelect:
-                  onOpenVideo
-                    ? () => {
-                          // Issue 32：视频能力不可用时入口明确停用并说明
-                          // 原因（探测快照；服务端仍做权威校验）。
-                          if (!video.available) {
-                            setToolNotice(
-                              video.reason ?? "视频生成能力当前不可用。"
-                            );
-                            return;
-                          }
-                          setToolNotice("");
-                          onOpenVideo?.();
-                        }
-                      : () => insertToolPrefix(tool.prefix),
-                returnFocus: false,
-              })),
-            ]}
-          />
-        )}
-
         <span style={{ flex: 1 }} />
 
         {dictationPhase === "recording" && (
@@ -703,15 +530,9 @@ export function Composer({
           <Icon name="dictation" size={20} aria-hidden />
         </button>
         {generating ? (
-          onStop ? (
-            <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
-              <Icon name="close" size={16} aria-hidden />停止
-            </Button>
-          ) : (
-            <span role="status" data-testid="composer-sending-status" className={styles.composerDictationText}>
-              正在创建对话并发送…
-            </span>
-          )
+          <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
+            <Icon name="close" size={16} aria-hidden />停止
+          </Button>
         ) : (
           <Button
             variant="primary"
@@ -725,15 +546,6 @@ export function Composer({
           </Button>
         )}
       </div>
-      {toolNotice && (
-        <p
-          role={toolNotice ? "alert" : "status"}
-          data-testid={toolNotice ? "tool-unavailable-notice" : "composer-status"}
-          style={{ margin: 0, fontSize: "var(--text-sm)", color: toolNotice ? "var(--color-status-error)" : "var(--color-text-secondary)" }}
-        >
-          {toolNotice}
-        </p>
-      )}
     </div>
   );
 }

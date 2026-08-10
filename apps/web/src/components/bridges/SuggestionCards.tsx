@@ -1,13 +1,7 @@
 "use client";
 
 import { Icon, type IconName } from "@/components/design-system/Icon";
-import {
-  CAREER_TOOL_LABEL,
-  CHAT_TOOL_INTENTS,
-  HUMANIZER_TOOL_LABEL,
-  IMAGE_TOOL_LABEL,
-  VIDEO_TOOL_LABEL,
-} from "@/lib/chat-tools";
+import { CHAT_TOOL_INTENTS, IMAGE_TOOL_LABEL, VIDEO_TOOL_LABEL } from "@/lib/chat-tools";
 
 export interface SuggestionCard {
   icon: IconName;
@@ -17,7 +11,7 @@ export interface SuggestionCard {
   prefill: string;
 }
 
-/** 三张建议卡的补充描述；入口本身与「+」菜单共享 CHAT_TOOL_INTENTS */
+/** 三张建议卡的补充描述；点击后都作为自然语言正文预填。 */
 const CARD_DESCRIPTIONS: readonly string[] = [
   "描述研究主题，先聊清需求再检索",
   "改写或生成科学内容，保持事实锁与引用",
@@ -27,7 +21,7 @@ const CARD_DESCRIPTIONS: readonly string[] = [
 /**
  * 空白态恰好三张建议卡（Issue 13/36）：论文搜索、文章人味化、生涯规划
  * 助手。图标均为 Issue 04 的 BridGes 原创图标（语义一致：paperSearch /
- * humanize / career）；点击经预填或真实任务对话框进入正常消息流，不跳过
+ * humanize / career）；点击后预填自然语言意图，进入正常消息流，不跳过
  * 授权、审计与对话保存（Issue 36 AC8：不新增清单之外的建议卡）。
  */
 export const SUGGESTION_CARDS: readonly SuggestionCard[] = CHAT_TOOL_INTENTS.filter(
@@ -43,17 +37,13 @@ export const SUGGESTION_CARDS: readonly SuggestionCard[] = CHAT_TOOL_INTENTS.fil
 interface SuggestionCardsProps {
   /** 点击卡片：按参考网页逻辑预填输入区，走正常消息流（授权/审计/保存不跳过） */
   onPrefill: (prefill: string) => void;
-  /** Issue 28：「文章人味化」卡片打开真实任务对话框（不再只是预填）。 */
-  onHumanizer?: () => void;
-  /** Issue 29：「生涯规划助手」卡片打开真实任务对话框（不再只是预填）。 */
-  onCareer?: () => void;
 }
 
 /**
  * 建议卡列表：真实按钮，键盘可达；悬停与焦点有过渡反馈，
  * 长文案在窄列内折行，不破坏桌面布局。
  */
-export function SuggestionCards({ onPrefill, onHumanizer, onCareer }: SuggestionCardsProps) {
+export function SuggestionCards({ onPrefill }: SuggestionCardsProps) {
   return (
     <ul
       role="list"
@@ -73,15 +63,7 @@ export function SuggestionCards({ onPrefill, onHumanizer, onCareer }: Suggestion
         <li key={card.label} style={{ display: "flex" }}>
           <button
             type="button"
-            onClick={() => {
-              if (card.label === HUMANIZER_TOOL_LABEL && onHumanizer) {
-                onHumanizer();
-              } else if (card.label === CAREER_TOOL_LABEL && onCareer) {
-                onCareer();
-              } else {
-                onPrefill(card.prefill);
-              }
-            }}
+            onClick={() => onPrefill(card.prefill)}
             style={{
               display: "flex",
               flexDirection: "column",

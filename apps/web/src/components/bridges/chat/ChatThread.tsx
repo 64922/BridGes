@@ -5,33 +5,21 @@ import { useEffect, useRef } from "react";
 import {
   MessageList,
   type ChatMessage,
-  type ThreadModeEvent,
 } from "@/components/bridges/MessageList";
-import type { ChatAttachmentProjection } from "@/lib/api";
 
 import styles from "./chat.module.css";
 
 interface ChatThreadProps {
-  messages: (ChatMessage | ThreadModeEvent)[];
+  messages: ChatMessage[];
   onRetry?: (messageId: string) => void;
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;
   onTeachingBeginnerStart?: (messageId: string) => void;
-  onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
-  onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
-  /** 附件摄取重试（Issue 17）：调用重试 API 并刷新对话 */
-  onRetryIngestion?: (objectId: string) => Promise<void>;
   conversationId?: string;
   /** Issue 30：TTS 能力可用性（账户级探测快照） */
   tts?: { available: boolean; reason?: string };
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表 */
   onRefreshMessages?: () => void;
-  /** Issue 36：消息内 MCP 敏感操作确认（approve/deny 由页面接入真实 API） */
-  onConfirmMcpCall?: (
-    messageId: string,
-    confirmationId: string,
-    action: "approve" | "deny"
-  ) => Promise<void> | void;
   /** 页面级状态播报（不逐 token 朗读正文，只播报状态转换） */
   announcement?: string | null;
 }
@@ -48,13 +36,9 @@ export function ChatThread({
   onStop,
   onTeachingSkip,
   onTeachingBeginnerStart,
-  onDownloadAttachment,
-  onDeleteAttachment,
-  onRetryIngestion,
   conversationId,
   tts,
   onRefreshMessages,
-  onConfirmMcpCall,
   announcement,
 }: ChatThreadProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -82,13 +66,9 @@ export function ChatThread({
           onStop={onStop}
           onTeachingSkip={onTeachingSkip}
           onTeachingBeginnerStart={onTeachingBeginnerStart}
-          onDownloadAttachment={onDownloadAttachment}
-          onDeleteAttachment={onDeleteAttachment}
-          onRetryIngestion={onRetryIngestion}
           conversationId={conversationId}
           tts={tts}
           onRefreshMessages={onRefreshMessages}
-          onConfirmMcpCall={onConfirmMcpCall}
         />
       </div>
       <p className="sc-visually-hidden" role="status" aria-live="polite">

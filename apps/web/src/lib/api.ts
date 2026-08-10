@@ -24,15 +24,6 @@ export type ChatStopResponse = components["schemas"]["ChatStopResponse"];
 export type ChatStreamEvent = components["schemas"]["ChatStreamEvent"];
 export type ChatStreamEventKind = components["schemas"]["ChatStreamEventKind"];
 export type ChatRunStartedResponse = components["schemas"]["ChatRunStartedResponse"];
-export type ChatFirstTurnRequest = components["schemas"]["ChatFirstTurnRequest"];
-/**
- * 新聊天首页的最小首轮请求：能力意图由服务端根据自然语言路由，
- * 首页不提交历史项目、插件或来源开关字段。
- */
-export type NewChatFirstTurnRequest = Pick<
-  ChatFirstTurnRequest,
-  "content" | "idempotency_key" | "mode" | "conversation_id"
->;
 export type ChatFirstTurnResponse = components["schemas"]["ChatFirstTurnResponse"];
 export type ChatRunView = components["schemas"]["ChatRunView"];
 export type ChatStreamStartedData = components["schemas"]["ChatStreamStartedData"];
@@ -100,7 +91,6 @@ export type IndexVersionProjection = components["schemas"]["IndexVersionProjecti
 export type IndexContractProjection = components["schemas"]["IndexContractProjection"];
 export type ChatStreamDoneData = components["schemas"]["ChatStreamDoneData"];
 export type ChatMode = components["schemas"]["ChatMode"];
-export type ChatModeEventProjection = components["schemas"]["ChatModeEventProjection"];
 export type ChatThinkingSummary = components["schemas"]["ChatThinkingSummary"];
 export type ArxivSearchProjection = components["schemas"]["ArxivSearchProjection"];
 export type ArxivPaperProjection = components["schemas"]["ArxivPaperProjection"];
@@ -1009,90 +999,6 @@ function uploadRawBytes<T>(
   });
 }
 
-/** 原始字节上传：服务端负责内容嗅探，XHR 只用于提供可靠的上传进度与取消。 */
-export function uploadChatAttachment(
-  conversationId: string,
-  file: File,
-  uploadId: string,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<ChatAttachmentProjection> {
-  return uploadRawBytes<ChatAttachmentProjection>(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments`,
-    file,
-    uploadId,
-    onProgress,
-    signal
-  );
-}
-
-/** Issue 04：列出会话内「已上传未绑定」附件（关页重开后恢复草稿）。 */
-export async function listUnboundAttachments(
-  conversationId: string
-): Promise<ChatAttachmentProjection[]> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments`,
-    { credentials: "include" }
-  );
-  if (!res.ok) {
-    throw new ApiError("读取未发送附件失败，请稍后重试。", res.status);
-  }
-  return (await res.json()) as ChatAttachmentProjection[];
-}
-
-export async function cancelChatAttachment(
-  conversationId: string,
-  objectId: string
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-}
-
-export async function cancelChatAttachmentUpload(
-  conversationId: string,
-  uploadId: string
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/by-upload/${encodeURIComponent(uploadId)}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-}
-
-export async function deleteChatMessageAttachment(
-  conversationId: string,
-  messageId: string,
-  objectId: string
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(objectId)}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-}
-
-export async function downloadChatAttachment(
-  conversationId: string,
-  objectId: string,
-  originalFilename: string
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/download`,
-    { credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = originalFilename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
 /** 读取附件摄取的完整详情（状态、失败阶段、页码/章节、向量可用性）。 */
 export async function getAttachmentIngestion(
   conversationId: string,
@@ -1101,19 +1007,6 @@ export async function getAttachmentIngestion(
   const res = await fetch(
     `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/ingestion`,
     { credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 把失败文档重新入队；非失败状态幂等返回当前投影。 */
-export async function retryAttachmentIngestion(
-  conversationId: string,
-  objectId: string
-): Promise<DocumentIngestionProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/attachments/${encodeURIComponent(objectId)}/ingestion/retry`,
-    { method: "POST", credentials: "same-origin" }
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();
@@ -1134,35 +1027,16 @@ export async function getIngestionIndexStatus(): Promise<IndexStatusProjection> 
  * Issue 02：HTTP 不再持有生成生命周期——生成由后台执行器领取执行，
  * 事件持久化到运行游标；随后以返回的 ``run_id``/``cursor`` 订阅
  * ``subscribeChatRunEvents`` 恢复进度。断开/刷新/切换会话都不改变运行。
- * ``useKnowledgeBase``（Issue 20）：本轮是否启用全局知识库层。
  */
 export async function createChatRun(
   conversationId: string,
-  content: string,
-  useKnowledgeBase: boolean = true,
-  skillId?: string,
-  skillInput?: unknown,
-  image?: ImageRequestPayload,
-  video?: VideoRequestPayload,
-  mcpCall?: McpCallRequestPayload
+  content: string
 ): Promise<ChatRunStartedResponse> {
   const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "same-origin",
-    body: JSON.stringify({
-      content,
-      use_knowledge_base: useKnowledgeBase,
-      // Issue 28：内置 SKILL 载荷（bridges-humanizer 走真实消息流程）
-      ...(skillId !== undefined ? { skill_id: skillId } : {}),
-      ...(skillInput !== undefined ? { skill_input: skillInput } : {}),
-      // Issue 31：图片生成/编辑载荷（图片对话框走真实消息流程，任务异步执行）
-      ...(image !== undefined ? { image } : {}),
-      // Issue 32：文生视频载荷（视频对话框走真实消息流程，任务异步执行）
-      ...(video !== undefined ? { video } : {}),
-      // Issue 36：对选中 MCP 插件的调用载荷（调用对话框走真实消息流程）
-      ...(mcpCall !== undefined ? { mcp_call: mcpCall } : {}),
-    }),
+    body: JSON.stringify({ content }),
   });
   if (!res.ok) throw await parseApiError(res);
   return res.json();
@@ -1179,9 +1053,24 @@ export async function createChatRun(
  * 同键重放返回 200 与既有数据（``idempotent_replay`` 为 true），调用方
  * 无须区分即可导航到同一会话。
  */
+export interface ChatFirstTurnInput {
+  content: string;
+  idempotencyKey: string;
+  conversationId?: string;
+  mode?: ChatMode;
+}
+
 export async function startFirstTurn(
-  body: ChatFirstTurnRequest | NewChatFirstTurnRequest
+  input: ChatFirstTurnInput
 ): Promise<ChatFirstTurnResponse> {
+  const body = {
+    content: input.content,
+    idempotency_key: input.idempotencyKey,
+    ...(input.conversationId !== undefined
+      ? { conversation_id: input.conversationId }
+      : {}),
+    mode: input.mode ?? "companion",
+  };
   const res = await fetch(`${API_BASE}/chat/first-turn`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1217,40 +1106,6 @@ export async function subscribeChatRunEvents(
   );
   if (!res.ok) throw await parseApiError(res);
   await readSseStream(res, onEvent);
-}
-
-/** Issue 36：确认消息内 MCP 调用的敏感操作（仅本次调用有效；结果写回消息）。 */
-export async function approveMessageMcpConfirmation(
-  conversationId: string,
-  messageId: string,
-  confirmationId: string
-): Promise<ChatMessageProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/mcp/confirmations/${encodeURIComponent(confirmationId)}/approve`,
-    {
-      method: "POST",
-      credentials: "same-origin",
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** Issue 36：拒绝消息内 MCP 调用的敏感操作（调用安全终止并落库 denied）。 */
-export async function denyMessageMcpConfirmation(
-  conversationId: string,
-  messageId: string,
-  confirmationId: string
-): Promise<ChatMessageProjection> {
-  const res = await fetch(
-    `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/mcp/confirmations/${encodeURIComponent(confirmationId)}/deny`,
-    {
-      method: "POST",
-      credentials: "same-origin",
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
 }
 
 /** 提交一条回答反馈（Issue 27）：回答不合适或画像有误（幂等，不丢反馈）。
@@ -1823,13 +1678,6 @@ export function videoUrl(
   const base = `${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}/video-assets/${encodeURIComponent(assetId)}/video`;
   return download ? `${base}?download=1` : base;
 }
-
-// Issue 36：对话级插件选择与聊天内 MCP 调用契约（随对话持久化）。
-export type ChatPluginSelectionItem = components["schemas"]["ChatPluginSelectionItem"];
-export type RemovedPluginSelection = components["schemas"]["RemovedPluginSelection"];
-export type McpCallRequestPayload = components["schemas"]["McpCallRequestPayload"];
-export type McpCallMessageProjection = components["schemas"]["McpCallMessageProjection"];
-export type ChatStreamMcpData = components["schemas"]["ChatStreamMcpData"];
 
 // ---------------------------------------------------------------------------
 // Issue 37: 数据生命周期（导出/删除/备份/恢复）

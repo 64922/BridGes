@@ -7,11 +7,7 @@ import { copyTextToClipboard } from "@/lib/clipboard";
 import { CAREER_INTENT_KEYWORDS, CAREER_INTENT_PREFIXES } from "@/lib/chat-tools";
 import type {
   ArxivSearchProjection,
-  ChatAttachmentProjection,
-  ChatMode,
-  ChatModeEventProjection,
   ContextNoteProjection,
-  RetrievalDecisionProjection,
   RetrievalRoundProjection,
   TeachingTurnProjection,
   WebSearchProjection,
@@ -23,16 +19,13 @@ import type {
   ChatStreamStageData,
   HumanizerResultProjection,
   ImageTaskProjection,
-  McpCallMessageProjection,
   ReadAloudProjection,
   VideoTaskProjection,
 } from "@/lib/api";
 import { ImageTaskCard } from "./chat/ImageTaskCard";
 import { VideoTaskCard } from "./chat/VideoTaskCard";
-import { McpCallCard } from "@/components/bridges/McpCallCard";
 import { ReadAloudControls, type CapabilityAvailability, type ReadAloudControlsHandle } from "./chat/ReadAloudControls";
 import { ArxivPaperSearchCard } from "./ArxivPaperSearchCard";
-import { AttachmentIngestionInfo } from "./AttachmentIngestion";
 import { BrandLogo } from "./BrandLogo";
 import { CareerPlanningProcessCard } from "./CareerPlanningProcessCard";
 import { CareerPlanningResultCard } from "./CareerPlanningResultCard";
@@ -43,16 +36,7 @@ import { RetrievalCard } from "./RetrievalCard";
 import { TeachingCard } from "./TeachingCard";
 import { WebSearchCard } from "./WebSearchCard";
 
-/** 可见的模式切换事件渲染项（Issue 14）：随消息流按时间排序插入。 */
-export interface ThreadModeEvent extends ChatModeEventProjection {
-  kind: "mode-event";
-}
-
-export const MODE_EVENT_LABEL: Record<ChatMode, string> = {
-  companion: "日常陪伴",
-  study: "学习模式",
-};
-
+/** 会话消息只渲染服务端历史与当前自然语言结果卡。 */
 export interface ChatThinking {
   /** 可公开的处理步骤（生成中会增长） */
   steps: string[];
@@ -69,7 +53,6 @@ export interface ChatThinking {
 /** Issue 06：统一阶段枚举 → 面向用户的中文阶段标签（流式阶段行）。 */
 export const STAGE_LABEL: Record<string, string> = {
   queued: "排队中",
-  local_retrieval: "检索本地资料",
   public_search: "搜索公开来源",
   model_generation: "生成回答中",
   quality_check: "核验引用与质量",
@@ -87,11 +70,8 @@ export interface ChatMessage {
   thinking?: ChatThinking;
   status?: "done" | "streaming" | "error";
   errorText?: string;
-  attachments?: ChatAttachmentProjection[];
   /** Issue 20：本条助手消息绑定的分层检索轮次（含引用），无轮次为 null */
   retrieval?: RetrievalRoundProjection | null;
-  /** Issue 12：本轮全局知识库检索决策，跳过也持久化 */
-  retrievalDecision?: RetrievalDecisionProjection | null;
   /** Issue 21：本条助手消息绑定的公网搜索状态与真实引用 */
   webSearch?: WebSearchProjection | null;
   /** Issue 22：本条助手消息绑定的 arXiv 搜索状态与真实论文引用 */
@@ -117,8 +97,6 @@ export interface ChatMessage {
   /** Issue 31：本条助手消息的图片任务/资产状态快照（任务卡与资产卡） */
   image?: ImageTaskProjection | null;
   video?: VideoTaskProjection | null;
-  /** Issue 36：本条助手消息的 MCP 调用结果投影（结果卡；敏感挂起可确认） */
-  mcpCall?: McpCallMessageProjection | null;
   /** Issue 11：该轮用户消息之下的历史助手尝试（重试保留审计，不静默改写） */
   previousAttempts?: {
     attemptNumber: number;
@@ -128,27 +106,16 @@ export interface ChatMessage {
 }
 
 interface MessageListProps {
-  messages: (ChatMessage | ThreadModeEvent)[];
+  messages: ChatMessage[];
   onRetry?: (id: string) => void;
   onStop?: () => void;
   onTeachingSkip?: (messageId: string) => void;
   onTeachingBeginnerStart?: (messageId: string) => void;
-  onDownloadAttachment?: (attachment: ChatAttachmentProjection) => void;
-  onDeleteAttachment?: (messageId: string, attachment: ChatAttachmentProjection) => void;
-  /** 附件摄取重试（Issue 17）：页面处理器调用重试 API 并刷新对话 */
-  onRetryIngestion?: (objectId: string) => Promise<void>;
-  /** 附件所属对话（摄取详情接口的上下文） */
   conversationId?: string;
   /** Issue 31：图片任务成功（资产落库）后刷新消息列表（正文/投影同步） */
   onRefreshMessages?: () => void;
   /** Issue 30：TTS 能力可用性（账户级探测快照；不可用时禁用朗读入口并说明原因） */
   tts?: CapabilityAvailability;
-  /** Issue 36：消息内 MCP 敏感操作确认（approve/deny 由宿主接入真实 API） */
-  onConfirmMcpCall?: (
-    messageId: string,
-    confirmationId: string,
-    action: "approve" | "deny"
-  ) => Promise<void> | void;
 }
 
 /** Issue 29：该轮是否为生涯规划意图（显式前缀或强触发关键词命中；
@@ -203,115 +170,6 @@ function MessageAction({
     >
       <Icon name={icon} size={18} aria-hidden />
     </button>
-  );
-}
-
-function formatAttachmentSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function MessageAttachments({
-  messageId,
-  attachments,
-  onDownload,
-  onDelete,
-  onRetryIngestion,
-  conversationId,
-}: {
-  messageId: string;
-  attachments: ChatAttachmentProjection[];
-  onDownload?: (attachment: ChatAttachmentProjection) => void;
-  onDelete?: (messageId: string, attachment: ChatAttachmentProjection) => void;
-  onRetryIngestion?: (objectId: string) => Promise<void>;
-  conversationId?: string;
-}) {
-  if (attachments.length === 0) return null;
-  return (
-    <ul
-      role="list"
-      aria-label="消息附件"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-2)",
-        margin: "var(--space-3) 0 0",
-        padding: 0,
-        listStyle: "none",
-      }}
-    >
-      {attachments.map((attachment) => (
-        <li
-          key={attachment.object_id}
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "var(--space-2)",
-            padding: "var(--space-2)",
-            border: "1px solid var(--color-accent-warm, #d6a64f)",
-            borderRadius: "var(--radius-md)",
-            backgroundColor: "var(--color-surface)",
-          }}
-        >
-          <Icon name="uploadFile" size={18} aria-hidden />
-          <span style={{ minWidth: 0, flex: 1 }}>
-            <span
-              style={{
-                display: "block",
-                overflow: "hidden",
-                textOverflow: "ellipsis",
-                whiteSpace: "nowrap",
-                fontWeight: 600,
-              }}
-              title={attachment.original_filename}
-            >
-              {attachment.original_filename}
-            </span>
-            <span
-              role="status"
-              style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}
-            >
-              {attachment.media_type} · {formatAttachmentSize(attachment.content_length)} ·
-              {attachment.status === "bound" ? " 已关联消息" : " 待发送"}
-            </span>
-            {conversationId && (
-              <AttachmentIngestionInfo
-                conversationId={conversationId}
-                attachment={attachment}
-                onRetryIngestion={onRetryIngestion}
-              />
-            )}
-          </span>
-          {onDownload && (
-            <button
-              type="button"
-              onClick={() => onDownload(attachment)}
-              aria-label={`下载附件 ${attachment.original_filename}`}
-              title="下载附件"
-              style={actionButtonStyle}
-            >
-              <Icon name="download" size={18} aria-hidden />
-            </button>
-          )}
-          {onDelete && (
-            <button
-              type="button"
-              onClick={() => {
-                if (window.confirm(`确认删除附件“${attachment.original_filename}”吗？`)) {
-                  onDelete(messageId, attachment);
-                }
-              }}
-              aria-label={`删除附件 ${attachment.original_filename}`}
-              title="删除附件"
-              style={actionButtonStyle}
-            >
-              <Icon name="trash" size={18} aria-hidden />
-            </button>
-          )}
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -551,16 +409,12 @@ function ThinkingSpinner() {
 export function MessageList({
   messages,
   onRetry,
-  onDownloadAttachment,
-  onDeleteAttachment,
-  onRetryIngestion,
   conversationId,
   onStop,
   onTeachingSkip,
   onTeachingBeginnerStart,
   tts,
   onRefreshMessages,
-  onConfirmMcpCall,
 }: MessageListProps) {
   // Issue 30：每条助手消息的朗读控制器句柄（供消息操作栏「朗读」按钮桥接）
   const readAloudRefs = useRef(new Map<string, ReadAloudControlsHandle>());
@@ -571,31 +425,7 @@ export function MessageList({
       aria-label="对话消息"
       style={{ display: "flex", flexDirection: "column", gap: "var(--space-6)" }}
     >
-      {messages.map((message) =>
-        "kind" in message ? (
-          <li
-            key={message.event_id}
-            data-testid="mode-event"
-            style={{
-              display: "flex",
-              justifyContent: "center",
-            }}
-          >
-            <p
-              role="status"
-              style={{
-                margin: 0,
-                fontSize: "var(--text-xs)",
-                color: "var(--color-text-tertiary)",
-                padding: "var(--space-1) var(--space-3)",
-                borderRadius: "var(--radius-full)",
-                backgroundColor: "var(--color-bg-secondary)",
-              }}
-            >
-              已切换为{MODE_EVENT_LABEL[message.to_mode]}
-            </p>
-          </li>
-        ) : (
+      {messages.map((message) => (
         <li key={message.id} id={`msg-${message.id}`}>
           {message.role === "user" ? (
             <div style={{ display: "flex", justifyContent: "flex-end" }}>
@@ -610,14 +440,6 @@ export function MessageList({
                 }}
               >
                 {message.content}
-                <MessageAttachments
-                  messageId={message.id}
-                  attachments={message.attachments ?? []}
-                  onDownload={onDownloadAttachment}
-                  onDelete={onDeleteAttachment}
-                  onRetryIngestion={onRetryIngestion}
-                  conversationId={conversationId}
-                />
               </div>
             </div>
           ) : (
@@ -690,11 +512,7 @@ export function MessageList({
                   />
                 )}
 
-                {/* Issue 21：公网搜索过程与真实网页引用；Issue 20 本地检索
-                    紧随其后展示，二者都不改变消息正文。 */}
-                {/* Issue 20：本地检索轮次与引用（回答内容的证据卡）。
-                    streaming 且无轮次时显示检索中加载态；终态无轮次（无
-                    检索作用域）不渲染卡片。 */}
+                {/* 公网搜索与论文结果保留为能力结果详情，不改变消息正文。 */}
                 {conversationId && message.teaching && (
                   <TeachingCard
                     teaching={message.teaching}
@@ -725,11 +543,8 @@ export function MessageList({
                 {conversationId && (
                   <RetrievalCard
                     retrieval={message.retrieval ?? null}
-                    retrievalDecision={message.retrievalDecision ?? null}
                     conversationId={conversationId}
                     messageId={message.id}
-                    streaming={message.status === "streaming"}
-                    onRetry={() => onRetry?.(message.id)}
                   />
                 )}
 
@@ -872,21 +687,11 @@ export function MessageList({
                     />
                   )}
 
-                {conversationId &&
-                  message.role === "assistant" &&
-                  message.mcpCall && (
-                    <McpCallCard
-                      call={message.mcpCall}
-                      messageId={message.id}
-                      onConfirm={onConfirmMcpCall}
-                    />
-                  )}
               </div>
             </article>
           )}
         </li>
-        )
-      )}
+      ))}
     </ol>
   );
 }

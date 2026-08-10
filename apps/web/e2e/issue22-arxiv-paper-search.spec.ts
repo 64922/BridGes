@@ -203,18 +203,13 @@ async function registerAndOpen(page: Page): Promise<void> {
   await expect(page.getByTestId("composer")).toBeVisible();
 }
 
-test.describe("Issue 22：arXiv MCP 论文搜索", () => {
-  test("两个对话模式都保留论文搜索入口，并展示真实来源、摘要与学习建议", async ({ page }) => {
+test.describe("Issue 22：自然语言 arXiv 论文搜索", () => {
+  test("已有会话移除手动入口，直接使用自然语言展示真实来源", async ({ page }) => {
     await installMockChatApi(page);
     await registerAndOpen(page);
 
-    const modeToggle = page.getByTestId("mode-toggle");
-    for (const mode of ["companion", "study"] as const) {
-      if (mode === "study") await modeToggle.getByRole("button", { name: "学习模式" }).click();
-      await page.getByRole("button", { name: "更多功能" }).click();
-      await expect(page.getByRole("menuitem", { name: "论文搜索" })).toBeVisible();
-      await page.keyboard.press("Escape");
-    }
+    await expect(page.getByTestId("mode-toggle")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /更多功能/ })).toHaveCount(0);
 
     await page.getByTestId("composer").getByLabel("输入消息").fill("帮我找量子纠错综述");
     await page.getByTestId("composer").getByRole("button", { name: "发送消息" }).click();
