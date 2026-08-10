@@ -121,7 +121,7 @@ from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
 from bridges.skills.humanizer.intent import route_humanizer_message
-from bridges.web_search.contracts import WebSearchProjection
+from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
 
 #: 由首条用户消息推导对话标题的最大长度。
@@ -1596,15 +1596,30 @@ class ChatService:
         mode = ChatMode(record.mode)
         route = capability_route_from(owner.route)
         reusable_arxiv_search: ArxivSearchProjection | None = None
+        reusable_web_search: WebSearchProjection | None = None
         for previous_attempt in reversed(attempt_group(existing, owner.message_id)):
             if previous_attempt.arxiv_search is None:
-                continue
-            previous_projection = ArxivSearchProjection(**previous_attempt.arxiv_search)
-            if previous_projection.status == ArxivSearchStatus.SUCCESS:
-                reusable_arxiv_search = previous_projection
+                pass
+            else:
+                previous_projection = ArxivSearchProjection(**previous_attempt.arxiv_search)
+                if previous_projection.status == ArxivSearchStatus.SUCCESS:
+                    reusable_arxiv_search = previous_projection
+            if previous_attempt.web_search is not None:
+                previous_web_projection = WebSearchProjection(
+                    **previous_attempt.web_search
+                )
+                if previous_web_projection.status in {
+                    WebSearchStatus.SUCCESS,
+                    WebSearchStatus.PARTIAL,
+                }:
+                    reusable_web_search = previous_web_projection
+            if reusable_arxiv_search is not None and reusable_web_search is not None:
                 break
         web_search = (
-            self._web_search.initial_projection(self._web_search.plan(owner.content, mode))
+            reusable_web_search
+            or self._web_search.initial_projection(
+                self._web_search.plan(owner.content, mode), recovery=True
+            )
             if self._web_search is not None
             and route is not None
             and not route.is_paper_search

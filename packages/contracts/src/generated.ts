@@ -22091,6 +22091,73 @@ export interface components {
              * @default false
              */
             can_cancel: boolean;
+            /**
+             * Plan Id
+             * @description 持久化联网计划标识。
+             */
+            plan_id?: string | null;
+            /**
+             * Provider
+             * @description 固定联网提供方。
+             * @default duckduckgo
+             */
+            provider: string;
+            /**
+             * Provider Version
+             * @description 提供方合同版本。
+             * @default duckduckgo-instant-answer-v1
+             */
+            provider_version: string;
+            /**
+             * Rules Version
+             * @description 本地触发/脱敏规则版本。
+             * @default web-search-plan-v2
+             */
+            rules_version: string;
+            /**
+             * Query Hash
+             * @description 外发规范化查询哈希。
+             */
+            query_hash?: string | null;
+            /**
+             * Original Query Hash
+             * @description 原始查询的不可逆引用哈希，不保存原文。
+             */
+            original_query_hash?: string | null;
+            /**
+             * Freshness Window Seconds
+             * @description 结果可作为当前证据使用的时间窗口。
+             * @default 86400
+             */
+            freshness_window_seconds: number;
+            /**
+             * Cache Hit
+             * @description 是否复用了未过期结果缓存。
+             * @default false
+             */
+            cache_hit: boolean;
+            /**
+             * Cache Expires At
+             * @description 缓存过期时间；过期结果不得冒充当前搜索。
+             */
+            cache_expires_at?: string | null;
+            /**
+             * Attempt Count
+             * @description 实际供应商尝试次数。
+             * @default 0
+             */
+            attempt_count: number;
+            /**
+             * Query Count
+             * @description 本计划发出的查询次数。
+             * @default 0
+             */
+            query_count: number;
+            /**
+             * Deleted Categories
+             * @description 外发查询前删除的敏感类别。
+             */
+            deleted_categories?: string[];
         };
         /**
          * WebSearchResult
@@ -22129,13 +22196,51 @@ export interface components {
              * @description 本次访问时间。
              */
             accessed_at: string;
+            /**
+             * Published At
+             * @description 来源声明的发布时间（无法解析时为空）。
+             */
+            published_at?: string | null;
+            /**
+             * Fetched At
+             * @description 本地实际抓取来源页面的时间。
+             */
+            fetched_at?: string | null;
+            /**
+             * Content Summary
+             * @description 由实际来源页面提取的有界内容摘要。
+             * @default
+             */
+            content_summary: string;
+            /**
+             * @description 来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。
+             * @default verified
+             */
+            verification: components["schemas"]["WebSearchVerification"];
+            /**
+             * Fetch Error Code
+             * @description 来源页面抓取失败分类码。
+             */
+            fetch_error_code?: string | null;
+            /**
+             * Redirect Count
+             * @description 本次抓取重定向次数。
+             * @default 0
+             */
+            redirect_count: number;
         };
         /**
          * WebSearchStatus
          * @description 一次公网搜索的可见状态。
          * @enum {string}
          */
-        WebSearchStatus: "loading" | "success" | "empty" | "error" | "permission" | "recovery" | "cancelled";
+        WebSearchStatus: "loading" | "success" | "partial" | "empty" | "fetch_error" | "evidence_insufficient" | "source_conflict" | "error" | "permission" | "recovery" | "cancelled";
+        /**
+         * WebSearchVerification
+         * @description 单个来源的确定性证据状态。
+         * @enum {string}
+         */
+        WebSearchVerification: "verified" | "cross_verified" | "summary_only" | "fetch_failed" | "conflicting";
         /**
          * WordingStrength
          * @description Deterministic ceiling on how strongly a claim may be worded.

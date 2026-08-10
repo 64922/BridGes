@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 40
+SCHEMA_VERSION = 41
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1914,6 +1914,35 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_retrieval_decisions_user_message
         ON retrieval_decisions(account_id, user_message_id)
+        """,
+    ],
+    # Issue 13：联网结果缓存按账户、规范化查询、提供方版本和时效窗口隔离。
+    41: [
+        """
+        CREATE TABLE web_search_cache (
+            cache_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            query_hash TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            provider_version TEXT NOT NULL,
+            rules_version TEXT NOT NULL,
+            freshness_window_seconds INTEGER NOT NULL,
+            plan_id TEXT NOT NULL,
+            projection_json TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (
+                account_id,
+                query_hash,
+                provider_version,
+                freshness_window_seconds
+            )
+        )
+        """,
+        """
+        CREATE INDEX idx_web_search_cache_account_expiry
+        ON web_search_cache(account_id, expires_at)
         """,
     ],
 }

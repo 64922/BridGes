@@ -49,7 +49,12 @@ function ResultItem({ result }: { result: WebSearchResult }) {
         </p>
       )}
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
-        {accessedAt(result.accessed_at)}
+        {result.verification === "verified" || result.verification === "cross_verified"
+          ? "已抓取核验 · "
+          : result.verification === "summary_only"
+            ? "仅搜索摘要，未完成页面核验 · "
+            : "来源页面抓取失败 · "}
+        {accessedAt(result.fetched_at ?? result.accessed_at)}
       </span>
     </li>
   );
@@ -156,7 +161,13 @@ export function WebSearchCard({
     );
   }
 
-  const failed = search.status === "error" || search.status === "permission";
+  const failed = [
+    "error",
+    "permission",
+    "fetch_error",
+    "evidence_insufficient",
+    "source_conflict",
+  ].includes(search.status);
   if (failed || search.status === "empty") {
     return (
       <section
@@ -175,6 +186,12 @@ export function WebSearchCard({
               ? "公网搜索权限未通过"
               : search.status === "empty"
                 ? "没有找到公开网页结果"
+                : search.status === "evidence_insufficient"
+                  ? "来源证据不足"
+                  : search.status === "fetch_error"
+                    ? "来源页面抓取失败"
+                    : search.status === "source_conflict"
+                      ? "来源存在冲突"
                 : "联网搜索未完成"}
           </strong>
           {search.can_retry && <span style={{ marginLeft: "auto" }}><RetryButton onRetry={onRetry} /></span>}
@@ -190,7 +207,7 @@ export function WebSearchCard({
     <section data-testid="web-search-card" aria-live="polite" aria-busy={streaming} style={shellStyle}>
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
         <Icon name="paperSearch" size={16} aria-hidden />
-        <strong>联网搜索</strong>
+        <strong>{search.status === "partial" ? "联网搜索（部分成功）" : "联网搜索"}</strong>
         <span
           role="status"
           style={{

@@ -52435,6 +52435,108 @@
             "title": "Can Cancel",
             "description": "本轮是否可以取消。",
             "default": false
+          },
+          "plan_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Id",
+            "description": "持久化联网计划标识。"
+          },
+          "provider": {
+            "type": "string",
+            "title": "Provider",
+            "description": "固定联网提供方。",
+            "default": "duckduckgo"
+          },
+          "provider_version": {
+            "type": "string",
+            "title": "Provider Version",
+            "description": "提供方合同版本。",
+            "default": "duckduckgo-instant-answer-v1"
+          },
+          "rules_version": {
+            "type": "string",
+            "title": "Rules Version",
+            "description": "本地触发/脱敏规则版本。",
+            "default": "web-search-plan-v2"
+          },
+          "query_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Query Hash",
+            "description": "外发规范化查询哈希。"
+          },
+          "original_query_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Query Hash",
+            "description": "原始查询的不可逆引用哈希，不保存原文。"
+          },
+          "freshness_window_seconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Freshness Window Seconds",
+            "description": "结果可作为当前证据使用的时间窗口。",
+            "default": 86400
+          },
+          "cache_hit": {
+            "type": "boolean",
+            "title": "Cache Hit",
+            "description": "是否复用了未过期结果缓存。",
+            "default": false
+          },
+          "cache_expires_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cache Expires At",
+            "description": "缓存过期时间；过期结果不得冒充当前搜索。"
+          },
+          "attempt_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "description": "实际供应商尝试次数。",
+            "default": 0
+          },
+          "query_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Query Count",
+            "description": "本计划发出的查询次数。",
+            "default": 0
+          },
+          "deleted_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Deleted Categories",
+            "description": "外发查询前删除的敏感类别。"
           }
         },
         "type": "object",
@@ -52479,6 +52581,62 @@
             "format": "date-time",
             "title": "Accessed At",
             "description": "本次访问时间。"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At",
+            "description": "来源声明的发布时间（无法解析时为空）。"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At",
+            "description": "本地实际抓取来源页面的时间。"
+          },
+          "content_summary": {
+            "type": "string",
+            "title": "Content Summary",
+            "description": "由实际来源页面提取的有界内容摘要。",
+            "default": ""
+          },
+          "verification": {
+            "$ref": "#/components/schemas/WebSearchVerification",
+            "description": "来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。",
+            "default": "verified"
+          },
+          "fetch_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetch Error Code",
+            "description": "来源页面抓取失败分类码。"
+          },
+          "redirect_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Redirect Count",
+            "description": "本次抓取重定向次数。",
+            "default": 0
           }
         },
         "type": "object",
@@ -52497,7 +52655,11 @@
         "enum": [
           "loading",
           "success",
+          "partial",
           "empty",
+          "fetch_error",
+          "evidence_insufficient",
+          "source_conflict",
           "error",
           "permission",
           "recovery",
@@ -52505,6 +52667,18 @@
         ],
         "title": "WebSearchStatus",
         "description": "一次公网搜索的可见状态。"
+      },
+      "WebSearchVerification": {
+        "type": "string",
+        "enum": [
+          "verified",
+          "cross_verified",
+          "summary_only",
+          "fetch_failed",
+          "conflicting"
+        ],
+        "title": "WebSearchVerification",
+        "description": "单个来源的确定性证据状态。"
       },
       "WordingStrength": {
         "type": "string",
