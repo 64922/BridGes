@@ -63,7 +63,7 @@ export function LoginTemplate() {
         </div>
         <h1 style={{ fontSize: "var(--text-2xl)", marginBottom: "var(--space-2)" }}>登录</h1>
         <p style={{ color: "var(--color-text-secondary)", marginBottom: "var(--space-6)" }}>
-          连接你与知识之桥。账户是画像、对话与学习项目的归属边界。
+          连接你与知识之桥。账户是画像、对话与知识库材料的归属边界。
         </p>
 
         {from === "switch" && (

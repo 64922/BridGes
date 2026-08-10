@@ -95,7 +95,7 @@ function retrievalRound(overrides: Record<string, unknown> = {}) {
     sufficiency: "sufficient",
     layers: [
       layer("attachment", "ok", 1, null),
-      layer("project", "disabled", 0, "该对话未归属学习项目。"),
+      layer("project", "disabled", 0, "该对话未关联历史材料。"),
       layer("knowledge_base", "ok", 1, null),
     ],
     citations: [
@@ -334,10 +334,10 @@ test.describe("Issue 20 — 分层检索、引用与来源开关", () => {
     await expect(page.getByTestId("retrieval-card")).toBeVisible();
     await expect(page.getByTestId("retrieval-sufficiency-sufficient")).toContainText("已检索到足够材料");
 
-    // 三层来源状态（附件/项目/知识库）
+    // 三层来源状态（附件/历史材料/知识库）
     await expect(page.getByTestId("retrieval-layer-attachment")).toContainText("当前附件");
     await expect(page.getByTestId("retrieval-layer-attachment")).toContainText("1 条候选");
-    await expect(page.getByTestId("retrieval-layer-project")).toContainText("该对话未归属学习项目");
+    await expect(page.getByTestId("retrieval-layer-project")).toContainText("该对话未关联历史材料");
     await expect(page.getByTestId("retrieval-layer-knowledge_base")).toContainText("1 条候选");
 
     // 引用：文件名 + 页码/章节；点击展开证据详情
@@ -395,9 +395,9 @@ test.describe("Issue 20 — 分层检索、引用与来源开关", () => {
     await mock.install();
     await registerAndOpenConversation(page);
 
-    // 来源层面板：附件/项目/知识库三层可见，知识库默认开启
+    // 来源层面板：附件/历史材料/知识库三层可见，知识库默认开启
     await expect(page.getByTestId("source-layer-attachment")).toContainText("当前附件");
-    await expect(page.getByTestId("source-layer-project")).toContainText("当前项目");
+    await expect(page.getByTestId("source-layer-project")).toContainText("历史材料");
     const kbSwitch = page.getByTestId("source-layer-knowledge-base");
     await expect(kbSwitch).toHaveAttribute("aria-checked", "true");
 

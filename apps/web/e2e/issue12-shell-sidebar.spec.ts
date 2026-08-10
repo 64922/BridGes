@@ -35,7 +35,7 @@ async function createConversation(page: Page, title: string | null): Promise<str
 }
 
 test.describe("Issue 12 — 固定顺序侧栏", () => {
-  test("侧栏按固定顺序渲染：Logo、搜索、收起、新聊天、五个模块、最近对话、底部账户菜单", async ({
+  test("侧栏按固定顺序渲染：Logo、搜索、收起、新聊天、知识库、画像、最近对话、底部账户菜单", async ({
     page,
   }) => {
     const creds = await freshAccount(page, "i12-order");
@@ -53,9 +53,7 @@ test.describe("Issue 12 — 固定顺序侧栏", () => {
       "搜索",
       "收起侧边栏",
       "新聊天",
-      "本地知识库",
-      "学习项目",
-      "插件",
+      "知识库",
       "用户画像",
       "最近对话",
     ];
@@ -175,19 +173,10 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
 
     const cases: { name: string; url: string; heading: string; emptyText?: string; emptyAction?: string }[] = [
       {
-        name: "本地知识库",
+        name: "知识库",
         url: "/knowledge-base",
-        heading: "本地知识库",
+        heading: "知识库",
         emptyText: "当前账户还没有知识库材料",
-      },
-      { name: "学习项目", url: "/account/projects", heading: "学习项目" },
-      {
-        name: "插件",
-        url: "/plugins",
-        heading: "插件",
-        // Issue 34：插件中心已交付真实页面，空态为真实说明（用户插件空 + 安装入口）
-        emptyText: "当前账户还没有用户插件",
-        emptyAction: "安装插件",
       },
     ];
 
@@ -198,8 +187,6 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
       await expect(page.locator("body")).not.toContainText("将在这里呈现");
       if (item.emptyText) {
         // 真实空状态：解释原因 + 可操作下一步（返回新聊天或真实能力入口）。
-        // 插件页含 SKILL 与 MCP 两个分区（Issue 35），多空态共存合法，
-        // 按文案精确过滤。
         const emptyState = page.getByTestId("state-empty").filter({ hasText: item.emptyText });
         await expect(emptyState).toBeVisible();
         await expect(page.getByRole("button", { name: item.emptyAction ?? "返回新聊天" }).first()).toBeVisible();
@@ -233,7 +220,7 @@ test.describe("Issue 12 — 模块入口与真实空状态", () => {
     await expect(page.getByRole("heading", { name: "搜索", exact: true })).toBeVisible();
     // 空查询引导（Issue 24 统一搜索页）
     await expect(page.getByTestId("state-empty")).toContainText(
-      "输入关键词，搜索聊天、图片、文档和学习项目"
+      "输入关键词，搜索聊天、图片和文档"
     );
 
     // 无结果态
@@ -299,12 +286,12 @@ test.describe("Issue 12 — 激活语义与键盘可达", () => {
     ).toHaveAttribute("aria-current", "page");
 
     // 模块页：仅该模块为当前页（前缀匹配覆盖嵌套路由）
-    await sidebar.getByRole("link", { name: "学习项目" }).click();
-    await page.waitForURL("/account/projects");
-    const projectsSidebar = page.getByTestId("app-sidebar");
-    await expect(projectsSidebar.locator('[aria-current="page"]')).toHaveCount(1);
+    await sidebar.getByRole("link", { name: "知识库" }).click();
+    await page.waitForURL("/knowledge-base");
+    const knowledgeSidebar = page.getByTestId("app-sidebar");
+    await expect(knowledgeSidebar.locator('[aria-current="page"]')).toHaveCount(1);
     await expect(
-      projectsSidebar.getByRole("link", { name: "学习项目" })
+      knowledgeSidebar.getByRole("link", { name: "知识库" })
     ).toHaveAttribute("aria-current", "page");
 
     // 对话页：仅该会话条目为当前页，模块均不标记。
@@ -340,9 +327,7 @@ test.describe("Issue 12 — 激活语义与键盘可达", () => {
       { role: "link", name: "搜索" },
       { role: "button", name: "收起侧边栏" },
       { role: "link", name: "新聊天", exact: true },
-      { role: "link", name: "本地知识库" },
-      { role: "link", name: "学习项目" },
-      { role: "link", name: "插件" },
+      { role: "link", name: "知识库" },
       { role: "link", name: "用户画像" },
       { role: "button", name: new RegExp(`账户菜单：${creds.username}`) },
     ];

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 /**
- * Issue 18 — 全局本地知识库桌面页。
+ * Issue 18 — 全局知识库桌面页。
  *
  * 业务接口全部用 page.route 模拟（投影形状与后端契约一致），
  * 认证会话沿用 issue17 的 mock 模式，账户切换沿用 issue15 的双账户模式。
@@ -196,24 +196,15 @@ async function installAuthenticatedSession(page: Page, account = ACCOUNT_ALICE) 
       body: JSON.stringify({ conversations: [] }),
     })
   );
-  // Issue 19：侧栏新增学习项目列表请求；不 mock 时真实 API 以 401 清除
-  // 伪会话 Cookie，「返回新聊天」的整页导航会落到公开首页而非新聊天。
-  await page.route("**/api/learning-projects", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ projects: [] }),
-    })
-  );
 }
 
-test.describe("Issue 18 — 全局本地知识库", () => {
+test.describe("Issue 18 — 全局知识库", () => {
   test("首次使用呈现真实空状态，返回新聊天是真实导航", async ({ page }) => {
     await installAuthenticatedSession(page);
     await installKnowledgeBaseApi(page, []);
     await page.goto("/knowledge-base");
 
-    await expect(page.getByRole("heading", { name: "本地知识库" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "知识库" })).toBeVisible();
     const empty = page.getByTestId("state-empty");
     await expect(empty).toContainText("当前账户还没有知识库材料");
     await expect(page.locator("body")).not.toContainText("将在这里呈现");

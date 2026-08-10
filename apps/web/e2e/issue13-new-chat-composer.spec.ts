@@ -329,42 +329,17 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await expect(reducedQuote).toHaveAttribute("data-quote-index", "0");
   });
 
-  test("「+」菜单固定八入口，插件选择器为真实空态", async ({ page }) => {
+  test("「+」菜单固定六个聊天能力入口", async ({ page }) => {
     await registerAndEnterHome(page);
-    // 选择器真实加载插件/MCP 列表：mock 为空列表（当前账户无插件 → 空态）
-    await page.route("**/api/plugins", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ builtin: [], user: [] }),
-      });
-    });
-    await page.route("**/api/mcp", async (route) => {
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ servers: [] }),
-      });
-    });
     const composer = page.getByTestId("composer");
 
     await composer.getByRole("button", { name: "更多功能" }).click();
     const menu = page.getByRole("menu", { name: "更多功能" });
     await expect(menu).toBeVisible();
 
-    // 固定顺序入口（Issue 36：六入口统一顺序；图片/视频生成为既有能力
-    // 入口保留在清单之后；「选择已启用插件」为真实选择器不再占位）
+    // 固定顺序入口：只保留聊天、知识检索与媒体能力。
     const labels = await menu.getByRole("menuitem").allTextContents();
-    expect(labels).toEqual([
-      "上传文件/图片",
-      "论文搜索",
-      "文章人味化",
-      "生涯规划助手",
-      "选择学习项目",
-      "选择已启用插件",
-      "图片生成",
-      "视频生成",
-    ]);
+    expect(labels).toEqual(["上传文件/图片", "论文搜索", "文章人味化", "生涯规划助手", "图片生成", "视频生成"]);
 
     // Issue 31：「图片生成」已落地——打开真实任务对话框（生成页签），
     // Esc 关闭后不产生假结果；对话框焦点陷阱收起时菜单同时关闭，需重新打开。
@@ -377,26 +352,6 @@ test.describe("Issue 13 — 新聊天输入区与完整空白态", () => {
     await composer.getByRole("button", { name: "更多功能" }).click();
     await expect(menu).toBeVisible();
 
-    // Issue 19：「选择学习项目」已落地——打开真实选择对话框（当前账户无项目
-    // 时给真实空状态），不再是不可用占位；Esc 关闭后不产生假结果。
-    await menu.getByRole("menuitem", { name: "选择学习项目" }).click();
-    const projectPicker = page.getByRole("dialog", { name: "选择学习项目" });
-    await expect(projectPicker).toBeVisible();
-    await expect(projectPicker).toContainText("还没有学习项目");
-    await expect(page.getByTestId("tool-unavailable-notice")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-
-    // Issue 36：「选择已启用插件」已落地为真实选择器（可用集合=已安装且
-    // 启用；当前账户无插件时给真实空状态），不再是不可用占位。
-    await composer.getByRole("button", { name: "更多功能" }).click();
-    await page.getByRole("menu", { name: "更多功能" }).getByRole("menuitem", { name: "选择已启用插件" }).click();
-    const pluginPicker = page.getByRole("dialog", { name: "选择已启用插件" });
-    await expect(pluginPicker).toBeVisible();
-    await expect(page.getByTestId("plugin-picker-empty-all")).toBeVisible();
-    await expect(page.getByTestId("tool-unavailable-notice")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
   });
 
   test("建议卡预填结构化意图并聚焦，发送走正常消息流", async ({ page }) => {

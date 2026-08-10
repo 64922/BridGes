@@ -1,8 +1,7 @@
 """跨内容统一桌面搜索 API 路由（Issue 24）。
 
-单端点 ``GET /search`` 覆盖聊天、图片、文档与学习项目四类本地内容。
-全部实时查询权威数据库，不依赖进程内缓存；只返回当前账户的内容，
-``project_id`` 筛选指向其他账户时按「不存在」返回同一 404。
+单端点 ``GET /search`` 覆盖聊天、图片与文档三类账户级内容。
+全部实时查询权威数据库，不依赖进程内缓存。
 """
 
 from __future__ import annotations
@@ -14,7 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from bridges.api.auth import SubjectDep
 from bridges.contracts.search import ALL_RESULT_TYPES, SearchResponse, SearchResultType
-from bridges.search import SearchError, SearchService
+from bridges.search import SearchService
 
 router = APIRouter(prefix="/search", tags=["search"])
 
@@ -67,7 +66,6 @@ def _parse_types(raw_types: list[str] | None) -> set[SearchResultType] | None:
     response_model=SearchResponse,
     responses={
         status.HTTP_401_UNAUTHORIZED: {"model": dict},
-        status.HTTP_404_NOT_FOUND: {"model": dict},
         status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": dict},
         status.HTTP_503_SERVICE_UNAVAILABLE: {"model": dict},
     },
@@ -80,14 +78,10 @@ def unified_search(
         list[str] | None,
         Query(
             description=(
-                "结果类型筛选：chat/image/document/project，"
+                "结果类型筛选：chat/image/document，"
                 "支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。"
             )
         ),
-    ] = None,
-    project_id: Annotated[
-        str | None,
-        Query(description="限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。"),
     ] = None,
     from_: Annotated[
         datetime | None,
@@ -100,18 +94,11 @@ def unified_search(
 ) -> SearchResponse:
     """跨内容统一搜索：空查询返回空结果；索引未就绪时结果照返并标记
     ``index_ready=false``，由前端显示「索引尚未就绪」而非「没有结果」。"""
-    try:
-        return service.search(
-            subject.account_id,
-            query=q,
-            types=_parse_types(types),
-            project_id=project_id,
-            from_=from_,
-            to=to,
-            limit=limit,
-        )
-    except SearchError as exc:
-        raise HTTPException(
-            status_code=exc.status_code,
-            detail={"error": exc.code, "message": exc.message},
-        ) from exc
+    return service.search(
+        subject.account_id,
+        query=q,
+        types=_parse_types(types),
+        from_=from_,
+        to=to,
+        limit=limit,
+    )

@@ -30,11 +30,9 @@ interface SidebarModule {
   href: string;
 }
 
-/** 普通用户侧栏功能模块（固定顺序，见 Issue 12）。 */
+/** 普通用户侧栏功能模块（固定顺序，见 Issue 20）。 */
 const SIDEBAR_MODULES: SidebarModule[] = [
-  { label: "本地知识库", icon: "knowledgeBase", href: "/knowledge-base" },
-  { label: "学习项目", icon: "learningProject", href: "/account/projects" },
-  { label: "任务安排", icon: "tasks", href: "/tasks" },
+  { label: "知识库", icon: "knowledgeBase", href: "/knowledge-base" },
   { label: "用户画像", icon: "profile", href: "/account/profile" },
 ];
 
@@ -99,10 +97,10 @@ const iconOnlyStyle: React.CSSProperties = {
 };
 
 /**
- * 普通用户全局侧栏（Issue 12，ChatGPT 桌面结构启发、BridGes 原创视觉）。
+ * 普通用户全局侧栏（Issue 20，ChatGPT 桌面结构启发、BridGes 原创视觉）。
  *
  * 自上而下固定顺序：BridGes Logo（进入新聊天）、搜索、收起侧边栏、新聊天、
- * 本地知识库、学习项目、任务安排、插件、用户画像、最近对话（真实数据）、
+ * 知识库、用户画像、最近对话（真实数据）、
  * 底部账户菜单（Issue 08）。收起后侧栏完全隐藏，内容区左上角保留
  * 「展开侧边栏 + 新聊天」恢复入口；状态持久化在 localStorage，刷新与
  * 路由切换后保持（无闪烁由根布局内联脚本 + data-sidebar-collapsed 规则保证）。
@@ -289,6 +287,7 @@ export function AppSidebar() {
         borderRight: "1px solid var(--color-border)",
         padding: "var(--space-2)",
         gap: "2px",
+        overflow: "hidden",
       }}
     >
       {/* 1. BridGes Logo：点击进入新聊天，不创建对话、永不标记当前页 */}
@@ -329,23 +328,17 @@ export function AppSidebar() {
         收起侧边栏
       </button>
 
-      {/* 4. 新聊天：主操作样式，仅在 `/` 精确匹配时标记当前页 */}
+      {/* 4. 新聊天：与侧栏表面连续，仅以柔和背景标记当前页 */}
       <Link
         href="/"
         aria-current={pathname === "/" ? "page" : undefined}
-        style={{
-          ...itemBaseStyle,
-          border: "1px solid var(--color-border-strong)",
-          backgroundColor: "var(--color-surface)",
-          color: "var(--color-text-primary)",
-          fontWeight: 500,
-        }}
+        style={itemStyle(pathname === "/")}
       >
         <Icon name="newChat" size={18} aria-hidden />
         新聊天
       </Link>
 
-      {/* 5–9. 功能模块 */}
+      {/* 5–6. 功能模块 */}
       <ul
         role="list"
         aria-label="功能模块"
@@ -375,10 +368,17 @@ export function AppSidebar() {
         ))}
       </ul>
 
-      {/* 10. 最近对话（真实数据，可滚动区，底部菜单始终可见） */}
+      {/* 7. 最近对话（真实数据，可滚动区，底部菜单始终可见） */}
       <section
         aria-label="最近对话"
-        style={{ flex: 1, minHeight: 0, overflowY: "auto", marginTop: "var(--space-2)" }}
+        data-testid="recent-conversations"
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflowY: "auto",
+          overflowX: "hidden",
+          marginTop: "var(--space-2)",
+        }}
       >
         <h2
           style={{
@@ -510,7 +510,6 @@ export function AppSidebar() {
                         }}
                       >
                         {conversationModeLabel(conversation.mode)}
-                        {conversation.project_id ? " · 历史学习项目" : ""}
                         {` · ${formatConversationTime(conversation.updated_at)}`}
                       </span>
                     </span>
@@ -555,7 +554,7 @@ export function AppSidebar() {
         )}
       </section>
 
-      {/* 11. 底部账户菜单（Issue 08，GQ-06 后固定三项） */}
+      {/* 8. 底部账户菜单（Issue 08，GQ-06 后固定三项） */}
       <div
         style={{
           marginTop: "auto",

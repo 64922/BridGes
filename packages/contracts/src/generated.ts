@@ -342,6 +342,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/compatibility/pages/{endpoint_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Observe Retired Page Redirect
+         * @description 记录一次旧页面重定向，不读取账户、查询参数或请求正文。
+         */
+        post: operations["observe_retired_page_redirect_compatibility_pages__endpoint_id__post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations": {
         parameters: {
             query?: never;
@@ -18965,7 +18985,7 @@ export interface components {
             results?: components["schemas"]["SearchResultItem"][];
             /**
              * Counts
-             * @description 四类结果各自的总命中数（不受 limit 截断），用于筛选 tab 计数。
+             * @description 三类结果各自的总命中数（不受 limit 截断），用于筛选 tab 计数。
              */
             counts?: {
                 [key: string]: number;
@@ -19015,8 +19035,8 @@ export interface components {
          * @description 单条搜索结果（扁平结构，代码生成友好）。
          *
          *     ``result_id`` 在类型内唯一：消息命中为消息标识，会话标题命中为会话
-         *     标识，图片为对象标识，文档为文档标识，项目为项目标识。跳转锚点字段
-         *     按类型填充，不适用时为 null。
+         *     标识，图片为对象标识，文档为文档标识。跳转锚点字段按类型填充，
+         *     不适用时为 null。
          */
         SearchResultItem: {
             /**
@@ -19024,7 +19044,7 @@ export interface components {
              * @description 结果类型。
              * @enum {string}
              */
-            result_type: "chat" | "image" | "document" | "project";
+            result_type: "chat" | "image" | "document";
             /**
              * Result Id
              * @description 类型内唯一的结果标识（跳转主键）。
@@ -19032,7 +19052,7 @@ export interface components {
             result_id: string;
             /**
              * Title
-             * @description 结果标题（会话/项目名、文档或图片名）。
+             * @description 结果标题（会话、文档或图片名）。
              */
             title: string;
             /**
@@ -19061,11 +19081,6 @@ export interface components {
              * @description 图片/文档结果的对象标识。
              */
             object_id?: string | null;
-            /**
-             * Project Id
-             * @description 项目标识（项目结果或归属项目）。
-             */
-            project_id?: string | null;
             /**
              * Page Number
              * @description 文档命中分块的页码锚点。
@@ -23561,6 +23576,35 @@ export interface operations {
             };
         };
     };
+    observe_retired_page_redirect_compatibility_pages__endpoint_id__post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                endpoint_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     list_conversations_chat_conversations_get: {
         parameters: {
             query?: never;
@@ -26402,10 +26446,8 @@ export interface operations {
         parameters: {
             query?: {
                 q?: string;
-                /** @description 结果类型筛选：chat/image/document/project，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。 */
+                /** @description 结果类型筛选：chat/image/document，支持重复参数（types=chat&types=document）或逗号分隔（types=chat,document）。 */
                 types?: string[] | null;
-                /** @description 限定到指定学习项目（作用于聊天与文档；项目类只保留该项目自身）。 */
-                project_id?: string | null;
                 /** @description 起始时间（ISO 8601，作用于结果最近更新时间）。 */
                 from?: string | null;
                 /** @description 截止时间（ISO 8601，作用于结果最近更新时间）。 */
@@ -26432,17 +26474,6 @@ export interface operations {
             };
             /** @description Unauthorized */
             401: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        [key: string]: unknown;
-                    };
-                };
-            };
-            /** @description Not Found */
-            404: {
                 headers: {
                     [name: string]: unknown;
                 };

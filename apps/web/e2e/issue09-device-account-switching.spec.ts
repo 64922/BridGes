@@ -61,9 +61,6 @@ async function setUpAuthenticatedPage(page: Page) {
   await page.route("**/api/auth/session", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(alice, "s-alice")) })
   );
-  await page.route("**/api/learning-projects", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ projects: [] }) })
-  );
   // Issue 12：全局侧栏会拉取真实对话列表；mock 会话对真实 API 无效（后端会
   // 清除无效会话 Cookie），注入空列表保证后续导航不被登出。
   await page.route("**/api/chat/conversations", (route) =>
@@ -71,14 +68,6 @@ async function setUpAuthenticatedPage(page: Page) {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ conversations: [] }),
-    })
-  );
-  // Issue 19：侧栏新增学习项目列表请求，同理注入空列表避免 401 清除会话 Cookie。
-  await page.route("**/api/learning-projects", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ projects: [] }),
     })
   );
   await page.goto("/account/settings");
@@ -177,81 +166,6 @@ test.describe("Issue 09 — 同设备账户切换与再认证", () => {
     await page.getByLabel("该账户密码").fill("correct-horse-12");
     await page.getByRole("button", { name: "确认并切换" }).click();
     await expect(page.getByRole("button", { name: /账户菜单：Bob/ })).toBeVisible();
-  });
-
-  test("慢响应在切换账户后返回不写入新账户界面（请求作用域隔离）", async ({ page }) => {
-    // Alice 挂载时发起的项目请求被延迟；切换 Bob 后该响应才返回，
-    // 不得把 Alice 数据渲染进 Bob 的界面（Issue 09 慢响应攻击向量）。
-    await page.context().addCookies([
-      { name: "bridges_session", value: "mock-session", url: "http://127.0.0.1:3000" },
-    ]);
-    await page.route("**/api/auth/session", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session(alice, "s-alice")) })
-    );
-    let projectCalls = 0;
-    // Issue 41：账户首页改拉真实学习项目（/api/learning-projects）。
-    await page.route("**/api/learning-projects", async (route) => {
-      projectCalls += 1;
-      const isAliceRequest = projectCalls === 1;
-      if (isAliceRequest) {
-        // 慢响应：模拟账户 A 的请求在网络中滞留。
-        await new Promise((resolve) => setTimeout(resolve, 900));
-      }
-      // 只有 Alice 的首次请求返回 Alice 数据；切换后的请求为空列表。
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          projects: isAliceRequest
-            ? [
-                {
-                  project_id: "p-slow-1",
-                  name: "Alice 的慢速项目",
-                  description: "",
-                  created_at: "2026-08-03T00:00:00Z",
-                  updated_at: "2026-08-03T00:00:00Z",
-                },
-              ]
-            : [],
-        }),
-      });
-    });
-    await page.route("**/api/auth/device/accounts", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          accounts: [deviceAccount(alice, "s-alice", true), deviceAccount(bob, "s-bob", false)],
-          current_account: alice,
-          current_session_id: "s-alice",
-        }),
-      })
-    );
-    await page.route("**/api/auth/device/switch", (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({
-          accounts: [deviceAccount(bob, "s-bob", true), deviceAccount(alice, "s-alice", false)],
-          current_account: bob,
-          current_session_id: "s-bob",
-        }),
-      })
-    );
-
-    await page.goto("/account");
-    await expect(page.getByText("欢迎回来，Alice")).toBeVisible();
-
-    // 在 Alice 的慢请求未返回时切换到 Bob。
-    await page.getByRole("button", { name: /账户菜单：Alice/ }).click();
-    await page.getByRole("menuitem", { name: "切换账号" }).click();
-    await page.getByRole("button", { name: /Bob，22\*\*\*@qq.com/ }).click();
-    await expect(page.getByRole("button", { name: /账户菜单：Bob/ })).toBeVisible();
-
-    // 慢响应返回后不得把 Alice 的项目写进 Bob 的界面。
-    await page.waitForTimeout(1200);
-    await expect(page.getByText("Alice 的慢速项目")).toHaveCount(0);
-    await expect(page.getByText("欢迎回来，Bob")).toBeVisible();
   });
 
   test("浏览器后退不能重新进入已退出的受保护内容", async ({ page }) => {

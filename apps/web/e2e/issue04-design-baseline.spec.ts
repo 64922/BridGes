@@ -312,11 +312,9 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
       "href",
       "/templates/chat",
     );
-    // 功能模块入口与 1.txt 侧边栏清单一致
+    // 当前产品合同只保留知识库与用户画像入口
     const modules = [
-      { label: "本地知识库", section: "knowledge" },
-      { label: "学习项目", section: "projects" },
-      { label: "插件", section: "plugins" },
+      { label: "知识库", section: "knowledge" },
       { label: "用户画像", section: "profile" },
     ];
     for (const module of modules) {
@@ -326,9 +324,9 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
       );
     }
     // 模块入口可跳转到对应列表页并高亮当前模块
-    await sidebar.getByRole("link", { name: "本地知识库" }).click();
-    await expect(page.getByRole("heading", { name: "本地知识库" })).toBeVisible();
-    await expect(sidebar.getByRole("link", { name: "本地知识库" })).toHaveAttribute("aria-current", "page");
+    await sidebar.getByRole("link", { name: "知识库" }).click();
+    await expect(page.getByRole("heading", { name: "知识库" })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "知识库" })).toHaveAttribute("aria-current", "page");
 
     await page.goto("/templates/chat");
     const logoLink = page.getByRole("link", { name: "BridGes — 新聊天" });
@@ -349,8 +347,8 @@ test.describe("Issue 04 — 桌面设计基线模板", () => {
 
   test("列表模板搜索过滤与真实空态", async ({ page }) => {
     await page.goto("/templates/list?section=knowledge");
-    await expect(page.getByRole("heading", { name: "本地知识库" })).toBeVisible();
-    await page.getByLabel("搜索本地知识库").fill("不存在的条目xyz");
+    await expect(page.getByRole("heading", { name: "知识库" })).toBeVisible();
+    await page.getByLabel("搜索知识库").fill("不存在的条目xyz");
     await expect(page.getByTestId("state-empty")).toContainText("没有匹配");
     await page.getByRole("button", { name: "清除搜索" }).click();
     await expect(page.getByRole("link", { name: /量子纠错综述阅读清单/ })).toBeVisible();

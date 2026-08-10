@@ -58,15 +58,6 @@ export type VideoDescriptionSource = components["schemas"]["VideoDescriptionSour
 export type VideoDeletionProjection = components["schemas"]["VideoDeletionProjection"];
 export type VideoRequestPayload = components["schemas"]["VideoRequestPayload"];
 export type ChatStreamVideoData = components["schemas"]["ChatStreamVideoData"];
-// Issue 34：SKILL 插件中心契约（生成类型来自 openapi.json）。
-export type PluginListProjection = components["schemas"]["PluginListProjection"];
-export type BuiltinPluginProjection = components["schemas"]["BuiltinPluginProjection"];
-export type UserPluginProjection = components["schemas"]["UserPluginProjection"];
-export type PluginStatus = components["schemas"]["PluginStatus"];
-export type PluginCheckResult = components["schemas"]["PluginCheckResult"];
-export type PluginFileEntry = components["schemas"]["PluginFileEntry"];
-export type PluginFileKind = components["schemas"]["PluginFileKind"];
-export type PluginDemoProjection = components["schemas"]["PluginDemoProjection"];
 // Issue 29：生涯规划助手契约（生成类型来自 openapi.json）。
 export type CareerPlanningRouteContract = components["schemas"]["CareerPlanningRouteContract"];
 export type CapabilityRoute = components["schemas"]["CapabilityRoute"];
@@ -132,14 +123,6 @@ export type FeedbackResolveRequest = components["schemas"]["FeedbackResolveReque
 export type CitationProjection = components["schemas"]["CitationProjection"];
 export type CitationDetailProjection = components["schemas"]["CitationDetailProjection"];
 export type CitationAccessStatus = components["schemas"]["CitationAccessStatus"];
-export type LearningProjectSummary = components["schemas"]["LearningProjectSummary"];
-export type LearningProjectDetail = components["schemas"]["LearningProjectDetail"];
-export type LearningProjectConversation = components["schemas"]["LearningProjectConversation"];
-export type LearningProjectFile = components["schemas"]["LearningProjectFile"];
-export type LearningProjectMigrationSummary =
-  components["schemas"]["LearningProjectMigrationSummary"];
-export type LearningProjectMigrationItem =
-  components["schemas"]["LearningProjectMigrationItem"];
 export type WorkbenchPackRecord = components["schemas"]["WorkbenchPackRecord"];
 export type ReviewAttestation = components["schemas"]["ReviewAttestation"];
 export type SemanticDiff = components["schemas"]["SemanticDiff"];
@@ -1362,7 +1345,7 @@ export async function getCitationDetail(
 }
 
 // ---------------------------------------------------------------------------
-// Issue 18：全局本地知识库
+// Issue 18：全局知识库
 // ---------------------------------------------------------------------------
 
 /** 当前账户的全局知识库材料列表（最新在前）。 */
@@ -1450,207 +1433,6 @@ export async function deleteKnowledgeBaseMaterial(objectId: string): Promise<voi
 }
 
 // ---------------------------------------------------------------------------
-// Issue 19：文件夹式学习项目
-// ---------------------------------------------------------------------------
-
-/** 当前账户的学习项目列表（按最近更新倒序）。 */
-export async function listLearningProjects(
-  options?: { signal?: AbortSignal }
-): Promise<LearningProjectSummary[]> {
-  const res = await fetch(`${API_BASE}/learning-projects`, {
-    credentials: "same-origin",
-    cache: "no-store",
-    signal: options?.signal,
-  });
-  if (!res.ok) throw await parseApiError(res);
-  const projection: { projects?: LearningProjectSummary[] } = await res.json();
-  return projection.projects ?? [];
-}
-
-/** 新建学习项目；名称必填，描述可选。 */
-export async function createLearningProject(
-  name: string,
-  description?: string
-): Promise<LearningProjectSummary> {
-  const res = await fetch(`${API_BASE}/learning-projects`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ name, description: description ?? null }),
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 单个学习项目详情（含归属对话列表）。 */
-export async function getLearningProject(projectId: string): Promise<LearningProjectDetail> {
-  const res = await fetch(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}`,
-    { credentials: "same-origin", cache: "no-store" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/**
- * 更新学习项目名称或描述；字段缺省保持不变，
- * ``description`` 显式传 null 表示清空描述。
- */
-export async function updateLearningProject(
-  projectId: string,
-  update: { name?: string; description?: string | null }
-): Promise<LearningProjectSummary> {
-  const body: Record<string, unknown> = {};
-  if (update.name !== undefined) body.name = update.name;
-  if (update.description !== undefined) body.description = update.description;
-  const res = await fetch(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      credentials: "same-origin",
-      body: JSON.stringify(body),
-    }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/**
- * 删除学习项目：``keep`` 保留对话为独立对话（项目文件随项目删除），
- * ``delete`` 一并删除对话（含附件）与项目文件；
- * 生成中返回 409 generation_in_progress。
- */
-export async function deleteLearningProject(
-  projectId: string,
-  contents: "keep" | "delete"
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}?contents=${contents}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-}
-
-/** 项目文件列表（最新上传在前）。 */
-export async function listLearningProjectFiles(
-  projectId: string,
-  options?: { signal?: AbortSignal }
-): Promise<LearningProjectFile[]> {
-  const res = await fetch(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files`,
-    { credentials: "same-origin", cache: "no-store", signal: options?.signal }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  const projection: { files?: LearningProjectFile[] } = await res.json();
-  return projection.files ?? [];
-}
-
-/**
- * 上传项目文件：与知识库材料共用 uploadRawBytes（XHR 进度 + 取消）；
- * 201 新建 / 200 幂等复用，均按成功处理。
- */
-export function uploadLearningProjectFile(
-  projectId: string,
-  file: File,
-  uploadId: string,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<LearningProjectFile> {
-  return uploadRawBytes<LearningProjectFile>(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files`,
-    file,
-    uploadId,
-    onProgress,
-    signal
-  );
-}
-
-/** 下载项目文件原始内容（与知识库材料下载同一模式）。 */
-export async function downloadLearningProjectFile(
-  projectId: string,
-  objectId: string,
-  originalFilename: string
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(objectId)}/download`,
-    { credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = originalFilename;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-/** 删除项目文件（处理中返回 409 material_processing）。 */
-export async function deleteLearningProjectFile(
-  projectId: string,
-  objectId: string
-): Promise<void> {
-  const res = await fetch(
-    `${API_BASE}/learning-projects/${encodeURIComponent(projectId)}/files/${encodeURIComponent(objectId)}`,
-    { method: "DELETE", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-}
-
-/** 读取当前账户的学习项目迁移报告；未启动时返回 404。 */
-export async function getLearningProjectMigration(): Promise<LearningProjectMigrationSummary> {
-  const res = await fetch(`${API_BASE}/learning-projects/migration`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 启动可恢复的学习项目迁移。 */
-export async function startLearningProjectMigration(): Promise<LearningProjectMigrationSummary> {
-  const res = await fetch(`${API_BASE}/learning-projects/migration`, {
-    method: "POST",
-    credentials: "same-origin",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 重试失败的迁移项；未指定文件时重试账户内全部失败项。 */
-export async function retryLearningProjectMigration(
-  sourceDocumentId?: string
-): Promise<LearningProjectMigrationSummary> {
-  const res = await fetch(`${API_BASE}/learning-projects/migration/retry`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ source_document_id: sourceDocumentId ?? null }),
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/**
- * 变更对话的学习项目归属：传入项目标识移入项目，
- * 显式传 null 移出项目（保留为独立对话，历史消息与附件不变）。
- */
-export async function updateChatConversationProject(
-  conversationId: string,
-  projectId: string | null
-): Promise<ChatConversationProjection> {
-  const res = await fetch(`${API_BASE}/chat/conversations/${encodeURIComponent(conversationId)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify({ project_id: projectId }),
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-// ---------------------------------------------------------------------------
 // Issue 24：跨内容统一桌面搜索
 // ---------------------------------------------------------------------------
 
@@ -1660,7 +1442,6 @@ export type SearchResultType = SearchResultItem["result_type"];
 export interface UnifiedSearchParams {
   q: string;
   types?: SearchResultType[];
-  projectId?: string;
   /** ISO 8601 起止时间（updated_at 过滤）。 */
   from?: string;
   to?: string;
@@ -1678,7 +1459,6 @@ export async function searchUnified(params: UnifiedSearchParams): Promise<Search
   for (const type of params.types ?? []) {
     query.append("types", type);
   }
-  if (params.projectId) query.set("project_id", params.projectId);
   if (params.from) query.set("from", params.from);
   if (params.to) query.set("to", params.to);
   if (params.limit !== undefined) query.set("limit", String(params.limit));
@@ -2036,244 +1816,12 @@ export function videoUrl(
   return download ? `${base}?download=1` : base;
 }
 
-// ---------------------------------------------------------------------------
-// Issue 34：SKILL 插件中心
-// ---------------------------------------------------------------------------
-
-export async function listPlugins(): Promise<PluginListProjection> {
-  const res = await fetch(`${API_BASE}/plugins`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 安装前检查：上传 zip 原始字节，返回安全闭锁结果与内容清单（纯检查）。 */
-export function checkPluginPackage(
-  file: File,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<PluginCheckResult> {
-  return uploadRawBytes<PluginCheckResult>(
-    `${API_BASE}/plugins/check`,
-    file,
-    `plugin-check-${Date.now()}`,
-    onProgress,
-    signal
-  );
-}
-
-/** 确认安装：再次上传同一 zip，后端重跑安全闭锁后按账户持久化。 */
-export function installPluginPackage(
-  file: File,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<UserPluginProjection> {
-  return uploadRawBytes<UserPluginProjection>(
-    `${API_BASE}/plugins/install`,
-    file,
-    `plugin-install-${Date.now()}`,
-    onProgress,
-    signal
-  );
-}
-
-async function togglePlugin(pluginId: string, enabled: boolean): Promise<PluginListProjection> {
-  const res = await fetch(
-    `${API_BASE}/plugins/${encodeURIComponent(pluginId)}/${enabled ? "enable" : "disable"}`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-export function enablePlugin(pluginId: string): Promise<PluginListProjection> {
-  return togglePlugin(pluginId, true);
-}
-
-export function disablePlugin(pluginId: string): Promise<PluginListProjection> {
-  return togglePlugin(pluginId, false);
-}
-
-export async function uninstallPlugin(pluginId: string): Promise<PluginListProjection> {
-  const res = await fetch(`${API_BASE}/plugins/${encodeURIComponent(pluginId)}`, {
-    method: "DELETE",
-    credentials: "same-origin",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 内置 PDF/Documents 演示：上传受支持附件，后端真实解析并返回统计。 */
-export function demoBuiltinPlugin(
-  skillId: string,
-  file: File,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<PluginDemoProjection> {
-  return uploadRawBytes<PluginDemoProjection>(
-    `${API_BASE}/plugins/builtin/${encodeURIComponent(skillId)}/demo`,
-    file,
-    `plugin-demo-${Date.now()}`,
-    onProgress,
-    signal
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Issue 35：显式授权 MCP 插件管理
-// ---------------------------------------------------------------------------
-
-export type McpListProjection = components["schemas"]["McpListProjection"];
-export type McpServerProjection = components["schemas"]["McpServerProjection"];
-export type McpStatus = components["schemas"]["McpStatus"];
-export type McpSensitiveKind = components["schemas"]["McpSensitiveKind"];
-export type McpPermissionManifest = components["schemas"]["McpPermissionManifest"];
-export type McpCheckResult = components["schemas"]["McpCheckResult"];
-export type McpCallRequest = components["schemas"]["McpCallRequest"];
-export type McpDataSlice = components["schemas"]["McpDataSlice"];
-export type McpCallResult = components["schemas"]["McpCallResult"];
-export type McpSensitiveConfirmation = components["schemas"]["McpSensitiveConfirmation"];
-export type McpCallRecord = components["schemas"]["McpCallRecord"];
 // Issue 36：对话级插件选择与聊天内 MCP 调用契约（随对话持久化）。
 export type ChatPluginSelectionItem = components["schemas"]["ChatPluginSelectionItem"];
 export type RemovedPluginSelection = components["schemas"]["RemovedPluginSelection"];
 export type McpCallRequestPayload = components["schemas"]["McpCallRequestPayload"];
 export type McpCallMessageProjection = components["schemas"]["McpCallMessageProjection"];
 export type ChatStreamMcpData = components["schemas"]["ChatStreamMcpData"];
-
-/** 返回当前账户的全部 MCP 服务器与真实调用统计。 */
-export async function listMcpServers(): Promise<McpListProjection> {
-  const res = await fetch(`${API_BASE}/mcp`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 安装前检查：上传 MCP.yaml 原始字节，返回权限清单预览（纯检查）。 */
-export function checkMcpDescriptor(
-  file: File,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<McpCheckResult> {
-  return uploadRawBytes<McpCheckResult>(
-    `${API_BASE}/mcp/check`,
-    file,
-    `mcp-check-${Date.now()}`,
-    onProgress,
-    signal
-  );
-}
-
-/** 确认安装：再次上传同一 MCP.yaml，后端重跑安全闭锁后按账户持久化。 */
-export function installMcpDescriptor(
-  file: File,
-  onProgress?: (loaded: number, total: number) => void,
-  signal?: AbortSignal
-): Promise<McpServerProjection> {
-  return uploadRawBytes<McpServerProjection>(
-    `${API_BASE}/mcp/install`,
-    file,
-    `mcp-install-${Date.now()}`,
-    onProgress,
-    signal
-  );
-}
-
-async function toggleMcp(mcpId: string, enabled: boolean): Promise<McpListProjection> {
-  const res = await fetch(
-    `${API_BASE}/mcp/${encodeURIComponent(mcpId)}/${enabled ? "enable" : "disable"}`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-export function enableMcp(mcpId: string): Promise<McpListProjection> {
-  return toggleMcp(mcpId, true);
-}
-
-export function disableMcp(mcpId: string): Promise<McpListProjection> {
-  return toggleMcp(mcpId, false);
-}
-
-/** 撤权：以新权限清单替换；移除敏感权限时终止依赖该权限的运行。 */
-export async function revokeMcpPermissions(
-  mcpId: string,
-  manifest: McpPermissionManifest
-): Promise<McpServerProjection> {
-  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}/permissions`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify(manifest),
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-export async function uninstallMcp(mcpId: string): Promise<McpListProjection> {
-  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}`, {
-    method: "DELETE",
-    credentials: "same-origin",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 执行一次真实调用；敏感操作挂起时返回确认载荷。 */
-export async function invokeMcp(
-  mcpId: string,
-  request: McpCallRequest
-): Promise<McpCallResult> {
-  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}/invoke`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    credentials: "same-origin",
-    body: JSON.stringify(request),
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 确认敏感操作（仅对本次调用有效）。 */
-export async function approveMcpConfirmation(
-  mcpId: string,
-  confirmationId: string
-): Promise<McpCallResult> {
-  const res = await fetch(
-    `${API_BASE}/mcp/${encodeURIComponent(mcpId)}/confirmations/${encodeURIComponent(confirmationId)}/approve`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 拒绝敏感操作：调用安全终止，不执行任何操作。 */
-export async function denyMcpConfirmation(
-  mcpId: string,
-  confirmationId: string
-): Promise<McpCallResult> {
-  const res = await fetch(
-    `${API_BASE}/mcp/${encodeURIComponent(mcpId)}/confirmations/${encodeURIComponent(confirmationId)}/deny`,
-    { method: "POST", credentials: "same-origin" }
-  );
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
-
-/** 返回最近调用记录（真实次数/最近结果/失败原因，不含正文）。 */
-export async function listMcpCalls(mcpId: string): Promise<McpCallRecord[]> {
-  const res = await fetch(`${API_BASE}/mcp/${encodeURIComponent(mcpId)}/calls`, {
-    credentials: "same-origin",
-    cache: "no-store",
-  });
-  if (!res.ok) throw await parseApiError(res);
-  return res.json();
-}
 
 // ---------------------------------------------------------------------------
 // Issue 37: 数据生命周期（导出/删除/备份/恢复）

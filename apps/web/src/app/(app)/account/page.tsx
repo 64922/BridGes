@@ -5,11 +5,8 @@ export const metadata = {
 };
 
 /**
- * Account-level main shell.
- *
- * The authenticated landing page that surfaces the global companion,
- * project list, and personal centers while keeping each domain visually
- * separated.
+ * Account landing contains only the account welcome and settings shortcuts;
+ * retired project data is not loaded here.
  */
 export default function AccountPage() {
   return <AccountPageClient />;

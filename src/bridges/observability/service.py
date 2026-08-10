@@ -40,6 +40,22 @@ class ObservabilityService:
         status_code: int = 410,
     ) -> None:
         """记录兼容窗口 410 计数，不携带账户、对象或请求正文。"""
+        self.record_compatibility(
+            endpoint_id=endpoint_id,
+            service_version=service_version,
+            traffic_class=traffic_class,
+            status_code=status_code,
+        )
+
+    def record_compatibility(
+        self,
+        *,
+        endpoint_id: str,
+        service_version: str,
+        traffic_class: str,
+        status_code: int,
+    ) -> None:
+        """记录兼容窗口观测，不携带账户、对象或请求正文。"""
         if traffic_class not in {"real", "probe"}:
             raise ValueError("traffic_class 必须是 real 或 probe。")
         key = (endpoint_id, service_version, traffic_class, status_code)

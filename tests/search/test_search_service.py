@@ -1,6 +1,6 @@
 """Issue 24：统一桌面搜索服务级测试。
 
-覆盖四类内容命中、组合筛选、高亮片段、账户隔离、改名/删除即时反映、
+覆盖三类内容命中、组合筛选、高亮片段、账户隔离、改名/删除即时反映、
 空查询与索引就绪信号。全部经真实摄取状态机与权威数据库验证。
 """
 
@@ -10,13 +10,12 @@ from typing import Any
 
 import pytest
 
-from bridges.search import SearchError, SearchService
+from bridges.search import SearchService
 from tests.search.conftest import (
     add_image,
     add_material,
     add_message,
     seed_conversation,
-    seed_project,
 )
 
 
@@ -25,7 +24,7 @@ def _search(env: dict[str, Any], account_id: str, query: str, **kwargs: Any) -> 
     return service.search(account_id, query=query, **kwargs)
 
 
-class TestFourContentTypes:
+class TestThreeContentTypes:
     def test_chat_title_hit(self, env: dict[str, Any]) -> None:
         account = env["account_a"]
         seed_conversation(env, account, "量子计算入门讨论")
@@ -94,29 +93,13 @@ class TestFourContentTypes:
         ]
         assert len(meta_images) == 1
 
-    def test_project_name_and_description_hits(self, env: dict[str, Any]) -> None:
-        account = env["account_a"]
-        seed_project(env, account, "天文学复习", "覆盖恒星演化与星系")
-        response = _search(env, account, "恒星演化")
-        projects = [item for item in response.results if item.result_type == "project"]
-        assert len(projects) == 1
-        assert projects[0].project_id is not None
-        assert any(seg.matched and seg.text == "恒星演化" for seg in projects[0].snippet)
-        name_response = _search(env, account, "天文学")
-        name_projects = [
-            item for item in name_response.results if item.result_type == "project"
-        ]
-        assert len(name_projects) == 1
-
     def test_single_query_returns_multiple_types(self, env: dict[str, Any]) -> None:
         account = env["account_a"]
         seed_conversation(env, account, "黑洞漫谈")
-        seed_project(env, account, "黑洞专题")
         add_material(env, account, "黑洞讲义.txt", "事件视界")
         add_image(env, account, "黑洞模拟.png")
         response = _search(env, account, "黑洞")
         assert response.counts["chat"] >= 1
-        assert response.counts["project"] >= 1
         assert response.counts["document"] >= 1
         assert response.counts["image"] >= 1
         assert response.index_ready is True
@@ -126,37 +109,11 @@ class TestFilters:
     def test_type_subset(self, env: dict[str, Any]) -> None:
         account = env["account_a"]
         seed_conversation(env, account, "暗物质讨论")
-        seed_project(env, account, "暗物质专题")
-        response = _search(env, account, "暗物质", types={"project"})
-        # counts 契约：筛选条件下仍给出四类真实命中数（供 tab 计数切换），
+        response = _search(env, account, "暗物质", types={"chat"})
+        # counts 契约：筛选条件下仍给出三类真实命中数（供 tab 计数切换），
         # 结果列表才受 types 约束。
         assert response.counts["chat"] == 1
-        assert response.counts["project"] == 1
-        assert all(item.result_type == "project" for item in response.results)
-
-    def test_project_filter_scopes_chat_and_document(
-        self, env: dict[str, Any]
-    ) -> None:
-        account = env["account_a"]
-        project_a = seed_project(env, account, "项目甲")
-        project_b = seed_project(env, account, "项目乙")
-        seed_conversation(env, account, "红移讨论", project_id=project_a)
-        seed_conversation(env, account, "红移闲聊", project_id=project_b)
-        add_material(env, account, "红移笔记.txt", "内容", project_id=project_a)
-        response = _search(env, account, "红移", project_id=project_a)
-        chat_titles = {
-            item.title for item in response.results if item.result_type == "chat"
-        }
-        assert chat_titles == {"红移讨论"}
-        documents = [item for item in response.results if item.result_type == "document"]
-        assert len(documents) == 1
-        assert documents[0].project_id == project_a
-        # 项目类结果在项目筛选下只保留该项目自身（若命中）。
-        project_response = _search(env, account, "项目", project_id=project_a)
-        projects = [
-            item for item in project_response.results if item.result_type == "project"
-        ]
-        assert [item.project_id for item in projects] == [project_a]
+        assert all(item.result_type == "chat" for item in response.results)
 
     def test_time_range_filter(self, env: dict[str, Any]) -> None:
         account = env["account_a"]
@@ -224,25 +181,12 @@ class TestAccountIsolation:
         account_a, account_b = env["account_a"], env["account_b"]
         for account in (account_a, account_b):
             seed_conversation(env, account, "同名会话")
-            seed_project(env, account, "同名项目")
             add_material(env, account, "同名文档.txt", "同名正文")
             add_image(env, account, "同名图片.png")
         for account in (account_a, account_b):
             response = _search(env, account, "同名")
-            assert response.counts == {"chat": 1, "image": 1, "document": 1, "project": 1}
+            assert response.counts == {"chat": 1, "image": 1, "document": 1}
             # 账户内各类恰好一条，证明没有读到另一账户的同名内容。
-
-    def test_project_id_of_other_account_is_404(self, env: dict[str, Any]) -> None:
-        project_b = seed_project(env, env["account_b"], "乙的项目")
-        with pytest.raises(SearchError) as excinfo:
-            _search(env, env["account_a"], "任意", project_id=project_b)
-        assert excinfo.value.status_code == 404
-        assert excinfo.value.code == "project_not_found"
-
-    def test_unknown_project_id_is_404(self, env: dict[str, Any]) -> None:
-        with pytest.raises(SearchError) as excinfo:
-            _search(env, env["account_a"], "任意", project_id="project-不存在")
-        assert excinfo.value.status_code == 404
 
 
 class TestMutationFreshness:
@@ -272,25 +216,6 @@ class TestMutationFreshness:
         assert service.search(account, query="新标题").counts["chat"] == 0
         assert service.search(account, query="脉冲星").counts["chat"] == 0
 
-    def test_project_rename_and_delete(self, env: dict[str, Any]) -> None:
-        from bridges.learning_projects.service import LearningProjectService
-
-        account = env["account_a"]
-        project_id = seed_project(env, account, "旧项目名")
-        service: SearchService = env["search"]
-        assert service.search(account, query="旧项目名").counts["project"] == 1
-        project_service = LearningProjectService(
-            env["database"],
-            env["repository"],
-            env["ingestion"],
-            env["conversations"],
-        )
-        project_service.update_project(account, project_id, name="新项目名")
-        assert service.search(account, query="旧项目名").counts["project"] == 0
-        assert service.search(account, query="新项目名").counts["project"] == 1
-        project_service.delete_project(account, project_id, contents="keep")
-        assert service.search(account, query="新项目名").counts["project"] == 0
-
 
 class TestEmptyQueryAndIndexReady:
     def test_blank_query_returns_empty_results(self, env: dict[str, Any]) -> None:
@@ -299,7 +224,7 @@ class TestEmptyQueryAndIndexReady:
         for query in ("", "   ", "　　"):
             response = _search(env, account, query)
             assert response.results == []
-            assert response.counts == {"chat": 0, "image": 0, "document": 0, "project": 0}
+            assert response.counts == {"chat": 0, "image": 0, "document": 0}
             assert response.index_ready is True
 
     def test_index_not_ready_while_document_pending(self, env: dict[str, Any]) -> None:

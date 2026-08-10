@@ -280,7 +280,7 @@ function ConfirmActionDialog({
 }
 
 /**
- * 全局本地知识库桌面页（Issue 18）。
+ * 全局知识库桌面页（Issue 18）。
  *
  * 真实闭环：上传（XHR 进度）→ 轮询处理状态 → 列表/筛选/详情/下载/重试/
  * 重建索引/删除。页面级状态走 StateBlock，行级状态走 IngestionStatusChip；
@@ -853,7 +853,7 @@ export default function KnowledgeBasePageClient() {
         >
           <div>
             <h1 id="knowledge-base-title" className="sc-section-title">
-              本地知识库
+              知识库
             </h1>
             <p style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
               全局材料仅当前账户可见，可在任何对话中检索。

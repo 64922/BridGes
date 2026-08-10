@@ -31,6 +31,7 @@ from bridges.ai.fixed_models import ASR_MODEL_ID, CHAT_MODEL_ID, TTS_MODEL_ID
 from bridges.api import (
     auth,
     chat,
+    compatibility,
     domain_packs,
     evaluation,
     expression,
@@ -1615,6 +1616,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     )
 
     app.include_router(auth.router)
+    app.include_router(compatibility.router)
     app.include_router(chat.router)
     app.include_router(ingestion.router)
     app.include_router(knowledge_base.router)

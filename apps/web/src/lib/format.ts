@@ -1,4 +1,4 @@
-/** 时间与大小的中文格式化（学习项目页与知识库页共用同一呈现约定）。 */
+/** 时间与大小的中文格式化（知识库页共用的呈现约定）。 */
 
 export function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

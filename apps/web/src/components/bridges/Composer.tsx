@@ -32,11 +32,6 @@ interface ComposerProps {
   onStop?: () => void;
   /** 外部预填请求（建议卡等）：nonce 变化时把 text 作为结构化意图填入并聚焦 */
   prefill?: { text: string; nonce: number } | null;
-  /** Issue 36：当前对话选中的插件（随对话持久化；chip 持续显示）。 */
-  /** Issue 36：选中插件的显示名映射（key = `${kind}:${plugin_id}`）。 */
-  /** Issue 36：「选择已启用插件」入口（打开真实选择器）。 */
-  /** Issue 36：移除单个插件选择（chip 清除按钮；PATCH 持久化）。 */
-  /** Issue 36：对选中 MCP 插件发起调用（chip「调用」按钮）。 */
   /** Issue 28：打开「文章人味化」任务对话框（由宿主渲染对话框）。 */
   onOpenHumanizer?: () => void;
   /** Issue 29：打开「生涯规划助手」任务对话框（由宿主渲染对话框）。 */
@@ -65,12 +60,6 @@ export function Composer({
   video = { available: true },
   asr = { available: true },
 }: ComposerProps) {
-  // 用户扩展已退役：保留旧渲染分支以兼容历史快照，但不再提供选择或调用入口。
-  const pluginSelection: never[] = [];
-  const pluginNames: Record<string, string> = {};
-  const onSelectPlugins = undefined;
-  const onRemovePlugin = undefined;
-  const onInvokeMcp = undefined;
   const [text, setText] = useState("");
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
   // 停止录音后才提交完整音频到固定 ASR 快照；转写结果可编辑回填，绝不
@@ -446,79 +435,6 @@ export function Composer({
         }}
       />
 
-      {/* Issue 36：选中的插件 chip（随对话持久化）。
-          SKILL 插件展示名称与移除；MCP 插件额外提供「调用」按钮（真实
-          invoke 走消息流）。停用/卸载/撤权后由服务端清洗，此处不再出现。 */}
-      {pluginSelection.length > 0 && (
-        <div
-          data-testid="composer-plugin-chips"
-          role="group"
-          aria-label="本对话选中的插件"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: "var(--space-2)",
-            alignSelf: "flex-start",
-            maxWidth: "100%",
-          }}
-        >
-          {pluginSelection.map((item) => {
-            const key = `${item.kind}:${item.plugin_id}`;
-            const name = pluginNames[key] ?? item.plugin_id;
-            return (
-              <span
-                key={key}
-                data-testid={`composer-selected-plugin-${item.plugin_id}`}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "var(--space-2)",
-                  padding: "var(--space-1) var(--space-2)",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid var(--color-border)",
-                  backgroundColor: "var(--color-bg-secondary)",
-                  fontSize: "var(--text-sm)",
-                  color: "var(--color-text-secondary)",
-                }}
-              >
-                <Icon name={item.kind === "skill" ? "plugins" : "mcpServer"} size={14} aria-hidden />
-                <span
-                  style={{
-                    maxWidth: "14rem",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={`${name}（${item.kind === "skill" ? "SKILL 插件" : "MCP 服务器"}）`}
-                >
-                  {name}
-                </span>
-                {item.kind === "mcp" && onInvokeMcp && (
-                  <button
-                    type="button"
-                    aria-label={`调用插件 ${name}`}
-                    data-testid={`composer-invoke-plugin-${item.plugin_id}`}
-                    onClick={() => onInvokeMcp(item.plugin_id)}
-                    style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
-                  >
-                    <Icon name="play" size={12} aria-hidden />
-                  </button>
-                )}
-                <button
-                  type="button"
-                  aria-label={`移除插件 ${name}`}
-                  onClick={() => onRemovePlugin?.(item.kind, item.plugin_id)}
-                  style={{ ...iconButtonStyle, minWidth: "auto", minHeight: "auto", padding: "var(--space-1)" }}
-                >
-                  <Icon name="close" size={14} aria-hidden />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      )}
-
       {/* Issue 20：本轮启用的来源层面板（知识库/画像）。
           知识库可发送前关闭；关闭后本轮检索与引用均不含知识库候选。
           只在真实对话（有 conversationId 或延迟创建
@@ -630,21 +546,6 @@ export function Composer({
                     : () => insertToolPrefix(tool.prefix),
               returnFocus: false,
             })),
-            // Issue 36：占位「选择已启用插件」实现为真实选择器（可用集合
-            // = 当前账户已安装且启用；选择随对话持久化）。
-            ...(onSelectPlugins
-              ? [
-                  {
-                    label: "选择已启用插件",
-                    icon: "plugins" as const,
-                    returnFocus: false,
-                    onSelect: () => {
-                      setToolNotice("");
-                      onSelectPlugins?.();
-                    },
-                  },
-                ]
-              : []),
             // 视频能力仍保留显式任务入口；图片能力由普通自然语言自动路由。
             ...TOOL_PROMPTS.filter(
               (tool) => tool.label === VIDEO_TOOL_LABEL

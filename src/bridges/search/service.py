@@ -1,7 +1,7 @@
 """跨内容统一桌面搜索服务（Issue 24）。
 
-编排四类内容的实时检索、命中片段高亮与索引就绪信号。无进程内缓存：
-每次调用都直接查询权威数据库，置顶/改名/删除/项目移动即时反映。
+编排三类内容的实时检索、命中片段高亮与索引就绪信号。无进程内缓存：
+每次调用都直接查询权威数据库，置顶/改名/删除即时反映。
 """
 
 from __future__ import annotations
@@ -25,16 +25,6 @@ _SNIPPET_WINDOW = 40
 _SNIPPET_FALLBACK_LEN = 2 * _SNIPPET_WINDOW
 #: 服务层默认与路由一致的结果上限（防御性截断）。
 _MAX_LIMIT = 50
-
-
-class SearchError(Exception):
-    """统一搜索的域错误（中文文案 + HTTP 状态码，路由直接映射）。"""
-
-    def __init__(self, code: str, message: str, status_code: int) -> None:
-        super().__init__(message)
-        self.code = code
-        self.message = message
-        self.status_code = status_code
 
 
 def highlight(text: str, query: str) -> list[SearchSegment]:
@@ -73,7 +63,7 @@ def _dt(row_value: object) -> datetime:
 
 
 class SearchService:
-    """统一搜索用例：校验筛选归属，合并四类结果并给出分类计数。"""
+    """统一搜索用例：合并三类结果并给出分类计数。"""
 
     def __init__(self, database: BridgesDatabase) -> None:
         self._repository = SearchRepository(database)
@@ -84,18 +74,11 @@ class SearchService:
         *,
         query: str,
         types: set[SearchResultType] | None = None,
-        project_id: str | None = None,
         from_: datetime | None = None,
         to: datetime | None = None,
         limit: int = 10,
     ) -> SearchResponse:
-        """执行统一搜索；``project_id`` 不属于当前账户时按「不存在」404。"""
-        if project_id is not None and not self._repository.project_exists(
-            account_id, project_id
-        ):
-            raise SearchError(
-                "project_not_found", "项目不存在或没有访问权限。", 404
-            )
+        """执行账户级统一搜索。"""
         index_ready = self._repository.index_ready(account_id)
         active = types if types is not None else set(ALL_RESULT_TYPES)
         counts: dict[str, int] = dict.fromkeys(ALL_RESULT_TYPES, 0)
@@ -106,35 +89,25 @@ class SearchService:
                 query=query, index_ready=index_ready, results=[], counts=counts
             )
         pattern = like_pattern(normalized)
-        # 四类检索全部执行：counts 固定给出四类在筛选条件下的真实命中数
+        # 三类检索全部执行：counts 固定给出三类在筛选条件下的真实命中数
         # （契约：便于前端筛选 tab 计数）；``types`` 只决定哪些类进入结果列表。
         fetchers: list[tuple[SearchResultType, Callable[[], list[SearchResultItem]]]] = [
             (
                 "chat",
                 lambda: self._search_chat(
-                    account_id, pattern, normalized,
-                    project_id=project_id, from_=from_, to=to,
+                    account_id, pattern, normalized, from_=from_, to=to,
                 ),
             ),
             (
                 "image",
                 lambda: self._search_images(
-                    account_id, pattern, normalized,
-                    project_id=project_id, from_=from_, to=to,
+                    account_id, pattern, normalized, from_=from_, to=to,
                 ),
             ),
             (
                 "document",
                 lambda: self._search_documents(
-                    account_id, pattern, normalized,
-                    project_id=project_id, from_=from_, to=to,
-                ),
-            ),
-            (
-                "project",
-                lambda: self._search_projects(
-                    account_id, pattern, normalized,
-                    project_id=project_id, from_=from_, to=to,
+                    account_id, pattern, normalized, from_=from_, to=to,
                 ),
             ),
         ]
@@ -154,7 +127,7 @@ class SearchService:
         )
 
     # ------------------------------------------------------------------
-    # 四类内容的检索与去重规则
+    # 三类内容的检索与去重规则
     # ------------------------------------------------------------------
 
     def _search_chat(
@@ -163,14 +136,13 @@ class SearchService:
         pattern: str,
         query: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[SearchResultItem]:
         """聊天结果：会话标题命中与消息正文命中各成一条（不互相折叠）。"""
         items: list[SearchResultItem] = []
         for row in self._repository.conversation_title_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
+            account_id, pattern, from_=from_, to=to
         ):
             title = str(row["title"])
             items.append(
@@ -181,13 +153,10 @@ class SearchService:
                     snippet=highlight(title, query),
                     updated_at=_dt(row["updated_at"]),
                     conversation_id=str(row["conversation_id"]),
-                    project_id=(
-                        str(row["project_id"]) if row["project_id"] is not None else None
-                    ),
                 )
             )
         for row in self._repository.message_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
+            account_id, pattern, from_=from_, to=to
         ):
             items.append(
                 SearchResultItem(
@@ -198,9 +167,6 @@ class SearchService:
                     updated_at=_dt(row["updated_at"]),
                     conversation_id=str(row["conversation_id"]),
                     message_id=str(row["message_id"]),
-                    project_id=(
-                        str(row["project_id"]) if row["project_id"] is not None else None
-                    ),
                 )
             )
         return items
@@ -211,17 +177,16 @@ class SearchService:
         pattern: str,
         query: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[SearchResultItem]:
         """文档结果：每份文档至多一条；正文命中优先（带页码/章节锚点），
         仅名称命中时片段取自展示名。展示名统一为原始文件名（与知识库、
-        项目文件列表一致）；解析标题仍参与检索但不作展示名。"""
+        知识库材料列表一致）；解析标题仍参与检索但不作展示名。"""
         items: list[SearchResultItem] = []
         seen: set[str] = set()
         for row in self._repository.document_chunk_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
+            account_id, pattern, from_=from_, to=to
         ):
             document_id = str(row["document_id"])
             if document_id in seen:
@@ -235,9 +200,6 @@ class SearchService:
                     snippet=highlight(str(row["content"]), query),
                     updated_at=_dt(row["updated_at"]),
                     object_id=str(row["object_id"]),
-                    project_id=(
-                        str(row["project_id"]) if row["project_id"] is not None else None
-                    ),
                     page_number=(
                         int(row["page_number"]) if row["page_number"] is not None else None
                     ),
@@ -247,7 +209,7 @@ class SearchService:
                 )
             )
         for row in self._repository.document_name_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
+            account_id, pattern, from_=from_, to=to
         ):
             document_id = str(row["document_id"])
             if document_id in seen:
@@ -262,9 +224,6 @@ class SearchService:
                     snippet=highlight(title, query),
                     updated_at=_dt(row["updated_at"]),
                     object_id=str(row["object_id"]),
-                    project_id=(
-                        str(row["project_id"]) if row["project_id"] is not None else None
-                    ),
                 )
             )
         return items
@@ -275,7 +234,6 @@ class SearchService:
         pattern: str,
         query: str,
         *,
-        project_id: str | None,
         from_: datetime | None,
         to: datetime | None,
     ) -> list[SearchResultItem]:
@@ -285,7 +243,7 @@ class SearchService:
         items: list[SearchResultItem] = []
         seen: set[str] = set()
         for row in self._repository.image_chunk_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
+            account_id, pattern, from_=from_, to=to
         ):
             object_id = str(row["object_id"])
             if object_id in seen:
@@ -299,13 +257,10 @@ class SearchService:
                     snippet=highlight(str(row["content"]), query),
                     updated_at=_dt(row["updated_at"]),
                     object_id=object_id,
-                    project_id=(
-                        str(row["project_id"]) if row["project_id"] is not None else None
-                    ),
                 )
             )
         for row in self._repository.image_name_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
+            account_id, pattern, from_=from_, to=to
         ):
             object_id = str(row["object_id"])
             if object_id in seen:
@@ -320,36 +275,6 @@ class SearchService:
                     snippet=highlight(filename, query),
                     updated_at=_dt(row["updated_at"]),
                     object_id=object_id,
-                )
-            )
-        return items
-
-    def _search_projects(
-        self,
-        account_id: str,
-        pattern: str,
-        query: str,
-        *,
-        project_id: str | None,
-        from_: datetime | None,
-        to: datetime | None,
-    ) -> list[SearchResultItem]:
-        """项目结果：名称命中片段取自名称，仅描述命中时片段取自描述。"""
-        items: list[SearchResultItem] = []
-        for row in self._repository.project_hits(
-            account_id, pattern, project_id=project_id, from_=from_, to=to
-        ):
-            name = str(row["name"])
-            description = str(row["description"])
-            snippet_source = name if query.lower() in name.lower() else description
-            items.append(
-                SearchResultItem(
-                    result_type="project",
-                    result_id=str(row["project_id"]),
-                    title=name,
-                    snippet=highlight(snippet_source, query),
-                    updated_at=_dt(row["updated_at"]),
-                    project_id=str(row["project_id"]),
                 )
             )
         return items

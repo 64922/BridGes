@@ -8,7 +8,7 @@ import { signOut, signUp, uniqueCredentials } from "./helpers/auth";
 /**
  * Issue 24 — 跨内容统一桌面搜索。
  *
- * 播种策略（真实后端，与 issue19 同一策略）：会话、学习项目、知识库材料
+ * 播种策略：会话、知识库材料
  * （图片/Markdown/PDF，触发真实摄取与索引）全部走 API；唯一例外是聊天消息
  * ——没有真实 LLM Key 时发送被能力预检拦截、用户消息不落库（见 issue19
  * 注释），因此用户消息由 Python 直接写入 .e2e-data 的 SQLite 库（搜索服务
@@ -82,14 +82,6 @@ async function createConversation(page: Page, title: string): Promise<string> {
   const res = await page.request.post("/api/chat/conversations", { data: { title } });
   expect(res.ok()).toBeTruthy();
   return ((await res.json()) as { conversation_id: string }).conversation_id;
-}
-
-async function createProject(page: Page, name: string): Promise<string> {
-  const res = await page.request.post("/api/learning-projects", {
-    data: { name, description: null },
-  });
-  expect(res.ok()).toBeTruthy();
-  return ((await res.json()) as { project_id: string }).project_id;
 }
 
 /** 直接落库一条用户消息（见文件头注释：无 LLM Key 时 API 发送不落库）。 */
@@ -174,22 +166,16 @@ interface SeedResult {
   accountId: string;
   conversationId: string;
   messageId: string;
-  projectId: string;
   imageObjectId: string;
   documentObjectId: string;
 }
 
-/** 播种四类内容：会话标题+消息（聊天）、PNG（图片）、Markdown（文档）、项目。 */
+/** 播种三类内容：会话标题+消息（聊天）、PNG（图片）、Markdown（文档）。 */
 async function seedFourTypes(page: Page): Promise<SeedResult> {
   const accountId = await getAccountId(page);
   const conversationId = await createConversation(page, `${KEYWORD}讨论`);
   const messageId = `msg-i24-${Date.now()}`;
   seedUserMessage(accountId, conversationId, messageId, `我们一起学习${KEYWORD}的过程`);
-  const projectId = await createProject(page, `${KEYWORD}项目`);
-  const move = await page.request.patch(`/api/chat/conversations/${conversationId}`, {
-    data: { project_id: projectId },
-  });
-  expect(move.ok()).toBeTruthy();
   const image = await uploadMaterial(page, `${KEYWORD}示意图.png`, "image/png", PNG_1PX);
   const document = await uploadMaterial(
     page,
@@ -197,12 +183,11 @@ async function seedFourTypes(page: Page): Promise<SeedResult> {
     "text/markdown",
     `# ${KEYWORD}讲义\n\n${KEYWORD}是植物把光能转化为化学能的过程。\n`
   );
-  await waitForSearchResults(page, KEYWORD, 5);
+  await waitForSearchResults(page, KEYWORD, 4);
   return {
     accountId,
     conversationId,
     messageId,
-    projectId,
     imageObjectId: image.object_id,
     documentObjectId: document.object_id,
   };
@@ -230,18 +215,17 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
     await page.waitForURL(`**/chat/${conversationId}`);
   });
 
-  test("单次查询返回四类结果、高亮命中片段，类型/项目筛选与清除筛选", async ({ page }) => {
+  test("单次查询返回三类结果、高亮命中片段，类型筛选与清除筛选", async ({ page }) => {
     await freshAccount(page, "i24-types");
     await seedFourTypes(page);
 
     await page.goto("/search");
     await page.getByTestId("search-input").fill(KEYWORD);
 
-    // 四类分组齐全：聊天（标题+消息 2 条）、图片、文档、项目各 1 条
+    // 三类分组齐全：聊天（标题+消息 2 条）、图片、文档
     await expect(page.getByTestId("search-group-chat")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId("search-group-image")).toBeVisible();
     await expect(page.getByTestId("search-group-document")).toBeVisible();
-    await expect(page.getByTestId("search-group-project")).toBeVisible();
     await expect(
       page.getByTestId("search-group-chat").getByTestId("search-result-row")
     ).toHaveCount(2);
@@ -250,11 +234,10 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
     await expect(page.locator("mark").first()).toContainText(KEYWORD);
 
     // 类型 tab 计数（标题+消息=2 条聊天命中）
-    await expect(page.getByTestId("search-tab-all")).toContainText("5");
+    await expect(page.getByTestId("search-tab-all")).toContainText("4");
     await expect(page.getByTestId("search-tab-chat")).toContainText("2");
     await expect(page.getByTestId("search-tab-image")).toContainText("1");
     await expect(page.getByTestId("search-tab-document")).toContainText("1");
-    await expect(page.getByTestId("search-tab-project")).toContainText("1");
 
     // 类型筛选：只看图片
     await page.getByTestId("search-tab-image").click();
@@ -263,20 +246,11 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
     await page.getByTestId("search-tab-all").click();
     await expect(page.getByTestId("search-group-chat")).toBeVisible();
 
-    // 项目筛选：会话已移入项目，图片/文档不在项目内
-    await page
-      .getByTestId("search-project-filter")
-      .selectOption({ label: `${KEYWORD}项目` });
-    await expect(page.getByTestId("search-group-chat")).toBeVisible();
-    await expect(page.getByTestId("search-group-image")).toHaveCount(0);
-    await expect(page.getByTestId("search-group-document")).toHaveCount(0);
-
     // 清除筛选：恢复全部结果，查询词保留
     await page.getByTestId("search-clear-filters").click();
     await expect(page.getByTestId("search-group-image")).toBeVisible();
     await expect(page.getByTestId("search-group-document")).toBeVisible();
     await expect(page.getByTestId("search-input")).toHaveValue(KEYWORD);
-    await expect(page.getByTestId("search-project-filter")).toHaveValue("");
   });
 
   test("键盘 ↓+Enter 跳转聊天结果，URL 带 message 锚点且消息元素可见", async ({ page }) => {
@@ -297,9 +271,9 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
     await expect(page.locator(`#msg-${messageId}`)).toContainText("暗反应阶段固定二氧化碳");
   });
 
-  test("文档跳转知识库详情并展示页码锚点，项目进入详情，图片就地预览", async ({ page }) => {
+  test("文档跳转知识库详情并展示页码锚点，图片就地预览", async ({ page }) => {
     await freshAccount(page, "i24-jump");
-    const seed = await seedFourTypes(page);
+    await seedFourTypes(page);
     // 额外播种 PDF：正文命中带页码锚点（驱动 worker 轮次完成真实摄取）
     const pdf = await uploadMaterial(
       page,
@@ -336,14 +310,6 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
     await expect(page.getByTestId("kb-detail-anchor")).toContainText("第 1 页");
     await page.keyboard.press("Escape");
 
-    // 项目结果 → 项目详情
-    await page.goto("/search");
-    await page.getByTestId("search-input").fill(KEYWORD);
-    const projectRow = page.locator('[data-result-type="project"]');
-    await expect(projectRow).toBeVisible({ timeout: 15_000 });
-    await projectRow.click();
-    await page.waitForURL(`**/account/projects/${seed.projectId}`);
-
     // 图片结果 → 就地预览对话框（经材料下载通道构造 object URL）
     await page.goto("/search");
     await page.getByTestId("search-input").fill(KEYWORD);
@@ -359,7 +325,7 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
     await page.goto("/search");
 
     await expect(page.getByTestId("state-empty")).toContainText(
-      "输入关键词，搜索聊天、图片、文档和学习项目"
+      "输入关键词，搜索聊天、图片和文档"
     );
 
     await page.getByTestId("search-input").fill("绝不存在的关键词xyz");
@@ -402,7 +368,6 @@ test.describe("Issue 24 — 统一桌面搜索", () => {
 
   test("双账户隔离：账户 B 搜不到账户 A 的同名内容", async ({ page }) => {
     await freshAccount(page, "i24-alice");
-    await createProject(page, "隔离关键词项目");
     await createConversation(page, "隔离关键词会话");
     await signOut(page);
 

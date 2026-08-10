@@ -156,23 +156,12 @@ async function expectAccessibleStructure(page: Page, pageName: string) {
 }
 
 test.describe("Issue 38 — 可访问性结构扫描", () => {
-  // 内容态标志：h1 在加载态已渲染的页面（知识库/学习项目/任务/插件的
-  // 壳层 h1，设置页静态 h1），必须等真实内容出现再扫描（否则扫描落在
-  // 加载态，掩盖内容态标题层级问题——Issue 38 修复后复验）。
-  // 知识库与学习项目页的内容区只有 StateBlock 分支，用「加载指示消失」
+  // 内容态标志：h1 在加载态已渲染的知识库壳层必须等真实内容出现再扫描。
+  // 知识库内容区只有 StateBlock 分支，用「加载指示消失」
   // 作为加载完成标志（error/empty/content 均为合法内容态）。
   // wait: "visible" 等待标志出现；"hidden" 等待标志消失。
   const CONTENT_MARKERS: Record<string, { wait: "visible" | "hidden"; locator: (page: Page) => Locator }> = {
     "/knowledge-base": { wait: "hidden", locator: (page) => page.getByTestId("state-loading") },
-    "/account/projects": { wait: "hidden", locator: (page) => page.getByTestId("state-loading") },
-    "/tasks": {
-      wait: "visible",
-      locator: (page) => page.getByRole("heading", { name: "任务安排已退役" }),
-    },
-    "/plugins": {
-      wait: "visible",
-      locator: (page) => page.getByRole("button", { name: "安装插件" }).first(),
-    },
     "/account/settings": {
       wait: "visible",
       locator: (page) => page.getByRole("heading", { name: "个人资料" }),
@@ -182,12 +171,9 @@ test.describe("Issue 38 — 可访问性结构扫描", () => {
     { path: "/login", name: "登录页" },
     { path: "/register", name: "注册页" },
     { path: "/search", name: "统一搜索页" },
-    { path: "/knowledge-base", name: "本地知识库页" },
-    { path: "/tasks", name: "任务安排页" },
-    { path: "/plugins", name: "插件页" },
+    { path: "/knowledge-base", name: "知识库页" },
     { path: "/account/settings", name: "账户设置页" },
     { path: "/account/profile", name: "画像中心页" },
-    { path: "/account/projects", name: "学习项目页" },
     { path: "/", name: "新聊天首页" },
   ] as const) {
     test(`${target.name}（${target.path}）结构合规`, async ({ page }) => {
@@ -246,7 +232,7 @@ test.describe("Issue 38 — 键盘黄金路径", () => {
     await expect(page.getByTestId("composer")).toBeVisible();
 
     // 验证侧栏固定 Tab 顺序（跳转链接 → Logo → 搜索 → 收起侧边栏 →
-    // 新聊天 → 本地知识库 …）。SPA 导航后焦点可能已在跳转链接上，
+    // 新聊天 → 知识库 …）。SPA 导航后焦点可能已在跳转链接上，
     // 从跳转链接程序化聚焦后走序列，顺序断言与起点无关（AC5）。
     await page.evaluate(() => {
       (document.querySelector<HTMLElement>('[data-testid="skip-link"]') ?? document.body).focus();
@@ -260,10 +246,10 @@ test.describe("Issue 38 — 键盘黄金路径", () => {
     await page.keyboard.press("Tab");
     await expect(page.getByRole("link", { name: "新聊天", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("link", { name: "本地知识库" })).toBeFocused();
+    await expect(page.getByRole("link", { name: "知识库" })).toBeFocused();
 
     // 收起侧边栏：焦点移到「展开侧边栏」恢复按钮
-    // （Shift+Tab 从本地知识库经新聊天返回收起按钮）
+    // （Shift+Tab 从知识库经新聊天返回收起按钮）
     await page.keyboard.press("Shift+Tab");
     await expect(page.getByRole("link", { name: "新聊天", exact: true })).toBeFocused();
     await page.keyboard.press("Shift+Tab");
@@ -273,61 +259,6 @@ test.describe("Issue 38 — 键盘黄金路径", () => {
     // 展开：焦点归还「收起侧边栏」
     await page.keyboard.press("Enter");
     await expect(page.getByRole("button", { name: "收起侧边栏" })).toBeFocused();
-  });
-
-  test("菜单激活的对话框：Escape 关闭并归还触发点焦点", async ({ page }) => {
-    const creds = uniqueCredentials("i38k-dialog");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-
-    // 真实创建学习项目（不依赖对话消息），用项目操作菜单 → 改名对话框
-    // 验证菜单 → 对话框的焦点归还链（Issue 38 AC5）。
-    await page.goto("/account/projects");
-    await page.getByTestId("learning-project-create").click();
-    await page.getByRole("dialog", { name: /新建学习项目/ }).getByLabel("名称").fill("焦点回归项目");
-    await page.getByRole("dialog", { name: /新建学习项目/ }).getByRole("button", { name: "创建" }).click();
-    // 创建成功自动进入项目详情页（含「项目操作」菜单）
-    await expect(page.getByRole("heading", { name: "焦点回归项目" })).toBeVisible();
-
-    // 打开项目操作菜单 → 改名 → 对话框内聚焦 → Escape 关闭并归还触发点
-    const projectMenu = page.getByRole("button", { name: "项目操作：焦点回归项目" });
-    await projectMenu.click();
-    await page.getByRole("menuitem", { name: "改名" }).click();
-    const dialog = page.getByRole("dialog", { name: /修改学习项目/ });
-    await expect(dialog).toBeVisible();
-    // 焦点进入对话框内首个可聚焦元素
-    await expect(page.getByLabel("名称")).toBeFocused();
-    await page.keyboard.press("Escape");
-    await expect(dialog).toHaveCount(0);
-    // 焦点归还触发点（项目操作菜单按钮）
-    await expect(projectMenu).toBeFocused();
-  });
-
-  test("菜单键盘：Enter 打开并聚焦首项、方向键移动、Escape 归还焦点", async ({ page }) => {
-    const creds = uniqueCredentials("i38k-menu");
-    await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await page.goto("/account/projects");
-    await page.getByTestId("learning-project-create").click();
-    await page.getByRole("dialog", { name: /新建学习项目/ }).getByLabel("名称").fill("菜单键盘项目");
-    await page.getByRole("dialog", { name: /新建学习项目/ }).getByRole("button", { name: "创建" }).click();
-    await expect(page.getByRole("heading", { name: "菜单键盘项目" })).toBeVisible();
-
-    // Enter 打开菜单并聚焦首项（WAI-ARIA menu 约定）
-    const projectMenu = page.getByRole("button", { name: "项目操作：菜单键盘项目" });
-    await projectMenu.focus();
-    await page.keyboard.press("Enter");
-    await expect(page.getByRole("menu")).toBeVisible();
-    await expect(page.getByRole("menuitem", { name: "改名" })).toBeFocused();
-
-    // ↓ 移动到删除，↑ 回到改名
-    await page.keyboard.press("ArrowDown");
-    await expect(page.getByRole("menuitem", { name: "删除" })).toBeFocused();
-    await page.keyboard.press("ArrowUp");
-    await expect(page.getByRole("menuitem", { name: "改名" })).toBeFocused();
-
-    // Escape 关闭菜单并把焦点归还触发按钮
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("menu")).toHaveCount(0);
-    await expect(projectMenu).toBeFocused();
   });
 
   test("聊天输入：Enter 发送、Shift+Enter 换行", async ({ page }) => {
