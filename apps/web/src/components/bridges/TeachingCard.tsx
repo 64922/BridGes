@@ -127,6 +127,28 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
         </dl>
       )}
 
+      {teaching.progress && (
+        <div
+          data-testid="teaching-progress"
+          style={{
+            marginTop: "var(--space-3)",
+            padding: "var(--space-3)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-surface)",
+            fontSize: "var(--text-sm)",
+          }}
+        >
+          <strong>课时进度：第 {teaching.progress.lesson_number} 课</strong>
+          <span style={{ marginLeft: "var(--space-2)", color: "var(--color-text-secondary)" }}>
+            已完成 {teaching.progress.delivered_lesson_count} 课 · 下一检查点：第 {teaching.progress.next_checkpoint} 课
+          </span>
+          <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-text-secondary)" }}>
+            {teaching.progress.next_action_reason}
+          </p>
+        </div>
+      )}
+
       {!mission && (
         <dl style={{ display: "grid", gap: "var(--space-2)", margin: "var(--space-4) 0 0", fontSize: "var(--text-sm)" }}>
           <div>

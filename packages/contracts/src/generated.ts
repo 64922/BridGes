@@ -782,6 +782,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/chat/conversations/{conversation_id}/learning-progress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Learning Progress
+         * @description 恢复当前账户在该对话内的课时进度。
+         */
+        get: operations["get_learning_progress_chat_conversations__conversation_id__learning_progress_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/chat/conversations/{conversation_id}/learning-plan-adjustments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Learning Plan Adjustments
+         * @description 恢复当前账户在该对话内的幂等计划调整记录。
+         */
+        get: operations["list_learning_plan_adjustments_chat_conversations__conversation_id__learning_plan_adjustments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/chat/conversations/{conversation_id}/feedback/{feedback_id}/resolve": {
         parameters: {
             query?: never;
@@ -14450,6 +14490,12 @@ export interface components {
          */
         KnowledgeStateStatus: "unknown" | "emerging" | "supported" | "robust" | "stale";
         /**
+         * LearningArtifactStatus
+         * @description 课时、测验和评价的可审计状态。
+         * @enum {string}
+         */
+        LearningArtifactStatus: "delivered" | "submitted" | "assessed" | "invalidated";
+        /**
          * LearningError
          * @description Uniform learning-domain error response.
          */
@@ -14572,6 +14618,12 @@ export interface components {
              */
             project_id?: string | null;
         };
+        /**
+         * LearningNextActionKind
+         * @description 评分后允许的下一步。
+         * @enum {string}
+         */
+        LearningNextActionKind: "continue" | "review" | "remediate" | "wait_for_quiz";
         /**
          * LearningPath
          * @description A per-user learning route driven by confirmed knowledge states.
@@ -16612,6 +16664,47 @@ export interface components {
          * @enum {string}
          */
         PatchAction: "accept" | "reject" | "rewrite";
+        /**
+         * PlanAdjustment
+         * @description 只影响尚未交付课时的版本化计划调整。
+         */
+        PlanAdjustment: {
+            /**
+             * Schema Version
+             * @default learning-plan-adjustment-v1
+             */
+            schema_version: string;
+            /** Adjustment Id */
+            adjustment_id: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Account Id */
+            account_id: string;
+            /** Conversation Id */
+            conversation_id: string;
+            trigger: components["schemas"]["PlanAdjustmentTrigger"];
+            /** Trigger Key */
+            trigger_key: string;
+            /** Reason */
+            reason: string;
+            /** Old Plan Version */
+            old_plan_version: number;
+            /** New Plan Version */
+            new_plan_version: number;
+            /** Affected Future Lesson Numbers */
+            affected_future_lesson_numbers?: number[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * PlanAdjustmentTrigger
+         * @description 能够改变未交付课时的触发源。
+         * @enum {string}
+         */
+        PlanAdjustmentTrigger: "user_feedback" | "profile_updated" | "profile_withdrawn";
         /**
          * PlaybackControlRequest
          * @description 播放控制请求。
@@ -21128,6 +21221,34 @@ export interface components {
             defaulted: boolean;
         };
         /**
+         * TeachingProgressProjection
+         * @description 消息流中展示的课时进度，不是长期画像维度。
+         */
+        TeachingProgressProjection: {
+            /**
+             * Schema Version
+             * @default teaching-progress-v1
+             */
+            schema_version: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Plan Version */
+            plan_version: number;
+            /** Lesson Number */
+            lesson_number: number;
+            /** Delivered Lesson Count */
+            delivered_lesson_count: number;
+            /** Next Checkpoint */
+            next_checkpoint: number;
+            /** Quiz Id */
+            quiz_id?: string | null;
+            quiz_status?: components["schemas"]["LearningArtifactStatus"] | null;
+            assessment_state?: components["schemas"]["AnswerEvaluatedState"] | null;
+            next_action: components["schemas"]["LearningNextActionKind"];
+            /** Next Action Reason */
+            next_action_reason: string;
+        };
+        /**
          * TeachingQualityGateCheck
          * @description Named checks performed by the teaching quality gate.
          * @enum {string}
@@ -21258,6 +21379,8 @@ export interface components {
             lesson?: components["schemas"]["TeachingLessonProjection"] | null;
             /** @description 最多一个理解检查问题。 */
             quiz?: components["schemas"]["TeachingQuiz"] | null;
+            /** @description 已持久化的课时进度与下一检查点。 */
+            progress?: components["schemas"]["TeachingProgressProjection"] | null;
             /** Evidence */
             evidence?: components["schemas"]["TeachingAnswerEvidence"][];
             /**
@@ -25141,6 +25264,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_learning_progress_chat_conversations__conversation_id__learning_progress_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeachingProgressProjection"] | null;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_learning_plan_adjustments_chat_conversations__conversation_id__learning_plan_adjustments_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                conversation_id: string;
+            };
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanAdjustment"][];
                 };
             };
             /** @description Validation Error */

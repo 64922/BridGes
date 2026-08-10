@@ -47,6 +47,10 @@ from bridges.contracts.feedback import (
     FeedbackResolveRequest,
 )
 from bridges.contracts.retrieval import CitationDetailProjection
+from bridges.contracts.teaching_progress import (
+    PlanAdjustment,
+    TeachingProgressProjection,
+)
 from bridges.ingestion.service import IngestionService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
 from bridges.retirement import record_compatibility_observation, raise_retired_file_source
@@ -1096,6 +1100,38 @@ def list_conversation_feedback(
 ) -> list[AnswerFeedback]:
     """列出对话内该账户的反馈（最新在前，供前端恢复与闭环查看）。"""
     return service.list_feedback(subject.account_id, conversation_id)
+
+
+@router.get(
+    "/conversations/{conversation_id}/learning-progress",
+    response_model=TeachingProgressProjection | None,
+)
+def get_learning_progress(
+    conversation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> TeachingProgressProjection | None:
+    """恢复当前账户在该对话内的课时进度。"""
+    try:
+        return service.learning_progress(subject.account_id, conversation_id)
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
+
+
+@router.get(
+    "/conversations/{conversation_id}/learning-plan-adjustments",
+    response_model=list[PlanAdjustment],
+)
+def list_learning_plan_adjustments(
+    conversation_id: str,
+    service: ChatServiceDep,
+    subject: SubjectDep,
+) -> list[PlanAdjustment]:
+    """恢复当前账户在该对话内的幂等计划调整记录。"""
+    try:
+        return service.learning_adjustments(subject.account_id, conversation_id)
+    except ChatDomainError as exc:
+        raise _handle_domain_error(exc) from exc
 
 
 @router.post(

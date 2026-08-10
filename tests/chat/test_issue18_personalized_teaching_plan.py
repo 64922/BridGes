@@ -169,6 +169,9 @@ def test_clear_goal_publishes_one_versioned_plan_and_first_lesson_in_one_reply(
     modified_teaching = TeachingTurnProjection.model_validate(modified.teaching)
     assert modified_teaching.plan is not None
     assert modified_teaching.lesson is not None
+    assert modified_teaching.plan.version == 2
+    assert modified_teaching.lesson.lesson_number == 1
+    assert modified_teaching.lesson.plan_id == modified_teaching.plan.plan_id
     assert modified_teaching.plan.plan_id != teaching.plan.plan_id
 
 

@@ -128,6 +128,7 @@ from bridges.learning import (
     InMemoryLearningRepository,
     LearningPathService,
     LearningService,
+    TeachingProgressService,
     TeachingService,
 )
 from bridges.learning.api import router as learning_router
@@ -903,6 +904,21 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         invalidation_service=invalidation_service,
         observability_service=app.state.observability_service,
     )
+    app.state.teaching_progress_service = (
+        TeachingProgressService(profile_database) if profile_database is not None else None
+    )
+
+    def _adjust_learning_after_profile_change(
+        account_id: str,
+        trigger: Any,
+        trigger_key: str,
+        reason: str,
+    ) -> None:
+        if app.state.teaching_progress_service is not None:
+            app.state.teaching_progress_service.apply_profile_event(
+                account_id, trigger, trigger_key, reason
+            )
+
     four_dimension_repository = (
         SqliteFourDimensionProfileRepository(profile_database)
         if profile_database is not None
@@ -911,6 +927,7 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.state.four_dimension_profile_service = FourDimensionProfileService(
         source_repository=profile_repository,
         repository=four_dimension_repository,
+        learning_adjustment_callback=_adjust_learning_after_profile_change,
     )
     app.state.four_dimension_contract_gate = FourDimensionContractGate(
         app.state.four_dimension_profile_service
@@ -1203,6 +1220,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
             web_search_service=getattr(app.state, "web_search_service", None),
             arxiv_search_service=getattr(app.state, "arxiv_search_service", None),
             profile_service=getattr(app.state, "profile_service", None),
+            teaching_progress_service=getattr(
+                app.state, "teaching_progress_service", None
+            ),
             four_dimension_profile_service=getattr(
                 app.state, "four_dimension_profile_service", None
             ),

@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 41
+SCHEMA_VERSION = 42
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -1943,6 +1943,124 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_web_search_cache_account_expiry
         ON web_search_cache(account_id, expires_at)
+        """,
+    ],
+    # Issue 19：对话内可恢复教学序列。对象各自保存完整版本化 JSON 快照，
+    # 唯一键把账户、对话、课时、测验作答和调整事件固定为幂等边界；不建立
+    # 学习项目外键，避免把对话进度重新建模成学习项目。
+    42: [
+        """
+        CREATE TABLE teaching_plans (
+            plan_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            version INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, conversation_id, version)
+        )
+        """,
+        """
+        CREATE INDEX idx_teaching_plans_account_conversation
+        ON teaching_plans(account_id, conversation_id, version DESC)
+        """,
+        """
+        CREATE TABLE teaching_lessons (
+            lesson_id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL REFERENCES teaching_plans(plan_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            lesson_number INTEGER NOT NULL,
+            message_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, conversation_id, message_id),
+            UNIQUE (account_id, plan_id, lesson_number)
+        )
+        """,
+        """
+        CREATE INDEX idx_teaching_lessons_account_conversation
+        ON teaching_lessons(account_id, conversation_id, lesson_number)
+        """,
+        """
+        CREATE TABLE teaching_quizzes (
+            quiz_id TEXT PRIMARY KEY,
+            lesson_id TEXT NOT NULL REFERENCES teaching_lessons(lesson_id),
+            plan_id TEXT NOT NULL REFERENCES teaching_plans(plan_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            question_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, question_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_teaching_quizzes_account_conversation
+        ON teaching_quizzes(account_id, conversation_id, created_at DESC)
+        """,
+        """
+        CREATE TABLE teaching_attempts (
+            attempt_id TEXT PRIMARY KEY,
+            quiz_id TEXT NOT NULL REFERENCES teaching_quizzes(quiz_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, quiz_id, source_message_id)
+        )
+        """,
+        """
+        CREATE TABLE teaching_assessments (
+            assessment_id TEXT PRIMARY KEY,
+            attempt_id TEXT NOT NULL REFERENCES teaching_attempts(attempt_id),
+            quiz_id TEXT NOT NULL REFERENCES teaching_quizzes(quiz_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, attempt_id)
+        )
+        """,
+        """
+        CREATE TABLE teaching_next_actions (
+            next_action_id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL REFERENCES teaching_plans(plan_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            lesson_number INTEGER NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE (account_id, plan_id, lesson_number)
+        )
+        """,
+        """
+        CREATE TABLE teaching_plan_adjustments (
+            adjustment_id TEXT PRIMARY KEY,
+            plan_id TEXT NOT NULL REFERENCES teaching_plans(plan_id),
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            trigger_key TEXT NOT NULL,
+            state_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, trigger_key)
+        )
+        """,
+        """
+        CREATE INDEX idx_teaching_plan_adjustments_account_conversation
+        ON teaching_plan_adjustments(account_id, conversation_id, created_at DESC)
         """,
     ],
 }

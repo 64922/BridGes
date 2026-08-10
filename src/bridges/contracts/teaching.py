@@ -8,6 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from bridges.contracts.learning import AnswerEvaluatedState
+from bridges.contracts.teaching_progress import TeachingProgressProjection
 
 
 class TeachingCardStatus(StrEnum):
@@ -284,6 +285,9 @@ class TeachingTurnProjection(BaseModel):
         default=None, description="成功发布时随计划交付的第一课。"
     )
     quiz: TeachingQuiz | None = Field(default=None, description="最多一个理解检查问题。")
+    progress: TeachingProgressProjection | None = Field(
+        default=None, description="已持久化的课时进度与下一检查点。"
+    )
     evidence: list[TeachingAnswerEvidence] = Field(default_factory=list)
     next_prompt: str = Field(description="下一步邀请。")
     gap_response: str | None = Field(default=None, description="证据不足时的安全说明。")

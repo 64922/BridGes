@@ -32,6 +32,7 @@ from bridges.contracts.profiles import (
     ProfileSlice,
     ProfileSliceItem,
 )
+from bridges.contracts.teaching_progress import PlanAdjustmentTrigger
 from bridges.profiles.adapters import ProfileError
 from bridges.profiles.ports import ProfileRepository
 from bridges.storage.database import BridgesDatabase
@@ -739,9 +740,14 @@ class FourDimensionProfileService:
         self,
         source_repository: ProfileRepository,
         repository: FourDimensionProfileRepository,
+        learning_adjustment_callback: Callable[
+            [str, PlanAdjustmentTrigger, str, str], object
+        ]
+        | None = None,
     ) -> None:
         self._source_repository = source_repository
         self._repository = repository
+        self._learning_adjustment_callback = learning_adjustment_callback
 
     def list_records(self, account_id: str) -> list[FourDimensionProfileRecord]:
         return self._repository.list_records(account_id)
@@ -891,7 +897,14 @@ class FourDimensionProfileService:
             record.updated_at = datetime.now(UTC)
             record.content_hash = hashlib.sha256(record.content.encode("utf-8")).hexdigest()
             record.write_origin = "user"
-            return self._repository.save_record(record)
+            updated = self._repository.save_record(record)
+        self._notify_learning_adjustment(
+            account_id,
+            PlanAdjustmentTrigger.PROFILE_UPDATED,
+            f"profile:{updated.record_id}:v{updated.version}",
+            "四维画像记录已修改，下一课重新编排。",
+        )
+        return updated
 
     def withdraw_record(
         self, account_id: str, record_id: str, version: int | None = None
@@ -906,7 +919,24 @@ class FourDimensionProfileService:
             record.version += 1
             record.updated_at = datetime.now(UTC)
             record.write_origin = "user"
-            return self._repository.save_record(record)
+            updated = self._repository.save_record(record)
+        self._notify_learning_adjustment(
+            account_id,
+            PlanAdjustmentTrigger.PROFILE_WITHDRAWN,
+            f"profile:{updated.record_id}:v{updated.version}",
+            "四维画像记录已撤回，下一课移除相关路径。",
+        )
+        return updated
+
+    def _notify_learning_adjustment(
+        self,
+        account_id: str,
+        trigger: PlanAdjustmentTrigger,
+        trigger_key: str,
+        reason: str,
+    ) -> None:
+        if self._learning_adjustment_callback is not None:
+            self._learning_adjustment_callback(account_id, trigger, trigger_key, reason)
 
     def list_learning_records(self, account_id: str) -> list[FourDimensionLearningRecord]:
         return self._repository.list_learning_records(account_id)

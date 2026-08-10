@@ -9,10 +9,10 @@ from __future__ import annotations
 import json
 import math
 import secrets
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from collections.abc import Iterator
 from typing import Any
 
 from bridges.contracts.ai import ModelRunLock
@@ -143,6 +143,11 @@ class ConversationRepository:
 
     def __init__(self, database: BridgesDatabase) -> None:
         self._db = database
+
+    @property
+    def database(self) -> BridgesDatabase:
+        """返回共享数据库句柄，供同一事务的领域仓库使用。"""
+        return self._db
 
     @contextmanager
     def connection_lock(self) -> Iterator[None]:
@@ -713,6 +718,7 @@ class ConversationRepository:
         web_search: dict[str, Any] | None = None,
         arxiv_search: dict[str, Any] | None = None,
         teaching: dict[str, Any] | None = None,
+        persist_learning: Callable[[], None] | None = None,
     ) -> int:
         """把生成中的消息原子收敛到终态；仅 streaming → 目标状态，返回影响行数。
 
@@ -836,6 +842,8 @@ class ConversationRepository:
                     " WHERE message_id = ? AND account_id = ? AND status = ?",
                     (_json_dumps(teaching), message_id, account_id, status.value),
                 )
+            if cursor.rowcount and persist_learning is not None:
+                persist_learning()
             return cursor.rowcount
 
     def message_count(self, account_id: str, conversation_id: str) -> int:

@@ -111,8 +111,10 @@ from bridges.contracts.profile_extraction import ProfilePreprocessResult
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
+from bridges.contracts.teaching_progress import PlanAdjustment, TeachingProgressProjection
 from bridges.contracts.video import VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.learning.progress import TeachingProgressService
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
@@ -203,6 +205,7 @@ class ChatService:
         web_search_service: WebSearchService | None = None,
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
+        teaching_progress_service: TeachingProgressService | None = None,
         profile_service: ProfileService | None = None,
         automatic_profile_service: AutomaticProfileService | None = None,
         four_dimension_profile_service: FourDimensionProfileService | None = None,
@@ -227,6 +230,9 @@ class ChatService:
         self._arxiv_search = arxiv_search_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
+        self._teaching_progress = teaching_progress_service or TeachingProgressService(
+            repository.database
+        )
         #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
         self._profiles = profile_service
         #: Issue 15：默认自动抽取；启用后不再走旧的画像写入通知路径。
@@ -269,6 +275,7 @@ class ChatService:
             web_search_service=self._web_search,
             arxiv_search_service=self._arxiv_search,
             teaching_service=self._teaching,
+            teaching_progress_service=self._teaching_progress,
             profile_service=self._profiles,
             automatic_profile_service=self._automatic_profiles,
             four_dimension_profile_service=self._four_dimension_profiles,
@@ -2051,6 +2058,17 @@ class ChatService:
             updated_at=now,
         )
         saved = self._repo.save_feedback(feedback)
+        if message.teaching is not None:
+            feedback_signal = " ".join(
+                value for value in (saved.feedback_text, saved.preference) if value
+            )
+            if any(token in feedback_signal for token in ("太快", "太难", "多练习", "多练")):
+                self._teaching_progress.apply_feedback(
+                    account_id,
+                    conversation_id,
+                    f"feedback:{saved.feedback_id}",
+                    feedback_signal,
+                )
         if self._observability is not None:
             self._observability.log_audit(
                 actor_account_id=account_id,
@@ -2072,6 +2090,24 @@ class ChatService:
     ) -> list[AnswerFeedback]:
         """返回对话内该账户的反馈记录（最新在前，供恢复与闭环查看）。"""
         return self._repo.list_feedback(account_id, conversation_id)
+
+    def learning_progress(
+        self, account_id: str, conversation_id: str
+    ) -> TeachingProgressProjection | None:
+        """返回当前账户在对话内的课时进度。"""
+        conversation = self._repo.get_conversation(account_id, conversation_id)
+        if conversation is None:
+            raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
+        return self._teaching_progress.get_progress(account_id, conversation_id)
+
+    def learning_adjustments(
+        self, account_id: str, conversation_id: str
+    ) -> list[PlanAdjustment]:
+        """返回当前账户在对话内的计划调整记录。"""
+        conversation = self._repo.get_conversation(account_id, conversation_id)
+        if conversation is None:
+            raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
+        return self._teaching_progress.list_adjustments(account_id, conversation_id)
 
     def resolve_feedback(
         self,

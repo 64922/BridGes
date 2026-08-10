@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -594,7 +594,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +656,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Entity",
+            "description": "Unprocessable Content",
             "content": {
               "application/json": {
                 "schema": {
@@ -1487,7 +1487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1597,7 +1597,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -1706,7 +1706,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -2666,7 +2666,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -3435,7 +3435,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -3499,6 +3499,136 @@
               }
             },
             "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/learning-progress": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "Get Learning Progress",
+        "description": "恢复当前账户在该对话内的课时进度。",
+        "operationId": "get_learning_progress_chat_conversations__conversation_id__learning_progress_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/TeachingProgressProjection"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Get Learning Progress Chat Conversations  Conversation Id  Learning Progress Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/conversations/{conversation_id}/learning-plan-adjustments": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "List Learning Plan Adjustments",
+        "description": "恢复当前账户在该对话内的幂等计划调整记录。",
+        "operationId": "list_learning_plan_adjustments_chat_conversations__conversation_id__learning_plan_adjustments_get",
+        "parameters": [
+          {
+            "name": "conversation_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Conversation Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlanAdjustment"
+                  },
+                  "title": "Response List Learning Plan Adjustments Chat Conversations  Conversation Id  Learning Plan Adjustments Get"
+                }
+              }
+            }
           },
           "422": {
             "description": "Validation Error",
@@ -3606,7 +3736,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -3974,7 +4104,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "503": {
             "content": {
@@ -4816,7 +4946,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -5748,7 +5878,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -8255,7 +8385,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8479,7 +8609,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -8628,7 +8758,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -8946,7 +9076,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9116,7 +9246,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9265,7 +9395,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9488,7 +9618,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -9719,7 +9849,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9809,7 +9939,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9908,7 +10038,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -9998,7 +10128,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10677,7 +10807,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -10919,7 +11049,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -10998,7 +11128,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11189,7 +11319,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11461,7 +11591,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -11639,7 +11769,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -11819,7 +11949,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -12007,7 +12137,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12105,7 +12235,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12268,7 +12398,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -12367,7 +12497,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14314,7 +14444,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14422,7 +14552,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14618,7 +14748,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14735,7 +14865,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14887,7 +15017,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -14978,7 +15108,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15086,7 +15216,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15184,7 +15314,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15468,7 +15598,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -15557,7 +15687,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -15708,7 +15838,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -16019,7 +16149,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16277,7 +16407,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16357,7 +16487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16446,7 +16576,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -16526,7 +16656,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -17177,7 +17307,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17424,7 +17554,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17522,7 +17652,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17611,7 +17741,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17700,7 +17830,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17884,7 +18014,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -17964,7 +18094,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18053,7 +18183,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18133,7 +18263,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18301,7 +18431,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18390,7 +18520,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18541,7 +18671,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18611,7 +18741,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18778,7 +18908,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -18837,7 +18967,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19279,7 +19409,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19466,7 +19596,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -19881,7 +20011,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -20097,7 +20227,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -20327,7 +20457,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       },
@@ -20553,7 +20683,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           }
         }
       }
@@ -22519,7 +22649,7 @@
                 }
               }
             },
-            "description": "Request Entity Too Large"
+            "description": "Content Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -23491,7 +23621,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -24224,7 +24354,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -25764,7 +25894,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "503": {
             "content": {
@@ -25864,7 +25994,7 @@
                 }
               }
             },
-            "description": "Unprocessable Entity"
+            "description": "Unprocessable Content"
           },
           "502": {
             "content": {
@@ -40121,6 +40251,17 @@
         "title": "KnowledgeStateStatus",
         "description": "Current judgement of knowledge for a single concept."
       },
+      "LearningArtifactStatus": {
+        "type": "string",
+        "enum": [
+          "delivered",
+          "submitted",
+          "assessed",
+          "invalidated"
+        ],
+        "title": "LearningArtifactStatus",
+        "description": "课时、测验和评价的可审计状态。"
+      },
       "LearningError": {
         "properties": {
           "error": {
@@ -40300,6 +40441,17 @@
         ],
         "title": "LearningMissionCreateRequest",
         "description": "Request to create a learning mission."
+      },
+      "LearningNextActionKind": {
+        "type": "string",
+        "enum": [
+          "continue",
+          "review",
+          "remediate",
+          "wait_for_quiz"
+        ],
+        "title": "LearningNextActionKind",
+        "description": "评分后允许的下一步。"
       },
       "LearningPath": {
         "properties": {
@@ -43690,6 +43842,89 @@
         ],
         "title": "PatchAction",
         "description": "User decision on a single revision patch."
+      },
+      "PlanAdjustment": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "learning-plan-adjustment-v1"
+          },
+          "adjustment_id": {
+            "type": "string",
+            "title": "Adjustment Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "account_id": {
+            "type": "string",
+            "title": "Account Id"
+          },
+          "conversation_id": {
+            "type": "string",
+            "title": "Conversation Id"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/PlanAdjustmentTrigger"
+          },
+          "trigger_key": {
+            "type": "string",
+            "title": "Trigger Key"
+          },
+          "reason": {
+            "type": "string",
+            "title": "Reason"
+          },
+          "old_plan_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Old Plan Version"
+          },
+          "new_plan_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "New Plan Version"
+          },
+          "affected_future_lesson_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Affected Future Lesson Numbers"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Created At"
+          }
+        },
+        "type": "object",
+        "required": [
+          "adjustment_id",
+          "plan_id",
+          "account_id",
+          "conversation_id",
+          "trigger",
+          "trigger_key",
+          "reason",
+          "old_plan_version",
+          "new_plan_version",
+          "created_at"
+        ],
+        "title": "PlanAdjustment",
+        "description": "只影响尚未交付课时的版本化计划调整。"
+      },
+      "PlanAdjustmentTrigger": {
+        "type": "string",
+        "enum": [
+          "user_feedback",
+          "profile_updated",
+          "profile_withdrawn"
+        ],
+        "title": "PlanAdjustmentTrigger",
+        "description": "能够改变未交付课时的触发源。"
       },
       "PlaybackControlRequest": {
         "properties": {
@@ -51068,6 +51303,89 @@
         "title": "TeachingProfileUsage",
         "description": "本轮教学使用画像的最小、可审计快照。"
       },
+      "TeachingProgressProjection": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "teaching-progress-v1"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "plan_version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Plan Version"
+          },
+          "lesson_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Lesson Number"
+          },
+          "delivered_lesson_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Delivered Lesson Count"
+          },
+          "next_checkpoint": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Next Checkpoint"
+          },
+          "quiz_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quiz Id"
+          },
+          "quiz_status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LearningArtifactStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "assessment_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnswerEvaluatedState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "next_action": {
+            "$ref": "#/components/schemas/LearningNextActionKind"
+          },
+          "next_action_reason": {
+            "type": "string",
+            "title": "Next Action Reason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "plan_version",
+          "lesson_number",
+          "delivered_lesson_count",
+          "next_checkpoint",
+          "next_action",
+          "next_action_reason"
+        ],
+        "title": "TeachingProgressProjection",
+        "description": "消息流中展示的课时进度，不是长期画像维度。"
+      },
       "TeachingQualityGateCheck": {
         "type": "string",
         "enum": [
@@ -51293,6 +51611,17 @@
               }
             ],
             "description": "最多一个理解检查问题。"
+          },
+          "progress": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingProgressProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "已持久化的课时进度与下一检查点。"
           },
           "evidence": {
             "items": {

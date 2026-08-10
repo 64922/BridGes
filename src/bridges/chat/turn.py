@@ -106,11 +106,13 @@ from bridges.contracts.retrieval import (
 from bridges.contracts.teaching import (
     TeachingCardStatus,
     TeachingIntent,
+    TeachingPlanProjection,
     TeachingStage,
     TeachingTurnProjection,
 )
 from bridges.contracts.video import VideoError, VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
+from bridges.learning.progress import TeachingProgressService
 from bridges.learning.teaching_gate import TeachingTurnService
 from bridges.mcp.service import McpService
 from bridges.observability.service import ObservabilityService
@@ -1272,6 +1274,7 @@ def finalize_message(
     web_search: dict[str, Any] | None = None,
     arxiv_search: dict[str, Any] | None = None,
     teaching: dict[str, Any] | None = None,
+    persist_learning: Callable[[], None] | None = None,
 ) -> None:
     """原子收敛生成状态；仅当仍处于 streaming 时生效（防竞态双写）。
 
@@ -1297,6 +1300,7 @@ def finalize_message(
         web_search=web_search,
         arxiv_search=arxiv_search,
         teaching=teaching,
+        persist_learning=persist_learning,
     )
 
 
@@ -1317,6 +1321,7 @@ class TurnOrchestrator:
         web_search_service: WebSearchService | None = None,
         arxiv_search_service: ArxivSearchService | None = None,
         teaching_service: TeachingTurnService | None = None,
+        teaching_progress_service: TeachingProgressService | None = None,
         profile_service: ProfileService | None = None,
         automatic_profile_service: AutomaticProfileService | None = None,
         four_dimension_profile_service: FourDimensionProfileService | None = None,
@@ -1339,6 +1344,9 @@ class TurnOrchestrator:
         self._arxiv_search = arxiv_search_service
         #: 学习模式教学证据门与统一聊天教学轮次（Issue 23）。
         self._teaching = teaching_service or TeachingTurnService()
+        self._teaching_progress = teaching_progress_service or TeachingProgressService(
+            repository.database
+        )
         #: 画像记忆意图处理（Issue 26）；未挂载时聊天不产生画像通知。
         self._profiles = profile_service
         #: Issue 15：新写入的四维画像通过独立服务编译；旧服务只作兼容。
@@ -1779,6 +1787,8 @@ class TurnOrchestrator:
                 return
             retrieval_round: RetrievalRoundProjection | None = None
             first_lesson_requested = False
+            formal_lesson_requested = False
+            fallback_plan: TeachingPlanProjection | None = None
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
                 if current.teaching is not None and mode == ChatMode.STUDY
@@ -1824,6 +1834,7 @@ class TurnOrchestrator:
                 previous_turn = previous_teaching_turn(
                     messages, owner.message_id if owner else None
                 )
+                fallback_plan = previous_turn.plan if previous_turn is not None else None
                 # Issue 08：先分类意图，再按教学状态机分派；不检索整句意图。
                 mission = previous_turn.mission if previous_turn is not None else None
                 intent = self._teaching.classify_intent(round_query, mission)
@@ -1879,16 +1890,21 @@ class TurnOrchestrator:
                         raise RuntimeError("明确学习目标未能建立教学任务。")
                     mission = self._teaching.confirm_mission("", setup.mission)
                     first_lesson_requested = True
+                    formal_lesson_requested = True
                     round_query = self._teaching.micro_lesson_query(mission)
 
                 # mission 确认：解析水平假设与首概念，检索查询用规范主题。
                 if mission is not None and mission.stage == TeachingStage.MISSION_SETUP:
                     mission = self._teaching.confirm_mission(round_query, mission)
+                    formal_lesson_requested = True
                     round_query = self._teaching.micro_lesson_query(mission)
                 elif mission is not None:
                     # Issue 08：作答/追问/跳过等轮次的检索与公开搜索都用
                     # 当前概念，不拿短答复或整句意图搜索。
                     round_query = self._teaching.micro_lesson_query(mission)
+                    formal_lesson_requested = (
+                        formal_lesson_requested or intent == TeachingIntent.ANSWER
+                    )
 
                 # Issue 06：教学轮次受总时延预算约束（run 级共享 budget）。
                 if budget.enter(RunStage.LOCAL_RETRIEVAL):
@@ -2967,6 +2983,32 @@ class TurnOrchestrator:
                         if teaching_projection is not None
                         else None
                     )
+                    if (
+                        formal_lesson_requested
+                        and teaching_projection is not None
+                        and self._teaching_progress.has_invalid_answer(
+                            teaching_projection
+                        )
+                        and previous_turn is not None
+                    ):
+                        teaching_projection = previous_turn.model_copy(
+                            update={
+                                "next_prompt": "当前作答未形成有效评价，请继续回答原测验。"
+                            }
+                        )
+                    learning_publication = None
+                    if teaching_projection is not None and formal_lesson_requested:
+                        learning_publication = self._teaching_progress.prepare_publication(
+                            account_id,
+                            conversation_id,
+                            assistant_message_id,
+                            teaching_projection,
+                            content,
+                            formal_lesson=True,
+                            fallback_plan=fallback_plan,
+                        )
+                        if learning_publication is not None:
+                            teaching_projection = learning_publication.projection
                     finalize_message(
                         self._repo,
                         account_id,
@@ -2981,6 +3023,11 @@ class TurnOrchestrator:
                         now=datetime.now(UTC),
                         thinking=done_thinking(thinking),
                         teaching=teaching_payload(teaching_projection),
+                        persist_learning=(
+                            learning_publication.commit
+                            if learning_publication is not None
+                            else None
+                        ),
                     )
                     yield event
                     return
