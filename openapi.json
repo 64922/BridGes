@@ -56,7 +56,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -108,7 +108,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -348,7 +348,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -594,7 +594,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -656,7 +656,7 @@
             }
           },
           "422": {
-            "description": "Unprocessable Content",
+            "description": "Unprocessable Entity",
             "content": {
               "application/json": {
                 "schema": {
@@ -1487,7 +1487,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1597,7 +1597,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -1706,7 +1706,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -2666,7 +2666,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -3435,7 +3435,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -3606,7 +3606,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -3974,7 +3974,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "503": {
             "content": {
@@ -4816,7 +4816,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -5748,7 +5748,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -8255,7 +8255,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8479,7 +8479,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -8628,7 +8628,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -8946,7 +8946,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9116,7 +9116,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9265,7 +9265,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9488,7 +9488,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -9719,7 +9719,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9809,7 +9809,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9908,7 +9908,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -9998,7 +9998,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10677,7 +10677,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -10919,7 +10919,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -10998,7 +10998,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11189,7 +11189,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11461,7 +11461,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -11639,7 +11639,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -11819,7 +11819,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -12007,7 +12007,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12105,7 +12105,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12268,7 +12268,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -12367,7 +12367,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14314,7 +14314,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14422,7 +14422,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14618,7 +14618,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14735,7 +14735,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14887,7 +14887,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -14978,7 +14978,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15086,7 +15086,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15184,7 +15184,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15468,7 +15468,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -15557,7 +15557,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -15708,7 +15708,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -16019,7 +16019,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16277,7 +16277,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16357,7 +16357,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16446,7 +16446,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -16526,7 +16526,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -17177,7 +17177,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17424,7 +17424,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17522,7 +17522,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17611,7 +17611,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17700,7 +17700,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17884,7 +17884,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -17964,7 +17964,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18053,7 +18053,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18133,7 +18133,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18301,7 +18301,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18390,7 +18390,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18541,7 +18541,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18611,7 +18611,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18778,7 +18778,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -18837,7 +18837,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19279,7 +19279,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19466,7 +19466,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -19881,7 +19881,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -20097,7 +20097,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -20327,7 +20327,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       },
@@ -20553,7 +20553,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           }
         }
       }
@@ -22519,7 +22519,7 @@
                 }
               }
             },
-            "description": "Content Too Large"
+            "description": "Request Entity Too Large"
           },
           "422": {
             "description": "Validation Error",
@@ -23491,7 +23491,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -24224,7 +24224,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -25764,7 +25764,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "503": {
             "content": {
@@ -25864,7 +25864,7 @@
                 }
               }
             },
-            "description": "Unprocessable Content"
+            "description": "Unprocessable Entity"
           },
           "502": {
             "content": {
@@ -30090,6 +30090,18 @@
             ],
             "title": "Stage",
             "description": "运行当前阶段（Issue 06 统一阶段枚举）。"
+          },
+          "global_writing_policy_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Global Writing Policy Version",
+            "description": "全局表达策略版本（仅用于诊断，不展示策略正文）。"
           },
           "cursor": {
             "type": "integer",
@@ -50382,6 +50394,15 @@
         "title": "TeachingAnswerEvidence",
         "description": "把题目、回答、评价依据和知识状态候选串成可追溯记录。"
       },
+      "TeachingArtifactStatus": {
+        "type": "string",
+        "enum": [
+          "staged",
+          "published"
+        ],
+        "title": "TeachingArtifactStatus",
+        "description": "计划与课时在原子发布前后的可审计状态。"
+      },
       "TeachingCardStatus": {
         "type": "string",
         "enum": [
@@ -50572,6 +50593,114 @@
         "title": "TeachingKnowledgeState",
         "description": "单轮作答形成的、仍需确认的知识状态候选。"
       },
+      "TeachingLessonProjection": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "teaching-lesson-v1"
+          },
+          "lesson_id": {
+            "type": "string",
+            "title": "Lesson Id"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "default": ""
+          },
+          "object_domain": {
+            "type": "string",
+            "title": "Object Domain",
+            "default": "personal_vault"
+          },
+          "artifact_status": {
+            "$ref": "#/components/schemas/TeachingArtifactStatus",
+            "default": "staged"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "default": ""
+          },
+          "lesson_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Lesson Number",
+            "default": 1
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "default": ""
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Examples"
+          },
+          "summary": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Summary"
+          },
+          "understanding_check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingQuiz"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Evidence Refs"
+          },
+          "target_snapshot_id": {
+            "type": "string",
+            "title": "Target Snapshot Id"
+          },
+          "evidence_snapshot_id": {
+            "type": "string",
+            "title": "Evidence Snapshot Id"
+          },
+          "profile_usage": {
+            "$ref": "#/components/schemas/TeachingProfileUsage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lesson_id",
+          "plan_id",
+          "title",
+          "objective",
+          "target_snapshot_id",
+          "evidence_snapshot_id"
+        ],
+        "title": "TeachingLessonProjection",
+        "description": "计划首次发布时交付的、可独立阅读的第一个课时。"
+      },
       "TeachingMission": {
         "properties": {
           "mission_id": {
@@ -50757,6 +50886,144 @@
         "title": "TeachingPlan",
         "description": "A minimal teaching plan derived from a mission and its knowledge states.\n\nT022 will expand this into short lessons, examples and retrieval exercises.\nT021 only needs the plan as a stable contract that traces back to the mission\nand evidence."
       },
+      "TeachingPlanProjection": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "teaching-plan-v1"
+          },
+          "plan_id": {
+            "type": "string",
+            "title": "Plan Id"
+          },
+          "owner_account_id": {
+            "type": "string",
+            "title": "Owner Account Id",
+            "default": ""
+          },
+          "object_domain": {
+            "type": "string",
+            "title": "Object Domain",
+            "default": "personal_vault"
+          },
+          "artifact_status": {
+            "$ref": "#/components/schemas/TeachingArtifactStatus",
+            "default": "staged"
+          },
+          "content_hash": {
+            "type": "string",
+            "title": "Content Hash",
+            "default": ""
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "default": 1
+          },
+          "goal_snapshot": {
+            "type": "string",
+            "title": "Goal Snapshot"
+          },
+          "target_concepts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Target Concepts"
+          },
+          "prerequisite_assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Prerequisite Assumptions"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/TeachingPlanSession"
+            },
+            "type": "array",
+            "title": "Sessions"
+          },
+          "stage_checkpoints": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Stage Checkpoints"
+          },
+          "completion_criteria": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Completion Criteria"
+          },
+          "target_snapshot_id": {
+            "type": "string",
+            "title": "Target Snapshot Id"
+          },
+          "evidence_snapshot_id": {
+            "type": "string",
+            "title": "Evidence Snapshot Id"
+          },
+          "profile_slice_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profile Slice Id"
+          },
+          "profile_usage": {
+            "$ref": "#/components/schemas/TeachingProfileUsage"
+          }
+        },
+        "type": "object",
+        "required": [
+          "plan_id",
+          "goal_snapshot",
+          "target_snapshot_id",
+          "evidence_snapshot_id"
+        ],
+        "title": "TeachingPlanProjection",
+        "description": "聊天内展示并持久化的版本化教学计划。"
+      },
+      "TeachingPlanSession": {
+        "properties": {
+          "lesson_number": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Lesson Number"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "objective": {
+            "type": "string",
+            "title": "Objective"
+          },
+          "checkpoint": {
+            "type": "string",
+            "title": "Checkpoint"
+          }
+        },
+        "type": "object",
+        "required": [
+          "lesson_number",
+          "title",
+          "objective",
+          "checkpoint"
+        ],
+        "title": "TeachingPlanSession",
+        "description": "计划中的一个课时摘要。"
+      },
       "TeachingPlanStatus": {
         "type": "string",
         "enum": [
@@ -50766,6 +51033,40 @@
         ],
         "title": "TeachingPlanStatus",
         "description": "Lifecycle status of a teaching plan."
+      },
+      "TeachingProfileUsage": {
+        "properties": {
+          "schema_version": {
+            "type": "string",
+            "title": "Schema Version",
+            "default": "teaching-profile-usage-v1"
+          },
+          "used_categories": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Used Categories",
+            "description": "实际使用的四维画像类别，不包含画像正文。"
+          },
+          "applied_to": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Applied To",
+            "description": "画像只影响难度、路径或例子中的哪些部分。"
+          },
+          "defaulted": {
+            "type": "boolean",
+            "title": "Defaulted",
+            "description": "没有可用画像时是否采用中性默认值。",
+            "default": false
+          }
+        },
+        "type": "object",
+        "title": "TeachingProfileUsage",
+        "description": "本轮教学使用画像的最小、可审计快照。"
       },
       "TeachingQualityGateCheck": {
         "type": "string",
@@ -50959,6 +51260,28 @@
           "evidence_gate": {
             "$ref": "#/components/schemas/TeachingEvidenceGate",
             "description": "本轮证据充足性门结果。"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingPlanProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "成功发布时随本轮消息交付的版本化教学计划。"
+          },
+          "lesson": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingLessonProjection"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "成功发布时随计划交付的第一课。"
           },
           "quiz": {
             "anyOf": [

@@ -71,6 +71,7 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
   const mission = teaching.mission;
   const isMissionSetup = mission?.stage === "mission_setup";
   const isBlocked = mission?.stage === "blocked";
+  const lessonQuiz = teaching.lesson?.understanding_check ?? teaching.quiz;
 
   return (
     <section
@@ -147,6 +148,90 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
         </dl>
       )}
 
+      {teaching.plan && teaching.lesson && (
+        <div
+          data-testid="teaching-plan-and-lesson"
+          style={{
+            marginTop: "var(--space-4)",
+            display: "grid",
+            gap: "var(--space-4)",
+          }}
+        >
+          <div
+            style={{
+              padding: "var(--space-3)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--color-surface)",
+            }}
+          >
+            <h4 style={{ margin: 0 }}>学习计划 · v{teaching.plan.version}</h4>
+            <p style={{ margin: "var(--space-2) 0 0" }}>{teaching.plan.goal_snapshot}</p>
+            {(teaching.plan.target_concepts ?? []).length > 0 && (
+              <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+                目标概念：{teaching.plan.target_concepts?.join("、")}
+              </p>
+            )}
+            {(teaching.plan.sessions ?? []).length > 0 && (
+              <ol style={{ margin: "var(--space-3) 0 0", paddingLeft: "var(--space-5)" }}>
+                {teaching.plan.sessions?.map((session) => (
+                  <li key={`${session.lesson_number}-${session.title}`}>
+                    <strong>第 {session.lesson_number} 课：{session.title}</strong>
+                    <div style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+                      {session.objective} · 检查点：{session.checkpoint}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {(teaching.plan.completion_criteria ?? []).length > 0 && (
+              <div style={{ marginTop: "var(--space-3)", color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+                <strong>完成标准</strong>
+                <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)" }}>
+                  {teaching.plan.completion_criteria?.map((criterion) => <li key={criterion}>{criterion}</li>)}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          <div
+            style={{
+              padding: "var(--space-3)",
+              border: "1px solid var(--color-border-strong)",
+              borderRadius: "var(--radius-md)",
+              backgroundColor: "var(--color-surface)",
+            }}
+          >
+            <h4 style={{ margin: 0 }}>第一课 · {teaching.lesson.title}</h4>
+            <p style={{ margin: "var(--space-2) 0 0", fontWeight: 600 }}>{teaching.lesson.objective}</p>
+            {teaching.lesson.explanation && (
+              <p style={{ margin: "var(--space-3) 0 0", whiteSpace: "pre-wrap" }}>{teaching.lesson.explanation}</p>
+            )}
+            {teaching.lesson.examples && teaching.lesson.examples.length > 0 && (
+              <div style={{ marginTop: "var(--space-3)" }}>
+                <strong>例子与练习</strong>
+                <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)" }}>
+                  {teaching.lesson.examples.map((example) => <li key={example}>{example}</li>)}
+                </ul>
+              </div>
+            )}
+            {teaching.lesson.summary && teaching.lesson.summary.length > 0 && (
+              <div style={{ marginTop: "var(--space-3)" }}>
+                <strong>小结</strong>
+                <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)" }}>
+                  {teaching.lesson.summary.map((item) => <li key={item}>{item}</li>)}
+                </ul>
+              </div>
+            )}
+            {teaching.lesson.evidence_refs && teaching.lesson.evidence_refs.length > 0 && (
+              <p style={{ margin: "var(--space-3) 0 0", color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
+                引用来源：{teaching.lesson.evidence_refs.join("、")}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       <div
         style={{
           marginTop: "var(--space-4)",
@@ -211,12 +296,12 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
         </div>
       )}
 
-      {teaching.quiz && teaching.can_answer_reliably && (
+      {lessonQuiz && teaching.can_answer_reliably && (
         <div style={{ marginTop: "var(--space-4)" }}>
           <p style={{ margin: 0, fontWeight: 600 }}>理解检查题</p>
-          <p style={{ margin: "var(--space-2) 0 0" }}>{teaching.quiz.question}</p>
+          <p style={{ margin: "var(--space-2) 0 0" }}>{lessonQuiz.question}</p>
           <div style={{ display: "flex", gap: "var(--space-2)", flexWrap: "wrap", marginTop: "var(--space-3)" }}>
-            {teaching.quiz.can_skip && onSkip && (
+            {lessonQuiz.can_skip && onSkip && (
               <button type="button" onClick={onSkip} style={buttonStyle}>
                 跳过这题
               </button>

@@ -1590,12 +1590,29 @@ class ChatService:
                 "上一轮回答仍在生成中，请先停止或等待完成。",
                 409,
             )
-
         owner = owner_user_message(existing, message_id)
         if owner is None:
             raise ChatDomainError(
                 "not_retryable_message", "找不到该助手消息对应的用户消息。", 400
             )
+        if record.mode == ChatMode.STUDY.value:
+            for previous_attempt in attempt_group(existing, owner.message_id):
+                if previous_attempt.status != ChatMessageStatus.DONE:
+                    continue
+                if previous_attempt.teaching is None:
+                    continue
+                previous_teaching = TeachingTurnProjection.model_validate(
+                    previous_attempt.teaching
+                )
+                if (
+                    previous_teaching.plan is not None
+                    and previous_teaching.lesson is not None
+                ):
+                    raise ChatDomainError(
+                        "teaching_already_published",
+                        "本轮计划和第一课已经发布，无需重复生成。",
+                        409,
+                    )
         if owner.skill:
             legacy_attachment_ids = (owner.skill.get("contract") or {}).get(
                 "attachment_ids"

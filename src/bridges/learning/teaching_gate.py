@@ -12,13 +12,16 @@ from __future__ import annotations
 
 import re
 import secrets
+from collections.abc import Sequence
 from datetime import UTC, datetime
+from hashlib import sha256
 
 from bridges.arxiv_mcp.contracts import ArxivSearchProjection, ArxivSearchStatus
 from bridges.contracts.learning import AnswerEvaluatedState
 from bridges.contracts.retrieval import RetrievalRoundProjection, RetrievalSufficiency
 from bridges.contracts.teaching import (
     TeachingAnswerEvidence,
+    TeachingArtifactStatus,
     TeachingCardStatus,
     TeachingEvidenceGate,
     TeachingEvidenceSource,
@@ -26,7 +29,11 @@ from bridges.contracts.teaching import (
     TeachingEvidenceStatus,
     TeachingIntent,
     TeachingKnowledgeState,
+    TeachingLessonProjection,
     TeachingMission,
+    TeachingPlanProjection,
+    TeachingPlanSession,
+    TeachingProfileUsage,
     TeachingQuiz,
     TeachingSearchSource,
     TeachingStage,
@@ -55,9 +62,22 @@ _FOLLOW_UP = re.compile(
 )
 #: 学习意图（建立目标）动词；无 mission 时的教学对话默认进入目标确认。
 _LEARNING_INTENT = re.compile(
-    r"^(?:请|帮我)?(?:我想|我想要|想|要|教我|教教|讲讲|学|学习|了解|认识|入门|弄懂|搞清楚)\s*[:：]?\s*\S+",
+    r"^(?:请|帮我)?(?:我想|我想要|希望|想|要|教我|教教|讲讲|学|学习|了解|认识|入门|弄懂|搞清楚)\s*[:：]?\s*\S+|"
+    r"^(?:学习目标|目标)\s*(?:是|为)?\s*[:：]?\s*\S+",
     re.I,
 )
+_LEARNING_GOAL_MARKER = re.compile(
+    r"学习|学一下|教我|入门|弄懂|搞清楚|学习目标|目标是|制定学习计划",
+    re.I,
+)
+_MISSING_GOAL = re.compile(
+    r"^(?:请|帮我|我想要?|希望|想要?|要)?\s*"
+    r"(?:(?:学习目标|目标)\s*(?:是|为)?|"
+    r"(?:学习|学一下|学|教我|教教我|讲讲|制定学习计划|学习计划))"
+    r"\s*(?:一下|吧|呢)?[。！？!?，,：:]*$",
+    re.I,
+)
+_VAGUE_GOAL = re.compile(r"^(?:点东西|一些东西|某个东西|什么|某个主题|某个概念)$")
 #: 主题提取的主/次动词词表（与 _LEARNING_INTENT/_MODIFY_MISSION 共用语义）。
 _TOPIC_VERB_PREFIX = re.compile(
     r"^(?:请|帮我)?(?:我想要|我想|想要|想|要|教我|教教|讲讲|解释一下|介绍一下|解释|"
@@ -88,6 +108,11 @@ def _now() -> datetime:
 
 def _new_id(prefix: str) -> str:
     return f"{prefix}-{secrets.token_urlsafe(10)}"
+
+
+def _snapshot_id(prefix: str, *values: str) -> str:
+    payload = "\x1f".join(values).encode("utf-8")
+    return f"{prefix}-{sha256(payload).hexdigest()[:16]}"
 
 
 def _is_follow_up(text: str) -> bool:
@@ -389,7 +414,7 @@ class TeachingTurnService:
         if _SWITCH_MODE.search(stripped):
             return TeachingIntent.SWITCH_MODE
         if mission is None:
-            if _LEARNING_INTENT.search(stripped):
+            if self.has_executable_goal(stripped) or self.is_missing_goal(stripped):
                 return TeachingIntent.ESTABLISH_MISSION
             return TeachingIntent.FACT_QUESTION
         if mission.stage == TeachingStage.MISSION_SETUP:
@@ -407,17 +432,33 @@ class TeachingTurnService:
         return TeachingIntent.ANSWER
 
     def mission_setup(
-        self, query: str, *, previous_mission: TeachingMission | None = None
+        self,
+        query: str,
+        *,
+        previous_mission: TeachingMission | None = None,
+        mission_id: str | None = None,
     ) -> TeachingTurnProjection:
         """建立或修改目标：确认目标/用途/已有水平，不过证据门、不检索。"""
         topic = self._topic(query)
         goal = f"学习“{topic}”并理解其核心机制"
         if previous_mission is not None and previous_mission.stage != TeachingStage.MISSION_SETUP:
             goal = f"把目标调整为：学习“{topic}”并理解其核心机制"
+        has_goal = self.has_executable_goal(query)
+        starts_new_goal = has_goal and (
+            previous_mission is None or bool(_MODIFY_MISSION.search(query))
+        )
         mission = TeachingMission(
-            mission_id=previous_mission.mission_id if previous_mission is not None else _new_id("mission"),
+            mission_id=(
+                mission_id
+                if starts_new_goal and mission_id is not None
+                else (
+                    previous_mission.mission_id
+                    if previous_mission is not None
+                    else mission_id or _new_id("mission")
+                )
+            ),
             stage=TeachingStage.MISSION_SETUP,
-            goal=goal,
+            goal=goal if has_goal else "等待补充学习目标",
             user_intent=query,
             current_concept=None,
             level_assumption="暂按初学者处理；你的回答会调整深度与例子。",
@@ -425,7 +466,11 @@ class TeachingTurnService:
             taught_concepts=(
                 previous_mission.taught_concepts if previous_mission is not None else []
             ),
-            next_action="回答一个澄清问题，或直接选择按初学者开始。",
+            next_action=(
+                "请先告诉我你想学习的主题或可执行目标。"
+                if not has_goal
+                else "可以直接按初学者开始，我会根据证据生成计划和第一课。"
+            ),
         )
         gate = TeachingEvidenceGate(
             status=TeachingEvidenceStatus.SUFFICIENT,
@@ -447,8 +492,9 @@ class TeachingTurnService:
             quiz=None,
             evidence=[],
             next_prompt=(
-                f"你之前接触过“{topic}”吗？"
-                "可以简单回答，也可以直接说“按初学者开始”。"
+                "你想学习什么主题？请给出一个具体目标，例如“学习 Transformer 的核心机制”。"
+                if not has_goal
+                else "我会先按中性初学者起点开始；如果你已有基础，后续可以再调整难度。"
             ),
             gap_response=None,
             can_answer_reliably=False,
@@ -458,6 +504,32 @@ class TeachingTurnService:
             can_follow_up=True,
             can_switch_mode=True,
         )
+
+    def has_executable_goal(self, text: str) -> bool:
+        """判断当前消息是否已经包含可执行的学习目标。"""
+
+        normalized = text.strip()
+        if self.is_missing_goal(normalized):
+            return False
+        topic = self._topic(normalized)
+        return (
+            topic != "当前概念"
+            and not _VAGUE_GOAL.fullmatch(topic.strip())
+            and bool(
+                _LEARNING_INTENT.search(normalized)
+                or _MODIFY_MISSION.search(normalized)
+            )
+            and len(topic.strip()) > 1
+        )
+
+    @staticmethod
+    def is_missing_goal(text: str) -> bool:
+        """识别“想学但没有主题”的消息，且不触发检索或模型。"""
+
+        normalized = text.strip()
+        if not _LEARNING_GOAL_MARKER.search(normalized):
+            return False
+        return bool(_MISSING_GOAL.fullmatch(normalized))
 
     def confirm_mission(self, text: str, mission: TeachingMission) -> TeachingMission:
         """确认阶段输入：解析水平假设，确定首概念，推进到 micro_lesson。"""
@@ -538,6 +610,184 @@ class TeachingTurnService:
         return mission.model_copy(
             update={"taught_concepts": [*mission.taught_concepts, concept]}
         )
+
+    def compose_first_plan_and_lesson(
+        self,
+        turn: TeachingTurnProjection,
+        mission: TeachingMission,
+        *,
+        profile_items: Sequence[tuple[str, str]] = (),
+        profile_slice_id: str | None = None,
+        owner_account_id: str = "",
+        object_domain: str = "personal_vault",
+    ) -> TeachingTurnProjection:
+        """在一次教学编排中准备计划和第一课，共享目标与证据快照。"""
+
+        if not turn.can_answer_reliably:
+            return turn
+        topic = mission.current_concept or self._topic(mission.goal)
+        evidence_refs = [
+            source.source_id
+            for source in [
+                *turn.evidence_gate.local_sources,
+                *turn.evidence_gate.external_sources,
+            ]
+        ]
+        if not evidence_refs:
+            return turn
+
+        categories = sorted(
+            {
+                dimension
+                for dimension, _value in profile_items
+                if dimension
+                in {"academic_status", "knowledge_interest", "hobby", "stage_goal"}
+            }
+        )
+        usage = TeachingProfileUsage(
+            used_categories=categories,
+            applied_to=(
+                [
+                    *(["difficulty"] if "academic_status" in categories else []),
+                    *(
+                        ["examples"]
+                        if {"knowledge_interest", "hobby"} & set(categories)
+                        else []
+                    ),
+                    *(["path"] if "stage_goal" in categories else []),
+                ]
+                or ["difficulty", "examples", "path"]
+            ),
+            defaulted=not categories,
+        )
+        target_snapshot_id = _snapshot_id(
+            "target", mission.mission_id, mission.goal, topic
+        )
+        evidence_snapshot_id = _snapshot_id("evidence", *evidence_refs)
+        plan_id = f"plan-{mission.mission_id}-v1"
+        difficulty = (
+            "按当前学业情况调整起点"
+            if "academic_status" in categories
+            else "中性基础起点"
+        )
+        path = (
+            "按阶段目标安排迁移练习"
+            if "stage_goal" in categories
+            else "安排一个迁移练习"
+        )
+        example_value = next(
+            (
+                value[:24]
+                for dimension, value in profile_items
+                if dimension in {"knowledge_interest", "hobby"} and value.strip()
+            ),
+            None,
+        )
+        example = (
+            f"用与“{example_value}”相关的情境选择例子"
+            if example_value is not None
+            else "使用不依赖个人经历的中性例子"
+        )
+        objective = f"理解“{topic}”的核心机制，并能用一个新例子说明。"
+        sessions = [
+            TeachingPlanSession(
+                lesson_number=1,
+                title=f"{topic}：核心概念",
+                objective=objective,
+                checkpoint="能够复述核心定义、机制和一个边界。",
+            ),
+            TeachingPlanSession(
+                lesson_number=2,
+                title=f"{topic}：例子与迁移",
+                objective=f"把“{topic}”用于一个新情境。",
+                checkpoint="能够说明例子为什么符合该机制。",
+            ),
+            TeachingPlanSession(
+                lesson_number=3,
+                title=f"{topic}：综合检查",
+                objective=f"独立解释“{topic}”并识别常见混淆。",
+                checkpoint="完成一次有依据的综合理解检查。",
+            ),
+        ]
+        plan = TeachingPlanProjection(
+            plan_id=plan_id,
+            owner_account_id=owner_account_id,
+            object_domain=object_domain,
+            artifact_status=TeachingArtifactStatus.STAGED,
+            content_hash=_snapshot_id(
+                "plan-content", plan_id, mission.goal, topic, *evidence_refs
+            ),
+            version=1,
+            goal_snapshot=mission.goal,
+            target_concepts=[topic],
+            prerequisite_assumptions=[mission.level_assumption, difficulty],
+            sessions=sessions,
+            stage_checkpoints=[path, *(session.checkpoint for session in sessions)],
+            completion_criteria=[
+                f"能够独立解释“{topic}”的核心机制。",
+                f"能够在新情境中正确应用“{topic}”。",
+                "理解检查答案始终绑定可核验来源。",
+            ],
+            target_snapshot_id=target_snapshot_id,
+            evidence_snapshot_id=evidence_snapshot_id,
+            profile_slice_id=profile_slice_id,
+            profile_usage=usage,
+        )
+        lesson = TeachingLessonProjection(
+            lesson_id=f"lesson-{mission.mission_id}-1",
+            plan_id=plan.plan_id,
+            owner_account_id=owner_account_id,
+            object_domain=object_domain,
+            artifact_status=TeachingArtifactStatus.STAGED,
+            content_hash=_snapshot_id("lesson-content", plan.plan_id, topic),
+            lesson_number=1,
+            title=sessions[0].title,
+            objective=objective,
+            examples=[example, f"用一个新的“{topic}”情境做迁移练习。"],
+            summary=[
+                f"本课聚焦“{topic}”的一个核心学习胜利。",
+                "正式结论只使用本轮证据门允许的来源。",
+            ],
+            understanding_check=turn.quiz,
+            evidence_refs=evidence_refs,
+            target_snapshot_id=target_snapshot_id,
+            evidence_snapshot_id=evidence_snapshot_id,
+            profile_usage=usage,
+        )
+        return turn.model_copy(update={"plan": plan, "lesson": lesson})
+
+    @staticmethod
+    def publish_lesson_content(
+        turn: TeachingTurnProjection, content: str
+    ) -> TeachingTurnProjection:
+        """把唯一主模型的正文写入第一课投影，仍只发布一次。"""
+
+        if turn.lesson is None:
+            return turn
+        return turn.model_copy(
+            update={
+                "plan": (
+                    turn.plan.model_copy(
+                        update={"artifact_status": TeachingArtifactStatus.PUBLISHED}
+                    )
+                    if turn.plan is not None
+                    else None
+                ),
+                "lesson": turn.lesson.model_copy(
+                    update={
+                        "explanation": content,
+                        "artifact_status": TeachingArtifactStatus.PUBLISHED,
+                        "content_hash": sha256(content.encode("utf-8")).hexdigest(),
+                    }
+                ),
+            }
+        )
+
+    @staticmethod
+    def discard_first_plan(turn: TeachingTurnProjection) -> TeachingTurnProjection:
+        """失败、停止或重试时丢弃尚未发布的计划和第一课。"""
+
+        return turn.model_copy(update={"plan": None, "lesson": None})
 
     def initial(self, query: str, *, recovery: bool = False) -> TeachingTurnProjection:
         topic = self._topic(query)
