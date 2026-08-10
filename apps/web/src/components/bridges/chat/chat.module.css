@@ -1,6 +1,5 @@
-/* 聊天布局（Issue 11/12/13）：单一居中消息列 + 底部输入区；最近对话已并入
-   全局侧栏 AppSidebar（Issue 12），聊天页不再有第二列；新聊天空白态为
-   居中限宽列：问候 + 轮换学习名言 + 输入区 + 建议卡（Issue 13）。 */
+/* 聊天布局（Issue 11/12/13/21）：单一居中消息列 + 底部输入区；最近对话
+   已并入全局侧栏 AppSidebar（Issue 12），聊天页不再有第二列。 */
 
 .chatShell {
   display: flex;
@@ -17,6 +16,7 @@
   flex: 1;
   min-width: 0;
   min-height: calc(100vh - var(--shell-chrome-height, var(--topbar-height)));
+  position: relative;
 }
 
 .thread {
@@ -42,30 +42,17 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8) var(--space-6);
+  min-width: 0;
+  padding: 5.5rem var(--space-6) var(--space-8);
 }
 
 .blankStateInner {
   width: 100%;
   max-width: 46rem;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-}
-
-.greetingCompact {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-  text-align: center;
-}
-
-.greetingTitle {
-  font-family: var(--font-serif);
-  font-size: var(--text-3xl);
-  font-weight: 600;
-  color: var(--color-text-primary);
 }
 
 .blankStateNote {
@@ -73,6 +60,15 @@
   text-align: center;
   font-size: var(--text-xs);
   color: var(--color-text-tertiary);
+}
+
+/* 新聊天模式只在首轮前可选，固定在主内容右上角。 */
+.newChatMode {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  z-index: 1;
+  max-width: calc(100% - 2 * var(--space-4));
 }
 
 /* ---- 输入区 ---- */

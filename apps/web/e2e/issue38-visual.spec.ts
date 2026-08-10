@@ -66,7 +66,7 @@ test.describe("Issue 38 — 正式路由视觉回归", () => {
   test("新聊天首页：空白态三视口", async ({ page }) => {
     const creds = uniqueCredentials("i38v-home");
     await signUp(page, creds.username, creds.qqEmail, "correct-horse-12");
-    await openStable(page, "/", page.getByRole("heading", { name: "有什么可以帮你的？" }));
+    await openStable(page, "/", page.getByTestId("new-chat-home"));
     await expectScreenshots(page, "new-chat-home");
   });
 

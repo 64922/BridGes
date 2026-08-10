@@ -42,6 +42,8 @@ interface ComposerProps {
   video?: CapabilityAvailability;
   /** Issue 30：ASR 听写能力可用性（账户级探测快照；不可用时禁用入口并说明原因） */
   asr?: CapabilityAvailability;
+  /** 新聊天首页的最小变体：只保留自然语言输入、听写与发送。 */
+  variant?: "conversation" | "new-chat";
 }
 
 const TOOL_PROMPTS = CHAT_TOOL_INTENTS;
@@ -59,6 +61,7 @@ export function Composer({
   onOpenVideo,
   video = { available: true },
   asr = { available: true },
+  variant = "conversation",
 }: ComposerProps) {
   const [text, setText] = useState("");
   // Issue 30：听写状态机（idle → recording → transcribing → idle/error）。
@@ -84,8 +87,9 @@ export function Composer({
   const pendingAudioRef = useRef<Blob | null>(null);
   const preparedConversationRef = useRef<string | undefined>(conversationId);
   const canSend = text.trim().length > 0 && dictationPhase === "idle";
-  // 真实对话上下文（模板设计基线不渲染来源层面板）
-  const isRealChat = conversationId !== undefined || ensureConversation !== undefined;
+  const isNewChat = variant === "new-chat";
+  // 真实会话才渲染来源层；新聊天只提交自然语言首轮合同。
+  const isRealChat = !isNewChat && (conversationId !== undefined || ensureConversation !== undefined);
 
   // Issue 30：录音硬上限（服务端 ASR 同款 300 秒限制，客户端提前自动停止）。
   const MAX_RECORDING_SECONDS = 299;
@@ -115,11 +119,13 @@ export function Composer({
   const send = async () => {
     if (!canSend || generating) return;
     try {
-      const accepted = await onSend(
-        text.trim(),
-        conversationId ?? preparedConversationRef.current,
-        useKnowledgeBase
-      );
+      const accepted = isNewChat
+        ? await onSend(text.trim(), preparedConversationRef.current)
+        : await onSend(
+            text.trim(),
+            conversationId ?? preparedConversationRef.current,
+            useKnowledgeBase
+          );
       if (accepted === false) return;
       setText("");
       setToolNotice("");
@@ -421,7 +427,7 @@ export function Composer({
             void send();
           }
         }}
-        placeholder="向 BridGes 提问，或描述你的学习目标"
+         placeholder={isNewChat ? "输入你想聊的内容" : "向 BridGes 提问，或描述你的学习目标"}
         style={{
           width: "100%",
           border: "none",
@@ -513,64 +519,66 @@ export function Composer({
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: "var(--space-1)" }}>
-        <Menu
-          ariaLabel="更多功能"
-          openUp
-          trigger={<Icon name="plus" size={20} aria-hidden />}
-          triggerStyle={{
-            width: "var(--target-size)",
-            padding: 0,
-            justifyContent: "center",
-            border: "1px solid var(--color-border)",
-          }}
-          items={[
-            // Issue 28/29：文章人味化与生涯规划进入真实任务对话框，
-            // 不再只是预填前缀；论文搜索仍为结构化预填（真实 arXiv MCP）。
-            ...TOOL_PROMPTS.filter(
-              (tool) =>
-                tool.label !== IMAGE_TOOL_LABEL && tool.label !== VIDEO_TOOL_LABEL
-            ).map((tool) => ({
-              label: tool.label,
-              icon: tool.icon,
-              onSelect:
-                tool.label === HUMANIZER_TOOL_LABEL && onOpenHumanizer
-                  ? () => {
-                      setToolNotice("");
-                      onOpenHumanizer?.();
-                    }
-                  : tool.label === CAREER_TOOL_LABEL && onOpenCareer
+        {!isNewChat && (
+          <Menu
+            ariaLabel="更多功能"
+            openUp
+            trigger={<Icon name="plus" size={20} aria-hidden />}
+            triggerStyle={{
+              width: "var(--target-size)",
+              padding: 0,
+              justifyContent: "center",
+              border: "1px solid var(--color-border)",
+            }}
+            items={[
+              // Issue 28/29：文章人味化与生涯规划进入真实任务对话框，
+              // 不再只是预填前缀；论文搜索仍为结构化预填（真实 arXiv MCP）。
+              ...TOOL_PROMPTS.filter(
+                (tool) =>
+                  tool.label !== IMAGE_TOOL_LABEL && tool.label !== VIDEO_TOOL_LABEL
+              ).map((tool) => ({
+                label: tool.label,
+                icon: tool.icon,
+                onSelect:
+                  tool.label === HUMANIZER_TOOL_LABEL && onOpenHumanizer
                     ? () => {
                         setToolNotice("");
-                        onOpenCareer?.();
+                        onOpenHumanizer?.();
                       }
-                    : () => insertToolPrefix(tool.prefix),
-              returnFocus: false,
-            })),
-            // 视频能力仍保留显式任务入口；图片能力由普通自然语言自动路由。
-            ...TOOL_PROMPTS.filter(
-              (tool) => tool.label === VIDEO_TOOL_LABEL
-            ).map((tool) => ({
-              label: tool.label,
-              icon: tool.icon,
-              onSelect:
-                onOpenVideo
-                  ? () => {
-                        // Issue 32：视频能力不可用时入口明确停用并说明
-                        // 原因（探测快照；服务端仍做权威校验）。
-                        if (!video.available) {
-                          setToolNotice(
-                            video.reason ?? "视频生成能力当前不可用。"
-                          );
-                          return;
+                    : tool.label === CAREER_TOOL_LABEL && onOpenCareer
+                      ? () => {
+                          setToolNotice("");
+                          onOpenCareer?.();
                         }
-                        setToolNotice("");
-                        onOpenVideo?.();
-                      }
-                    : () => insertToolPrefix(tool.prefix),
-              returnFocus: false,
-            })),
-          ]}
-        />
+                      : () => insertToolPrefix(tool.prefix),
+                returnFocus: false,
+              })),
+              // 视频能力仍保留显式任务入口；图片能力由普通自然语言自动路由。
+              ...TOOL_PROMPTS.filter(
+                (tool) => tool.label === VIDEO_TOOL_LABEL
+              ).map((tool) => ({
+                label: tool.label,
+                icon: tool.icon,
+                onSelect:
+                  onOpenVideo
+                    ? () => {
+                          // Issue 32：视频能力不可用时入口明确停用并说明
+                          // 原因（探测快照；服务端仍做权威校验）。
+                          if (!video.available) {
+                            setToolNotice(
+                              video.reason ?? "视频生成能力当前不可用。"
+                            );
+                            return;
+                          }
+                          setToolNotice("");
+                          onOpenVideo?.();
+                        }
+                      : () => insertToolPrefix(tool.prefix),
+                returnFocus: false,
+              })),
+            ]}
+          />
+        )}
 
         <span style={{ flex: 1 }} />
 
@@ -695,9 +703,15 @@ export function Composer({
           <Icon name="dictation" size={20} aria-hidden />
         </button>
         {generating ? (
-          <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
-            <Icon name="close" size={16} aria-hidden />停止
-          </Button>
+          onStop ? (
+            <Button variant="secondary" size="sm" onClick={onStop} aria-label="停止生成">
+              <Icon name="close" size={16} aria-hidden />停止
+            </Button>
+          ) : (
+            <span role="status" data-testid="composer-sending-status" className={styles.composerDictationText}>
+              正在创建对话并发送…
+            </span>
+          )
         ) : (
           <Button
             variant="primary"
