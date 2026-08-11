@@ -86,7 +86,8 @@ def test_no_local_material_automatically_requires_duckduckgo_and_exposes_gap() -
     assert turn.evidence_gate.required_search.value == "duckduckgo"
     assert turn.status == TeachingCardStatus.EMPTY
     assert turn.can_answer_reliably is False
-    assert "不能可靠" in (turn.gap_response or "")
+    assert turn.evidence_gate.allow_model_knowledge is True
+    assert "未联网核实" in (turn.gap_response or "")
 
 
 def test_missing_external_provider_still_exposes_an_explicit_gap() -> None:
@@ -99,6 +100,7 @@ def test_missing_external_provider_still_exposes_an_explicit_gap() -> None:
     assert turn.evidence_gate.gap
     assert turn.can_answer_reliably is False
     assert turn.status == TeachingCardStatus.EMPTY
+    assert turn.evidence_gate.allow_model_knowledge is True
 
 
 def test_sufficient_local_material_skips_external_search_and_creates_one_quiz() -> None:
@@ -148,6 +150,7 @@ def test_conflict_keeps_conflict_status_and_arxiv_source_type_distinct() -> None
     assert turn.evidence_gate.external_sources[0].alternate_url == paper.pdf_url
     assert turn.status == TeachingCardStatus.RECOVERY
     assert turn.can_answer_reliably is False
+    assert turn.evidence_gate.allow_model_knowledge is False
 
 
 def test_stale_local_material_requires_public_search() -> None:

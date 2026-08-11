@@ -5,10 +5,12 @@ from __future__ import annotations
 import hashlib
 import re
 import time
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from threading import Event, RLock
-from typing import Callable, Protocol
+from typing import Protocol
 
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
@@ -38,6 +40,7 @@ class SearchPlan:
     should_search: bool
     query: str
     reason: str
+    queries: tuple[str, ...] = ()
     plan_id: str = ""
     provider: str = DEFAULT_PROVIDER
     provider_version: str = DUCKDUCKGO_PROVIDER_VERSION
@@ -46,16 +49,26 @@ class SearchPlan:
     original_query_hash: str = ""
     freshness_window_seconds: int = DEFAULT_CACHE_TTL_SECONDS
     deleted_categories: tuple[str, ...] = ()
-    max_queries: int = 1
+    max_queries: int = 3
     max_results: int = 5
     max_retries: int = 1
     total_timeout_seconds: float = 8.0
     max_response_bytes: int = 1_000_000
-    max_redirects: int = 0
+    max_redirects: int = 2
 
     def __post_init__(self) -> None:
+        max_queries = max(1, min(self.max_queries, 4))
+        raw_queries = tuple(query.strip() for query in self.queries if query.strip())
+        if not raw_queries and self.query.strip():
+            raw_queries = (self.query.strip(),)
+        bounded_queries = raw_queries[:max_queries]
+        primary_query = bounded_queries[0] if bounded_queries else ""
+        object.__setattr__(self, "max_queries", max_queries)
+        object.__setattr__(self, "queries", bounded_queries)
+        object.__setattr__(self, "query", primary_query)
+        query_material = "\x1f".join(bounded_queries)
         query_hash = self.query_hash or hashlib.sha256(
-            self.query.encode("utf-8")
+            query_material.encode("utf-8")
         ).hexdigest()
         object.__setattr__(self, "query_hash", query_hash)
         if not self.original_query_hash:
@@ -216,11 +229,13 @@ class LocalQueryPlanner:
             reasons.append("学习模式本地证据不足，自动补充公开资料")
         reason = "、".join(reasons) if reasons else "本轮未触发公网搜索"
         query, deleted_categories = self._scrub_with_categories(content)
+        queries = self._query_variants(query)
         freshness_window = self._freshness_window(content, fresh=fresh)
         return SearchPlan(
             should_search,
             query if should_search else "",
             reason,
+            queries=queries if should_search else (),
             original_query_hash=hashlib.sha256(content.encode("utf-8")).hexdigest(),
             freshness_window_seconds=freshness_window,
             deleted_categories=tuple(deleted_categories),
@@ -259,6 +274,22 @@ class LocalQueryPlanner:
             if token.lower() not in self._STOPWORDS
         ]
         return " ".join(tokens[:8])[:80].strip() or "公开信息", deleted
+
+    @staticmethod
+    def _query_variants(query: str) -> tuple[str, ...]:
+        """在脱敏查询上增加有限的侧重点，不重新引入用户原文。"""
+
+        if not query:
+            return ("公开信息",)
+        focus_terms = ("核心概念 原理", "应用 示例", "常见误区 限制")
+        normalized_query = " ".join(query.split())
+        variants = [query]
+        for focus in focus_terms:
+            query_prefix = normalized_query[: max(0, 79 - len(focus))].rstrip()
+            candidate = f"{query_prefix} {focus}"[:80].strip()
+            if candidate not in variants:
+                variants.append(candidate)
+        return tuple(variants[:3])
 
     @staticmethod
     def _freshness_window(content: str, *, fresh: bool) -> int:
@@ -339,41 +370,67 @@ class WebSearchService:
 
         deadline = time.monotonic() + max(0.0, plan.total_timeout_seconds)
         attempts = 0
-        while True:
+        query_count = 0
+        query_history: list[str] = []
+        queries = plan.queries or ((plan.query,) if plan.query else ())
+        results: list[WebSearchResult] = []
+        errors: list[BaseException] = []
+        same_query_retries = 0
+        rewrite_attempted = False
+        while queries:
             if time.monotonic() >= deadline:
-                result = self._timeout_projection(plan, attempts)
-                self._audit(account_id, plan, result)
-                return result
-            attempts += 1
-            try:
-                remaining = max(0.0, deadline - time.monotonic())
-                if isinstance(self._client, DuckDuckGoClient):
-                    results = self._client.search(plan.query, timeout=remaining)
-                else:
-                    results = self._client.search(plan.query)
-                break
-            except WebSearchError as exc:
-                if (
-                    exc.retryable
-                    and attempts <= plan.max_retries
-                    and time.monotonic() < deadline
-                    and (stop_event is None or not stop_event.is_set())
-                ):
-                    continue
-                result = self._projection(
+                result = self._timeout_projection(
                     plan,
-                    status=self._error_status(exc.code, exc.permission),
-                    searched_at=self._clock(),
-                    error_code=exc.code,
-                    error_message=exc.message,
-                    can_retry=exc.retryable,
-                    attempt_count=attempts,
-                    query_count=1,
+                    attempts,
+                    query_count=query_count,
+                    query_history=query_history,
                 )
                 self._audit(account_id, plan, result)
                 return result
-        if time.monotonic() >= deadline:
-            result = self._timeout_projection(plan, attempts)
+            attempts += 1
+            round_results, round_errors, sent_count = self._run_queries(
+                queries,
+                deadline=deadline,
+                stop_event=stop_event,
+            )
+            query_count += sent_count
+            query_history.extend(queries[:sent_count])
+            results = self._merge_results(results, round_results)
+            errors = round_errors
+            if results:
+                break
+            if stop_event is not None and stop_event.is_set():
+                break
+            retryable_errors = any(
+                not isinstance(error, WebSearchError) or error.retryable
+                for error in errors
+            )
+            if (
+                errors
+                and retryable_errors
+                and same_query_retries < max(0, plan.max_retries)
+            ):
+                same_query_retries += 1
+                queries = plan.queries or ((plan.query,) if plan.query else ())
+                continue
+            if (
+                not rewrite_attempted
+                and plan.max_retries > 0
+                and (not errors or retryable_errors)
+            ):
+                rewrite = self._rewrite_query(plan, query_history)
+                if rewrite is not None:
+                    rewrite_attempted = True
+                    queries = (rewrite,)
+                    continue
+            break
+        if time.monotonic() >= deadline and not results:
+            result = self._timeout_projection(
+                plan,
+                attempts,
+                query_count=query_count,
+                query_history=query_history,
+            )
             self._audit(account_id, plan, result)
             return result
         if stop_event is not None and stop_event.is_set():
@@ -383,12 +440,48 @@ class WebSearchService:
                 searched_at=self._clock(),
                 error_message="已取消本轮联网搜索。",
                 attempt_count=attempts,
-                query_count=1,
+                query_count=query_count,
+                query_history=query_history,
             )
             self._audit(account_id, plan, result)
             return result
 
-        result = self._project_results(plan, results, attempts)
+        if not results and errors:
+            error = next(
+                (item for item in errors if isinstance(item, WebSearchError)), None
+            )
+            if error is not None:
+                result = self._projection(
+                    plan,
+                    status=self._error_status(error.code, error.permission),
+                    searched_at=self._clock(),
+                    error_code=error.code,
+                    error_message=error.message,
+                    can_retry=error.retryable,
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                )
+            else:
+                result = self._projection(
+                    plan,
+                    status=WebSearchStatus.ERROR,
+                    searched_at=self._clock(),
+                    error_code="web_search_provider",
+                    error_message="公网搜索提供方暂时不可用，请稍后重试。",
+                    can_retry=True,
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                )
+        else:
+            result = self._project_results(
+                plan,
+                results,
+                attempts,
+                query_count=query_count,
+                query_history=query_history,
+            )
         if result.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}:
             expires_at = self._clock() + timedelta(
                 seconds=plan.freshness_window_seconds
@@ -398,11 +491,82 @@ class WebSearchService:
         self._audit(account_id, plan, result)
         return result
 
+    def _run_queries(
+        self,
+        queries: tuple[str, ...],
+        *,
+        deadline: float,
+        stop_event: Event | None,
+    ) -> tuple[list[WebSearchResult], list[BaseException], int]:
+        """在阶段预算内并行执行一组最小查询。"""
+
+        if stop_event is not None and stop_event.is_set():
+            return [], [], 0
+        executor = ThreadPoolExecutor(
+            max_workers=min(len(queries), 4), thread_name_prefix="web-search-query"
+        )
+        futures = {
+            executor.submit(self._search_one, query, deadline): query
+            for query in queries
+        }
+        try:
+            done, _ = wait(list(futures), timeout=_remaining_seconds(deadline))
+            results: list[WebSearchResult] = []
+            errors: list[BaseException] = []
+            for future in futures:
+                if future not in done:
+                    errors.append(
+                        WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
+                    )
+                    continue
+                try:
+                    value = future.result()
+                except Exception as exc:  # noqa: BLE001 - 单查询失败不拖垮整轮
+                    errors.append(exc)
+                else:
+                    results.extend(value)
+            return results, errors, len(queries)
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
+
+    def _search_one(self, query: str, deadline: float) -> list[WebSearchResult]:
+        if isinstance(self._client, DuckDuckGoClient):
+            return self._client.search(query, timeout=_remaining_seconds(deadline))
+        return self._client.search(query)
+
+    @staticmethod
+    def _merge_results(
+        existing: list[WebSearchResult], incoming: list[WebSearchResult]
+    ) -> list[WebSearchResult]:
+        merged = [*existing]
+        seen_urls = {result.url for result in merged}
+        seen_ids = {result.result_id for result in merged}
+        for result in incoming:
+            if result.url in seen_urls:
+                continue
+            if result.result_id in seen_ids:
+                result = result.model_copy(update={"result_id": f"web-{len(merged) + 1}"})
+            merged.append(result)
+            seen_urls.add(result.url)
+            seen_ids.add(result.result_id)
+        return merged
+
+    @staticmethod
+    def _rewrite_query(plan: SearchPlan, history: list[str]) -> str | None:
+        base = plan.query.strip()
+        if not base:
+            return None
+        candidate = f"{' '.join(base.split()[:4])} 基础定义 原理"[:80].strip()
+        return candidate if candidate not in history else None
+
     def _project_results(
         self,
         plan: SearchPlan,
         results: list[WebSearchResult],
         attempts: int,
+        *,
+        query_count: int,
+        query_history: list[str],
     ) -> WebSearchProjection:
         conflicting = [
             result
@@ -419,7 +583,8 @@ class WebSearchService:
                 error_message="多个公开来源对当前事实给出冲突信息，暂不能形成确定结论。",
                 can_retry=True,
                 attempt_count=attempts,
-                query_count=1,
+                query_count=query_count,
+                query_history=query_history,
             )
         verified = [
             result
@@ -440,7 +605,8 @@ class WebSearchService:
                 error_message="没有找到可核实的公开网页结果。",
                 can_retry=True,
                 attempt_count=attempts,
-                query_count=1,
+                query_count=query_count,
+                query_history=query_history,
             )
         if not verified:
             code = "web_search_page_fetch" if failed else "web_search_evidence_insufficient"
@@ -451,14 +617,19 @@ class WebSearchService:
             )
             return self._projection(
                 plan,
-                status=(WebSearchStatus.FETCH_ERROR if failed else WebSearchStatus.EVIDENCE_INSUFFICIENT),
+                status=(
+                    WebSearchStatus.FETCH_ERROR
+                    if failed
+                    else WebSearchStatus.EVIDENCE_INSUFFICIENT
+                ),
                 results=results,
                 searched_at=self._clock(),
                 error_code=code,
                 error_message=message,
                 can_retry=True,
                 attempt_count=attempts,
-                query_count=1,
+                query_count=query_count,
+                query_history=query_history,
             )
         status = WebSearchStatus.PARTIAL if failed else WebSearchStatus.SUCCESS
         return self._projection(
@@ -469,7 +640,8 @@ class WebSearchService:
             error_message=None,
             can_retry=False,
             attempt_count=attempts,
-            query_count=1,
+            query_count=query_count,
+            query_history=query_history,
         )
 
     @staticmethod
@@ -481,7 +653,12 @@ class WebSearchService:
         return WebSearchStatus.ERROR
 
     def _timeout_projection(
-        self, plan: SearchPlan, attempts: int
+        self,
+        plan: SearchPlan,
+        attempts: int,
+        *,
+        query_count: int,
+        query_history: list[str],
     ) -> WebSearchProjection:
         return self._projection(
             plan,
@@ -491,7 +668,8 @@ class WebSearchService:
             error_message="联网搜索超时，请重试。",
             can_retry=True,
             attempt_count=attempts,
-            query_count=1 if attempts else 0,
+            query_count=query_count,
+            query_history=query_history,
         )
 
     @staticmethod
@@ -507,12 +685,20 @@ class WebSearchService:
         can_cancel: bool = False,
         attempt_count: int = 0,
         query_count: int = 0,
+        query_history: list[str] | None = None,
         cache_expires_at: datetime | None = None,
     ) -> WebSearchProjection:
+        rewrite_count = sum(
+            query not in plan.queries for query in (query_history or [])
+        )
+        trigger_reason = plan.reason
+        if rewrite_count:
+            trigger_reason = f"{plan.reason}；已按阶段预算改写查询 {rewrite_count} 次"
         return WebSearchProjection(
             status=status,
-            trigger_reason=plan.reason,
+            trigger_reason=trigger_reason,
             query_summary=plan.query,
+            query_history=query_history or [],
             results=results or [],
             searched_at=searched_at,
             error_code=error_code,
@@ -570,7 +756,19 @@ class WebSearchService:
                 "result_count": len(result.results),
                 "attempt_count": result.attempt_count,
                 "query_count": result.query_count,
+                "query_history_hashes": [
+                    hashlib.sha256(query.encode("utf-8")).hexdigest()
+                    for query in result.query_history
+                ],
+                "query_history_count": len(result.query_history),
+                "query_rewrite_count": sum(
+                    query not in plan.queries for query in result.query_history
+                ),
                 "cache_hit": result.cache_hit,
                 "status": result.status.value,
             },
         )
+
+
+def _remaining_seconds(deadline: float) -> float:
+    return max(0.001, deadline - time.monotonic())

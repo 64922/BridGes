@@ -100,6 +100,10 @@ _MODIFY_MISSION = re.compile(
 _KNOWN_LEVEL = re.compile(r"学过|知道|了解|会|熟悉|用过|接触过|懂|明白", re.I)
 #: 切换模式的显式表达。
 _SWITCH_MODE = re.compile(r"切回日常|切换模式|回到日常|日常陪伴|不要教学|退出学习", re.I)
+_MODEL_KNOWLEDGE_GAP = (
+    "本轮未联网核实；以下回答只能作为模型知识的谨慎说明，"
+    "事实性结论需要后续来源核对。"
+)
 
 
 def _now() -> datetime:
@@ -259,15 +263,38 @@ class TeachingEvidenceGateService:
             base_status = TeachingEvidenceStatus.INSUFFICIENT
 
         search_status = self._search_status(web_search, arxiv_search, required)
+        allow_model_knowledge = (
+            not local
+            and base_status != TeachingEvidenceStatus.CONFLICT
+            and search_status
+            in {
+                None,
+                TeachingCardStatus.ERROR,
+                TeachingCardStatus.PERMISSION,
+                TeachingCardStatus.EMPTY,
+            }
+        )
         if search_status in {TeachingCardStatus.ERROR, TeachingCardStatus.PERMISSION}:
             return TeachingEvidenceGate(
                 status=TeachingEvidenceStatus.UNAVAILABLE,
-                reason=f"{local_reason}公开补充检索未完成，不能用模型记忆替代来源。",
+                reason=(
+                    f"{local_reason}公开补充检索未完成。"
+                    + (
+                        "本轮将允许模型用一般知识谨慎回答，并明确标注未联网核实。"
+                        if allow_model_knowledge
+                        else "不能用模型记忆替代现有材料。"
+                    )
+                ),
                 local_sources=local,
                 external_sources=external,
                 required_search=required,
                 search_status=search_status,
-                gap="公开补充来源当前不可用，因此本轮不能可靠断言关键科学结论。",
+                gap=(
+                    _MODEL_KNOWLEDGE_GAP
+                    if allow_model_knowledge
+                    else "公开补充来源当前不可用，因此本轮不能可靠断言关键科学结论。"
+                ),
+                allow_model_knowledge=allow_model_knowledge,
                 recovery_steps=["检查网络或权限后重试；也可以上传或选择一份可用材料。"],
                 checked_at=_now(),
             )
@@ -275,12 +302,24 @@ class TeachingEvidenceGateService:
         if search_status is None:
             return TeachingEvidenceGate(
                 status=TeachingEvidenceStatus.UNAVAILABLE,
-                reason=f"{local_reason}公开补充检索尚未完成，不能用模型记忆替代来源。",
+                reason=(
+                    f"{local_reason}公开补充检索尚未完成。"
+                    + (
+                        "本轮将允许模型用一般知识谨慎回答，并明确标注未联网核实。"
+                        if allow_model_knowledge
+                        else "不能用模型记忆替代现有材料。"
+                    )
+                ),
                 local_sources=local,
                 external_sources=external,
                 required_search=required,
                 search_status=None,
-                gap="公开补充来源尚未完成，因此本轮不能可靠断言关键科学结论。",
+                gap=(
+                    _MODEL_KNOWLEDGE_GAP
+                    if allow_model_knowledge
+                    else "公开补充来源尚未完成，因此本轮不能可靠断言关键科学结论。"
+                ),
+                allow_model_knowledge=allow_model_knowledge,
                 recovery_steps=["重试公开检索，或上传一份与目标直接相关的材料。"],
                 checked_at=_now(),
             )
@@ -293,7 +332,10 @@ class TeachingEvidenceGateService:
                 external_sources=external,
                 required_search=required,
                 search_status=search_status,
-                gap="没有找到能覆盖本轮目标的公开来源，暂不能可靠断言关键结论。",
+                gap=_MODEL_KNOWLEDGE_GAP if allow_model_knowledge else (
+                    "没有找到能覆盖本轮目标的公开来源，暂不能可靠断言关键结论。"
+                ),
+                allow_model_knowledge=allow_model_knowledge,
                 recovery_steps=["重试公开检索，或上传一份与目标直接相关的材料。"],
                 checked_at=_now(),
             )
@@ -863,13 +905,17 @@ class TeachingTurnService:
                     "stage": TeachingStage.MICRO_LESSON,
                     "blocked_reason": None,
                     "recovery_steps": [],
-                    "next_action": f"讲解“{mission.current_concept or mission.goal}”并做一次理解检查。",
+                    "next_action": (
+                        f"讲解“{mission.current_concept or mission.goal}”并做一次理解检查。"
+                    ),
                 }
             )
         if answer is not None and turn.can_answer_reliably:
             mission = self.after_answer(mission, answer)
             if answer.evaluated_state == AnswerEvaluatedState.CORRECT.value:
-                mission = self.record_taught_concept(mission, mission.current_concept or mission.goal)
+                mission = self.record_taught_concept(
+                    mission, mission.current_concept or mission.goal
+                )
         # 出题（quiz 非空）即进入理解检查阶段；作答/跳过由 after_answer 推进。
         if (
             turn.quiz is not None
@@ -991,10 +1037,16 @@ class TeachingTurnService:
 
         gap_response = None
         if gate.gap:
-            gap_response = (
-                f"这轮我先不把不确定内容说成结论：{gate.gap} "
-                "你可以重试检索、上传材料，或让我先解释如何核对来源。"
-            )
+            if gate.allow_model_knowledge:
+                gap_response = (
+                    f"{gate.gap} 我会先给出带限定条件的背景说明；"
+                    "你可以重试检索或上传材料，再把关键结论核对为可靠依据。"
+                )
+            else:
+                gap_response = (
+                    f"这轮我先不把不确定内容说成结论：{gate.gap} "
+                    "你可以重试检索、上传材料，或让我先解释如何核对来源。"
+                )
         return TeachingTurnProjection(
             status=status,
             goal=f"本轮目标：理解“{topic}”，并能用自己的话说明其核心机制。",

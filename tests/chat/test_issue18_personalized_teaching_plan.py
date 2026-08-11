@@ -196,7 +196,9 @@ def test_missing_goal_only_asks_for_goal_without_search_or_model(
     assert client.queries == []
 
 
-def test_missing_evidence_does_not_create_plan_or_call_model(tmp_path: Path) -> None:
+def test_missing_evidence_does_not_create_plan_but_allows_marked_model_fallback(
+    tmp_path: Path,
+) -> None:
     adapter = _Adapter()
     service = _service(tmp_path, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
@@ -212,7 +214,9 @@ def test_missing_evidence_does_not_create_plan_or_call_model(tmp_path: Path) -> 
     assert teaching.lesson is None
     assert teaching.can_answer_reliably is False
     assert teaching.evidence_gate.gap
-    assert adapter.payloads == []
+    assert teaching.evidence_gate.allow_model_knowledge is True
+    assert final.content.startswith("本轮未联网核实：")
+    assert adapter.payloads
 
 
 def test_model_failure_clears_staged_plan_and_allows_retry(tmp_path: Path) -> None:
