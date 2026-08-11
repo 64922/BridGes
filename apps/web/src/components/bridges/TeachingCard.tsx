@@ -41,6 +41,7 @@ const sourceLabel: Record<string, string> = {
   knowledge_base: "已授权知识库",
   local: "本地材料",
   duckduckgo: "DuckDuckGo 网页搜索",
+  brave_search: "Brave Search 结构化搜索",
   arxiv: "arXiv",
 };
 

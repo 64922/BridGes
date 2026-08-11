@@ -22,11 +22,13 @@ class WebSearchCacheRepository(WebSearchCache):
     ) -> WebSearchProjection | None:
         row = self._database.scoped(account_id).execute(
             "SELECT projection_json, expires_at FROM web_search_cache"
-            " WHERE account_id = ? AND query_hash = ? AND provider_version = ?"
+            " WHERE account_id = ? AND query_hash = ? AND provider = ?"
+            " AND provider_version = ?"
             " AND freshness_window_seconds = ?",
             (
                 account_id,
                 plan.query_hash,
+                plan.provider,
                 plan.provider_version,
                 plan.freshness_window_seconds,
             ),
@@ -38,11 +40,13 @@ class WebSearchCacheRepository(WebSearchCache):
             with self._database.transaction():
                 self._database.scoped(account_id).execute(
                     "DELETE FROM web_search_cache WHERE account_id = ?"
-                    " AND query_hash = ? AND provider_version = ?"
+                    " AND query_hash = ? AND provider = ?"
+                    " AND provider_version = ?"
                     " AND freshness_window_seconds = ?",
                     (
                         account_id,
                         plan.query_hash,
+                        plan.provider,
                         plan.provider_version,
                         plan.freshness_window_seconds,
                     ),
@@ -65,7 +69,8 @@ class WebSearchCacheRepository(WebSearchCache):
     ) -> None:
         now = datetime.now(UTC)
         cache_id = hashlib.sha256(
-            f"{account_id}:{plan.query_hash}:{plan.provider_version}:"
+            f"{account_id}:{plan.query_hash}:{projection.provider}:"
+            f"{projection.provider_version}:"
             f"{plan.freshness_window_seconds}".encode("utf-8")
         ).hexdigest()
         payload = json.dumps(
@@ -80,7 +85,7 @@ class WebSearchCacheRepository(WebSearchCache):
                 " rules_version, freshness_window_seconds, plan_id, projection_json,"
                 " expires_at, created_at, updated_at)"
                 " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-                " ON CONFLICT(account_id, query_hash, provider_version,"
+                " ON CONFLICT(account_id, query_hash, provider, provider_version,"
                 " freshness_window_seconds) DO UPDATE SET"
                 " cache_id = excluded.cache_id, provider = excluded.provider,"
                 " rules_version = excluded.rules_version, plan_id = excluded.plan_id,"
@@ -90,8 +95,8 @@ class WebSearchCacheRepository(WebSearchCache):
                     cache_id,
                     account_id,
                     plan.query_hash,
-                    plan.provider,
-                    plan.provider_version,
+                    projection.provider,
+                    projection.provider_version,
                     plan.rules_version,
                     plan.freshness_window_seconds,
                     plan.plan_id,

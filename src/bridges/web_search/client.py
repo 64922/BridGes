@@ -228,6 +228,7 @@ class DuckDuckGoClient:
             return _health_error(checked_at, "web_search_connect")
         return WebSearchHealth(
             provider="duckduckgo",
+            provider_version=DUCKDUCKGO_PROVIDER_VERSION,
             status=WebSearchHealthStatus.READY,
             checked_at=checked_at,
         )
@@ -520,6 +521,7 @@ def _health_error(checked_at: datetime, code: str) -> WebSearchHealth:
     }.get(code, WebSearchHealthStatus.UPSTREAM_ERROR)
     return WebSearchHealth(
         provider="duckduckgo",
+        provider_version=DUCKDUCKGO_PROVIDER_VERSION,
         status=status,
         checked_at=checked_at,
         error_code=code,

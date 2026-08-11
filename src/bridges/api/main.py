@@ -212,6 +212,7 @@ from bridges.vault import (
 )
 from bridges.video.service import VideoService
 from bridges.web_search.repository import WebSearchCacheRepository
+from bridges.web_search.providers import build_fallback_provider
 from bridges.web_search.service import WebSearchService
 from bridges.workflows import WorkflowError, WorkflowService
 
@@ -828,11 +829,18 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
     app.state.learning_path_service = LearningPathService(
         repository=learning_repository,
     )
-    # Issue 21：固定 DuckDuckGo 公网搜索；不读取账户 Key，也不把私有上下文
-    # 传入客户端，搜索状态由聊天消息持久化并向桌面端公开。
+    # Issue 21/02：DuckDuckGo 是默认主用；结构化备用源只有在部署配置显式
+    # 启用且通过注册表合同后才实例化。凭据只在此处注入客户端，不进入聊天
+    # 投影、审计、日志或前端。
     web_search_database = getattr(app.state, "bridges_database", None)
+    fallback_provider = (
+        build_fallback_provider(app.state.settings)
+        if app.state.settings is not None
+        else None
+    )
     app.state.web_search_service = WebSearchService(
         observability=app.state.observability_service,
+        fallback_client=fallback_provider,
         cache=(
             WebSearchCacheRepository(web_search_database)
             if web_search_database is not None

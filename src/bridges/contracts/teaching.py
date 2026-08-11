@@ -86,6 +86,7 @@ class TeachingEvidenceSourceType(StrEnum):
     PROJECT = "project"
     KNOWLEDGE_BASE = "knowledge_base"
     DUCKDUCKGO = "duckduckgo"
+    BRAVE_SEARCH = "brave_search"
     ARXIV = "arxiv"
     #: 兼容早期未区分本地层级的历史投影；新记录不得使用。
     LEGACY_LOCAL = "local"

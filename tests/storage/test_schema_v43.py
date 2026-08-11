@@ -50,7 +50,8 @@ def test_v43_migration_preserves_records_and_adds_default_evidence_fields(
     _build_v42_database(path)
 
     database = BridgesDatabase(path)
-    assert database.initialize() == SCHEMA_VERSION == 43
+    # Issue 02 随后增加了缓存提供方维度，v43 库会继续迁移到当前版本。
+    assert database.initialize() == SCHEMA_VERSION == 44
 
     columns = {
         str(row[1])
