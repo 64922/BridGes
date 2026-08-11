@@ -12,8 +12,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 import httpx
+import pytest
 
 from bridges.ai import ModelGateway
+from bridges.ai.adapters import AdapterError
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.ai.qwen_adapters import QwenStructuredOutputAdapter, QwenTextChatAdapter
 from bridges.ai.qwen_client import QwenApiClient
@@ -158,6 +160,31 @@ def test_text_chat_uses_prompt_when_provided() -> None:
     assert captured["body"]["messages"][-1]["content"] == "解释量子纠缠"
     assert captured["body"]["temperature"] == 0.5
     assert captured["body"]["max_tokens"] == 512
+
+
+def test_openai_client_error_includes_scrubbed_upstream_message() -> None:
+    client = QwenApiClient(api_key=None, workspace_id=None, region="cn-beijing")
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": (
+                            "messages must contain JSON; token=top-secret"
+                        )
+                    }
+                },
+            )
+        )
+    )
+
+    with pytest.raises(AdapterError) as error:
+        client.chat_completions({"model": "qwen3.6-flash", "messages": []})
+
+    assert error.value.code == "client_error_400"
+    assert "messages must contain JSON" in error.value.message
+    assert "top-secret" not in error.value.message
 
 
 def test_structured_output_parses_json_and_records_lock() -> None:

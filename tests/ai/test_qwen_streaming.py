@@ -15,12 +15,17 @@ import httpx
 import pytest
 
 from bridges.ai import ModelGateway, StubQwenAdapter
-from bridges.ai.adapters import AdapterError, AuthError, RateLimitError, TransientError
+from bridges.ai.adapters import (
+    AdapterError,
+    AuthError,
+    RateLimitError,
+    StreamChunk,
+    TransientError,
+)
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.ai.model_gateway import ModelGatewayError  # noqa: F401 - 保持导入面
 from bridges.ai.qwen_adapters import QwenTextChatAdapter
 from bridges.ai.qwen_client import QwenApiClient
-from bridges.ai.adapters import StreamChunk
 from bridges.contracts.ai import (
     CapabilityKind,
     CapabilityRecord,
@@ -170,6 +175,29 @@ def test_stream_client_classifies_http_errors(status_code: int, expected: type) 
     )
     with pytest.raises(expected):
         list(client.chat_completions_stream({"model": "m", "stream": True}))
+
+
+def test_stream_client_includes_scrubbed_upstream_error_message() -> None:
+    client = QwenApiClient(api_key=None, workspace_id=None, region="cn-beijing")
+    client._client = httpx.Client(
+        transport=httpx.MockTransport(
+            lambda request: httpx.Response(
+                400,
+                json={
+                    "error": {
+                        "message": "messages must contain JSON; token=top-secret"
+                    }
+                },
+            )
+        )
+    )
+
+    with pytest.raises(AdapterError) as exc_info:
+        list(client.chat_completions_stream({"model": "m", "stream": True}))
+
+    assert exc_info.value.code == "client_error_400"
+    assert "messages must contain JSON" in exc_info.value.message
+    assert "top-secret" not in exc_info.value.message
 
 
 def test_stream_client_rejects_invalid_sse_json() -> None:
