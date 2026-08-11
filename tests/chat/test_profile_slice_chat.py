@@ -23,7 +23,6 @@ from bridges.chat.repository import ConversationRepository
 from bridges.chat.service import ChatService
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
 from bridges.contracts.chat import (
-    ChatMessageRole,
     ChatMessageStatus,
     ChatMode,
     ContextNoteState,
@@ -99,6 +98,21 @@ class _BrokenProfileService(ProfileService):
 class _PermissiveTeachingService:
     """放行证据门的假教学服务：让学习模式走到模型调用（测切片注入）。"""
 
+    @staticmethod
+    def is_missing_goal(text: str) -> bool:
+        """测试桩默认把输入视为已有主题，避免触发目标澄清分支。"""
+        return False
+
+    @staticmethod
+    def has_executable_goal(text: str) -> bool:
+        """测试桩不模拟显式换目标，保持切片测试只关注模型载荷。"""
+        return False
+
+    @staticmethod
+    def goal_for_query(query: str) -> str:
+        """提供学习进度发布所需的稳定目标。"""
+        return f"学习“{query}”并理解其核心机制"
+
     def required_search(
         self, query: str, retrieval: Any
     ) -> Any:
@@ -118,8 +132,13 @@ class _PermissiveTeachingService:
     def prepare(self, query: str, **kwargs: object) -> Any:
         return self._ready_projection()
 
+    def publish_lesson_content(self, projection: Any, content: str) -> Any:
+        return projection
+
     @staticmethod
     def _ready_projection() -> Any:
+        from datetime import UTC, datetime
+
         from bridges.contracts.teaching import (
             TeachingCardStatus,
             TeachingEvidenceGate,
@@ -127,7 +146,6 @@ class _PermissiveTeachingService:
             TeachingSearchSource,
             TeachingTurnProjection,
         )
-        from datetime import UTC, datetime
 
         gate = TeachingEvidenceGate(
             status=TeachingEvidenceStatus.SUFFICIENT,
@@ -245,11 +263,12 @@ def _send(
 
 
 def _slice_system_blocks(payload: dict[str, Any]) -> list[str]:
-    """返回请求中标记为画像切片的 system 块内容。"""
+    """返回请求中标记为已授权信息的 system 块内容。"""
     return [
         message["content"]
         for message in payload["messages"]
-        if message["role"] == "system" and "画像切片" in message["content"]
+        if message["role"] == "system"
+        and "以下是本轮为你参考的已授权信息" in message["content"]
     ]
 
 
@@ -283,7 +302,7 @@ def test_study_mode_injects_only_expected_slice(study_env: dict[str, Any]) -> No
     assert note.state == ContextNoteState.READY
     assert note.profile_enabled is True
     assert note.profile_item_count == 1
-    assert "最小切片" in note.note
+    assert "少量内容" in note.note
 
 
 def test_companion_mode_injects_only_preference_slice(env: dict[str, Any]) -> None:
@@ -524,8 +543,6 @@ def test_profile_incorrect_feedback_locates_assertion(env: dict[str, Any]) -> No
     _, final = _send(env, conversation.conversation_id, "你好")
     assert final.context_note is not None
     assert final.context_note.profile_item_count == 1
-    disclosed_id = assertion.assertion_id
-
     feedback = env["chat"].submit_feedback(
         env["account"],
         conversation.conversation_id,
@@ -579,4 +596,4 @@ def test_context_note_thinking_tool_entry(env: dict[str, Any]) -> None:
     conversation = env["chat"].create_conversation(env["account"])
     _, final = _send(env, conversation.conversation_id, "你好")
     assert final.thinking is not None
-    assert any("画像记录" in tool for tool in final.thinking.tools)
+    assert any("已参考" in tool for tool in final.thinking.tools)

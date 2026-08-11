@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  deleteFourDimensionProfileRecord,
   listFourDimensionProfileRecords,
   modifyFourDimensionProfileRecord,
   withdrawFourDimensionProfileRecord,
@@ -27,7 +28,30 @@ function formatStableTime(value: string): string {
   }).format(new Date(value));
 }
 
-/** Issue 14：只显示四类画像内容和首次稳定记录时间。 */
+function formatUpdatedTime(value: string): string {
+  return new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
+const CONFIDENCE_LABELS: Record<FourDimensionProfileRecord["confidence"], string> = {
+  low: "低",
+  medium: "中",
+  high: "高",
+};
+
+const EMPTY_COPY: Record<FourDimension, string> = {
+  academic_status: "聊过学习经历后，会在这里整理与你有关的内容。",
+  knowledge_interest: "聊过感兴趣的知识后，会在这里整理相关内容。",
+  hobby: "聊过兴趣爱好后，会在这里整理相关内容。",
+  stage_goal: "聊过近期计划后，会在这里整理相关内容。",
+};
+
+/** Issue 06：展示四类记录的证据、把握度与最近变化。 */
 export function FourDimensionProfileCenter() {
   const [records, setRecords] = useState<FourDimensionProfileRecord[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,7 +64,7 @@ export function FourDimensionProfileCenter() {
       setError(null);
       setRecords(await listFourDimensionProfileRecords());
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "画像暂时无法加载，请重试。");
+      setError(reason instanceof Error ? reason.message : "个人信息暂时无法加载，请重试。");
     }
   };
 
@@ -75,14 +99,14 @@ export function FourDimensionProfileCenter() {
       );
       setEditing(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "画像修改失败，请刷新后重试。");
+      setError(reason instanceof Error ? reason.message : "个人信息修改失败，请刷新后重试。");
     } finally {
       setBusyId(null);
     }
   };
 
   const withdraw = async (record: FourDimensionProfileRecord) => {
-    if (!window.confirm("撤回后这条画像将停止使用，但会保留内部记录。继续吗？")) return;
+    if (!window.confirm("撤回后这条信息将停止使用，但会保留内部记录。继续吗？")) return;
     try {
       setBusyId(record.record_id);
       await withdrawFourDimensionProfileRecord(record.record_id, record.version);
@@ -90,7 +114,24 @@ export function FourDimensionProfileCenter() {
         current?.filter((candidate) => candidate.record_id !== record.record_id) ?? current
       );
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "画像撤回失败，请刷新后重试。");
+      setError(reason instanceof Error ? reason.message : "个人信息撤回失败，请刷新后重试。");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (record: FourDimensionProfileRecord) => {
+    if (!window.confirm("删除后这条记录和相关观察会被永久移除，无法恢复。继续吗？")) {
+      return;
+    }
+    try {
+      setBusyId(record.record_id);
+      await deleteFourDimensionProfileRecord(record.record_id, record.version);
+      setRecords((current) =>
+        current?.filter((candidate) => candidate.record_id !== record.record_id) ?? current
+      );
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "个人信息删除失败，请刷新后重试。");
     } finally {
       setBusyId(null);
     }
@@ -99,8 +140,8 @@ export function FourDimensionProfileCenter() {
   return (
     <main className={styles.page} aria-labelledby="four-dimension-profile-title">
       <header className={styles.header}>
-        <p className={styles.eyebrow}>用户画像</p>
-        <h1 id="four-dimension-profile-title">四维画像</h1>
+        <p className={styles.eyebrow}>关于你的信息</p>
+        <h1 id="four-dimension-profile-title">你的信息</h1>
       </header>
 
       {error ? (
@@ -112,7 +153,7 @@ export function FourDimensionProfileCenter() {
         </div>
       ) : null}
 
-      {records === null && !error ? <p className={styles.state}>正在加载画像…</p> : null}
+      {records === null && !error ? <p className={styles.state}>正在加载信息…</p> : null}
 
       <div className={styles.groups}>
         {DIMENSIONS.map((dimension) => {
@@ -123,14 +164,30 @@ export function FourDimensionProfileCenter() {
                 <h2>{dimension.label}</h2>
               </div>
               {dimensionRecords.length === 0 ? (
-                <p className={styles.empty}>暂无记录</p>
+                <p className={styles.empty}>{EMPTY_COPY[dimension.value]}</p>
               ) : (
                 <div className={styles.records}>
                   {dimensionRecords.map((record) => (
                     <article className={styles.record} key={record.record_id}>
                       <p className={styles.content}>{record.content}</p>
+                      <div className={styles.evidenceMeta}>
+                        <span className={styles.confidence}>
+                          可靠程度：{CONFIDENCE_LABELS[record.confidence]}
+                        </span>
+                        <span className={styles.source}>来自某次对话</span>
+                      </div>
+                      {record.evidence_quote ? (
+                        <blockquote className={styles.evidence}>
+                          “{record.evidence_quote}”
+                        </blockquote>
+                      ) : (
+                        <p className={styles.evidenceEmpty}>暂未保存证据原话</p>
+                      )}
                       <p className={styles.time}>
                         首次记录于 {formatStableTime(record.first_stable_recorded_at)}
+                      </p>
+                      <p className={styles.change}>
+                        {record.change_note ?? "最近一次整理后暂无补充说明"} · 最近更新于 {formatUpdatedTime(record.updated_at)}
                       </p>
                       <div className={styles.actions}>
                         <button type="button" onClick={() => startEdit(record)}>
@@ -143,6 +200,14 @@ export function FourDimensionProfileCenter() {
                           onClick={() => void withdraw(record)}
                         >
                           撤回
+                        </button>
+                        <button
+                          type="button"
+                          className={styles.delete}
+                          disabled={busyId === record.record_id}
+                          onClick={() => void remove(record)}
+                        >
+                          删除
                         </button>
                       </div>
                     </article>
@@ -167,7 +232,7 @@ export function FourDimensionProfileCenter() {
               value={draft}
               maxLength={1000}
               onChange={(event) => setDraft(event.target.value)}
-              aria-label="画像内容"
+              aria-label="信息内容"
               rows={5}
             />
             <div className={styles.dialogActions}>

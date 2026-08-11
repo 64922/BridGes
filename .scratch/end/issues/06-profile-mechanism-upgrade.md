@@ -1,5 +1,5 @@
 # 06 — 画像机制升级：把握度与证据、稳固规则、页面改版与召回分寸
-Status: ready-for-agent
+Status: resolved
 Blocked by: [05](./05-profile-pipeline-fixes.md)
 Covered requirements: 三次改进#3
 
@@ -66,3 +66,13 @@ Issue 05 修复后管线恢复"能记"，但机制仍是"一句自述即定论"�
 参考项目原文（仓库外只读）：`C:/Users/33755/Desktop/参考资料/cognitive-profile-main`（SKILL.md 四步流程；`references/采集证据.md` 的最小观察格式"原话/看到的/影响/把握"与"不要留下"清单；`references/形成画像.md` 的把握度升降、自述标签与行为矛盾按行为走、反复纠错量化降级；`references/召回问答.md` 的"只用最稳的几条、不暴露内部术语、用户问记了什么用日常语言转述"；`references/校准整理.md` 的证据强度排序链）；`C:/Users/33755/Desktop/参考资料/nuwa-skill-main/references/extraction-framework.md`（三重验证——本项目只取"跨域复现"一重，改造为跨消息/跨场景 ≥2 次稳固规则）。机制思想借鉴，落地文案全部自拟。
 
 研读报告已归档 `.scratch/end/references/report-reference-projects.md`（"第一组：用户画像参考"部分）。与 Issue 07（表达策略）无重叠：本 Issue 管"记住什么、多确定、怎么用"，不管"怎么说得自然"。
+
+## Answer
+
+- 完成 v43 迁移：新增 low/medium/high、证据原话、来源消息、纠错次数和最近变化字段；v42 存量记录保留并标记为低可靠待确认。
+- 完成稳定规则：单次自述为中、跨消息复现为高、明确确认视为强证据；低可靠和提问型观察不参与升档；“我现在更喜欢 X”替换同维度旧值；连续纠错按 1/2/3 次更新、降级并停止召回。
+- 完成召回与披露改版：高可靠优先、中可靠兜底、低/不可信排除；模型上下文使用日常语言，可靠依据不足时要求直接向用户确认；页面展示可靠程度、证据、来源、最近变化和友好空态。
+- 完成隐私与删除：全局/局部停止记录持久化，重试任务不会复活；记录变更会清理旧观察，删除接口物理删除记录与观察，账户删除目录包含隐私阻止表。
+- 已重新生成 `openapi.json` 与 TypeScript 合同，并补充迁移、证据、纠错、替换、隐私和真删测试。
+
+验证：功能范围后端测试 177 个通过；`apps/web` 的 `npm run typecheck` 通过；`scripts/check_contrast.py` 37/37 通过；变更 Python 文件的 Ruff import/未定义名称检查通过。全仓库 pytest 收集仍受仓库既有同名测试模块及各目录辅助模块导入冲突影响。

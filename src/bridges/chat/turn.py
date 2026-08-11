@@ -1004,16 +1004,24 @@ def strip_unverified_teaching_references(content: str) -> str:
 # 提示、隐藏提示或原始思维链。
 
 
-def profile_slice_context(profile_slice: ProfileSlice) -> str:
+def profile_slice_context(
+    profile_slice: ProfileSlice, *, requires_confirmation: bool = False
+) -> str:
     """构造注入模型的最小画像切片上下文（固定格式，可测试）。
 
     模型只能依据切片内提供的记录回答，不得推断更多画像信息；未确认
     候选、已撤回/冻结/过期记录已由编译器排除，不在此上下文中。
     """
     lines = [
-        "以下是本轮为你使用的画像切片（仅包含你已授权且与当前任务相关的最小记录；"
-        "只能据此回答，不得推断或声称存在更多画像信息）："
+        "以下是本轮为你参考的已授权信息（仅包含与你当前任务相关的少量内容；"
+        "只能据此回答，不得推断或声称知道更多未提供的信息）。如果用户问你记得什么，"
+        "请只用日常语言概括相关要点，不要提及系统内部的分类或格式："
     ]
+    if requires_confirmation:
+        lines.append(
+            "如果当前问题需要关于用户的信息而这里没有足够依据，请直接向用户确认，"
+            "不要自行补全。"
+        )
     used = 0
     for index, item in enumerate(profile_slice.included_items, start=1):
         label = dimension_label(item.dimension)
@@ -1040,8 +1048,8 @@ def context_note_ready_text(items: list[ProfileSliceItem]) -> str:
     """披露卡的中文一句话说明（ready 态）。"""
     categories = "、".join(dict.fromkeys(dimension_label(item.dimension) for item in items))
     return (
-        f"本轮回答使用了 {len(items)} 条画像记录（{categories}），"
-        "仅包含与当前任务相关的最小切片。"
+        f"本轮回答参考了 {len(items)} 条已授权信息（{categories}），"
+        "只保留与当前任务相关的少量内容。"
     )
 
 
@@ -1051,15 +1059,13 @@ def context_note_thinking(
     """把画像披露摘要并入可公开思考（不暴露隐藏提示或思维链）。"""
     tools = list(thinking.tools)
     if context_note.state == ContextNoteState.READY:
-        tools.append(
-            f"已使用 {context_note.profile_item_count} 条画像记录（最小切片，仅限当前任务）"
-        )
+        tools.append(f"已参考 {context_note.profile_item_count} 条相关信息（仅限当前任务）")
     elif context_note.state == ContextNoteState.OFF:
-        tools.append("本轮未使用画像记录（发送前已关闭）")
+        tools.append("本轮未使用你此前提供的信息（发送前已关闭）")
     elif context_note.state == ContextNoteState.EMPTY:
-        tools.append("本轮没有与当前任务相关的画像记录")
+        tools.append("本轮没有与当前任务相关的已授权信息")
     elif context_note.state == ContextNoteState.ERROR:
-        tools.append("本轮画像切片不可用，回答未基于画像信息")
+        tools.append("本轮相关信息暂时无法整理，回答未基于这些信息")
     return thinking.model_copy(update={"tools": tools})
 
 
@@ -4874,7 +4880,7 @@ class TurnOrchestrator:
                         mode=mode,
                         used_at=now,
                         material_categories=material_categories,
-                        note="本轮未使用你的画像记录（发送前已关闭）。回答不基于任何画像信息。",
+                        note="本轮未使用你此前提供的信息（发送前已关闭）。回答不基于这些信息。",
                     ),
                 ),
                 None,
@@ -4960,19 +4966,25 @@ class TurnOrchestrator:
                         mode=mode,
                         used_at=now,
                         material_categories=material_categories,
-                        note="本轮画像切片编译失败，回答已在不使用画像的情况下正常生成。",
+                        note="本轮相关信息暂时无法整理，回答已在不使用这些信息的情况下正常生成。",
                     ),
                 ),
                 None,
                 [],
                 None,
             )
+        profile_items = list(profile_slice.included_items)
+        requires_confirmation = any(
+            item.exclusion_reason == "可靠程度不足，暂不用于当前回答"
+            for item in profile_slice.unused_items
+        )
         profile_context = (
-            profile_slice_context(profile_slice)
-            if profile_slice.included_items
+            profile_slice_context(
+                profile_slice, requires_confirmation=requires_confirmation
+            )
+            if profile_items or requires_confirmation
             else None
         )
-        profile_items = list(profile_slice.included_items)
         self._audit_slice_usage(
             account_id,
             mode=mode.value,
@@ -4993,7 +5005,7 @@ class TurnOrchestrator:
             note=(
                 context_note_ready_text(profile_items)
                 if profile_items
-                else "本轮没有与你当前任务相关的画像记录，因此没有使用画像信息。"
+                else "本轮没有与你当前任务相关的已授权信息，因此没有使用额外背景。"
             ),
         )
         return (

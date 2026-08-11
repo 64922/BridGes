@@ -147,10 +147,13 @@ export type SearchSegment = components["schemas"]["SearchSegment"];
 /** Issue 14：展开期四维画像的最小用户投影。内部来源、哈希和迁移字段不在页面渲染。 */
 export type FourDimension = components["schemas"]["FourDimension"];
 export type FourDimensionRecordStatus = components["schemas"]["FourDimensionRecordStatus"];
+export type FourDimensionConfidence = components["schemas"]["FourDimensionConfidence"];
 export type FourDimensionProfileRecord =
   components["schemas"]["FourDimensionProfileProjection"];
 export type FourDimensionProfileModifyRequest =
   components["schemas"]["FourDimensionProfileModifyRequest"];
+export type FourDimensionProfileDeleteRequest =
+  components["schemas"]["FourDimensionProfileDeleteRequest"];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "/api";
 
@@ -1404,6 +1407,22 @@ export async function withdrawFourDimensionProfileRecord(
   );
   if (!res.ok) throw await parseApiError(res);
   return res.json();
+}
+
+export async function deleteFourDimensionProfileRecord(
+  recordId: string,
+  version: number
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/profiles/four-dimensions/${encodeURIComponent(recordId)}`,
+    {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
+      body: JSON.stringify({ version }),
+    }
+  );
+  if (!res.ok) throw await parseApiError(res);
 }
 
 export async function removeAvatar(): Promise<Account> {

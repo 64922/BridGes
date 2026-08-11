@@ -10,15 +10,16 @@ import copy
 import hashlib
 import secrets
 from abc import ABC, abstractmethod
-from collections.abc import Iterator
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Callable, Iterable, Literal
+from typing import Literal
 
 from bridges.contracts.profiles import (
     AssertionStatus,
     FourDimension,
+    FourDimensionConfidence,
     FourDimensionLearningRecord,
     FourDimensionLegacyRecord,
     FourDimensionMigrationReport,
@@ -26,11 +27,12 @@ from bridges.contracts.profiles import (
     FourDimensionProfileModifyRequest,
     FourDimensionProfileRecord,
     FourDimensionRecordStatus,
-    ProfileSensitivityClass,
     ProfileAssertion,
     ProfileDimension,
+    ProfileSensitivityClass,
     ProfileSlice,
     ProfileSliceItem,
+    UnusedSliceItem,
 )
 from bridges.contracts.teaching_progress import PlanAdjustmentTrigger
 from bridges.profiles.adapters import ProfileError
@@ -64,6 +66,35 @@ _CHAT_MODE_DIMENSIONS: dict[str, frozenset[FourDimension]] = {
         }
     ),
 }
+
+_CONFIDENCE_RANK: dict[FourDimensionConfidence, int] = {
+    FourDimensionConfidence.LOW: 0,
+    FourDimensionConfidence.MEDIUM: 1,
+    FourDimensionConfidence.HIGH: 2,
+}
+
+
+def confidence_rank(confidence: FourDimensionConfidence) -> int:
+    """返回把握度排序，供写入和召回共同使用。"""
+
+    return _CONFIDENCE_RANK[confidence]
+
+
+def is_recallable_confidence(confidence: FourDimensionConfidence) -> bool:
+    """只有中、高把握度且未被连续纠错降级的记录可进入聊天切片。"""
+
+    return confidence in {
+        FourDimensionConfidence.MEDIUM,
+        FourDimensionConfidence.HIGH,
+    }
+
+
+def downgraded_confidence(confidence: FourDimensionConfidence) -> FourDimensionConfidence:
+    """按一个档位降低把握度，低档位保持不变。"""
+
+    if confidence == FourDimensionConfidence.HIGH:
+        return FourDimensionConfidence.MEDIUM
+    return FourDimensionConfidence.LOW
 
 
 class FourDimensionProfileError(ProfileError):
@@ -194,6 +225,10 @@ class FourDimensionProfileRepository(ABC):
         """列出单个账户内的目标记录。"""
 
     @abstractmethod
+    def delete_record(self, owner_id: str, record_id: str) -> FourDimensionProfileRecord:
+        """物理删除一条记录；不得写入撤回墓碑。"""
+
+    @abstractmethod
     def save_learning_record(
         self, record: FourDimensionLearningRecord
     ) -> FourDimensionLearningRecord:
@@ -304,6 +339,11 @@ class InMemoryFourDimensionProfileRepository(FourDimensionProfileRepository):
         records.sort(key=lambda record: (record.dimension.value, record.first_stable_recorded_at))
         return records
 
+    def delete_record(self, owner_id: str, record_id: str) -> FourDimensionProfileRecord:
+        record = self.get_record(owner_id, record_id)
+        del self._records[self._key(owner_id, record_id)]
+        return record
+
     def save_learning_record(
         self, record: FourDimensionLearningRecord
     ) -> FourDimensionLearningRecord:
@@ -405,6 +445,23 @@ class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
             updated_at=SqliteFourDimensionProfileRepository._dt(str(row["updated_at"])),  # type: ignore[index]
             version=int(row["version"]),  # type: ignore[index]
             status=FourDimensionRecordStatus(str(row["status"])),  # type: ignore[index]
+            confidence=FourDimensionConfidence(str(row["confidence"])),  # type: ignore[index]
+            evidence_quote=(
+                str(row["evidence_quote"])  # type: ignore[index]
+                if row["evidence_quote"] is not None  # type: ignore[index]
+                else None
+            ),
+            evidence_message_id=(
+                str(row["evidence_message_id"])  # type: ignore[index]
+                if row["evidence_message_id"] is not None  # type: ignore[index]
+                else None
+            ),
+            correction_count=int(row["correction_count"]),  # type: ignore[index]
+            change_note=(
+                str(row["change_note"])  # type: ignore[index]
+                if row["change_note"] is not None  # type: ignore[index]
+                else None
+            ),
             source_record_id=str(row["source_record_id"]),  # type: ignore[index]
             source_version=int(row["source_version"]),  # type: ignore[index]
             content_hash=str(row["content_hash"]),  # type: ignore[index]
@@ -417,11 +474,15 @@ class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
             "INSERT INTO profile_four_dimension_records ("
             "record_id, account_id, dimension, label, content, first_stable_recorded_at, "
             "updated_at, version, status, source_record_id, source_version, content_hash, "
-            "write_origin, migration_version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "write_origin, migration_version, confidence, evidence_quote, evidence_message_id, "
+            "correction_count, change_note) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(record_id) DO UPDATE SET dimension = excluded.dimension, "
             "label = excluded.label, content = excluded.content, "
             "first_stable_recorded_at = excluded.first_stable_recorded_at, "
             "updated_at = excluded.updated_at, version = excluded.version, status = excluded.status, "
+            "confidence = excluded.confidence, evidence_quote = excluded.evidence_quote, "
+            "evidence_message_id = excluded.evidence_message_id, correction_count = excluded.correction_count, "
+            "change_note = excluded.change_note, "
             "source_record_id = excluded.source_record_id, source_version = excluded.source_version, "
             "content_hash = excluded.content_hash, write_origin = excluded.write_origin, "
             "migration_version = excluded.migration_version WHERE account_id = excluded.account_id",
@@ -440,6 +501,11 @@ class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
                 record.content_hash,
                 record.write_origin,
                 record.migration_version,
+                record.confidence.value,
+                record.evidence_quote,
+                record.evidence_message_id,
+                record.correction_count,
+                record.change_note,
             ),
         )
         return record
@@ -475,6 +541,23 @@ class SqliteFourDimensionProfileRepository(FourDimensionProfileRepository):
             (owner_id,),
         ).fetchall()
         return [self._record_from_row(row) for row in rows]
+
+    def delete_record(self, owner_id: str, record_id: str) -> FourDimensionProfileRecord:
+        record = self.get_record(owner_id, record_id)
+        scoped = self._db.scoped(owner_id)
+        scoped.execute(
+            "DELETE FROM profile_four_dimension_records "
+            "WHERE account_id = ? AND record_id = ?",
+            (owner_id, record_id),
+        )
+        # 观察表没有 record_id 外键，按当前记录的维度和值一并清理，
+        # 避免删除后的观察在后续复现门槛中重新抬高同一条记录。
+        scoped.execute(
+            "DELETE FROM profile_extraction_observations "
+            "WHERE account_id = ? AND dimension = ? AND normalized_value = ?",
+            (owner_id, record.dimension.value, record.content),
+        )
+        return record
 
     @staticmethod
     def _learning_from_row(row: object) -> FourDimensionLearningRecord:
@@ -744,10 +827,20 @@ class FourDimensionProfileService:
             [str, PlanAdjustmentTrigger, str, str], object
         ]
         | None = None,
+        observation_delete_callback: Callable[[str, FourDimension, str], object]
+        | None = None,
     ) -> None:
         self._source_repository = source_repository
         self._repository = repository
         self._learning_adjustment_callback = learning_adjustment_callback
+        self._observation_delete_callback = observation_delete_callback
+
+    def set_observation_delete_callback(
+        self, callback: Callable[[str, FourDimension, str], object] | None
+    ) -> None:
+        """绑定自动观察删除端口，保持内存实现也遵守真删边界。"""
+
+        self._observation_delete_callback = callback
 
     def list_records(self, account_id: str) -> list[FourDimensionProfileRecord]:
         return self._repository.list_records(account_id)
@@ -768,9 +861,24 @@ class FourDimensionProfileService:
         allowed = _CHAT_MODE_DIMENSIONS.get(mode, frozenset())
         per_dimension: dict[FourDimension, int] = {}
         included: list[ProfileSliceItem] = []
-        for record in self._repository.list_records(account_id):
-            if record.dimension not in allowed:
-                continue
+        all_records = [
+            record
+            for record in self._repository.list_records(account_id)
+            if record.dimension in allowed
+        ]
+        records = [
+            record for record in all_records if is_recallable_confidence(record.confidence)
+        ]
+        low_confidence = [
+            record
+            for record in all_records
+            if not is_recallable_confidence(record.confidence)
+        ]
+        records.sort(
+            key=lambda record: (confidence_rank(record.confidence), record.updated_at),
+            reverse=True,
+        )
+        for record in records:
             count = per_dimension.get(record.dimension, 0)
             if count >= _MAX_SLICE_ITEMS_PER_DIMENSION:
                 continue
@@ -781,11 +889,20 @@ class FourDimensionProfileService:
                     assertion_id=record.record_id,
                     dimension=record.dimension.value,
                     value_or_rule=record.content,
-                    inclusion_reason="active_four_dimension_record",
+                    inclusion_reason="当前模式下与你当前任务相关的已授权信息",
                     sensitivity_class=ProfileSensitivityClass.PREFERENCE,
                 )
             )
             per_dimension[record.dimension] = count + 1
+        unused = [
+            UnusedSliceItem(
+                assertion_id=record.record_id,
+                dimension=record.dimension.value,
+                value_or_rule=record.content,
+                exclusion_reason="可靠程度不足，暂不用于当前回答",
+            )
+            for record in low_confidence
+        ]
         return ProfileSlice(
             slice_id=_stable_id("slice", account_id, run_id, mode),
             owner_account_id=account_id,
@@ -793,6 +910,7 @@ class FourDimensionProfileService:
             purpose="chat",
             project_id=project_id,
             included_items=included,
+            unused_items=unused,
             sensitivity_classes_allowed=[ProfileSensitivityClass.PREFERENCE],
             compiled_policy_version=MIGRATION_VERSION,
             length_budget=_MAX_SLICE_ITEMS_TOTAL,
@@ -809,6 +927,10 @@ class FourDimensionProfileService:
         dimension: FourDimension,
         content: str,
         action: str,
+        confidence: FourDimensionConfidence = FourDimensionConfidence.MEDIUM,
+        evidence_quote: str | None = None,
+        evidence_message_id: str | None = None,
+        change_note: str | None = None,
     ) -> FourDimensionProfileRecord:
         """提交一条 Issue 15 自动抽取结果到四维目标表。
 
@@ -842,8 +964,19 @@ class FourDimensionProfileService:
         if existing is not None:
             if existing.status == FourDimensionRecordStatus.WITHDRAWN:
                 raise FourDimensionProfileError("画像记录已撤回，不能自动复活。")
-            if existing.content == normalized:
+            if existing.correction_count >= 3:
                 return existing
+            if existing.content == normalized:
+                if confidence_rank(confidence) > confidence_rank(existing.confidence):
+                    existing.confidence = confidence
+                existing.evidence_quote = evidence_quote or existing.evidence_quote
+                existing.evidence_message_id = (
+                    evidence_message_id or existing.evidence_message_id
+                )
+                if change_note is not None:
+                    existing.change_note = change_note
+                return self._repository.save_record(existing)
+            previous_content = existing.content
             existing.content = normalized
             existing.updated_at = datetime.now(UTC)
             existing.version += 1
@@ -852,7 +985,16 @@ class FourDimensionProfileService:
             existing.content_hash = hashlib.sha256(normalized.encode("utf-8")).hexdigest()
             existing.write_origin = "automatic"
             existing.migration_version = "profile-auto-v1"
-            return self._repository.save_record(existing)
+            existing.confidence = confidence
+            existing.evidence_quote = evidence_quote
+            existing.evidence_message_id = evidence_message_id
+            existing.change_note = change_note or "自动记录已根据新的用户证据更新"
+            updated = self._repository.save_record(existing)
+            if self._observation_delete_callback is not None:
+                self._observation_delete_callback(
+                    account_id, existing.dimension, previous_content
+                )
+            return updated
 
         now = datetime.now(UTC)
         return self._repository.save_record(
@@ -866,6 +1008,11 @@ class FourDimensionProfileService:
                 updated_at=now,
                 version=1,
                 status=FourDimensionRecordStatus.ACTIVE,
+                confidence=confidence,
+                evidence_quote=evidence_quote,
+                evidence_message_id=evidence_message_id,
+                correction_count=0,
+                change_note=change_note,
                 source_record_id=source_record_id,
                 source_version=1,
                 content_hash=hashlib.sha256(normalized.encode("utf-8")).hexdigest(),
@@ -890,6 +1037,7 @@ class FourDimensionProfileService:
         with self._repository.transaction():
             record = self._repository.get_record(account_id, record_id)
             self._validate_version(record, request.version)
+            previous_content = record.content
             record.content = request.content.strip()
             if not record.content:
                 raise FourDimensionProfileError("画像内容不合法。")
@@ -897,7 +1045,27 @@ class FourDimensionProfileService:
             record.updated_at = datetime.now(UTC)
             record.content_hash = hashlib.sha256(record.content.encode("utf-8")).hexdigest()
             record.write_origin = "user"
+            record.correction_count += 1
+            record.evidence_quote = record.content
+            record.evidence_message_id = None
+            if record.correction_count == 1:
+                if record.confidence == FourDimensionConfidence.LOW:
+                    record.confidence = FourDimensionConfidence.MEDIUM
+                record.change_note = "用户纠正后已更新"
+            elif record.correction_count == 2:
+                record.confidence = downgraded_confidence(record.confidence)
+                record.change_note = "反复纠错：可靠程度已降低一档"
+            else:
+                record.confidence = FourDimensionConfidence.LOW
+                record.change_note = "当前不可信：连续收到多次纠正，暂不再使用"
             updated = self._repository.save_record(record)
+            if (
+                self._observation_delete_callback is not None
+                and previous_content != updated.content
+            ):
+                self._observation_delete_callback(
+                    account_id, updated.dimension, previous_content
+                )
         self._notify_learning_adjustment(
             account_id,
             PlanAdjustmentTrigger.PROFILE_UPDATED,
@@ -927,6 +1095,24 @@ class FourDimensionProfileService:
             "四维画像记录已撤回，下一课移除相关路径。",
         )
         return updated
+
+    def delete_record(self, account_id: str, record_id: str, version: int) -> None:
+        """永久删除记录及其当前值对应的观察，不留下撤回墓碑。"""
+
+        with self._repository.transaction():
+            record = self._repository.get_record(account_id, record_id)
+            self._validate_version(record, version)
+            self._repository.delete_record(account_id, record_id)
+            if self._observation_delete_callback is not None:
+                self._observation_delete_callback(
+                    account_id, record.dimension, record.content
+                )
+        self._notify_learning_adjustment(
+            account_id,
+            PlanAdjustmentTrigger.PROFILE_WITHDRAWN,
+            f"profile:{record_id}:deleted",
+            "四维画像记录已永久删除，下一课移除相关路径。",
+        )
 
     def _notify_learning_adjustment(
         self,
@@ -1050,6 +1236,11 @@ class FourDimensionProfileService:
                             if source.status == AssertionStatus.ACTIVE
                             else FourDimensionRecordStatus.WITHDRAWN
                         ),
+                        confidence=FourDimensionConfidence.LOW,
+                        evidence_quote=None,
+                        evidence_message_id=None,
+                        correction_count=0,
+                        change_note="由旧信息迁移，等待新的证据确认",
                         source_record_id=source.assertion_id,
                         source_version=source.version,
                         content_hash=target_hash,

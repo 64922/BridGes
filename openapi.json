@@ -12401,6 +12401,96 @@
             "description": "Unprocessable Content"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Delete Four Dimension Record",
+        "description": "永久删除一条记录及其观察，不写入撤回墓碑。",
+        "operationId": "delete_four_dimension_record_profiles_four_dimensions__record_id__delete",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Record Id"
+            }
+          },
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FourDimensionProfileDeleteRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unprocessable Content"
+          }
+        }
       }
     },
     "/profiles/four-dimensions/{record_id}/withdraw": {
@@ -37207,6 +37297,32 @@
         "title": "FourDimension",
         "description": "扩展合同中的四个产品画像维度。\n\nExpand/migrate 期间旧的 :class:`ProfileDimension` 仍可解码。新画像记录使用\n独立枚举，避免旧治理维度成为新的写入目标。"
       },
+      "FourDimensionConfidence": {
+        "type": "string",
+        "enum": [
+          "low",
+          "medium",
+          "high"
+        ],
+        "title": "FourDimensionConfidence",
+        "description": "四维记录当前证据的把握度档位。"
+      },
+      "FourDimensionProfileDeleteRequest": {
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1.0,
+            "title": "Version",
+            "description": "Version read by the caller."
+          }
+        },
+        "type": "object",
+        "required": [
+          "version"
+        ],
+        "title": "FourDimensionProfileDeleteRequest",
+        "description": "永久删除四维记录及其观察的乐观锁请求。"
+      },
       "FourDimensionProfileModifyRequest": {
         "properties": {
           "content": {
@@ -37260,6 +37376,12 @@
             "title": "First Stable Recorded At",
             "description": "首次稳定记录时间，修改不会重置。"
           },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Updated At",
+            "description": "最近一次内容或状态变化的时间。"
+          },
           "version": {
             "type": "integer",
             "minimum": 1.0,
@@ -37269,6 +37391,46 @@
           "status": {
             "$ref": "#/components/schemas/FourDimensionRecordStatus",
             "description": "记录状态。"
+          },
+          "confidence": {
+            "$ref": "#/components/schemas/FourDimensionConfidence",
+            "description": "记录把握度档位。"
+          },
+          "evidence_quote": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Quote",
+            "description": "证据原话，可为空。"
+          },
+          "evidence_message_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Message Id",
+            "description": "来源消息标识，可为空。"
+          },
+          "change_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Note",
+            "description": "最近改动说明，可为空。"
           }
         },
         "type": "object",
@@ -37278,11 +37440,13 @@
           "label",
           "content",
           "first_stable_recorded_at",
+          "updated_at",
           "version",
-          "status"
+          "status",
+          "confidence"
         ],
         "title": "FourDimensionProfileProjection",
-        "description": "普通画像页面可见的四维记录投影。\n\n来源引用、哈希、迁移版本和审计字段只保留在内部记录中，不进入普通 API\n响应或模型上下文；版本号作为修改/撤回的乐观锁令牌保留。"
+        "description": "普通画像页面可见的四维记录投影。\n\n哈希、迁移版本、纠错计数和审计字段只保留在内部记录中；证据原话、\n来源消息和最近变化说明用于帮助用户理解记录，版本号作为修改/撤回的\n乐观锁令牌保留。"
       },
       "FourDimensionProfileWithdrawRequest": {
         "properties": {
