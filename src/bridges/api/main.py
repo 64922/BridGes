@@ -1040,6 +1040,9 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
         if profile_database is not None
         else InMemoryAutomaticProfileRepository()
     )
+    app.state.four_dimension_profile_service.set_observation_delete_callback(
+        automatic_profile_repository.delete_observations_for_record
+    )
     automatic_profile_extractor = (
         RuleBasedAutomaticProfileExtractor()
         if settings is not None and settings.environment.lower() == "test"

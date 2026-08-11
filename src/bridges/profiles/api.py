@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from bridges.api.auth import SubjectDep
 from bridges.contracts.profiles import (
+    FourDimensionProfileDeleteRequest,
     FourDimensionProfileModifyRequest,
     FourDimensionProfileProjection,
     FourDimensionProfileRecord,
@@ -111,6 +112,30 @@ async def withdraw_four_dimension_record(
         return service.withdraw_record(subject.account_id, record_id, request.version)
     except FourDimensionProfileError as exc:
         raise _four_dimension_error(exc, "four_dimension_withdraw_failed") from exc
+
+
+@router.delete(
+    "/four-dimensions/{record_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    responses={
+        status.HTTP_401_UNAUTHORIZED: {"model": ProfileError},
+        status.HTTP_404_NOT_FOUND: {"model": ProfileError},
+        status.HTTP_409_CONFLICT: {"model": ProfileError},
+        status.HTTP_422_UNPROCESSABLE_CONTENT: {"model": ProfileError},
+    },
+)
+async def delete_four_dimension_record(
+    service: FourDimensionProfileServiceDep,
+    subject: SubjectDep,
+    record_id: str,
+    request: FourDimensionProfileDeleteRequest,
+) -> Response:
+    """永久删除一条记录及其观察，不写入撤回墓碑。"""
+    try:
+        service.delete_record(subject.account_id, record_id, request.version)
+    except FourDimensionProfileError as exc:
+        raise _four_dimension_error(exc, "four_dimension_delete_failed") from exc
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 __all__ = ["router"]

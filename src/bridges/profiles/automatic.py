@@ -26,6 +26,7 @@ from bridges.contracts.profile_extraction import (
 )
 from bridges.contracts.profiles import (
     FourDimension,
+    FourDimensionConfidence,
     FourDimensionProfileRecord,
     FourDimensionRecordStatus,
     ProfileSensitivityClass,
@@ -35,7 +36,11 @@ from bridges.contracts.profiles import (
 )
 from bridges.contracts.projects import ObjectDomain
 from bridges.contracts.workflows import RunContextEnvelope
-from bridges.profiles.four_dimensions import FourDimensionProfileService
+from bridges.profiles.four_dimensions import (
+    FourDimensionProfileService,
+    confidence_rank,
+    is_recallable_confidence,
+)
 from bridges.profiles.ports import ProfileRepository
 from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage.database import BridgesDatabase
@@ -50,6 +55,7 @@ PROFILE_EXTRACTION_QUEUE = "profile-extraction"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
 _KNOWLEDGE_PROMOTION_WINDOW = timedelta(days=90)
 _MAX_SLICE_ITEMS = 6
+_MAX_EVIDENCE_QUOTE_LENGTH = 240
 
 _PROFILE_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:我(?:的|目前|现在|对|喜欢|计划|想|正在|是|在读|就读)|"
@@ -180,6 +186,24 @@ class AutomaticProfileRepository(ABC):
     @abstractmethod
     def is_message_tombstoned(self, account_id: str, message_id: str) -> bool: ...
 
+    @abstractmethod
+    def block_recording(
+        self, account_id: str, normalized_value: str | None, now: datetime
+    ) -> None:
+        """记录账户级或内容级的停止记录边界。"""
+
+    @abstractmethod
+    def is_recording_blocked(
+        self, account_id: str, normalized_value: str | None = None
+    ) -> bool:
+        """检查当前账户或内容是否已被用户禁止记录。"""
+
+    @abstractmethod
+    def delete_observations_for_record(
+        self, account_id: str, dimension: FourDimension, normalized_value: str
+    ) -> None:
+        """删除与四维记录对应的观察。"""
+
 
 def _now() -> datetime:
     return datetime.now(UTC)
@@ -199,6 +223,48 @@ def _stable_id(prefix: str, *parts: str) -> str:
 
 def _normalize(value: str) -> str:
     return re.sub(r"\s+", " ", value.strip(" \t\r\n，。；：:、,;.!！？?"))
+
+
+def _evidence_quote(content: str, normalized_value: str) -> str:
+    """保存有限长度的用户原话，并遮住常见联系信息和密钥样式。"""
+
+    quote = content.strip()
+    quote = re.sub(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}", "<邮箱>", quote)
+    quote = re.sub(r"(?<!\d)1\d{10}(?!\d)", "<手机号>", quote)
+    quote = re.sub(
+        r"(?i)(密码|密钥|token|api[_-]?key)\s*[:：=]\s*\S+",
+        r"\1：<已隐藏>",
+        quote,
+    )
+    if len(quote) <= _MAX_EVIDENCE_QUOTE_LENGTH:
+        return quote
+    position = quote.find(normalized_value)
+    if position >= 0:
+        start = max(0, position - 80)
+        end = min(len(quote), start + _MAX_EVIDENCE_QUOTE_LENGTH - 1)
+        prefix = "…" if start > 0 else ""
+        suffix = "…" if end < len(quote) else ""
+        return prefix + quote[start:end] + suffix
+    return quote[: _MAX_EVIDENCE_QUOTE_LENGTH - 1] + "…"
+
+
+def _privacy_directive(content: str) -> tuple[str, str | None] | None:
+    """解析本 Issue 需要的全局/局部停止记录指令。"""
+
+    text = _normalize(content)
+    if re.fullmatch(r"(?:不要记录|不记录|不要再记录|不要记住)", text):
+        return "account", None
+    local = re.search(
+        r"(?:这个|这条|这件事|这段).{0,12}?(?:不用记|不要记|不要记录|别记)",
+        text,
+    )
+    if local is not None:
+        remainder = _normalize(text[local.end() :])
+        return "content", remainder or None
+    suffix = re.search(r"(?:不用记|不要记|不要记录|别记)[，,：:]\s*(.+)$", text)
+    if suffix is not None:
+        return "content", _normalize(suffix.group(1)) or None
+    return None
 
 
 def has_probable_profile_signal(content: str) -> bool:
@@ -389,6 +455,8 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
         self._observations: dict[str, AutomaticProfileObservation] = {}
         self._disclosures: set[str] = set()
         self._tombstones: set[tuple[str, str]] = set()
+        self._account_recording_blocks: set[str] = set()
+        self._content_recording_blocks: set[tuple[str, str]] = set()
 
     @contextmanager
     def transaction(self) -> Iterator[None]:
@@ -398,6 +466,8 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
             copy.deepcopy(self._observations),
             copy.deepcopy(self._disclosures),
             copy.deepcopy(self._tombstones),
+            copy.deepcopy(self._account_recording_blocks),
+            copy.deepcopy(self._content_recording_blocks),
         )
         try:
             yield
@@ -408,6 +478,8 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
                 self._observations,
                 self._disclosures,
                 self._tombstones,
+                self._account_recording_blocks,
+                self._content_recording_blocks,
             ) = snapshot
             raise
 
@@ -493,6 +565,42 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
 
     def is_message_tombstoned(self, account_id: str, message_id: str) -> bool:
         return (account_id, message_id) in self._tombstones
+
+    def block_recording(
+        self, account_id: str, normalized_value: str | None, now: datetime
+    ) -> None:
+        del now
+        if normalized_value is None:
+            self._account_recording_blocks.add(account_id)
+        else:
+            self._content_recording_blocks.add((account_id, _normalize(normalized_value)))
+
+    def is_recording_blocked(
+        self, account_id: str, normalized_value: str | None = None
+    ) -> bool:
+        if account_id in self._account_recording_blocks:
+            return True
+        if normalized_value is None:
+            return False
+        value = _normalize(normalized_value)
+        return any(
+            blocked == value or blocked in value or value in blocked
+            for blocked_account, blocked in self._content_recording_blocks
+            if blocked_account == account_id
+        )
+
+    def delete_observations_for_record(
+        self, account_id: str, dimension: FourDimension, normalized_value: str
+    ) -> None:
+        self._observations = {
+            observation_id: observation
+            for observation_id, observation in self._observations.items()
+            if not (
+                observation.account_id == account_id
+                and observation.dimension == dimension
+                and observation.normalized_value == normalized_value
+            )
+        }
 
 
 class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
@@ -708,6 +816,56 @@ class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
             is not None
         )
 
+    def block_recording(
+        self, account_id: str, normalized_value: str | None, now: datetime
+    ) -> None:
+        scope = "account" if normalized_value is None else "content"
+        stored_value = "" if normalized_value is None else _normalize(normalized_value)
+        block_id = _stable_id("profile-privacy-block", account_id, scope, stored_value)
+        self.database.scoped(account_id).execute(
+            "INSERT INTO profile_extraction_privacy_blocks "
+            "(block_id, account_id, scope, normalized_value, created_at) "
+            "VALUES (?, ?, ?, ?, ?) ON CONFLICT(account_id, scope, normalized_value) DO NOTHING",
+            (block_id, account_id, scope, stored_value, self._iso(now)),
+        )
+
+    def is_recording_blocked(
+        self, account_id: str, normalized_value: str | None = None
+    ) -> bool:
+        value = "" if normalized_value is None else _normalize(normalized_value)
+        return (
+            self.database.scoped(account_id)
+            .execute(
+                "SELECT 1 FROM profile_extraction_privacy_blocks "
+                "WHERE account_id = ? AND scope = 'account' LIMIT 1",
+                (account_id,),
+            )
+            .fetchone()
+            is not None
+            or (
+                normalized_value is not None
+                and self.database.scoped(account_id)
+                .execute(
+                    "SELECT 1 FROM profile_extraction_privacy_blocks "
+                    "WHERE account_id = ? AND scope = 'content' AND "
+                    "(normalized_value = ? OR instr(?, normalized_value) > 0 "
+                    "OR instr(normalized_value, ?) > 0) LIMIT 1",
+                    (account_id, value, value, value),
+                )
+                .fetchone()
+                is not None
+            )
+        )
+
+    def delete_observations_for_record(
+        self, account_id: str, dimension: FourDimension, normalized_value: str
+    ) -> None:
+        self.database.scoped(account_id).execute(
+            "DELETE FROM profile_extraction_observations "
+            "WHERE account_id = ? AND dimension = ? AND normalized_value = ?",
+            (account_id, dimension.value, normalized_value),
+        )
+
 
 class AutomaticProfileService:
     """消息预处理的单一编排入口。"""
@@ -750,6 +908,35 @@ class AutomaticProfileService:
     ) -> ProfilePreprocessResult:
         now = _now()
         source_hash = _source_hash(account_id, message_id, content)
+        directive = _privacy_directive(content)
+        if directive is not None:
+            scope, normalized_value = directive
+            if scope == "content" and normalized_value is None:
+                normalized_value = _normalize(content)
+            self._repository.block_recording(
+                account_id,
+                normalized_value if scope == "content" else None,
+                now,
+            )
+            self._repository.mark_message_tombstone(account_id, message_id)
+            return self._blocked_result(
+                account_id=account_id,
+                message_id=message_id,
+                content=content,
+                source_hash=source_hash,
+                now=now,
+                reason="用户已停止记录此消息",
+            )
+        if self._repository.is_recording_blocked(account_id):
+            self._repository.mark_message_tombstone(account_id, message_id)
+            return self._blocked_result(
+                account_id=account_id,
+                message_id=message_id,
+                content=content,
+                source_hash=source_hash,
+                now=now,
+                reason="用户已停止产生新的记录",
+            )
         existing = self._repository.get_run(
             account_id, message_id, self.extractor_version, source_hash
         )
@@ -862,6 +1049,50 @@ class AutomaticProfileService:
             privacy_notice=notice,
             committed_record_ids=record_ids,
             observed_count=observed_count,
+        )
+
+    def _blocked_result(
+        self,
+        *,
+        account_id: str,
+        message_id: str,
+        content: str,
+        source_hash: str,
+        now: datetime,
+        reason: str,
+    ) -> ProfilePreprocessResult:
+        run = self._repository.get_run(
+            account_id, message_id, self.extractor_version, source_hash
+        )
+        if run is None:
+            run = ProfileExtractionRun(
+                extraction_id=_stable_id(
+                    "profile-extract",
+                    account_id,
+                    message_id,
+                    self.extractor_version,
+                    source_hash,
+                ),
+                account_id=account_id,
+                message_id=message_id,
+                extractor_version=self.extractor_version,
+                source_hash=source_hash,
+                source_snapshot=content,
+                status=ProfileExtractionStatus.EXHAUSTED,
+                attempts=0,
+                last_error=reason,
+                created_at=now,
+                updated_at=now,
+            )
+        else:
+            run.status = ProfileExtractionStatus.EXHAUSTED
+            run.last_error = reason
+            run.updated_at = now
+        self._repository.save_run(run)
+        return ProfilePreprocessResult(
+            run=run,
+            committed_record_ids=[],
+            observed_count=0,
         )
 
     def _extract_once(self, **kwargs: object) -> ProfileExtractionOutput:
@@ -1000,6 +1231,8 @@ class AutomaticProfileService:
             task.account_id, task.message_id, task.source_hash
         ):
             return self._exhaust_task(task, run, "原消息已修改、撤回或被墓碑阻止")
+        if self._repository.is_recording_blocked(task.account_id):
+            return self._exhaust_task(task, run, "用户已停止产生新的记录")
         task.status = ProfileExtractionStatus.RUNNING
         task.attempts = attempt
         task.updated_at = _now()
@@ -1106,6 +1339,10 @@ class AutomaticProfileService:
             self._validate_item(item, account_id, message_id, content)
             if item.action == ProfileExtractionAction.IGNORE:
                 continue
+            if self._repository.is_recording_blocked(
+                account_id, item.normalized_value
+            ):
+                continue
             observation = AutomaticProfileObservation(
                 observation_id=_stable_id(
                     "profile-observation",
@@ -1128,19 +1365,25 @@ class AutomaticProfileService:
             observed_count += 1
             if item.action == ProfileExtractionAction.OBSERVE or item.reliability < 0.6:
                 continue
-            if not self._is_explicit_self_statement(content, item.dimension):
-                if item.dimension != FourDimension.KNOWLEDGE_INTEREST:
-                    continue
-                observations = self._repository.list_observations(
-                    account_id,
-                    item.dimension,
-                    item.normalized_value,
-                    since=now - _KNOWLEDGE_PROMOTION_WINDOW,
-                )
-                if len({entry.message_id for entry in observations}) < 2:
-                    continue
+            observations = self._repository.list_observations(
+                account_id,
+                item.dimension,
+                item.normalized_value,
+                since=now - _KNOWLEDGE_PROMOTION_WINDOW,
+            )
+            unique_messages = {entry.message_id for entry in observations}
+            explicit_self_statement = self._is_explicit_self_statement(
+                content, item.dimension
+            )
+            if not explicit_self_statement and len(unique_messages) < 2:
+                continue
             if self._repository.is_message_tombstoned(account_id, message_id):
                 continue
+            confidence = (
+                FourDimensionConfidence.HIGH
+                if len(unique_messages) >= 2
+                else FourDimensionConfidence.MEDIUM
+            )
             action = item.action.value
             if (
                 action == ProfileExtractionAction.CREATE.value
@@ -1159,6 +1402,14 @@ class AutomaticProfileService:
                 dimension=item.dimension,
                 content=item.normalized_value,
                 action=action,
+                confidence=confidence,
+                evidence_quote=_evidence_quote(content, item.normalized_value),
+                evidence_message_id=message_id,
+                change_note=(
+                    "多次对话中再次出现，可靠程度已提高"
+                    if confidence == FourDimensionConfidence.HIGH
+                    else "首次明确表达，等待再次确认"
+                ),
             )
             record_ids.append(record.record_id)
         return list(dict.fromkeys(record_ids)), observed_count
@@ -1216,11 +1467,19 @@ class AutomaticProfileService:
                 FourDimension.STAGE_GOAL,
             }
         )
-        records = [
+        all_records = [
             record
             for record in self._four_dimensions.list_records(account_id)
             if record.status == FourDimensionRecordStatus.ACTIVE
             and record.dimension in allowed
+        ]
+        low_confidence = [
+            record
+            for record in all_records
+            if not is_recallable_confidence(record.confidence)
+        ]
+        records = [
+            record for record in all_records if is_recallable_confidence(record.confidence)
         ]
         related: list[FourDimensionProfileRecord] = []
         unrelated: list[FourDimensionProfileRecord] = []
@@ -1230,14 +1489,17 @@ class AutomaticProfileService:
                 if _record_matches_question(record, current_question)
                 else unrelated
             ).append(record)
-        related.sort(key=lambda record: record.updated_at, reverse=True)
+        related.sort(
+            key=lambda record: (confidence_rank(record.confidence), record.updated_at),
+            reverse=True,
+        )
         unrelated.sort(key=lambda record: record.updated_at, reverse=True)
         included = [
             ProfileSliceItem(
                 assertion_id=record.record_id,
                 dimension=record.dimension.value,
                 value_or_rule=record.content[:80],
-                inclusion_reason=f"当前{mode}模式的最小四维画像切片",
+                inclusion_reason="当前模式下与你当前任务相关的已授权信息",
                 sensitivity_class=(
                     ProfileSensitivityClass.LEARNING
                     if record.dimension
@@ -1264,6 +1526,15 @@ class AutomaticProfileService:
             )
             for record in related[_MAX_SLICE_ITEMS:] + unrelated
         ]
+        unused.extend(
+            UnusedSliceItem(
+                assertion_id=record.record_id,
+                dimension=record.dimension.value,
+                value_or_rule=record.content[:80],
+                exclusion_reason="可靠程度不足，暂不用于当前回答",
+            )
+            for record in low_confidence
+        )
         slice_ = ProfileSlice(
             slice_id=_stable_id("profile-slice", account_id, run_id),
             owner_account_id=account_id,

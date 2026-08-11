@@ -6,9 +6,11 @@ from datetime import UTC, datetime
 
 import pytest
 
+from bridges.api.main import create_app
 from bridges.contracts.profiles import (
     AssertionStatus,
     FourDimension,
+    FourDimensionConfidence,
     FourDimensionProfileModifyRequest,
     FourDimensionRecordStatus,
     ProfileAssertion,
@@ -23,7 +25,6 @@ from bridges.profiles import (
     InMemoryProfileRepository,
     ProfileService,
 )
-from bridges.api.main import create_app
 
 
 @pytest.fixture
@@ -232,9 +233,10 @@ def test_four_dimension_slice_reads_current_records_and_respects_withdrawal(
     first = service.compile_chat_slice(
         account_id, mode="companion", run_id="run-1"
     )
-    assert [item.value_or_rule for item in first.included_items] == ["当前学习目标"]
+    assert first.included_items == []
 
     record = service.list_records(account_id)[0]
+    assert record.confidence == FourDimensionConfidence.LOW
     edited = service.modify_record(
         account_id,
         record.record_id,
@@ -301,6 +303,7 @@ def test_api_exposes_read_modify_withdraw_but_not_manual_create() -> None:
 
     assert ("/profiles/four-dimensions", "GET") in routes
     assert ("/profiles/four-dimensions/{record_id}", "PATCH") in routes
+    assert ("/profiles/four-dimensions/{record_id}", "DELETE") in routes
     assert ("/profiles/four-dimensions/{record_id}/withdraw", "POST") in routes
     assert ("/profiles/four-dimensions", "POST") not in routes
     public_fields = set(
@@ -314,6 +317,11 @@ def test_api_exposes_read_modify_withdraw_but_not_manual_create() -> None:
         "label",
         "content",
         "first_stable_recorded_at",
+        "updated_at",
         "version",
         "status",
+        "confidence",
+        "evidence_quote",
+        "evidence_message_id",
+        "change_note",
     }

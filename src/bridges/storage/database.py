@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2061,6 +2061,50 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_teaching_plan_adjustments_account_conversation
         ON teaching_plan_adjustments(account_id, conversation_id, created_at DESC)
+        """,
+    ],
+    # Issue 06：四维画像记录补齐证据、把握度和纠错降级所需字段；存量记录
+    # 先以低把握度进入新合同，后续由新的用户证据重新确认。隐私阻止表
+    # 保存“不要记录”后的账户级或内容级边界，避免重启后自动恢复写入。
+    43: [
+        """
+        ALTER TABLE profile_four_dimension_records
+        ADD COLUMN confidence TEXT NOT NULL DEFAULT 'low'
+        """,
+        """
+        ALTER TABLE profile_four_dimension_records
+        ADD COLUMN evidence_quote TEXT
+        """,
+        """
+        ALTER TABLE profile_four_dimension_records
+        ADD COLUMN evidence_message_id TEXT
+        """,
+        """
+        ALTER TABLE profile_four_dimension_records
+        ADD COLUMN correction_count INTEGER NOT NULL DEFAULT 0
+        """,
+        """
+        ALTER TABLE profile_four_dimension_records
+        ADD COLUMN change_note TEXT
+        """,
+        """
+        UPDATE profile_four_dimension_records
+        SET change_note = '由 v42 存量记录迁移，等待新的证据确认'
+        WHERE change_note IS NULL
+        """,
+        """
+        CREATE TABLE profile_extraction_privacy_blocks (
+            block_id TEXT PRIMARY KEY,
+            account_id TEXT NOT NULL,
+            scope TEXT NOT NULL CHECK (scope IN ('account', 'content')),
+            normalized_value TEXT,
+            created_at TEXT NOT NULL,
+            UNIQUE (account_id, scope, normalized_value)
+        )
+        """,
+        """
+        CREATE INDEX idx_profile_extraction_privacy_blocks_account
+        ON profile_extraction_privacy_blocks(account_id, scope, normalized_value)
         """,
     ],
 }

@@ -51,6 +51,14 @@ class FourDimension(StrEnum):
         return FOUR_DIMENSION_LABELS[self]
 
 
+class FourDimensionConfidence(StrEnum):
+    """四维记录当前证据的把握度档位。"""
+
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+
+
 FOUR_DIMENSION_LABELS: dict[FourDimension, str] = {
     FourDimension.ACADEMIC_STATUS: "学业情况",
     FourDimension.KNOWLEDGE_INTEREST: "感兴趣的知识",
@@ -447,6 +455,30 @@ class FourDimensionProfileRecord(BaseModel):
     status: FourDimensionRecordStatus = Field(
         description="Active or withdrawn tombstone."
     )
+    confidence: FourDimensionConfidence = Field(
+        default=FourDimensionConfidence.LOW,
+        description="Evidence confidence: low, medium or high.",
+    )
+    evidence_quote: str | None = Field(
+        default=None,
+        max_length=500,
+        description="截取的用户原话证据，可为空。",
+    )
+    evidence_message_id: str | None = Field(
+        default=None,
+        max_length=200,
+        description="产生最近一条证据的来源消息标识，可为空。",
+    )
+    correction_count: int = Field(
+        default=0,
+        ge=0,
+        description="内部纠错次数，不进入普通画像投影。",
+    )
+    change_note: str | None = Field(
+        default=None,
+        max_length=500,
+        description="最近一次把握度或内容变化的说明，可为空。",
+    )
     source_record_id: str = Field(description="Internal legacy source identifier.")
     source_version: int = Field(
         ge=1, description="Legacy source version used for migration."
@@ -461,8 +493,9 @@ class FourDimensionProfileRecord(BaseModel):
 class FourDimensionProfileProjection(BaseModel):
     """普通画像页面可见的四维记录投影。
 
-    来源引用、哈希、迁移版本和审计字段只保留在内部记录中，不进入普通 API
-    响应或模型上下文；版本号作为修改/撤回的乐观锁令牌保留。
+    哈希、迁移版本、纠错计数和审计字段只保留在内部记录中；证据原话、
+    来源消息和最近变化说明用于帮助用户理解记录，版本号作为修改/撤回的
+    乐观锁令牌保留。
     """
 
     record_id: str = Field(description="稳定的四维画像记录标识。")
@@ -472,8 +505,19 @@ class FourDimensionProfileProjection(BaseModel):
     first_stable_recorded_at: datetime = Field(
         description="首次稳定记录时间，修改不会重置。"
     )
+    updated_at: datetime = Field(description="最近一次内容或状态变化的时间。")
     version: int = Field(ge=1, description="修改/撤回使用的乐观锁版本号。")
     status: FourDimensionRecordStatus = Field(description="记录状态。")
+    confidence: FourDimensionConfidence = Field(description="记录把握度档位。")
+    evidence_quote: str | None = Field(
+        default=None, description="证据原话，可为空。"
+    )
+    evidence_message_id: str | None = Field(
+        default=None, description="来源消息标识，可为空。"
+    )
+    change_note: str | None = Field(
+        default=None, description="最近改动说明，可为空。"
+    )
 
 
 class FourDimensionProfileModifyRequest(BaseModel):
@@ -487,6 +531,12 @@ class FourDimensionProfileModifyRequest(BaseModel):
 
 class FourDimensionProfileWithdrawRequest(BaseModel):
     """撤回已有四维记录的乐观锁请求。"""
+
+    version: int = Field(ge=1, description="Version read by the caller.")
+
+
+class FourDimensionProfileDeleteRequest(BaseModel):
+    """永久删除四维记录及其观察的乐观锁请求。"""
 
     version: int = Field(ge=1, description="Version read by the caller.")
 

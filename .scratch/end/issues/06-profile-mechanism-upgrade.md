@@ -1,5 +1,5 @@
 # 06 — 画像机制升级：把握度与证据、稳固规则、页面改版与召回分寸
-Status: ready-for-agent
+Status: claimed
 Blocked by: [05](./05-profile-pipeline-fixes.md)
 Covered requirements: 三次改进#3
 
