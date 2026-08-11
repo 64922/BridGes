@@ -51,6 +51,12 @@ from bridges.runtime import (
     ReminderScheduler,
     RuntimeLockError,
 )
+from bridges.runtime.bootstrap import (
+    BootstrapError,
+    LocalRuntimeBootstrap,
+    PreparedRuntime,
+    web_process_environment,
+)
 
 app = typer.Typer(
     name="BridGes",
@@ -437,7 +443,12 @@ def _resolve_data_dir(settings: Settings) -> Path:
     return _repo_root()
 
 
-def _spawn_services(settings: Settings, profile: str) -> dict[str, subprocess.Popen[bytes]]:
+def _spawn_services(
+    settings: Settings,
+    profile: str,
+    *,
+    runtime: PreparedRuntime | None = None,
+) -> dict[str, subprocess.Popen[bytes]]:
     """并行启动 API、Web、后台执行器与提醒调度器子进程。
 
     POSIX 上子进程使用独立会话（start_new_session）：整树停止（killpg）
@@ -445,6 +456,11 @@ def _spawn_services(settings: Settings, profile: str) -> dict[str, subprocess.Po
     本监督进程的按序终止保证。Windows 无需此设置（taskkill /T 整树结束）。
     """
     new_session = os.name != "nt"
+    api_env = dict(runtime.api_env if runtime is not None else os.environ)
+    worker_env = dict(runtime.worker_env if runtime is not None else os.environ)
+    scheduler_env = dict(
+        runtime.scheduler_env if runtime is not None else os.environ
+    )
     api_proc = subprocess.Popen(
         [
             sys.executable,
@@ -457,9 +473,15 @@ def _spawn_services(settings: Settings, profile: str) -> dict[str, subprocess.Po
             str(settings.api_port),
         ],
         cwd=_repo_root(),
+        env=api_env,
         start_new_session=new_session,
     )
-    web_env = {**os.environ, "PORT": str(settings.web_port)}
+    web_env = dict(
+        runtime.web_env
+        if runtime is not None
+        else web_process_environment(os.environ)
+    )
+    web_env["PORT"] = str(settings.web_port)
     web_dir = _repo_root() / "apps" / "web"
     if profile == "development":
         # 开发模式：npm 包装（npm→node 链由停止时的整树结束兜底）。
@@ -482,11 +504,13 @@ def _spawn_services(settings: Settings, profile: str) -> dict[str, subprocess.Po
     worker_proc = subprocess.Popen(
         [sys.executable, "-m", "bridges.cli.main", "worker"],
         cwd=_repo_root(),
+        env=worker_env,
         start_new_session=new_session,
     )
     scheduler_proc = subprocess.Popen(
         [sys.executable, "-m", "bridges.cli.main", "scheduler"],
         cwd=_repo_root(),
+        env=scheduler_env,
         start_new_session=new_session,
     )
     return {
@@ -508,14 +532,33 @@ def _serve(profile: str) -> None:
     异常终止后可安全恢复，不丢失已提交数据。
     """
 
-    _load_settings_or_exit()
-    settings = get_settings()
-    typer.echo(f"start profile={profile}")
+    if profile not in {"desktop", "development", "production"}:
+        typer.echo(
+            "error: profile 必须是 desktop、development 或 production。",
+            err=True,
+        )
+        raise typer.Exit(2)
 
-    # 1) GQ-01 启动硬门：正式环境必须在获取数据目录锁、迁移和拉起任何
-    #    子进程之前验证全局百炼运行凭据可读取；缺失时直接失败关闭，
-    #    不启动"只能登录、不能使用核心能力"的降级实例。
-    _require_global_qwen_key(settings)
+    typer.echo(f"start profile={profile}")
+    prepared: PreparedRuntime | None = None
+    if profile == "desktop":
+        try:
+            prepared = LocalRuntimeBootstrap(
+                repo_root=_repo_root(),
+                emit=typer.echo,
+            ).prepare(interactive=sys.stdin.isatty() and sys.stdout.isatty())
+        except BootstrapError as exc:
+            typer.echo(f"error: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        settings = prepared.settings
+    else:
+        _load_settings_or_exit()
+        settings = get_settings()
+        # 1) GQ-01 启动硬门：正式环境必须在获取数据目录锁、迁移和拉起任何
+        #    子进程之前验证全局百炼运行凭据可读取；缺失时直接失败关闭，
+        #    不启动"只能登录、不能使用核心能力"的降级实例。
+        _require_global_qwen_key(settings)
+
     #    GQ-07 升级清理门：与 GQ-01 同序执行，一次性、幂等清退历史账户
     #    Qwen 秘密、元数据与探测状态；无法访问旧秘密存储时同样失败关闭。
     _retire_legacy_account_qwen_keys(settings)
@@ -525,8 +568,12 @@ def _serve(profile: str) -> None:
     if not web_dir.exists():
         typer.echo(f"error: Web 应用目录不存在：{web_dir}", err=True)
         raise typer.Exit(1)
-    if profile == "production":
-        standalone = web_dir / ".next" / "standalone" / "server.js"
+    if profile in {"desktop", "production"}:
+        standalone = (
+            prepared.web_artifact
+            if prepared is not None
+            else web_dir / ".next" / "standalone" / "server.js"
+        )
         if not standalone.exists():
             typer.echo(
                 "error: 未找到 Web 生产构建产物。请先在 apps/web 目录执行"
@@ -549,7 +596,7 @@ def _serve(profile: str) -> None:
         raise typer.Exit(1)
 
     # 3) 数据目录校验
-    data_dir = _resolve_data_dir(settings)
+    data_dir = prepared.data_dir if prepared is not None else _resolve_data_dir(settings)
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
         if not os.access(data_dir, os.W_OK):
@@ -584,7 +631,7 @@ def _serve(profile: str) -> None:
             raise typer.Exit(1) from exc
 
         _run_database_migration(settings)
-        procs = _spawn_services(settings, profile)
+        procs = _spawn_services(settings, profile, runtime=prepared)
 
         # 4) 等待健康检查并输出本地电脑端访问地址
         api_url = f"http://{_local_address(settings.api_host)}:{settings.api_port}"
@@ -630,17 +677,23 @@ def _serve(profile: str) -> None:
 def start(
     profile: Annotated[
         str,
-        typer.Option("--profile", help="Runtime profile (production or development)"),
-    ] = "production",
+        typer.Option(
+            "--profile",
+            help="Runtime profile (desktop, production or development)",
+        ),
+    ] = "desktop",
 ) -> None:
     """Start Web, API, background executor and reminder scheduler.
 
-    默认生产模式启动构建后的 Web；本地开发请使用 ``--profile development``。
+    默认 desktop 模式会持久化本机配置、构建 Web 并在首次启动时询问 Qwen Key；
+    生产环境或容器请显式使用 ``--profile production``，本地开发请使用
+    ``--profile development``。
     ``serve`` 为历史同实现别名，两者共享同一实现，不维护两套。
 
-    正式运行（development/production）必须在启动前配置全局百炼运行凭据：
+    显式运行（development/production）必须在启动前配置全局百炼运行凭据：
     环境变量 BRIDGES_QWEN_API_KEY 或文件引用 BRIDGES_QWEN_API_KEY_FILE
     （不读取、不创建 .env）；缺失、为空或不可读时启动失败并给出中文指引。
+    desktop 模式会在交互式终端中安全询问一次，并保存到操作系统凭据库。
     全局 Key 轮换后必须重启相关服务，不提供运行期热更新。
     """
     _serve(profile)
@@ -650,8 +703,11 @@ def start(
 def serve(
     profile: Annotated[
         str,
-        typer.Option("--profile", help="Runtime profile (production or development)"),
-    ] = "production",
+        typer.Option(
+            "--profile",
+            help="Runtime profile (desktop, production or development)",
+        ),
+    ] = "desktop",
 ) -> None:
     """Start Web, API, background executor and reminder scheduler (legacy alias of ``start``)."""
     _serve(profile)

@@ -27,6 +27,16 @@ def _env_aliases(name: str) -> AliasChoices:
     return AliasChoices(f"{ENV_PREFIX}{name}", f"{LEGACY_ENV_PREFIX}{name}")
 
 
+def secret_file_reference(field_name: str) -> tuple[str, str] | None:
+    """返回密钥文件引用及其环境变量名，集中维护新旧前缀优先级。"""
+    normalized = field_name.upper()
+    for prefix in (ENV_PREFIX, LEGACY_ENV_PREFIX):
+        env_name = f"{prefix}{normalized}_FILE"
+        if env_name in os.environ:
+            return os.environ.get(env_name, "").strip(), env_name
+    return None
+
+
 class Settings(BaseSettings):
     """Single source of truth for runtime configuration.
 
@@ -164,11 +174,8 @@ class Settings(BaseSettings):
 
     def _secret_file_env(self, field_name: str) -> str | None:
         """返回 ``<FIELD>_FILE`` 环境变量：新前缀优先，迁移期兼容旧前缀。"""
-        env_name = f"{ENV_PREFIX}{field_name.upper()}_FILE"
-        value = os.environ.get(env_name)
-        if value is not None:
-            return value
-        return os.environ.get(f"{LEGACY_ENV_PREFIX}{field_name.upper()}_FILE")
+        reference = secret_file_reference(field_name)
+        return reference[0] if reference else None
 
     def _load_secret_files(self) -> None:
         for field_name in self._SECRET_FIELDS:

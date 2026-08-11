@@ -36,10 +36,6 @@ conda env create -f environment.yml   # 已存在 agent 环境时跳过
 conda activate agent
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
-cd apps/web
-npm install
-npm run build
-cd ../..
 ```
 
 **源码 `.venv` 路径**（行为与 Conda 一致，不要求安装 Conda）：
@@ -49,40 +45,54 @@ python -m venv .venv
 # Windows: .venv\Scripts\activate    Linux/macOS: source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
-cd apps/web
-npm install
-npm run build
-cd ../..
 ```
 
-项目需要 Python 3.11 及 Node.js 20 或更高版本。`npm run build` 会生成 Web
-生产构建产物（`.next/standalone`），`BridGes start` 默认启动构建后的 Web；
-本地开发可改用 `BridGes start --profile development` 启动 Next.js 开发服务器。
-后续启动命令都应在项目根目录执行，否则相对路径 SQLite 数据库可能无法被
-正确读取。
+项目需要 Python 3.11 及 Node.js 20 或更高版本（包含 npm）。源码安装完成后，
+后续启动命令都应在项目根目录执行。
 
 ### 2. 启动
 
-**不需要创建 `.env`**：未配置的项全部使用安全默认值（本地开发默认
-进程内存储；需要持久化或生产部署时通过环境变量覆盖，见“配置与密钥引用”）。
-
-**必须配置全局百炼运行凭据**：正式运行（`development`/`production`）在
-`BridGes start` 前通过环境变量 `BRIDGES_QWEN_API_KEY` 或文件引用
-`BRIDGES_QWEN_API_KEY_FILE` 注入唯一一把全局百炼 API Key（文件引用优先
-用于容器或长期部署）。不配置、配置为空或文件不可读时启动直接失败并给出
-中文指引，不会启动“只能登录、不能使用核心能力”的降级实例。Key 轮换后
-必须重启相关服务，不提供运行期热更新。
+**不需要创建 `.env`**。普通桌面用户直接执行下面的命令即可；首次启动会
+自动创建本机持久化配置、数据目录和状态加密密钥，并按需执行 Web 依赖安装
+与生产构建。配置默认保存在 Windows `%LOCALAPPDATA%\BridGes`、macOS
+`~/Library/Application Support/BridGes` 或 Linux `$XDG_DATA_HOME/BridGes`
+（可用 `BRIDGES_HOME` 指定其他目录）。
 
 ```bash
-export BRIDGES_QWEN_API_KEY=sk-...
 BridGes start
 ```
 
-`BridGes start` 会按顺序完成：校验依赖与数据目录权限 → 获取数据目录单实例锁 →
-执行数据库迁移 → 同步启动 **Web、API 与后台执行器** →
+首次交互式启动的顺序是：使用已安装的 Python/Node/npm → 创建或读取本机配置 → 在
+`apps/web` 中按 `package-lock.json` 执行 `npm ci`（需要时）→ 执行
+`npm run build` 生成 `.next/standalone/server.js`（需要时）→ 隐藏询问一次
+Qwen API Key → 将 Key 保存到操作系统凭据库 → 获取数据目录单实例锁、执行
+数据库迁移并启动 **Web、API 与后台执行器**。Key 不写入仓库、`config.json`
+或 `.env`；后续启动会复用凭据库中的 Key，不再询问。
+
+本机托管模式会把生成的 `BRIDGES_DATABASE_URL`、状态密钥文件路径等运行时
+配置注入 API/worker/scheduler 子进程；Web 构建和 Web 服务不会继承 Qwen Key。
+如果终端不是交互式 TTY，系统不会等待输入；只有在操作系统凭据库中也没有
+已保存 Key 时，才要求预先提供 `BRIDGES_QWEN_API_KEY` 或
+`BRIDGES_QWEN_API_KEY_FILE`。
+
+`BridGes start` 随后会：获取数据目录单实例锁 → 执行数据库迁移 → 启动 **Web、API 与后台执行器** →
 等待健康检查 → 输出本地电脑端访问地址。同一数据目录不能启动第二个实例
 （会提示先停止已有实例）；进程被强制终止后锁自动释放，可安全重新启动，
 已提交数据不会丢失。按 Ctrl+C 会按顺序停止全部子进程并释放锁。
+
+高级运行方式仍可显式选择 profile：
+
+```bash
+# CI、服务器或已由环境变量/文件管理配置的生产运行
+BridGes start --profile production
+# 只启动 Next.js 开发服务器；Qwen Key 仍需通过环境变量或文件引用提供
+BridGes start --profile development
+```
+
+显式 `production`/`development` 不执行本机托管初始化，也不会询问 Key；请在
+启动前设置 `BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE`，并在使用
+持久化数据库时设置 `BRIDGES_DATABASE_URL` 与 `BRIDGES_SECRET_KEY`（或对应
+文件引用）。容器继续使用显式生产配置。
 
 启动后访问：
 
@@ -96,17 +106,19 @@ BridGes 是**电脑端产品**：只面向桌面浏览器（Windows、Linux、ma
 
 配置持久化数据库后，数据目录会生成 `bridges.db`、`bridges.db-wal`
 和 `bridges.db-shm` 文件；这些文件是本地运行数据，不需要手工创建。
-持久化数据库必须同时配置 `BRIDGES_SECRET_KEY`（或文件引用），用于保护
-本地状态加密。后台执行器也可以单独启动：`BridGes worker`（执行可恢复的生成、
+本机托管模式首次启动会自动生成并保存 `BRIDGES_SECRET_KEY` 对应的状态密钥文件；
+如果使用外部数据库地址，则必须预先同时提供 `BRIDGES_SECRET_KEY`（或文件引用），
+用于保护本地状态加密。后台执行器也可以单独启动：`BridGes worker`（执行可恢复的生成、
 索引、迁移和清理任务）。旧提醒调度器仅作为兼容期的停用/清理组件，不再创建或
 发送用户提醒，兼容窗口结束后按迁移门删除。
 
 联网模型能力（Qwen 文本、结构化输出、OCR、视觉、ASR、TTS、图片、Wan
-视频等）由全局百炼运行凭据 `BRIDGES_QWEN_API_KEY`（或 `*_FILE` 文件引用）
-在启动前统一驱动；普通账户无需也不存在个人百炼密钥配置。正式运行缺少、
-为空或无法读取全局 Key 时，`BridGes start`、`BridGes api` 与 `BridGes
-worker` 都在启动边界失败关闭并给出不含秘密的中文配置指引（`BridGes
-doctor` 同样报告失败）——不注册离线桩或固定样例，也不会静默降级模型。
+视频等）由全局百炼运行凭据在启动前统一驱动；普通账户无需也不存在个人百炼
+密钥配置。默认 desktop 的 `start` 从操作系统凭据库复用该 Key，显式 profile、
+独立 `api`/`worker` 和容器仍从 `BRIDGES_QWEN_API_KEY` 或 `*_FILE` 读取；独立
+命令不会自动读取 desktop 的 `config.json`。缺少、为空或无法读取全局 Key 时，
+相应命令都在启动边界失败关闭并给出不含秘密的中文配置指引（`BridGes doctor`
+同样报告失败）——不注册离线桩或固定样例，也不会静默降级模型。
 启动本身不会主动调用 Qwen，实际使用相关功能时才会发起网络请求；若全局
 Key 无效、无权限或供应商限流，调用呈现稳定的中文服务配置错误，不会引导
 用户访问任何密钥设置页面。模型绑定为固定矩阵（ADR-0009），用户不能切换
@@ -182,16 +194,17 @@ curl http://127.0.0.1:8000/health
 
 ## 配置与密钥引用
 
-所有生产运行方式共享同一配置 Schema，环境变量前缀为 `BRIDGES_`（旧前缀
-`SCIENCE_COMPANION_*` 与旧命令入口 `science-companion` 已随 Issue 41
-退役）：
+显式 `production`/`development`、手动分进程和容器共享同一配置 Schema，环境
+变量前缀为 `BRIDGES_`（旧前缀 `SCIENCE_COMPANION_*` 与旧命令入口
+`science-companion` 已随 Issue 41 退役）。默认 `desktop` profile 使用同一
+字段语义，但将生成的本机配置注入子进程：
 
 ```bash
 export BRIDGES_ENVIRONMENT=production
 export BRIDGES_API_HOST=127.0.0.1
 export BRIDGES_API_PORT=8000
 export BRIDGES_SECRET_KEY_FILE=/run/secrets/secret_key
-# 全局百炼运行凭据：正式运行必需，缺失时 BridGes start 失败关闭。
+# 显式 production/容器的全局百炼运行凭据；desktop 首次启动可交互式输入。
 export BRIDGES_QWEN_API_KEY_FILE=/run/secrets/qwen_key
 # 本地单进程开发持久化；生产环境必须配置等价的持久化数据库地址。
 export BRIDGES_DATABASE_URL=sqlite:///./bridges.db
@@ -202,9 +215,10 @@ export BRIDGES_DATABASE_URL=sqlite:///./bridges.db
 当前仓库内置的是带 WAL 和 Fernet 状态加密的 SQLite 单实例适配器，适合本地开发和 Compose 单实例；配置数据库时必须同时提供 `BRIDGES_SECRET_KEY` 或文件引用。未接入的 PostgreSQL 地址会明确报错，不会回退到内存。
 
 密钥（全局百炼 Key、密码、加密主密钥以及迁移前遗留的 QQ SMTP 授权码）不进入
-普通配置文件、CLI 参数回显、日志或 API 响应。全局百炼 Key 只存在于服务进程
-配置中；遗留 SMTP 授权码按 ADR-0026 幂等清除，普通账户不存在百炼或提醒密钥
-管理入口。
+普通配置文件、CLI 参数回显、日志或 API 响应。desktop 的全局百炼 Key 保存在
+操作系统凭据库，并仅注入 API/worker 服务进程；显式 profile 与容器通过环境变量
+或文件引用注入。遗留 SMTP 授权码按 ADR-0026 幂等清除，普通账户不存在百炼或
+提醒密钥管理入口。
 
 ## 品牌迁移说明
 
@@ -236,7 +250,7 @@ Issue 移除，规范入口仅为 `bridges` / `BridGes` / `BRIDGES_*`。历史�
 |---|---|
 | 进程能启动，但 `/health/ready` 为 `fail` | 通常是配置了数据库却没有配置 `BRIDGES_SECRET_KEY`，或生产模式没有数据库地址；补齐环境变量后重启 API。 |
 | API 返回 `503` 且提示持久化不可用 | 系统为避免数据静默写入内存而主动拒绝业务请求；检查数据库 URL、密钥和数据库目录权限。 |
-| 启动即报"未配置全局百炼运行凭据" | `BRIDGES_QWEN_API_KEY`（或文件引用）缺失、为空或不可读；配置后重新执行 `BridGes start`，Key 轮换后同样重启。 |
+| 启动即报"未配置全局百炼运行凭据" | 非交互启动或显式 profile 没有环境变量/文件引用，且凭据库中也没有已保存 Key；交互式 desktop 首次启动会隐藏询问 Key，配置后重新执行，Key 轮换后同样重启。 |
 | 运行时报网络/鉴权/限流错误 | 全局百炼 Key 无效、无供应商权限或供应商限流；检查启动服务时的 `BRIDGES_QWEN_API_KEY` 配置与百炼账户权限/额度，重启服务后重试。 |
 | Web 无法打开 | 先确认 API 的 `/health/ready` 为 `pass`，再检查 8000 和 3000 端口是否被其他程序占用。 |
 | 改了环境变量但配置未生效 | 停止并重新启动 API；同时确认命令是在项目根目录执行。 |

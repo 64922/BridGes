@@ -7,11 +7,14 @@ BridGes 支持以下四种生产运行合同骨架：
 - Docker：`docker compose -f infra/compose/docker-compose.yml up`
 - Podman：`podman-compose -f infra/compose/docker-compose.yml up`
 
-四种方式读取同一配置 Schema 和密钥引用规则。
+四种方式读取同一配置 Schema 和密钥引用规则；源码用户直接执行
+`BridGes start` 时，默认的 `desktop` profile 会在本机配置目录中生成这些
+运行时值，再把它们注入子进程。
 
 ## 统一配置 Schema
 
-所有运行方式都通过 `BRIDGES_*` 环境变量读取配置。**任何载体都不读取、
+显式 `production`/`development`、手动分进程和容器都通过 `BRIDGES_*` 环境变量
+读取配置。**任何载体都不读取、
 不要求创建 `.env` 文件**；未配置的项使用下方安全默认值。Issue 41 起旧前缀
 `SCIENCE_COMPANION_*`、旧命令入口 `science-companion` 与旧模块名
 `science_companion` 已随退役移除，只认 `BRIDGES_*` 与 `BridGes`。
@@ -41,10 +44,11 @@ export BRIDGES_QWEN_API_KEY_FILE=/run/secrets/qwen_key
 （Docker / Podman / systemd）应优先使用文件引用，避免把密钥写入普通环境变量。
 密钥不进入普通配置文件、CLI 参数回显、日志或 API 响应。
 
-`BRIDGES_QWEN_API_KEY`（或 `BRIDGES_QWEN_API_KEY_FILE`）是正式运行的**必需**
-配置：不配置、配置为空或文件不可读时，`BridGes start`、`BridGes api`、
-`BridGes worker` 都会在启动边界失败关闭（见"生产合同说明"）。全局 Key 轮换后
-必须重启相关服务，首轮整改不提供运行期热更新。
+`BRIDGES_QWEN_API_KEY`（或 `BRIDGES_QWEN_API_KEY_FILE`）是显式
+`production`/`development`、手动 `api`/`worker` 与容器运行的**必需**配置；
+默认 desktop 的 `BridGes start` 会在交互式首次启动时隐藏询问并保存到操作系统凭据库。
+没有环境变量/文件引用、已保存凭据或交互输入时，启动边界失败关闭（见"生产合同说明"）。
+全局 Key 轮换后必须重启相关服务，首轮整改不提供运行期热更新。
 
 ## 手动分进程
 
@@ -71,14 +75,21 @@ npm run dev
 
 ```bash
 BridGes start
-# 本地开发（Next.js 开发服务器，需先 npm install）
+# 本地开发（不执行 desktop 初始化）
 BridGes start --profile development
+# 已由环境变量/文件引用管理配置的服务器或 CI
+BridGes start --profile production
 ```
 
-启动前必须先配置全局百炼运行凭据（`BRIDGES_QWEN_API_KEY` 环境变量或
-`BRIDGES_QWEN_API_KEY_FILE` 文件引用）；正式环境不读取 `.env`，不创建该文件。
+默认 `desktop` profile 的首次交互式启动会创建本机配置和数据目录，按需执行
+`npm ci` 与 `npm run build`，然后隐藏询问一次 Qwen API Key 并保存到操作系统
+凭据库。后续启动复用该凭据，不再询问；Web 构建与 Web 进程不会收到 Qwen Key。
+非交互式终端不能输入 Key；若凭据库中没有已保存 Key，才必须预先配置
+`BRIDGES_QWEN_API_KEY` 或 `BRIDGES_QWEN_API_KEY_FILE`。显式 `production`/`development` 不执行本机初始化，
+启动前必须自行提供数据库、状态密钥和全局 Qwen 凭据；正式环境不读取 `.env`，
+不创建该文件。
 
-`start` 默认以生产 profile 同步启动构建后的 **Web、API 与后台执行器**三个进程。
+`start` 默认以 desktop profile 同步启动构建后的 **Web、API 与后台执行器**三个进程。
 旧提醒调度器仅属于退役兼容面，不得创建或发送新提醒；最终收缩由 ADR-0026 的
 兼容门控制。启动前会校验依赖与数据目录权限、获取数据目录单实例锁、
 执行数据库迁移，然后等待 API `/health/ready` 与 Web 就绪并输出本地电脑端
@@ -93,6 +104,10 @@ BridGes start --profile development
 BridGes worker       # 后台执行器：周期性清理待删除对象与孤立文件
 BridGes scheduler    # 兼容期停用/清理组件：不创建或发送提醒
 ```
+
+独立 `api`/`worker`/`scheduler` 命令不读取 desktop profile 的 `config.json`；
+请像显式 `production` 一样通过 `BRIDGES_DATABASE_URL`、`BRIDGES_SECRET_KEY`
+和 `BRIDGES_QWEN_API_KEY`（或对应 `_FILE`）提供完整配置。
 
 ## 诊断、迁移与健康检查
 

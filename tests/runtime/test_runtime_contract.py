@@ -298,7 +298,7 @@ def test_startup_reports_chinese_error_when_port_is_occupied(tmp_path: Path) -> 
         output_file = tmp_path / "start_output.txt"
         with output_file.open("w", encoding="utf-8") as out:
             result = subprocess.run(
-                [sys.executable, "-m", "bridges.cli.main", "start"],
+                [sys.executable, "-m", "bridges.cli.main", "start", "--profile", "production"],
                 cwd=REPO_ROOT,
                 stdout=out,
                 stderr=subprocess.STDOUT,
@@ -323,8 +323,8 @@ def test_startup_full_journey_start_health_duplicate_reject_stop_restart() -> No
     """空临时数据目录冒烟旅程：启动 → 迁移 → 健康检查 → 重复启动拒绝 →
     优雅停止 → 再次启动成功（AC1/AC5/AC6/AC7）。
 
-    使用默认生产 profile（启动构建后的 Web，与 AC1 旅程一致）；开发服务器
-    会重写 ``.next`` 目录，避免在测试中运行 dev 模式。
+    使用显式 production profile（启动构建后的 Web，与 AC1 旅程一致）；开发
+    服务器会重写 ``.next`` 目录，避免在测试中运行 dev 模式。
     """
     with tempfile.TemporaryDirectory() as raw:
         tmp = Path(raw)
@@ -360,7 +360,7 @@ def test_startup_full_journey_start_health_duplicate_reject_stop_restart() -> No
             second_output = tmp / "second_start.txt"
             with second_output.open("w", encoding="utf-8") as out:
                 second = subprocess.run(
-                    [sys.executable, "-m", "bridges.cli.main", "start"],
+                    [sys.executable, "-m", "bridges.cli.main", "start", "--profile", "production"],
                     cwd=REPO_ROOT,
                     stdout=out,
                     stderr=subprocess.STDOUT,
@@ -385,9 +385,16 @@ def test_startup_full_journey_start_health_duplicate_reject_stop_restart() -> No
 
 
 def _spawn_start(env: dict[str, str]) -> subprocess.Popen[str]:
-    """以默认生产 profile 启动 ``BridGes start``（构建后的 Web）。"""
+    """以显式 production profile 启动 ``BridGes start``（构建后的 Web）。"""
     return subprocess.Popen(
-        [sys.executable, "-m", "bridges.cli.main", "start"],
+        [
+            sys.executable,
+            "-m",
+            "bridges.cli.main",
+            "start",
+            "--profile",
+            "production",
+        ],
         cwd=REPO_ROOT,
         env=env,
         stdout=subprocess.PIPE,

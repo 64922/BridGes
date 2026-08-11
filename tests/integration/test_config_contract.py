@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from pydantic import SecretStr, ValidationError
 
-from bridges.config import ENV_PREFIX, Settings, get_settings
+from bridges.config import ENV_PREFIX, LEGACY_ENV_PREFIX, Settings, get_settings
 
 
 @pytest.fixture(autouse=True)
@@ -40,6 +40,17 @@ def test_direct_environment_variables_are_loaded() -> None:
     finally:
         for key in env:
             os.environ.pop(key, None)
+
+
+def test_legacy_environment_prefix_remains_supported(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(f"{ENV_PREFIX}ENVIRONMENT", raising=False)
+    monkeypatch.setenv(f"{LEGACY_ENV_PREFIX}ENVIRONMENT", "test")
+
+    settings = Settings()
+
+    assert settings.environment == "test"
 
 
 def test_qwen_api_key_from_environment_is_loaded_without_exposing_value(

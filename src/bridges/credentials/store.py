@@ -1,7 +1,8 @@
-"""按命名空间隔离的账户级凭据存储：OS 凭据库与加密凭据卷。
+"""按命名空间隔离的安装级/账户级凭据存储：OS 凭据库与加密凭据卷。
 
-GQ-07 后账户百炼密钥已整体清退，本存储唯一服务 QQ SMTP 授权码
-（``smtp`` 命名空间，ADR-0004/0017）：
+账户级百炼密钥已按 GQ-07 清退；当前存储仍为 QQ SMTP 授权码提供
+``smtp`` 命名空间（ADR-0004/0017），同时允许本机启动器使用独立的
+``runtime`` 命名空间保存安装级全局 Qwen 凭据：
 
 - 源码环境（Conda / .venv）使用操作系统凭据库：``keyring``
   （Windows 凭据管理器 / macOS 钥匙串 / Linux Secret Service）为项目
@@ -39,9 +40,8 @@ except ImportError:  # pragma: no cover - 依赖可选，覆盖路径由 CI 判�
 #: keyring 服务名与用户名命名空间。
 _KEYRING_SERVICE = "BridGes"
 _KEYRING_USERNAME_PREFIX = "account:"
-#: 默认凭据命名空间（历史账户百炼 Key，GQ-07 已清退，仅升级清退与
-#: 测试使用）；QQ SMTP 授权码使用 ``smtp`` 命名空间，与旧模型凭据在
-#: 存储与文件层面完全分离。
+#: 默认凭据命名空间。业务调用方应显式选择 ``smtp`` 或 ``runtime``，
+#: 以便与历史账户凭据在存储和文件层面保持隔离。
 _DEFAULT_NAMESPACE = "account"
 
 #: 加密凭据卷子目录与文件布局。
@@ -72,19 +72,19 @@ def has_credential_backend(data_dir: Path | None = None) -> bool:
 
 
 class CredentialStorePort(ABC):
-    """按账户保存、读取与删除模型凭据的稳定端口。"""
+    """按命名空间标识保存、读取与删除凭据的稳定端口。"""
 
     @abstractmethod
     def save(self, account_id: str, secret: SecretStr) -> None:
-        """保存或替换当前账户的凭据。"""
+        """保存或替换当前标识的凭据。"""
 
     @abstractmethod
     def get(self, account_id: str) -> SecretStr | None:
-        """返回当前账户的凭据，未配置时返回 None。"""
+        """返回当前标识的凭据，未配置时返回 None。"""
 
     @abstractmethod
     def delete(self, account_id: str) -> None:
-        """删除当前账户的凭据；不存在时静默成功。"""
+        """删除当前标识的凭据；不存在时静默成功。"""
 
 
 class InMemoryCredentialStore(CredentialStorePort):
@@ -188,7 +188,7 @@ class OsCredentialStore(CredentialStorePort):
     """操作系统凭据库实现。
 
     首选 ``keyring``（Windows 凭据管理器 / macOS 钥匙串 / Linux Secret
-    Service）；Windows 缺少 keyring 时退回 DPAPI 加密的账户密文（密文由
+    Service）；Windows 缺少 keyring 时退回 DPAPI 加密的命名空间密文（密文由
     操作系统密钥保护，保存在数据目录凭据卷下）。其余平台无凭据库时明确
     报错，绝不写入明文文件。
     """

@@ -9,6 +9,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+from typer.testing import CliRunner
+
+from bridges.cli import main as cli_main
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -73,3 +77,16 @@ def test_serve_help_exits_successfully() -> None:
     result = run_cli("serve", "--help")
     assert result.returncode == 0
     assert "Start Web, API, background executor and reminder scheduler" in result.stdout
+
+
+def test_start_defaults_to_desktop_profile() -> None:
+    observed: list[str] = []
+    original_serve = cli_main._serve
+    cli_main._serve = lambda profile: observed.append(profile)
+    try:
+        result = CliRunner().invoke(cli_main.app, ["start"])
+    finally:
+        cli_main._serve = original_serve
+
+    assert result.exit_code == 0
+    assert observed == ["desktop"]
