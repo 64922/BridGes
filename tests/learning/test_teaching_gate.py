@@ -103,7 +103,7 @@ def test_missing_external_provider_still_exposes_an_explicit_gap() -> None:
     assert turn.evidence_gate.allow_model_knowledge is True
 
 
-def test_sufficient_local_material_skips_external_search_and_creates_one_quiz() -> None:
+def test_sufficient_local_material_skips_external_search_and_creates_one_overview() -> None:
     turn = TeachingTurnService().prepare(
         "解释光合作用",
         retrieval=_local_round(RetrievalSufficiency.SUFFICIENT),
@@ -112,8 +112,12 @@ def test_sufficient_local_material_skips_external_search_and_creates_one_quiz() 
     assert turn.evidence_gate.status == TeachingEvidenceStatus.SUFFICIENT
     assert turn.evidence_gate.required_search.value == "none"
     assert turn.can_answer_reliably is True
-    assert turn.quiz is not None
-    assert turn.quiz.evidence_refs == ["cit-1"]
+    assert turn.mission is None
+    assert turn.plan is None
+    assert turn.lesson is None
+    assert turn.quiz is None
+    assert "全面介绍" in turn.steps[1]
+    assert "不强制测验" in turn.check_method
 
 
 def test_conflict_keeps_conflict_status_and_arxiv_source_type_distinct() -> None:
@@ -169,7 +173,7 @@ def test_public_paper_query_can_combine_duckduckgo_and_arxiv() -> None:
     assert service.required_search("最新公开论文研究综述", None).value == "both"
 
 
-def test_answer_evidence_is_traceable_but_never_claims_mastery() -> None:
+def test_follow_up_does_not_create_legacy_answer_evidence() -> None:
     service = TeachingTurnService()
     previous = service.prepare(
         "解释光合作用",
@@ -183,17 +187,12 @@ def test_answer_evidence_is_traceable_but_never_claims_mastery() -> None:
         answer_message_id="user-answer-1",
     )
 
-    record = answer.evidence[0]
-    assert record.question_id == previous.quiz.question_id  # type: ignore[union-attr]
-    assert record.source_message_id == "user-answer-1"
-    assert record.evaluation_basis
-    assert record.requires_confirmation is True
-    assert record.mastery_claim_allowed is False
-    # 说明性文案明确「不能直接标记已掌握」（否定句），不构成掌握宣称。
-    assert "不能直接标记已掌握" in record.knowledge_state_reason
+    assert previous.quiz is None
+    assert answer.evidence == []
+    assert answer.quiz is None
 
 
-def test_uncertain_answer_that_repeats_topic_is_not_marked_correct() -> None:
+def test_uncertain_follow_up_is_not_interpreted_as_a_quiz_answer() -> None:
     service = TeachingTurnService()
     previous = service.prepare(
         "解释光合作用",
@@ -207,8 +206,8 @@ def test_uncertain_answer_that_repeats_topic_is_not_marked_correct() -> None:
         answer_message_id="user-answer-uncertain",
     )
 
-    assert answer.evidence[0].evaluated_state.value == "incorrect"
-    assert answer.evidence[0].knowledge_state.value == "unknown"
+    assert answer.evidence == []
+    assert answer.quiz is None
 
 
 def test_follow_up_question_is_not_recorded_as_quiz_answer() -> None:
@@ -226,4 +225,4 @@ def test_follow_up_question_is_not_recorded_as_quiz_answer() -> None:
     )
 
     assert follow_up.evidence == []
-    assert follow_up.quiz is not None
+    assert follow_up.quiz is None

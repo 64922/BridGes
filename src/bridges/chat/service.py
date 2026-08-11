@@ -111,7 +111,10 @@ from bridges.contracts.profile_extraction import ProfilePreprocessResult
 from bridges.contracts.profiles import ProfileNotification
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
-from bridges.contracts.teaching_progress import PlanAdjustment, TeachingProgressProjection
+from bridges.contracts.teaching_progress import (
+    LearningProgressProjection,
+    PlanAdjustment,
+)
 from bridges.contracts.video import VideoTaskProjection
 from bridges.contracts.workflows import RunContextEnvelope
 from bridges.learning.progress import TeachingProgressService
@@ -2093,12 +2096,12 @@ class ChatService:
 
     def learning_progress(
         self, account_id: str, conversation_id: str
-    ) -> TeachingProgressProjection | None:
-        """返回当前账户在对话内的课时进度。"""
+    ) -> LearningProgressProjection | None:
+        """返回当前账户在对话内的轻量学习进度。"""
         conversation = self._repo.get_conversation(account_id, conversation_id)
         if conversation is None:
             raise ChatDomainError("conversation_not_found", "对话不存在或没有访问权限。", 404)
-        return self._teaching_progress.get_progress(account_id, conversation_id)
+        return self._teaching_progress.get_learning_progress(account_id, conversation_id)
 
     def learning_adjustments(
         self, account_id: str, conversation_id: str

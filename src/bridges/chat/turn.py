@@ -104,9 +104,6 @@ from bridges.contracts.retrieval import (
 from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.teaching import (
     TeachingCardStatus,
-    TeachingIntent,
-    TeachingPlanProjection,
-    TeachingStage,
     TeachingTurnProjection,
 )
 from bridges.contracts.video import VideoError, VideoTaskProjection
@@ -233,23 +230,21 @@ _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
     ),
     ChatMode.STUDY: ModeContract(
         system_prompt=(
-            "你是 BridGes，一位因材施教的科学老师。当前使用「学习模式」合同，"
-            "按以下编排约定组织每次回答："
-            "1）先界定学习目标：区分概念理解、方法掌握与练习巩固，确定本次回答的层次；"
-            "2）参考对话内已有的知识状态与学习进度，从学生当前水平出发循序渐进讲解；"
-            "3）讲解中用具体例子连接新知识与已有认知，必要时主动安排理解检查"
-            "（简短提问或请学生复述）与适量测验；"
-            "4）回答结束给出下一步学习建议。"
-            "每轮先核对当前对话、附件、项目资料和授权知识库；本地证据不足时按需"
-            "检索公开来源。证据不足、冲突或不可用时，必须明确说明缺口；若公开检索"
-            "失败且没有本地可用证据，可以用模型一般知识给出谨慎背景回答，但必须明确"
-            "标注本轮未联网核实、降低事实结论强度，不能伪造资料。教学卡片记录的理解检查只能作为待确认状态，不能"
-            "仅凭一次回答宣布用户已掌握。"
+            "你是 BridGes，一位因材施教的科学老师。当前使用「学习模式」合同："
+            "围绕已确认的学习目标，先综合当前可用材料与公开来源，再在一条回复中"
+            "给出一次性、可独立阅读的全面介绍。按主题自适应覆盖背景或问题动机、"
+            "核心思想、关键组件、发展或对比、实践要点、应用领域、学习资源与建议；"
+            "不拆成课时，不生成学习计划，不附带强制测验。引用必须使用教学上下文提供的"
+            "[reference:N] 编号，结尾邀请用户针对某个部分继续追问。"
+            "回答仍须遵守证据门：证据足够时只依据提供的来源；证据不足、冲突或不可用"
+            "时说明缺口。若公开检索失败且没有本地可用证据，可以用模型一般知识给出谨慎"
+            "背景回答，但必须在开头标注本轮未联网核实、降低事实结论强度，不能伪造资料。"
         ),
         # 编排步骤与提示词合同一致；教学业务行为由学习模式教学服务执行。
         steps=(
             DeclarativeStep("teaching_objective", "按学习目标分析你的问题与已有知识"),
-            DeclarativeStep("teaching_explain", "组织循序渐进的教学回答"),
+            DeclarativeStep("teaching_research", "从多个角度收集并核对相关来源"),
+            DeclarativeStep("teaching_overview", "组织一次性全面介绍并标注引用"),
         ),
     ),
 }
@@ -680,6 +675,7 @@ def web_search_context(projection: WebSearchProjection) -> str:
 
 _WEB_CITATION_RE = re.compile(r"\[(web-[A-Za-z0-9_-]+)\]")
 _ARXIV_CITATION_RE = re.compile(r"\[arxiv-[A-Za-z0-9_-]+\]")
+_TEACHING_CITATION_RE = re.compile(r"\[reference:(\d+)\]")
 _WEB_URL_RE = re.compile(r"https?://[^\s)\]>，。]+", re.IGNORECASE)
 
 
@@ -712,6 +708,27 @@ def web_search_citation_error(
         }
         if any(url not in valid_urls for url in answer_urls):
             return "联网回答包含未绑定到搜索结果的链接，请重试。"
+    return None
+
+
+def teaching_citation_error(
+    content: str, teaching: TeachingTurnProjection
+) -> str | None:
+    """校验学习模式的引用编号是否对应证据门来源。"""
+
+    if _WEB_CITATION_RE.search(content) or _ARXIV_CITATION_RE.search(content):
+        return "学习模式回答必须使用 [reference:N] 引用来源，请重试。"
+    references = [int(value) for value in _TEACHING_CITATION_RE.findall(content)]
+    sources = [
+        *teaching.evidence_gate.local_sources,
+        *teaching.evidence_gate.external_sources,
+    ]
+    if not sources:
+        return None
+    if not references:
+        return "学习模式回答缺少与证据门对应的引用，请重试。"
+    if any(reference < 1 or reference > len(sources) for reference in references):
+        return "学习模式回答引用了不存在的来源编号，请重试。"
     return None
 
 
@@ -840,7 +857,7 @@ def failed_teaching_projection(
     teaching: TeachingTurnProjection | None,
     message: str,
 ) -> TeachingTurnProjection | None:
-    """模型或运行阶段失败时只发布可重试状态，不发布半成品计划。"""
+    """模型或运行阶段失败时只发布可重试状态，不发布半成品回答。"""
 
     if teaching is None:
         return None
@@ -853,7 +870,7 @@ def failed_teaching_projection(
             "status": TeachingCardStatus.RECOVERY,
             "evidence_gate": gate,
             "gap_response": message,
-            "next_prompt": "本轮没有发布计划或课时，修复后可以从同一学习目标重试。",
+            "next_prompt": "本轮没有完成完整回答，修复后可以围绕同一学习目标重试。",
             "can_answer_reliably": False,
             "can_cancel": False,
             "can_retry": True,
@@ -915,6 +932,7 @@ def cancelled_arxiv_search(
 def teaching_context(teaching: TeachingTurnProjection) -> str:
     """向模型注入教学证据边界，防止把模型记忆冒充为本轮依据。"""
     gate = teaching.evidence_gate
+    sources = [*gate.local_sources, *gate.external_sources]
     lines = [
         (
             "你正在执行学习模式的一轮教学。证据门未通过，但本轮允许使用模型一般知识"
@@ -928,11 +946,19 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
         ),
         f"证据门状态：{gate.status.value}；理由：{gate.reason}",
         f"本轮可靠回答许可：{'是' if teaching.can_answer_reliably else '否'}",
-        "不得仅凭一次自述或一次题目回答宣称用户已掌握；知识状态只能作为待确认候选。",
+        "本轮必须在一条回复中完成一次性全面介绍：按主题覆盖关键维度，不拆成课时，"
+        "不生成学习计划，也不提出强制测验题。结尾邀请用户针对某个部分继续追问。",
     ]
-    for source in [*gate.local_sources, *gate.external_sources]:
+    if teaching.learning_progress is not None:
+        covered = "、".join(teaching.learning_progress.covered_topics) or "尚无已覆盖主题"
+        lines.append(f"会话学习目标：{teaching.learning_progress.goal}")
+        lines.append(f"已覆盖主题：{covered}；追问时避免机械重复，可顺势拓展。")
+    lines.append("引用时必须使用 [reference:N]，编号与下面来源按顺序一一对应；不得编造编号。")
+    for index, source in enumerate(sources, start=1):
         locator = f"（{source.locator}）" if source.locator else ""
-        lines.append(f"[{source.source_id}] {source.title}{locator}")
+        lines.append(
+            f"[reference:{index}] {source.title}{locator}；内部来源标识：{source.source_id}"
+        )
     if teaching.plan is not None and teaching.lesson is not None:
         lines.extend(
             [
@@ -961,7 +987,10 @@ def strip_unverified_teaching_references(content: str) -> str:
     """移除无本轮来源可绑定的联网引用和链接。"""
 
     return _WEB_URL_RE.sub(
-        "", _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content))
+        "",
+        _TEACHING_CITATION_RE.sub(
+            "", _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content))
+        ),
     )
 
 
@@ -1825,9 +1854,8 @@ class TurnOrchestrator:
                 )
                 return
             retrieval_round: RetrievalRoundProjection | None = None
-            first_lesson_requested = False
-            formal_lesson_requested = False
-            fallback_plan: TeachingPlanProjection | None = None
+            learning_turn_requested = False
+            stored_learning_progress = None
             teaching_projection: TeachingTurnProjection | None = (
                 TeachingTurnProjection.model_validate(current.teaching)
                 if current.teaching is not None and mode == ChatMode.STUDY
@@ -1867,83 +1895,62 @@ class TurnOrchestrator:
                 messages = self._repo.list_messages(account_id, conversation_id)
                 owner = owner_user_message(messages, assistant_message_id)
                 round_query = owner.content if owner is not None else ""
-                # 用户原文用于作答评价与 mission 更新；检索查询可能被替换
-                # 为规范概念（见下），两者必须分离。
+                # 用户原文保留在历史消息中；检索查询在已有进度时附带目标，
+                # 让追问继续围绕同一学习目标。
                 user_input = round_query
-                previous_turn = previous_teaching_turn(
-                    messages, owner.message_id if owner else None
+                stored_learning_progress = self._teaching_progress.get_learning_progress(
+                    account_id, conversation_id
                 )
-                fallback_plan = previous_turn.plan if previous_turn is not None else None
-                # Issue 08：先分类意图，再按教学状态机分派；不检索整句意图。
-                mission = previous_turn.mission if previous_turn is not None else None
-                intent = self._teaching.classify_intent(round_query, mission)
 
-                # 明确目标直接进入第一课；缺少目标时只询问目标本身。
-                if intent in {
-                    TeachingIntent.ESTABLISH_MISSION,
-                    TeachingIntent.MODIFY_MISSION,
-                }:
-                    if not self._teaching.has_executable_goal(round_query):
-                        teaching_projection = self._teaching.mission_setup(
-                            round_query,
-                            previous_mission=mission,
-                            mission_id=owner.message_id if owner is not None else None,
-                        )
-                        self._repo.update_message_teaching(
-                            account_id,
-                            assistant_message_id,
-                            teaching_projection.model_dump(mode="json"),
-                            datetime.now(UTC),
-                        )
-                        mission_content = teaching_projection.next_prompt
-                        self._repo.update_message_content(
-                            account_id,
-                            assistant_message_id,
-                            mission_content,
-                            datetime.now(UTC),
-                        )
-                        finalize_message(
-                            self._repo,
-                            account_id,
-                            assistant_message_id,
-                            status=ChatMessageStatus.DONE,
-                            error_code=None,
-                            error_message=None,
-                            duration_ms=None,
-                            model_id=None,
-                            run_lock_id=None,
-                            started=started,
-                            now=datetime.now(UTC),
-                            thinking=done_thinking(thinking),
-                            teaching=teaching_projection.model_dump(mode="json"),
-                        )
-                        yield StreamEvent(kind="delta", delta=mission_content)
-                        yield StreamEvent(kind="done")
-                        return
-                    setup = self._teaching.mission_setup(
-                        round_query,
-                        previous_mission=mission,
-                        mission_id=owner.message_id if owner is not None else None,
+                # 缺少目标时只询问一句，不检索、不调用模型、不写轻量进度。
+                if self._teaching.is_missing_goal(round_query):
+                    teaching_projection = self._teaching.missing_goal(round_query)
+                    self._repo.update_message_teaching(
+                        account_id,
+                        assistant_message_id,
+                        teaching_projection.model_dump(mode="json"),
+                        datetime.now(UTC),
                     )
-                    if setup.mission is None:
-                        raise RuntimeError("明确学习目标未能建立教学任务。")
-                    mission = self._teaching.confirm_mission("", setup.mission)
-                    first_lesson_requested = True
-                    formal_lesson_requested = True
-                    round_query = self._teaching.micro_lesson_query(mission)
+                    goal_content = teaching_projection.next_prompt
+                    self._repo.update_message_content(
+                        account_id,
+                        assistant_message_id,
+                        goal_content,
+                        datetime.now(UTC),
+                    )
+                    finalize_message(
+                        self._repo,
+                        account_id,
+                        assistant_message_id,
+                        status=ChatMessageStatus.DONE,
+                        error_code=None,
+                        error_message=None,
+                        duration_ms=None,
+                        model_id=None,
+                        run_lock_id=None,
+                        started=started,
+                        now=datetime.now(UTC),
+                        thinking=done_thinking(thinking),
+                        teaching=teaching_projection.model_dump(mode="json"),
+                    )
+                    yield StreamEvent(kind="delta", delta=goal_content)
+                    yield StreamEvent(kind="done")
+                    return
 
-                # mission 确认：解析水平假设与首概念，检索查询用规范主题。
-                if mission is not None and mission.stage == TeachingStage.MISSION_SETUP:
-                    mission = self._teaching.confirm_mission(round_query, mission)
-                    formal_lesson_requested = True
-                    round_query = self._teaching.micro_lesson_query(mission)
-                elif mission is not None:
-                    # Issue 08：作答/追问/跳过等轮次的检索与公开搜索都用
-                    # 当前概念，不拿短答复或整句意图搜索。
-                    round_query = self._teaching.micro_lesson_query(mission)
-                    formal_lesson_requested = (
-                        formal_lesson_requested or intent == TeachingIntent.ANSWER
-                    )
+                learning_turn_requested = True
+                if self._teaching.has_executable_goal(round_query):
+                    # 用户再次明确学习目标时开启新的轻量进度，不迁移旧主题。
+                    learning_goal = self._teaching.goal_for_query(round_query)
+                    progress_for_turn = None
+                    round_query = learning_goal
+                elif stored_learning_progress is not None:
+                    learning_goal = stored_learning_progress.goal
+                    progress_for_turn = stored_learning_progress
+                    round_query = f"{learning_goal}；当前追问：{user_input}"
+                else:
+                    learning_goal = self._teaching.goal_for_query(round_query)
+                    progress_for_turn = None
+                    round_query = learning_goal
 
                 # Issue 06：教学轮次受总时延预算约束（run 级共享 budget）。
                 if budget.enter(RunStage.LOCAL_RETRIEVAL):
@@ -2187,16 +2194,8 @@ class TurnOrchestrator:
                     retrieval=retrieval_round,
                     web_search=web_search_projection,
                     arxiv_search=arxiv_search_projection,
-                    previous_turn=previous_turn,
-                    answer_text=(
-                        user_input
-                        if previous_turn is not None
-                        and intent in {TeachingIntent.ANSWER, TeachingIntent.SKIP}
-                        else None
-                    ),
-                    answer_message_id=owner.message_id if owner is not None else None,
-                    mission=mission,
-                    intent=intent,
+                    goal=learning_goal,
+                    learning_progress=progress_for_turn,
                 )
                 self._repo.update_message_teaching(
                     account_id,
@@ -2212,7 +2211,7 @@ class TurnOrchestrator:
                 # 证据门仍未通过且没有可安全降级的路径时，用明确缺口结束本轮。
                 # 搜索失败且没有本地证据时允许进入模型生成，但保留确定性标注。
                 # Issue 06：教学轮次超预算时不再进入模型生成，用明确说明
-                # 交付并保留 mission（进度不丢失，可重试继续）。
+                # 预算不足时结束本轮；轻量进度只在助手消息终态成功提交。
                 if budget.expired() and teaching_projection.can_answer_reliably:
                     teaching_projection = teaching_projection.model_copy(
                         update={
@@ -2641,23 +2640,6 @@ class TurnOrchestrator:
             )
             if context_note is not None:
                 thinking = context_note_thinking(thinking, context_note)
-            if (
-                mode == ChatMode.STUDY
-                and first_lesson_requested
-                and teaching_projection is not None
-                and mission is not None
-                and teaching_projection.can_answer_reliably
-            ):
-                teaching_projection = self._teaching.compose_first_plan_and_lesson(
-                    teaching_projection,
-                    mission,
-                    profile_items=[
-                        (item.dimension, item.value_or_rule) for item in profile_items
-                    ],
-                    profile_slice_id=profile_slice_id,
-                    owner_account_id=account_id,
-                    object_domain=run_context.object_domain.value,
-                )
             writing_policy = self._compile_writing_policy(
                 account_id=account_id,
                 assistant_message_id=assistant_message_id,
@@ -2703,7 +2685,7 @@ class TurnOrchestrator:
                 if content:
                     teaching_for_budget = failed_teaching_projection(
                         teaching_projection,
-                        "本轮教学生成超出预算；本轮没有发布完整计划或课时，请重试。",
+                        "本轮教学生成超出预算；重试可获得完整介绍。",
                     )
                     finalize_message(
                         self._repo,
@@ -2892,9 +2874,57 @@ class TurnOrchestrator:
                         else []
                     )
                     if (
+                        mode == ChatMode.STUDY
+                        and teaching_projection is not None
+                        and not allow_model_knowledge_fallback
+                        and (
+                            teaching_projection.evidence_gate.local_sources
+                            or teaching_projection.evidence_gate.external_sources
+                        )
+                    ):
+                        citation_error = teaching_citation_error(
+                            content, teaching_projection
+                        )
+                        if citation_error is not None:
+                            finalize_message(
+                                self._repo,
+                                account_id,
+                                assistant_message_id,
+                                status=ChatMessageStatus.ERROR,
+                                error_code="web_search_citation_invalid",
+                                error_message=citation_error,
+                                duration_ms=None,
+                                model_id=self._lock_model_id(event.lock),
+                                run_lock_id=self._lock_id(event.lock),
+                                started=started,
+                                now=datetime.now(UTC),
+                                thinking=failed_thinking(
+                                    thinking, "web_search_citation_invalid"
+                                ),
+                                teaching=teaching_payload(
+                                    failed_teaching_projection(
+                                        teaching_projection, citation_error
+                                    )
+                                ),
+                            )
+                            if quality_entered:
+                                budget.exit(
+                                    RunStage.QUALITY_CHECK,
+                                    result=RESULT_FAILED,
+                                    category="citation_check",
+                                )
+                            yield StreamEvent(
+                                kind="error",
+                                error_code="web_search_citation_invalid",
+                                error_message=citation_error,
+                                lock=event.lock,
+                            )
+                            return
+                    if (
                         web_search_projection is not None
                         and verified_web_results
                         and not allow_model_knowledge_fallback
+                        and mode != ChatMode.STUDY
                     ):
                         citation_error = web_search_citation_error(
                             content,
@@ -2961,6 +2991,7 @@ class TurnOrchestrator:
                     if (
                         arxiv_search_projection is not None
                         and not allow_model_knowledge_fallback
+                        and mode != ChatMode.STUDY
                     ):
                         citation_error = arxiv_citation_error(
                             content, arxiv_search_projection
@@ -3051,29 +3082,14 @@ class TurnOrchestrator:
                         if teaching_projection is not None
                         else None
                     )
-                    if (
-                        formal_lesson_requested
-                        and teaching_projection is not None
-                        and self._teaching_progress.has_invalid_answer(
-                            teaching_projection
-                        )
-                        and previous_turn is not None
-                    ):
-                        teaching_projection = previous_turn.model_copy(
-                            update={
-                                "next_prompt": "当前作答未形成有效评价，请继续回答原测验。"
-                            }
-                        )
                     learning_publication = None
-                    if teaching_projection is not None and formal_lesson_requested:
-                        learning_publication = self._teaching_progress.prepare_publication(
+                    if teaching_projection is not None and learning_turn_requested:
+                        learning_publication = self._teaching_progress.prepare_learning_publication(
                             account_id,
                             conversation_id,
                             assistant_message_id,
                             teaching_projection,
                             content,
-                            formal_lesson=True,
-                            fallback_plan=fallback_plan,
                         )
                         if learning_publication is not None:
                             teaching_projection = learning_publication.projection
@@ -3118,7 +3134,7 @@ class TurnOrchestrator:
                     teaching=teaching_payload(
                         failed_teaching_projection(
                             teaching_projection,
-                            "本轮教学生成超出预算；本轮没有发布完整计划或课时，请重试。",
+                            "本轮教学生成超出预算；重试可获得完整介绍。",
                         )
                     ),
                 )

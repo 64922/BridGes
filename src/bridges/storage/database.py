@@ -20,7 +20,7 @@ from bridges.storage.errors import StorageError
 logger = logging.getLogger(__name__)
 
 #: 当前支持的数据模式版本。新增迁移时在此递增并在 ``MIGRATIONS`` 补充脚本。
-SCHEMA_VERSION = 42
+SCHEMA_VERSION = 43
 
 #: 每个版本对应的迁移脚本，按版本号从小到大依次执行。
 MIGRATIONS: dict[int, list[str]] = {
@@ -2061,6 +2061,25 @@ MIGRATIONS: dict[int, list[str]] = {
         """
         CREATE INDEX idx_teaching_plan_adjustments_account_conversation
         ON teaching_plan_adjustments(account_id, conversation_id, created_at DESC)
+        """,
+    ],
+    # Issue 02：学习模式只保存会话目标与已覆盖主题，不迁移旧教学序列。
+    43: [
+        """
+        CREATE TABLE learning_progress (
+            account_id TEXT NOT NULL,
+            conversation_id TEXT NOT NULL,
+            goal TEXT NOT NULL,
+            covered_topics_json TEXT NOT NULL,
+            source_message_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (account_id, conversation_id)
+        )
+        """,
+        """
+        CREATE INDEX idx_learning_progress_account_updated
+        ON learning_progress(account_id, updated_at DESC)
         """,
     ],
 }

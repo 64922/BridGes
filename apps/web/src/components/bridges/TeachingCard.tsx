@@ -10,7 +10,7 @@ interface TeachingCardProps {
   onBeginnerStart?: () => void;
 }
 
-// Issue 08：教学状态机阶段的中文呈现。
+// 旧消息的教学状态机阶段；新轮次使用轻量学习进度。
 const stageLabel: Record<string, string> = {
   mission_setup: "确认目标",
   micro_lesson: "讲解概念",
@@ -132,6 +132,37 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
             <dd style={{ margin: 0, color: "var(--color-text-secondary)" }}>{mission.next_action}</dd>
           </div>
         </dl>
+      )}
+
+      {teaching.learning_progress && (
+        <div
+          data-testid="learning-progress"
+          style={{
+            display: "grid",
+            gap: "var(--space-2)",
+            marginTop: "var(--space-4)",
+            padding: "var(--space-3)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-surface)",
+            fontSize: "var(--text-sm)",
+          }}
+        >
+          <div>
+            <strong>学习目标</strong>
+            <div style={{ color: "var(--color-text-secondary)" }}>
+              {teaching.learning_progress.goal}
+            </div>
+          </div>
+          <div>
+            <strong>已覆盖主题</strong>
+            <div style={{ color: "var(--color-text-secondary)" }}>
+              {teaching.learning_progress.covered_topics?.length
+                ? teaching.learning_progress.covered_topics.join("、")
+                : "本轮尚未记录主题"}
+            </div>
+          </div>
+        </div>
       )}
 
       {teaching.progress && (
@@ -281,9 +312,9 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
         </p>
         {sources.length > 0 && (
           <ul aria-label="本轮证据来源" style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)", fontSize: "var(--text-sm)" }}>
-            {sources.map((source) => (
+            {sources.map((source, index) => (
               <li key={`${source.source_id}-${source.source_type}`}>
-                <span>{sourceLabel[source.source_type] ?? source.source_type}：{source.title}</span>
+                <span>[reference:{index + 1}] {sourceLabel[source.source_type] ?? source.source_type}：{source.title}</span>
                 {source.locator && <span style={{ color: "var(--color-text-tertiary)" }}>（{source.locator}）</span>}
                 {source.url && (
                   <a
