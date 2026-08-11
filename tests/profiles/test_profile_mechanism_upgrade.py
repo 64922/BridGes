@@ -94,6 +94,23 @@ def test_explicit_preference_change_replaces_the_previous_value() -> None:
     assert records[0].content == "跑步"
 
 
+def test_explicit_confirmation_is_stronger_than_a_first_self_statement() -> None:
+    target, automatic = _in_memory_services()
+
+    automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="对，我喜欢跑步",
+        run_id="run-1",
+        mode="companion",
+    )
+
+    record = target.list_records("account-alice")[0]
+    assert record.confidence == FourDimensionConfidence.HIGH
+    assert record.change_note == "用户明确确认，可靠程度已提高"
+
+
 def test_question_observations_do_not_upgrade_a_later_self_statement() -> None:
     target, automatic = _in_memory_services()
 

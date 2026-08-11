@@ -66,6 +66,9 @@ _QUESTION_SIGNAL = re.compile(r"(?:什么是|如何|怎么|为什么|能否|请�
 _SELF_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:我|我的|目前我|我现在|我对|我喜欢|我计划)"
 )
+_CONFIRMATION_SIGNAL = re.compile(
+    r"(?:^|[，。；：\s])(?:对|是的|没错|确实)[，,：:]?\s*我"
+)
 _STAGE_GOAL_SELF_SIGNAL = re.compile(r"(?:^|[，。；：\s])(?:给|帮)我规划")
 _FORBIDDEN_SIGNAL = re.compile(
     r"(?:他人|第三方|朋友|同学|同事|他|她|他们|她们|假设|如果我是|扮演|角色扮演|"
@@ -1391,7 +1394,7 @@ class AutomaticProfileService:
                 continue
             confidence = (
                 FourDimensionConfidence.HIGH
-                if len(unique_messages) >= 2
+                if len(unique_messages) >= 2 or self._is_user_confirmation(content)
                 else FourDimensionConfidence.MEDIUM
             )
             action = item.action.value
@@ -1421,7 +1424,9 @@ class AutomaticProfileService:
                 evidence_quote=_evidence_quote(content, item.normalized_value),
                 evidence_message_id=message_id,
                 change_note=(
-                    "多次对话中再次出现，可靠程度已提高"
+                    "用户明确确认，可靠程度已提高"
+                    if self._is_user_confirmation(content)
+                    else "多次对话中再次出现，可靠程度已提高"
                     if confidence == FourDimensionConfidence.HIGH
                     else "首次明确表达，等待再次确认"
                 ),
@@ -1463,6 +1468,10 @@ class AutomaticProfileService:
                 )
             )
         return True
+
+    @staticmethod
+    def _is_user_confirmation(content: str) -> bool:
+        return bool(_CONFIRMATION_SIGNAL.search(content))
 
     def compile_chat_slice(
         self,
