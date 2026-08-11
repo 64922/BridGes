@@ -48,8 +48,8 @@ from bridges.contracts.feedback import (
 )
 from bridges.contracts.retrieval import CitationDetailProjection
 from bridges.contracts.teaching_progress import (
+    LearningProgressProjection,
     PlanAdjustment,
-    TeachingProgressProjection,
 )
 from bridges.ingestion.service import IngestionService
 from bridges.retrieval.service import LayeredRetrievalService, RetrievalError
@@ -1104,14 +1104,14 @@ def list_conversation_feedback(
 
 @router.get(
     "/conversations/{conversation_id}/learning-progress",
-    response_model=TeachingProgressProjection | None,
+    response_model=LearningProgressProjection | None,
 )
 def get_learning_progress(
     conversation_id: str,
     service: ChatServiceDep,
     subject: SubjectDep,
-) -> TeachingProgressProjection | None:
-    """恢复当前账户在该对话内的课时进度。"""
+) -> LearningProgressProjection | None:
+    """恢复当前账户在对话内的轻量学习进度。"""
     try:
         return service.learning_progress(subject.account_id, conversation_id)
     except ChatDomainError as exc:

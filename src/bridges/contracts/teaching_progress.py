@@ -169,6 +169,19 @@ class PlanAdjustment(BaseModel):
     created_at: datetime
 
 
+class LearningProgressProjection(BaseModel):
+    """学习模式只读展示的轻量进度，不代表课程、测验或掌握结论。"""
+
+    schema_version: str = "learning-progress-v1"
+    goal: str = Field(description="当前会话的学习目标。")
+    covered_topics: list[str] = Field(
+        default_factory=list, description="回答中已经覆盖的主题标题。"
+    )
+    source_message_id: str = Field(description="最近一次更新进度的助手消息。")
+    created_at: datetime
+    updated_at: datetime
+
+
 class TeachingProgressProjection(BaseModel):
     """消息流中展示的课时进度，不是长期画像维度。"""
 
@@ -192,6 +205,7 @@ __all__ = [
     "LearningLesson",
     "LearningNextAction",
     "LearningNextActionKind",
+    "LearningProgressProjection",
     "LearningPlan",
     "LearningPlanStatus",
     "LearningQuiz",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ from bridges.contracts.teaching_progress import (
     LearningNextActionKind,
     LearningPlan,
     LearningPlanStatus,
+    LearningProgressProjection,
     LearningQuiz,
     PlanAdjustment,
     PlanAdjustmentTrigger,
@@ -66,7 +68,152 @@ class ProgressPublication:
     commit: Callable[[], None]
 
 
-class TeachingProgressService:
+def _extract_covered_topics(content: str, goal: str) -> list[str]:
+    """从回答的小节标题提取轻量主题，不把正文当成长记忆保存。"""
+
+    headings = re.findall(r"(?m)^\s{0,3}#{1,6}\s+(.+?)\s*$", content)
+    topics: list[str] = []
+    for heading in headings:
+        topic = re.sub(r"\[[^\]]+\]", "", heading)
+        topic = re.sub(r"[*_`~]", "", topic).strip(" ：:。！？!?、")
+        if topic and topic not in topics:
+            topics.append(topic[:80])
+    if not topics:
+        fallback = re.sub(r"^本轮目标：", "", goal).strip()
+        if fallback:
+            topics.append(fallback[:80])
+    return topics[:12]
+
+
+class LearningProgressService:
+    """学习模式的最小持久化入口：目标、主题清单和最近消息。"""
+
+    def __init__(self, database: BridgesDatabase) -> None:
+        self._db = database
+
+    def get_learning_progress(
+        self, account_id: str, conversation_id: str
+    ) -> LearningProgressProjection | None:
+        row = self._db.scoped(account_id).execute(
+            "SELECT goal, covered_topics_json, source_message_id, created_at, updated_at "
+            "FROM learning_progress WHERE account_id = ? AND conversation_id = ?",
+            (account_id, conversation_id),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            covered_topics = json.loads(str(row["covered_topics_json"]))
+        except json.JSONDecodeError as exc:
+            raise TeachingProgressError("学习进度主题快照格式不合法。") from exc
+        if not isinstance(covered_topics, list) or not all(
+            isinstance(topic, str) for topic in covered_topics
+        ):
+            raise TeachingProgressError("学习进度主题快照格式不合法。")
+        return LearningProgressProjection(
+            goal=str(row["goal"]),
+            covered_topics=list(covered_topics),
+            source_message_id=str(row["source_message_id"]),
+            created_at=datetime.fromisoformat(str(row["created_at"])),
+            updated_at=datetime.fromisoformat(str(row["updated_at"])),
+        )
+
+    def save_learning_progress(
+        self,
+        account_id: str,
+        conversation_id: str,
+        source_message_id: str,
+        goal: str,
+        content: str,
+    ) -> LearningProgressProjection:
+        """保存一轮终态回答的主题摘要；新目标会清空旧主题。"""
+
+        projection = self._next_learning_progress(
+            account_id,
+            conversation_id,
+            source_message_id,
+            goal,
+            content,
+        )
+        with self._db.transaction():
+            self._upsert_learning_progress(account_id, conversation_id, projection)
+        return projection
+
+    def prepare_learning_publication(
+        self,
+        account_id: str,
+        conversation_id: str,
+        source_message_id: str,
+        projection: TeachingTurnProjection,
+        content: str,
+    ) -> ProgressPublication:
+        """准备与助手消息终态一起提交的轻量进度写入。"""
+
+        next_progress = self._next_learning_progress(
+            account_id,
+            conversation_id,
+            source_message_id,
+            projection.goal,
+            content,
+        )
+        enriched = projection.model_copy(update={"learning_progress": next_progress})
+        return ProgressPublication(
+            projection=enriched,
+            commit=lambda: self._upsert_learning_progress(
+                account_id, conversation_id, next_progress
+            ),
+        )
+
+    def _next_learning_progress(
+        self,
+        account_id: str,
+        conversation_id: str,
+        source_message_id: str,
+        goal: str,
+        content: str,
+    ) -> LearningProgressProjection:
+        existing = self.get_learning_progress(account_id, conversation_id)
+        normalized_goal = goal.strip()
+        same_goal = existing is not None and existing.goal == normalized_goal
+        covered_topics = list(existing.covered_topics) if same_goal and existing else []
+        for topic in _extract_covered_topics(content, normalized_goal):
+            if topic not in covered_topics:
+                covered_topics.append(topic)
+        now = _now()
+        return LearningProgressProjection(
+            goal=normalized_goal,
+            covered_topics=covered_topics[:12],
+            source_message_id=source_message_id,
+            created_at=existing.created_at if same_goal and existing else now,
+            updated_at=now,
+        )
+
+    def _upsert_learning_progress(
+        self,
+        account_id: str,
+        conversation_id: str,
+        progress: LearningProgressProjection,
+    ) -> None:
+        self._db.scoped(account_id).execute(
+            "INSERT INTO learning_progress "
+            "(account_id, conversation_id, goal, covered_topics_json, source_message_id, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT(account_id, conversation_id) DO UPDATE SET "
+            "goal = excluded.goal, covered_topics_json = excluded.covered_topics_json, "
+            "source_message_id = excluded.source_message_id, created_at = excluded.created_at, "
+            "updated_at = excluded.updated_at",
+            (
+                account_id,
+                conversation_id,
+                progress.goal,
+                _json(progress.covered_topics),
+                progress.source_message_id,
+                progress.created_at.isoformat(),
+                progress.updated_at.isoformat(),
+            ),
+        )
+
+
+class TeachingProgressService(LearningProgressService):
     """管理课时、测验、作答、评价和未来计划的单一持久化入口。"""
 
     _TRANSITIONS: dict[str, dict[str, frozenset[str]]] = {
@@ -99,7 +246,7 @@ class TeachingProgressService:
     }
 
     def __init__(self, database: BridgesDatabase) -> None:
-        self._db = database
+        super().__init__(database)
 
     @classmethod
     def assert_transition(cls, entity: str, current: str, target: str) -> None:
@@ -1095,4 +1242,9 @@ class TeachingProgressService:
         return projection.model_copy(update={"progress": progress})
 
 
-__all__ = ["ProgressPublication", "TeachingProgressError", "TeachingProgressService"]
+__all__ = [
+    "LearningProgressService",
+    "ProgressPublication",
+    "TeachingProgressError",
+    "TeachingProgressService",
+]

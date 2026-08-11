@@ -19,6 +19,7 @@ from bridges.storage.errors import StorageError
 #: 不含系统级 schema_meta 与 account_deletions 状态表。
 ACCOUNT_TABLES: tuple[str, ...] = (
     "web_search_cache",
+    "learning_progress",
     "teaching_plan_adjustments",
     "teaching_next_actions",
     "teaching_assessments",
@@ -107,6 +108,7 @@ EXPORT_CATEGORIES: tuple[ExportCategory, ...] = (
         "teaching_progress",
         "对话教学进度",
         (
+            "learning_progress",
             "teaching_plans",
             "teaching_lessons",
             "teaching_quizzes",
@@ -243,6 +245,7 @@ def logical_summary(
         "model_run_locks",
         "chat_attachments",
         "answer_feedback",
+        "learning_progress",
         "teaching_plans",
         "teaching_lessons",
         "teaching_quizzes",

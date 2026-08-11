@@ -1,11 +1,9 @@
-"""学习模式证据门与聊天教学轮次编排（Issue 08：有状态对话式教学循环）。
+"""学习模式证据门与一次性全面介绍的教学投影编排。
 
-状态机：``mission_setup``（确认目标/用途/已有水平，不过证据门）→
-``micro_lesson``（基于合格来源一次讲一个概念）→ ``understanding_check``
-（每轮最多一道低负担问题）→ ``adaptation``（依据回答证据选择补讲、换
-例子或下一概念）；来源受阻时进入 ``blocked`` 保留 mission 与恢复动作。
-mission 随 ``TeachingTurnProjection.mission`` 在会话中持久化，刷新/离开
-后继续同一教学进度。
+旧的 ``mission_setup → micro_lesson → understanding_check → adaptation``
+状态机和课时计划仍保留在合同中，用于历史消息兼容渲染；新轮次只判断
+目标是否可执行，直接组织一次性全面介绍，并把目标与已覆盖主题交给轻量
+进度服务。
 """
 
 from __future__ import annotations
@@ -39,6 +37,7 @@ from bridges.contracts.teaching import (
     TeachingStage,
     TeachingTurnProjection,
 )
+from bridges.contracts.teaching_progress import LearningProgressProjection
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 
 _PAPER_QUERY = re.compile(r"arxiv|论文|文献|期刊|研究综述", re.IGNORECASE)
@@ -62,7 +61,10 @@ _FOLLOW_UP = re.compile(
 )
 #: 学习意图（建立目标）动词；无 mission 时的教学对话默认进入目标确认。
 _LEARNING_INTENT = re.compile(
-    r"^(?:请|帮我)?(?:我想|我想要|希望|想|要|教我|教教|讲讲|学|学习|了解|认识|入门|弄懂|搞清楚)\s*[:：]?\s*\S+|"
+    r"^(?:请|帮我)?(?:我想(?:要)?|希望|想要|要)\s*"
+    r"(?:学习|学一下|学|了解|认识|入门|弄懂|搞清楚)\s*[:：]?\s*\S+|"
+    r"^(?:请|帮我)?(?:教我|教教|讲讲|学习|学一下|学|了解|认识|入门|弄懂|搞清楚)"
+    r"\s*[:：]?\s*\S+|"
     r"^(?:学习目标|目标)\s*(?:是|为)?\s*[:：]?\s*\S+",
     re.I,
 )
@@ -423,7 +425,7 @@ class TeachingEvidenceGateService:
 
 
 class TeachingTurnService:
-    """生成统一聊天流中的目标、步骤、理解检查和回答证据。"""
+    """生成统一聊天流中的学习目标、全面介绍与证据门结果。"""
 
     def __init__(self, gate: TeachingEvidenceGateService | None = None) -> None:
         self._gate = gate or TeachingEvidenceGateService()
@@ -562,6 +564,28 @@ class TeachingTurnService:
                 or _MODIFY_MISSION.search(normalized)
             )
             and len(topic.strip()) > 1
+        )
+
+    def missing_goal(self, query: str) -> TeachingTurnProjection:
+        """为缺少主题的学习请求返回一句澄清，不触发检索或模型。"""
+
+        gate = TeachingEvidenceGate(
+            status=TeachingEvidenceStatus.SUFFICIENT,
+            reason="当前消息没有提供可执行的学习主题。",
+            required_search=TeachingSearchSource.NONE,
+            checked_at=_now(),
+        )
+        return TeachingTurnProjection(
+            status=TeachingCardStatus.READY,
+            goal="等待补充学习目标",
+            level_assumption="尚未开始学习，等待具体目标。",
+            steps=["补充一个具体学习主题"],
+            check_method="不触发教学检索；先明确学习目标。",
+            evidence_gate=gate,
+            next_prompt="你想学习什么主题？请给出一个具体目标，例如“学习卷积神经网络的基础知识”。",
+            can_answer_reliably=False,
+            can_cancel=False,
+            can_retry=False,
         )
 
     @staticmethod
@@ -863,6 +887,8 @@ class TeachingTurnService:
         answer_message_id: str | None = None,
         mission: TeachingMission | None = None,
         intent: TeachingIntent | None = None,
+        goal: str | None = None,
+        learning_progress: LearningProgressProjection | None = None,
     ) -> TeachingTurnProjection:
         gate = self._gate.assess(query, retrieval, web_search, arxiv_search)
         answer = None
@@ -892,6 +918,8 @@ class TeachingTurnService:
             gate=gate,
             previous_evidence=evidence,
             answer=answer,
+            goal=goal,
+            learning_progress=learning_progress,
         )
         if mission is None:
             return turn
@@ -998,42 +1026,16 @@ class TeachingTurnService:
         gate: TeachingEvidenceGate,
         previous_evidence: list[TeachingAnswerEvidence],
         answer: TeachingAnswerEvidence | None,
+        goal: str | None = None,
+        learning_progress: LearningProgressProjection | None = None,
     ) -> TeachingTurnProjection:
-        if answer is None:
-            steps = ["确认本轮目标与水平假设", "用解释、例子或类比讲解", "提出一个理解检查问题"]
-            next_prompt = "你可以直接回答这道题，也可以跳过、追问或切回日常陪伴。"
-        elif answer.evaluated_state == AnswerEvaluatedState.CORRECT.value:
-            steps = ["确认回答中的关键点", "增加一个迁移情境", "用一道简短题检查能否应用"]
-            next_prompt = "如果你愿意，试着把这个概念应用到一个新情境。"
-        elif answer.evaluated_state == AnswerEvaluatedState.PARTIAL.value:
-            steps = ["指出已覆盖的部分", "用更小的例子补齐缺口", "再问一个更聚焦的问题"]
-            next_prompt = "我会先补一个更直观的例子；你也可以告诉我哪一步最不清楚。"
-        else:
-            steps = ["确认当前回答的困难点", "回到更小的概念", "用低负担问题重新检查"]
-            next_prompt = "我们先缩小范围；你可以说出目前最确定的一点，或直接追问。"
-
-        quiz = None
-        if (
-            status == TeachingCardStatus.READY
-            and gate.status == TeachingEvidenceStatus.SUFFICIENT
-        ):
-            refs = [source.source_id for source in [*gate.local_sources, *gate.external_sources]]
-            if answer is None:
-                expected_focus = [topic]
-                question = f"请用自己的话解释“{topic}”的核心含义，并举一个边界清楚的例子。"
-            elif answer.evaluated_state == AnswerEvaluatedState.CORRECT.value:
-                expected_focus = [topic, "应用"]
-                question = f"请把“{topic}”应用到一个新情境，并说明你的推理依据。"
-            else:
-                expected_focus = [topic]
-                question = f"先不追求完整：你现在能用一句话说出“{topic}”是什么吗？"
-            quiz = TeachingQuiz(
-                question_id=_new_id("question"),
-                concept=topic,
-                question=question,
-                expected_focus=expected_focus,
-                evidence_refs=refs,
-            )
+        del answer
+        steps = [
+            "确定本轮学习目标与范围",
+            "从多个角度检索并组织一次性全面介绍",
+            "标注来源并留下可针对性追问的入口",
+        ]
+        next_prompt = "你可以就其中任一部分继续追问，我会结合已覆盖主题自然深入。"
 
         gap_response = None
         if gate.gap:
@@ -1049,13 +1051,14 @@ class TeachingTurnService:
                 )
         return TeachingTurnProjection(
             status=status,
-            goal=f"本轮目标：理解“{topic}”，并能用自己的话说明其核心机制。",
-            level_assumption="暂按初学者处理；你的回答会调整深度、例子和下一问。",
+            goal=goal or self.goal_for_query(query),
+            level_assumption="暂按初学者处理；你可以通过追问调整深度、例子和范围。",
             steps=steps,
-            check_method="每轮最多一道理解检查题；可跳过、追问或切换模式。",
+            check_method="不强制测验；可以按需追问、要求换例子或继续深入。",
             evidence_gate=gate,
-            quiz=quiz,
+            quiz=None,
             evidence=previous_evidence,
+            learning_progress=learning_progress,
             next_prompt=next_prompt,
             gap_response=gap_response,
             can_answer_reliably=(
@@ -1094,6 +1097,12 @@ class TeachingTurnService:
         cleaned = _TOPIC_VERB_PREFIX.sub("", query.strip())
         cleaned = cleaned.split("：", 1)[0].split(":", 1)[0]
         return cleaned.rstrip("。！？?!")[:40] or "当前概念"
+
+    @classmethod
+    def goal_for_query(cls, query: str) -> str:
+        """把可执行用户目标规范成会话内稳定的学习目标。"""
+
+        return f"学习“{cls._topic(query)}”并理解其核心机制"
 
 
 def _web_status(status: WebSearchStatus) -> TeachingCardStatus:

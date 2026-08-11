@@ -8,7 +8,10 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 from bridges.contracts.learning import AnswerEvaluatedState
-from bridges.contracts.teaching_progress import TeachingProgressProjection
+from bridges.contracts.teaching_progress import (
+    LearningProgressProjection,
+    TeachingProgressProjection,
+)
 
 
 class TeachingCardStatus(StrEnum):
@@ -271,11 +274,15 @@ class TeachingMission(BaseModel):
 
 
 class TeachingTurnProjection(BaseModel):
-    """统一聊天流中的一轮教学编排投影。"""
+    """统一聊天流中的一轮教学投影。
+
+    ``mission``、``plan``、``lesson``、``quiz`` 和 ``progress`` 保留用于旧
+    消息兼容渲染；新的学习模式只写入 ``learning_progress``。
+    """
 
     status: TeachingCardStatus = Field(description="教学卡片状态。")
     mission: TeachingMission | None = Field(
-        default=None, description="会话中持久化的教学任务；普通陪伴/未确认时为 None。"
+        default=None, description="旧版教学任务，仅用于历史消息兼容渲染。"
     )
     goal: str = Field(description="本轮确认或推导的学习目标。")
     level_assumption: str = Field(description="当前水平假设及其可修正性。")
@@ -283,14 +290,19 @@ class TeachingTurnProjection(BaseModel):
     check_method: str = Field(description="理解检查方式。")
     evidence_gate: TeachingEvidenceGate = Field(description="本轮证据充足性门结果。")
     plan: TeachingPlanProjection | None = Field(
-        default=None, description="成功发布时随本轮消息交付的版本化教学计划。"
+        default=None, description="旧版版本化教学计划，仅用于历史消息兼容渲染。"
     )
     lesson: TeachingLessonProjection | None = Field(
-        default=None, description="成功发布时随计划交付的第一课。"
+        default=None, description="旧版课时，仅用于历史消息兼容渲染。"
     )
-    quiz: TeachingQuiz | None = Field(default=None, description="最多一个理解检查问题。")
+    quiz: TeachingQuiz | None = Field(
+        default=None, description="旧版理解检查题，仅用于历史消息兼容渲染。"
+    )
     progress: TeachingProgressProjection | None = Field(
-        default=None, description="已持久化的课时进度与下一检查点。"
+        default=None, description="旧版课时进度，仅用于历史消息兼容。"
+    )
+    learning_progress: LearningProgressProjection | None = Field(
+        default=None, description="当前会话的轻量学习目标与已覆盖主题。"
     )
     evidence: list[TeachingAnswerEvidence] = Field(default_factory=list)
     next_prompt: str = Field(description="下一步邀请。")

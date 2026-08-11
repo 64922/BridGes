@@ -108,6 +108,7 @@ export type RetrievalDecisionAction = components["schemas"]["RetrievalDecisionAc
 export type RetrievalDecisionReason = components["schemas"]["RetrievalDecisionReason"];
 export type RetrievalCandidateFile = components["schemas"]["RetrievalCandidateFile"];
 export type TeachingTurnProjection = components["schemas"]["TeachingTurnProjection"];
+export type LearningProgressProjection = components["schemas"]["LearningProgressProjection"];
 export type TeachingEvidenceGate = components["schemas"]["TeachingEvidenceGate"];
 export type TeachingEvidenceSource = components["schemas"]["TeachingEvidenceSource"];
 export type TeachingQuiz = components["schemas"]["TeachingQuiz"];

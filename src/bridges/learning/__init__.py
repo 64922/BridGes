@@ -7,6 +7,7 @@ from bridges.learning.review_scheduler import ReviewSchedulingService
 from bridges.learning.service import LearningService
 from bridges.learning.teaching import TeachingService
 from bridges.learning.progress import (
+    LearningProgressService,
     ProgressPublication,
     TeachingProgressError,
     TeachingProgressService,
@@ -21,6 +22,7 @@ __all__ = [
     "LearningPathService",
     "ReviewSchedulingService",
     "TeachingProgressService",
+    "LearningProgressService",
     "TeachingProgressError",
     "ProgressPublication",
 ]

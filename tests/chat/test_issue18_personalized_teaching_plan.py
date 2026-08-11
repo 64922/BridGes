@@ -1,4 +1,4 @@
-"""Issue 18：首次学习请求的计划、第一课与失败态契约。"""
+"""学习模式首次响应、降级与历史教学定义兼容契约。"""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,7 +10,7 @@ from bridges.ai import ModelGateway
 from bridges.ai.adapters import StreamChunk
 from bridges.ai.capability_registry import CapabilityRegistry
 from bridges.chat.repository import ConversationRepository
-from bridges.chat.service import ChatDomainError, ChatService
+from bridges.chat.service import ChatService
 from bridges.contracts.ai import CapabilityKind, CapabilityRecord
 from bridges.contracts.chat import ChatMessageStatus, ChatMode
 from bridges.contracts.projects import ObjectDomain
@@ -73,7 +73,9 @@ class _Adapter:
                 error_message="模拟模型失败",
             )
             return
-        yield StreamChunk(kind="delta", delta="基于 [web-1] 的第一课正文。")
+        yield StreamChunk(
+            kind="delta", delta="# 核心机制\n\n基于 [reference:1] 的完整介绍。"
+        )
         yield StreamChunk(kind="done")
 
 
@@ -123,7 +125,7 @@ def _send(service: ChatService, conversation_id: str, content: str, run_id: str)
     return final, events
 
 
-def test_clear_goal_publishes_one_versioned_plan_and_first_lesson_in_one_reply(
+def test_clear_goal_publishes_one_overview_and_lightweight_progress(
     tmp_path: Path,
 ) -> None:
     adapter = _Adapter()
@@ -136,43 +138,34 @@ def test_clear_goal_publishes_one_versioned_plan_and_first_lesson_in_one_reply(
     )
 
     assert final.status == ChatMessageStatus.DONE
-    assert final.content == "基于 [web-1] 的第一课正文。"
+    assert final.content == "# 核心机制\n\n基于 [reference:1] 的完整介绍。"
     assert final.teaching is not None
     teaching = TeachingTurnProjection.model_validate(final.teaching)
-    assert teaching.plan is not None
-    assert teaching.plan.version == 1
-    assert teaching.lesson is not None
-    assert teaching.lesson.lesson_number == 1
-    assert teaching.lesson.plan_id == teaching.plan.plan_id
-    assert teaching.lesson.explanation == final.content
-    assert teaching.plan.owner_account_id == "alice"
-    assert teaching.lesson.owner_account_id == "alice"
-    assert teaching.plan.artifact_status.value == "published"
-    assert teaching.lesson.artifact_status.value == "published"
-    assert teaching.lesson.target_snapshot_id == teaching.plan.target_snapshot_id
-    assert teaching.lesson.evidence_snapshot_id == teaching.plan.evidence_snapshot_id
-    assert teaching.plan.profile_usage.defaulted is True
+    assert teaching.mission is None
+    assert teaching.plan is None
+    assert teaching.lesson is None
+    assert teaching.quiz is None
+    assert teaching.learning_progress is not None
+    assert teaching.learning_progress.goal == "学习“Transformer”并理解其核心机制"
+    assert teaching.learning_progress.covered_topics == ["核心机制"]
     assert len(adapter.payloads) == 1
     assert client.queries and all("我想学习" not in query for query in client.queries)
     assert [event.kind for event in events if event.kind not in {"stage"}] == [
         "delta",
         "done",
     ]
-    with pytest.raises(ChatDomainError) as retry_error:
-        service.retry_generation("alice", conversation.conversation_id, final.message_id)
-    assert retry_error.value.code == "teaching_already_published"
-
     modified, _ = _send(
         service, conversation.conversation_id, "换个主题学 Python", "run-issue18-5"
     )
     assert modified.teaching is not None
     modified_teaching = TeachingTurnProjection.model_validate(modified.teaching)
-    assert modified_teaching.plan is not None
-    assert modified_teaching.lesson is not None
-    assert modified_teaching.plan.version == 2
-    assert modified_teaching.lesson.lesson_number == 1
-    assert modified_teaching.lesson.plan_id == modified_teaching.plan.plan_id
-    assert modified_teaching.plan.plan_id != teaching.plan.plan_id
+    assert modified_teaching.mission is None
+    assert modified_teaching.plan is None
+    assert modified_teaching.lesson is None
+    assert modified_teaching.quiz is None
+    assert modified_teaching.learning_progress is not None
+    assert "Python" in modified_teaching.learning_progress.goal
+    assert modified_teaching.learning_progress.covered_topics == ["核心机制"]
 
 
 @pytest.mark.parametrize("query", ["我想学一下", "帮我制定学习计划", "学习目标是"])

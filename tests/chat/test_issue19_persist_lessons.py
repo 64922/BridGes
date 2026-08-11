@@ -1,4 +1,4 @@
-"""Issue 19：聊天成功课时、测验作答与进度恢复。"""
+"""历史教学定义只读兼容与新轻量学习进度的恢复契约。"""
 
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,10 +32,17 @@ def _capability() -> CapabilityRecord:
 
 
 class _Adapter:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def stream_call(
         self, capability: CapabilityRecord, run_context: Any, payload: dict[str, Any]
     ):
-        yield StreamChunk(kind="delta", delta="基于 [web-1] 的教学正文。")
+        self.calls += 1
+        topic = "核心思想" if self.calls == 1 else "自注意力机制"
+        yield StreamChunk(
+            kind="delta", delta=f"# {topic}\n\n基于 [reference:1] 的教学正文。"
+        )
         yield StreamChunk(kind="done")
 
 
@@ -92,7 +99,9 @@ def _send(service: ChatService, conversation_id: str, content: str, run_id: str)
     return final
 
 
-def test_chat_persists_lessons_assessment_and_restores_progress(tmp_path: Path) -> None:
+def test_chat_persists_lightweight_progress_and_keeps_legacy_tables_read_only(
+    tmp_path: Path,
+) -> None:
     service = _service(tmp_path)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
     first = _send(
@@ -100,8 +109,9 @@ def test_chat_persists_lessons_assessment_and_restores_progress(tmp_path: Path) 
     )
     assert first.status == ChatMessageStatus.DONE
     assert first.teaching is not None
-    assert first.teaching.progress is not None
-    assert first.teaching.progress.lesson_number == 1
+    assert first.teaching.progress is None
+    assert first.teaching.learning_progress is not None
+    assert first.teaching.learning_progress.covered_topics == ["核心思想"]
 
     second = _send(
         service,
@@ -111,14 +121,18 @@ def test_chat_persists_lessons_assessment_and_restores_progress(tmp_path: Path) 
     )
     assert second.status == ChatMessageStatus.DONE
     assert second.teaching is not None
-    assert second.teaching.progress is not None
-    assert second.teaching.progress.lesson_number == 2
-    assert len(service._teaching_progress.list_lessons("alice", conversation.conversation_id)) == 2
-    assert len(service._teaching_progress.list_quizzes("alice", conversation.conversation_id)) == 2
+    assert second.teaching.progress is None
+    assert second.teaching.learning_progress is not None
+    assert second.teaching.learning_progress.covered_topics == [
+        "核心思想",
+        "自注意力机制",
+    ]
+    assert len(service._teaching_progress.list_lessons("alice", conversation.conversation_id)) == 0
+    assert len(service._teaching_progress.list_quizzes("alice", conversation.conversation_id)) == 0
 
     progress_after_restart = service.learning_progress("alice", conversation.conversation_id)
     assert progress_after_restart is not None
-    assert progress_after_restart.delivered_lesson_count == 2
+    assert progress_after_restart.covered_topics == ["核心思想", "自注意力机制"]
 
     skipped = _send(
         service, conversation.conversation_id, "跳过", "issue19-invalid-answer"
@@ -128,5 +142,4 @@ def test_chat_persists_lessons_assessment_and_restores_progress(tmp_path: Path) 
         "alice", conversation.conversation_id
     )
     assert progress_after_invalid is not None
-    assert progress_after_invalid.delivered_lesson_count == 2
-    assert progress_after_invalid.quiz_id == progress_after_restart.quiz_id
+    assert progress_after_invalid.covered_topics == progress_after_restart.covered_topics
