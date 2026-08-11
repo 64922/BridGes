@@ -11,7 +11,6 @@ from __future__ import annotations
 import threading
 from datetime import UTC, datetime
 
-from bridges.chat.global_writing_policy import GLOBAL_WRITING_POLICY_VERSION
 from bridges.contracts.humanizer import HumanizerSkillManifest
 
 _REGISTRATION_VERSION = "1"
@@ -72,6 +71,8 @@ class SkillRegistry:
 
 def _humanizer_manifest() -> HumanizerSkillManifest:
     """bridges-humanizer 的固定注册清单（与 SKILL.md 版本一致）。"""
+    from bridges.chat.global_writing_policy import GLOBAL_WRITING_POLICY_VERSION
+
     return HumanizerSkillManifest(
         skill_id="bridges-humanizer",
         name="文章人味化",

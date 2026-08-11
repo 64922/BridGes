@@ -8,7 +8,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,7 +17,7 @@ from bridges.contracts.chat import ChatMode
 from bridges.contracts.profiles import ProfileSliceItem
 
 
-GLOBAL_WRITING_POLICY_VERSION = "global-humanized-writing-v1"
+GLOBAL_WRITING_POLICY_VERSION = "global-humanized-writing-v2"
 SAFE_BASELINE_POLICY_VERSION = "global-humanized-writing-safe-baseline-v1"
 GLOBAL_WRITING_POLICY_SOURCE = (
     "BridGes 原创净室规则（见 src/bridges/skills/humanizer/skill/CLEAN_ROOM.md）"
@@ -25,16 +25,34 @@ GLOBAL_WRITING_POLICY_SOURCE = (
 _DEFAULT_RESOURCE = object()
 
 
+def _chat_method_rules_instruction() -> str:
+    """延迟读取共享规则，避免 chat 与 skills 包初始化时互相导入。"""
+    from bridges.skills.humanizer.method_rules import CHAT_METHOD_RULES_INSTRUCTION
+
+    return CHAT_METHOD_RULES_INSTRUCTION
+
+
+def _ensure_chat_method_rules(instruction: str) -> str:
+    """保证内部资源覆盖或更新时仍然带有共享聊天方法规则。"""
+    shared_rules = _chat_method_rules_instruction()
+    if shared_rules in instruction:
+        return instruction
+    return f"{instruction}\n{shared_rules}"
+
+
 @dataclass(frozen=True)
 class GlobalWritingPolicyResource:
     """编译器使用的只读策略资源。"""
 
     version: str = GLOBAL_WRITING_POLICY_VERSION
-    instruction: str = (
-        "只调整面向用户的自然语言正文：先准确完成当前任务，再用清楚、具体、"
-        "少空话的中文表达；对依据、证据强度和不确定性保持诚实。不要为了流畅"
-        "删除限定条件、升级因果、编造经历、引用或来源，也不要规避 AI 检测、"
-        "冒充真人、名人或特定作者。"
+    instruction: str = field(
+        default_factory=lambda: (
+            "只调整面向用户的自然语言正文：先准确完成当前任务，再遵守以下聊天档"
+            "方法规则；对依据、证据强度和不确定性保持诚实。不要为了流畅删除限定"
+            "条件、升级因果、编造经历、引用或来源，也不要规避 AI 检测、冒充真人、"
+            "名人或特定作者。\n"
+            + _chat_method_rules_instruction()
+        )
     )
 
 
@@ -180,7 +198,8 @@ class GlobalWritingPolicyCompiler:
                 "只完成任务本身，使用清楚、诚实、简洁的中文。保持原始事实、"
                 "数字、限定条件、代码、公式、JSON、引用、链接、错误码、工具"
                 "结果和协议字段不变；不规避 AI 检测、不冒充真人或名人、不伪造"
-                "经历、来源或引用。",
+                "经历、来源或引用。\n"
+                + _chat_method_rules_instruction(),
                 version=SAFE_BASELINE_POLICY_VERSION,
             ),
         )
@@ -193,6 +212,7 @@ class GlobalWritingPolicyCompiler:
         *,
         version: str = GLOBAL_WRITING_POLICY_VERSION,
     ) -> str:
+        instruction = _ensure_chat_method_rules(instruction)
         role = (
             "日常陪伴像可靠且有分寸的朋友，接住当前语境但不替用户编造经历。"
             if mode == ChatMode.COMPANION.value
