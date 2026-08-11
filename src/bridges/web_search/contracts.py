@@ -74,7 +74,9 @@ class WebSearchResult(BaseModel):
     )
     verification: WebSearchVerification = Field(
         default=WebSearchVerification.VERIFIED,
-        description="来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。",
+        description=(
+            "来源证据状态：verified、cross_verified、summary_only、fetch_failed 或 conflicting。"
+        ),
     )
     fetch_error_code: str | None = Field(
         default=None, description="来源页面抓取失败分类码。"
@@ -88,6 +90,10 @@ class WebSearchProjection(BaseModel):
     status: WebSearchStatus = Field(description="搜索状态。")
     trigger_reason: str = Field(description="触发联网搜索的中文原因。")
     query_summary: str = Field(description="本地脱敏后发送的最小查询概述。")
+    query_history: list[str] = Field(
+        default_factory=list,
+        description="本轮实际发出的脱敏查询及有限改写轨迹。",
+    )
     results: list[WebSearchResult] = Field(default_factory=list)
     searched_at: datetime | None = Field(default=None, description="搜索完成时间。")
     error_code: str | None = Field(default=None, description="搜索失败分类码。")
@@ -97,7 +103,7 @@ class WebSearchProjection(BaseModel):
     plan_id: str | None = Field(default=None, description="持久化联网计划标识。")
     provider: str = Field(default="duckduckgo", description="固定联网提供方。")
     provider_version: str = Field(
-        default="duckduckgo-instant-answer-v1", description="提供方合同版本。"
+        default="duckduckgo-html-v1", description="提供方合同版本。"
     )
     rules_version: str = Field(
         default="web-search-plan-v2", description="本地触发/脱敏规则版本。"

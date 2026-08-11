@@ -8,11 +8,12 @@ from __future__ import annotations
 
 import html
 import ipaddress
-import json
 import re
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import UTC, datetime
-from typing import Any
-from urllib.parse import urlparse
+from html.parser import HTMLParser
+from time import monotonic
+from urllib.parse import parse_qs, unquote, urljoin, urlparse
 
 import httpx
 
@@ -22,22 +23,12 @@ from bridges.web_search.contracts import (
     WebSearchResult,
 )
 
-DUCKDUCKGO_ENDPOINT = "https://api.duckduckgo.com/"
-DUCKDUCKGO_PROVIDER_VERSION = "duckduckgo-instant-answer-v1"
+DUCKDUCKGO_ENDPOINT = "https://html.duckduckgo.com/html/"
+DUCKDUCKGO_PROVIDER_VERSION = "duckduckgo-html-v1"
 DEFAULT_MAX_RESULTS = 5
 DEFAULT_MAX_RESPONSE_BYTES = 1_000_000
-DEFAULT_MAX_REDIRECTS = 0
+DEFAULT_MAX_REDIRECTS = 2
 _SOURCE_SUMMARY_MAX_CHARS = 4_000
-_AGGREGATOR_HOSTS = frozenset(
-    {
-        "wikipedia.org",
-        "zh.wikipedia.org",
-        "baike.baidu.com",
-        "zhihu.com",
-        "reddit.com",
-        "news.google.com",
-    }
-)
 _PUBLISHED_AT_RE = re.compile(
     r"(?:article:published_time|datePublished|datetime)\s*[\"'=:\s]+"
     r"(20\d{2}-\d{2}-\d{2}(?:[T\s][0-9:+.-]+)?)",
@@ -64,7 +55,7 @@ class WebSearchError(Exception):
 
 
 class DuckDuckGoClient:
-    """DuckDuckGo Instant Answer API 的同步、可替换客户端。"""
+    """DuckDuckGo HTML 网页搜索的同步、可替换客户端。"""
 
     def __init__(
         self,
@@ -79,8 +70,8 @@ class DuckDuckGoClient:
         self._client = http_client or httpx.Client(timeout=timeout)
         self._max_results = max(1, min(max_results, DEFAULT_MAX_RESULTS))
         self._max_response_bytes = max_response_bytes
-        self._max_redirects = max_redirects
-        self._fetch_sources = fetch_sources
+        self._max_redirects = max(0, min(max_redirects, DEFAULT_MAX_REDIRECTS))
+        self._should_fetch_sources = fetch_sources
 
     def search(
         self, query: str, *, timeout: float | None = None
@@ -89,19 +80,16 @@ class DuckDuckGoClient:
             raise WebSearchError(
                 "web_search_request", "公网搜索查询不能为空。", retryable=False
             )
+        if timeout is not None and timeout <= 0:
+            raise WebSearchError("web_search_timeout", "联网搜索超时，请重试。")
+        deadline = monotonic() + timeout if timeout is not None else None
         try:
             with self._client.stream(
                 "GET",
                 DUCKDUCKGO_ENDPOINT,
-                params={
-                    "q": query,
-                    "format": "json",
-                    "no_html": "1",
-                    "no_redirect": "1",
-                    "skip_disambig": "1",
-                },
+                params={"q": query},
                 follow_redirects=False,
-                timeout=timeout,
+                timeout=_remaining_timeout(deadline),
             ) as response:
                 self._validate_response(response)
                 body = _read_bounded(response, self._max_response_bytes)
@@ -123,18 +111,16 @@ class DuckDuckGoClient:
             ) from exc
 
         try:
-            payload: Any = json.loads(body)
-        except (ValueError, json.JSONDecodeError) as exc:
+            results = _parse_results(body, max_results=self._max_results)
+        except WebSearchError:
+            raise
+        except (ValueError, TypeError) as exc:
             raise WebSearchError(
                 "web_search_parse", "搜索结果暂时无法解析，请重试。"
             ) from exc
-        if not isinstance(payload, dict):
-            raise WebSearchError("web_search_parse", "搜索结果暂时无法解析，请重试。")
-
-        results = _parse_results(payload, max_results=self._max_results)
-        if not self._fetch_sources:
+        if not self._should_fetch_sources:
             return results
-        return [self._fetch_source(result) for result in results]
+        return self._fetch_source_pages(results, deadline=deadline)
 
     def health_check(self) -> WebSearchHealth:
         """探测固定提供方；请求不包含任何用户查询。"""
@@ -143,13 +129,7 @@ class DuckDuckGoClient:
             with self._client.stream(
                 "GET",
                 DUCKDUCKGO_ENDPOINT,
-                params={
-                    "q": "bridges-provider-health-check",
-                    "format": "json",
-                    "no_html": "1",
-                    "no_redirect": "1",
-                    "skip_disambig": "1",
-                },
+                params={"q": "bridges-provider-health-check"},
                 follow_redirects=False,
             ) as response:
                 self._validate_response(response)
@@ -207,39 +187,73 @@ class DuckDuckGoClient:
                 "web_search_request", "公网搜索请求未完成，请重试。"
             )
 
-    def _fetch_source(self, result: WebSearchResult) -> WebSearchResult:
-        unsafe_code = _unsafe_url_code(result.url)
-        if unsafe_code is not None:
-            return result.model_copy(
-                update={
-                    "verification": "fetch_failed",
-                    "fetch_error_code": unsafe_code,
-                }
-            )
-        if self._max_redirects != 0:
-            # The current provider contract deliberately does not follow any
-            # redirect. Keep the field explicit so a future policy cannot grow
-            # an unbounded redirect chain by accident.
-            raise WebSearchError(
-                "web_search_redirect",
-                "公网来源重定向策略不受支持。",
-                retryable=False,
-            )
+    def _fetch_source(
+        self, result: WebSearchResult, *, deadline: float | None = None
+    ) -> WebSearchResult:
         fetched_at = datetime.now(UTC)
+        current_url = result.url
+        redirect_count = 0
         try:
-            with self._client.stream(
-                "GET",
-                result.url,
-                follow_redirects=False,
-            ) as response:
-                self._validate_response(response)
-                body = _read_bounded(response, self._max_response_bytes)
+            while True:
+                unsafe_code = _unsafe_url_code(current_url)
+                if unsafe_code is not None:
+                    return result.model_copy(
+                        update={
+                            "verification": "fetch_failed",
+                            "fetch_error_code": unsafe_code,
+                            "fetched_at": fetched_at,
+                            "redirect_count": redirect_count,
+                        }
+                    )
+                with self._client.stream(
+                    "GET",
+                    current_url,
+                    follow_redirects=False,
+                    timeout=_remaining_timeout(deadline),
+                ) as response:
+                    if 300 <= response.status_code < 400:
+                        if redirect_count >= self._max_redirects:
+                            return result.model_copy(
+                                update={
+                                    "verification": "fetch_failed",
+                                    "fetch_error_code": "web_search_redirect",
+                                    "fetched_at": fetched_at,
+                                    "redirect_count": redirect_count,
+                                }
+                            )
+                        location = response.headers.get("location")
+                        if not location:
+                            return result.model_copy(
+                                update={
+                                    "verification": "fetch_failed",
+                                    "fetch_error_code": "web_search_redirect",
+                                    "fetched_at": fetched_at,
+                                    "redirect_count": redirect_count,
+                                }
+                            )
+                        next_url = urljoin(current_url, location)
+                        if _unsafe_url_code(next_url) is not None:
+                            return result.model_copy(
+                                update={
+                                    "verification": "fetch_failed",
+                                    "fetch_error_code": "web_search_unsafe_url",
+                                    "fetched_at": fetched_at,
+                                    "redirect_count": redirect_count + 1,
+                                }
+                            )
+                        current_url = next_url
+                        redirect_count += 1
+                        continue
+                    self._validate_response(response)
+                    body = _read_bounded(response, self._max_response_bytes)
+                    break
         except WebSearchError as exc:
             return result.model_copy(
                 update={
                     "verification": "fetch_failed",
                     "fetch_error_code": exc.code,
                     "fetched_at": fetched_at,
+                    "redirect_count": redirect_count,
                 }
             )
         except httpx.TimeoutException:
@@ -248,6 +262,7 @@ class DuckDuckGoClient:
                     "verification": "fetch_failed",
                     "fetch_error_code": "web_search_page_timeout",
                     "fetched_at": fetched_at,
+                    "redirect_count": redirect_count,
                 }
             )
         except httpx.ConnectError as exc:
@@ -260,6 +275,7 @@ class DuckDuckGoClient:
                         else "web_search_page_connect"
                     ),
                     "fetched_at": fetched_at,
+                    "redirect_count": redirect_count,
                 }
             )
         except httpx.HTTPError:
@@ -268,6 +284,7 @@ class DuckDuckGoClient:
                     "verification": "fetch_failed",
                     "fetch_error_code": "web_search_page_fetch",
                     "fetched_at": fetched_at,
+                    "redirect_count": redirect_count,
                 }
             )
 
@@ -278,16 +295,7 @@ class DuckDuckGoClient:
                     "verification": "summary_only",
                     "fetch_error_code": "web_search_page_empty",
                     "fetched_at": fetched_at,
-                }
-            )
-        if _is_aggregator(result.site):
-            return result.model_copy(
-                update={
-                    "verification": "summary_only",
-                    "fetch_error_code": "web_search_aggregated_source",
-                    "fetched_at": fetched_at,
-                    "content_summary": text[:_SOURCE_SUMMARY_MAX_CHARS],
-                    "published_at": _parse_published_at(body),
+                    "redirect_count": redirect_count,
                 }
             )
         return result.model_copy(
@@ -296,8 +304,62 @@ class DuckDuckGoClient:
                 "fetched_at": fetched_at,
                 "content_summary": text[:_SOURCE_SUMMARY_MAX_CHARS],
                 "published_at": _parse_published_at(body),
+                "redirect_count": redirect_count,
             }
         )
+
+    def _fetch_source_pages(
+        self, results: list[WebSearchResult], *, deadline: float | None
+    ) -> list[WebSearchResult]:
+        """用有界线程池并行回抓结果页面，且不等待超出阶段预算的任务。"""
+
+        if not results:
+            return []
+        executor = ThreadPoolExecutor(
+            max_workers=min(len(results), DEFAULT_MAX_RESULTS),
+            thread_name_prefix="web-source-fetch",
+        )
+        futures = {
+            executor.submit(
+                self._fetch_source,
+                result,
+                deadline=deadline,
+            ): result
+            for result in results
+        }
+        try:
+            done, _ = wait(
+                list(futures),
+                timeout=_remaining_timeout(deadline),
+            )
+            fetched: list[WebSearchResult] = []
+            for future, result in futures.items():
+                if future not in done:
+                    fetched.append(
+                        result.model_copy(
+                            update={
+                                "verification": "fetch_failed",
+                                "fetch_error_code": "web_search_page_timeout",
+                                "fetched_at": datetime.now(UTC),
+                            }
+                        )
+                    )
+                    continue
+                try:
+                    fetched.append(future.result())
+                except Exception:  # noqa: BLE001 - 单个来源失败不拖垮整轮
+                    fetched.append(
+                        result.model_copy(
+                            update={
+                                "verification": "fetch_failed",
+                                "fetch_error_code": "web_search_page_fetch",
+                                "fetched_at": datetime.now(UTC),
+                            }
+                        )
+                    )
+            return fetched
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
 
 def _health_error(checked_at: datetime, code: str) -> WebSearchHealth:
@@ -374,42 +436,75 @@ def _unsafe_url_code(url: str) -> str | None:
     return None
 
 
-def _parse_results(
-    payload: dict[str, Any], *, max_results: int = DEFAULT_MAX_RESULTS
-) -> list[WebSearchResult]:
-    """读取 DDG 公开链接，拒绝无真实 URL 或危险目标的摘要。"""
-    raw_items: list[dict[str, Any]] = []
-    results = payload.get("Results")
-    if isinstance(results, list):
-        raw_items.extend(item for item in results if isinstance(item, dict))
+class _DuckDuckGoResultParser(HTMLParser):
+    """只提取 DDG 结果链接、标题和摘要，不执行页面中的任何内容。"""
 
-    def collect(items: Any) -> None:
-        if not isinstance(items, list):
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.results: list[dict[str, str]] = []
+        self._active_title: list[str] | None = None
+        self._active_snippet: list[str] | None = None
+        self._active_result_index: int | None = None
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag != "a":
             return
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            if isinstance(item.get("Topics"), list):
-                collect(item["Topics"])
-            else:
-                raw_items.append(item)
+        attributes = dict(attrs)
+        classes = set((attributes.get("class") or "").split())
+        if "result__a" in classes:
+            href = attributes.get("href") or ""
+            self.results.append({"href": href, "title": "", "snippet": ""})
+            self._active_result_index = len(self.results) - 1
+            self._active_title = []
+        elif "result__snippet" in classes and self.results:
+            self._active_result_index = len(self.results) - 1
+            self._active_snippet = []
 
-    collect(payload.get("RelatedTopics"))
+    def handle_data(self, data: str) -> None:
+        if self._active_title is not None:
+            self._active_title.append(data)
+        if self._active_snippet is not None:
+            self._active_snippet.append(data)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag != "a" or self._active_result_index is None:
+            return
+        result = self.results[self._active_result_index]
+        if self._active_title is not None:
+            result["title"] = "".join(self._active_title)
+            self._active_title = None
+        if self._active_snippet is not None:
+            result["snippet"] = "".join(self._active_snippet)
+            self._active_snippet = None
+
+
+def _parse_results(
+    body: bytes, *, max_results: int = DEFAULT_MAX_RESULTS
+) -> list[WebSearchResult]:
+    """解析 DDG HTML 真实链接，拒绝无真实 URL 或危险目标的摘要。"""
+    text = body.decode("utf-8", errors="replace")
+    if "<html" not in text.lower():
+        raise WebSearchError("web_search_parse", "搜索结果暂时无法解析，请重试。")
+    parser = _DuckDuckGoResultParser()
+    try:
+        parser.feed(text)
+        parser.close()
+    except (ValueError, TypeError) as exc:
+        raise WebSearchError("web_search_parse", "搜索结果暂时无法解析，请重试。") from exc
+
     accessed_at = datetime.now(UTC)
     parsed: list[WebSearchResult] = []
     seen_urls: set[str] = set()
-    for item in raw_items:
-        url = item.get("FirstURL")
+    for item in parser.results:
+        url = _resolve_search_result_url(item["href"])
         if (
             not isinstance(url, str)
             or _unsafe_url_code(url) is not None
             or url in seen_urls
         ):
             continue
-        title = item.get("Heading") or item.get("Text") or "公开网页"
-        snippet = item.get("Text") or item.get("AbstractText") or ""
-        if not isinstance(title, str) or not isinstance(snippet, str):
-            continue
+        title = html.unescape(item["title"]).strip() or "公开网页"
+        snippet = html.unescape(item["snippet"]).strip()
         host = urlparse(url).netloc.lower().removeprefix("www.")
         if not host:
             continue
@@ -431,6 +526,24 @@ def _parse_results(
     ]
 
 
+def _resolve_search_result_url(value: str) -> str:
+    """把 DDG 的跳转链接还原为结果真实 URL。"""
+
+    raw = html.unescape(value).strip()
+    if raw.startswith("/"):
+        raw = urljoin("https://duckduckgo.com", raw)
+    parsed = urlparse(raw)
+    hostname = parsed.hostname or ""
+    if (
+        (hostname == "duckduckgo.com" or hostname.endswith(".duckduckgo.com"))
+        and parsed.path == "/l/"
+    ):
+        encoded = parse_qs(parsed.query).get("uddg", [""])[0]
+        if encoded:
+            return unquote(encoded)
+    return raw
+
+
 def _authority_rank(site: str) -> int:
     normalized = site.lower().removeprefix("www.")
     if normalized.endswith(".gov") or normalized.endswith(".gov.cn"):
@@ -440,13 +553,6 @@ def _authority_rank(site: str) -> int:
     if normalized in {"who.int", "cdc.gov", "nature.com", "science.org"}:
         return 3
     return 1
-
-
-def _is_aggregator(site: str) -> bool:
-    normalized = site.lower().removeprefix("www.")
-    return normalized in _AGGREGATOR_HOSTS or any(
-        normalized.endswith(f".{host}") for host in _AGGREGATOR_HOSTS
-    )
 
 
 def _extract_page_text(body: bytes) -> str:
@@ -468,3 +574,9 @@ def _parse_published_at(body: bytes) -> datetime | None:
     except ValueError:
         return None
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed.astimezone(UTC)
+
+
+def _remaining_timeout(deadline: float | None) -> float | None:
+    if deadline is None:
+        return None
+    return max(0.001, deadline - monotonic())

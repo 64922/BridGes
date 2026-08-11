@@ -52,8 +52,9 @@ def _chat_capability() -> CapabilityRecord:
 class _CapturingStreamAdapter:
     """捕获模型载荷的流式适配器（验证何时真正调用教学模型）。"""
 
-    def __init__(self) -> None:
+    def __init__(self, citation_id: str = "web-transformer") -> None:
         self.payloads: list[dict[str, Any]] = []
+        self.citation_id = citation_id
 
     def stream_call(
         self,
@@ -62,7 +63,9 @@ class _CapturingStreamAdapter:
         payload: dict[str, Any],
     ):
         self.payloads.append(payload)
-        yield StreamChunk(kind="delta", delta="基于合格来源讲解 [web-1]。")
+        yield StreamChunk(
+            kind="delta", delta=f"基于合格来源讲解 [{self.citation_id}]。"
+        )
         yield StreamChunk(kind="done")
 
 
@@ -221,7 +224,9 @@ def test_five_round_contract_mission_confirm_teach_adapt_follow_up_skip(
     # 第 3 轮：部分正确回答 → adaptation（补讲），仍最多一题。
     # ------------------------------------------------------------
     _, final_r3, _ = _send(
-        service, conversation.conversation_id, "Transformer 用注意力机制处理序列，其他细节我还不清楚"
+        service,
+        conversation.conversation_id,
+        "Transformer 用注意力机制处理序列，其他细节我还不清楚",
     )
     assert final_r3.status == ChatMessageStatus.DONE
     t3 = _teaching(final_r3)
@@ -305,7 +310,9 @@ def test_mission_persists_across_refresh_and_new_turn(
 
     # 新轮次（作答）延续同一 mission。
     _, final_r3, _ = _send(
-        service, conversation.conversation_id, "Transformer 用注意力机制处理序列，其他细节我还不清楚"
+        service,
+        conversation.conversation_id,
+        "Transformer 用注意力机制处理序列，其他细节我还不清楚",
     )
     t3 = _teaching(final_r3)
     assert t3.mission is not None
@@ -338,7 +345,7 @@ def test_blocked_mission_recovers_when_sources_become_available(
             ]
 
     client = _ToggleClient()
-    adapter = _CapturingStreamAdapter()
+    adapter = _CapturingStreamAdapter("web-recovered")
     service, _ = _make_service(tmp_path, client, adapter)
     conversation = service.create_conversation("alice", mode=ChatMode.STUDY)
 
@@ -422,20 +429,17 @@ def test_public_source_failure_keeps_mission_and_offers_recovery(
     assert t2.mission.stage == TeachingStage.BLOCKED
     assert t2.mission.blocked_reason
     assert t2.mission.recovery_steps
-    # 教学正文说明受阻与恢复动作，而不是输出与学习无关的内容。
-    assert "重试" in final_r2.content or "上传" in final_r2.content
-    assert not adapter.payloads  # 来源不可用时不得调用模型冒充来源。
+    # 允许模型基于自身知识给出谨慎背景回答，但正文必须标注未联网核实。
+    assert final_r2.content.startswith("本轮未联网核实：")
+    assert adapter.payloads
+    assert t2.evidence_gate.allow_model_knowledge is True
 
 
 def test_irrelevant_image_never_becomes_teaching_source(
     tmp_path: Path,
 ) -> None:
     """知识库只有无关图片（无 OCR/文本证据）时，不进入教学引用与依据。"""
-    from tests.retrieval.conftest import (
-        add_material,
-        make_retrieval_env,
-        make_storage,
-    )
+    from tests.retrieval.conftest import make_retrieval_env, make_storage
 
     env = make_retrieval_env(make_storage(tmp_path))
     database: BridgesDatabase = env["database"]

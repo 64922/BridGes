@@ -20858,6 +20858,12 @@ export interface components {
              * @description 仍不能可靠回答的缺口。
              */
             gap?: string | null;
+            /**
+             * Allow Model Knowledge
+             * @description 公开证据不可用且没有本地可用证据时，是否允许模型以谨慎方式回答。
+             * @default false
+             */
+            allow_model_knowledge: boolean;
             /** Recovery Steps */
             recovery_steps?: string[];
             /**
@@ -22368,6 +22374,11 @@ export interface components {
              * @description 本地脱敏后发送的最小查询概述。
              */
             query_summary: string;
+            /**
+             * Query History
+             * @description 本轮实际发出的脱敏查询及有限改写轨迹。
+             */
+            query_history?: string[];
             /** Results */
             results?: components["schemas"]["WebSearchResult"][];
             /**
@@ -22411,7 +22422,7 @@ export interface components {
             /**
              * Provider Version
              * @description 提供方合同版本。
-             * @default duckduckgo-instant-answer-v1
+             * @default duckduckgo-html-v1
              */
             provider_version: string;
             /**

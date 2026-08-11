@@ -16,7 +16,6 @@ interface 之后——``TurnOrchestrator.stream_turn`` 只回答「驱动一次�
 
 from __future__ import annotations
 
-import contextlib
 import re
 import threading
 import time
@@ -45,12 +44,12 @@ from bridges.chat.budget import (
     RunBudget,
     RunStage,
 )
-from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.global_writing_policy import (
     GlobalWritingPolicyCompiler,
     GlobalWritingPolicySnapshot,
     restore_protected_regions,
 )
+from bridges.chat.lifecycle import GenerationLifecycle
 from bridges.chat.repository import ConversationRepository, MessageRecord
 from bridges.chat.selections import ChatSelectionsService, selection_key
 from bridges.contracts.ai import ModelRunLock
@@ -86,7 +85,6 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageError, ImageTaskKind, ImageTaskProjection
-from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.mcp import McpCallRequest, McpError
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.contracts.profiles import (
@@ -103,6 +101,7 @@ from bridges.contracts.retrieval import (
     RetrievalRoundProjection,
     RetrievalSourceLayer,
 )
+from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.teaching import (
     TeachingCardStatus,
     TeachingIntent,
@@ -131,6 +130,7 @@ CHAT_CAPABILITY_VERSION = "1"
 
 #: 并行公开搜索超时占位（预算到期未完成的结果；调用方按降级处理）。
 _SEARCH_TIMEOUT = object()
+_UNVERIFIED_TEACHING_PREFIX = "本轮未联网核实："
 
 
 def _initial_web_search_projection(
@@ -241,8 +241,9 @@ _MODE_CONTRACTS: dict[ChatMode, ModeContract] = {
             "（简短提问或请学生复述）与适量测验；"
             "4）回答结束给出下一步学习建议。"
             "每轮先核对当前对话、附件、项目资料和授权知识库；本地证据不足时按需"
-            "检索公开来源。证据不足、冲突或不可用时，必须明确说明缺口，不得用模型"
-            "记忆补全或伪造资料。教学卡片记录的理解检查只能作为待确认状态，不能"
+            "检索公开来源。证据不足、冲突或不可用时，必须明确说明缺口；若公开检索"
+            "失败且没有本地可用证据，可以用模型一般知识给出谨慎背景回答，但必须明确"
+            "标注本轮未联网核实、降低事实结论强度，不能伪造资料。教学卡片记录的理解检查只能作为待确认状态，不能"
             "仅凭一次回答宣布用户已掌握。"
         ),
         # 编排步骤与提示词合同一致；教学业务行为由学习模式教学服务执行。
@@ -677,7 +678,8 @@ def web_search_context(projection: WebSearchProjection) -> str:
     return "\n".join(lines)
 
 
-_WEB_CITATION_RE = re.compile(r"\[web-(\d+)\]")
+_WEB_CITATION_RE = re.compile(r"\[(web-[A-Za-z0-9_-]+)\]")
+_ARXIV_CITATION_RE = re.compile(r"\[arxiv-[A-Za-z0-9_-]+\]")
 _WEB_URL_RE = re.compile(r"https?://[^\s)\]>，。]+", re.IGNORECASE)
 
 
@@ -688,14 +690,22 @@ def web_search_citation_error(
     valid_urls: set[str] | None = None,
 ) -> str | None:
     """要求联网回答至少引用一个真实结果，且不能引用不存在的结果编号。"""
-    references = [int(match) for match in _WEB_CITATION_RE.findall(content)]
+    references = _WEB_CITATION_RE.findall(content)
     if not references:
         return "联网回答缺少可核实引用，请重试。"
     if valid_result_ids is not None:
-        if any(f"web-{reference}" not in valid_result_ids for reference in references):
+        if any(reference not in valid_result_ids for reference in references):
             return "联网回答引用了不可核验或不存在的来源，请重试。"
-    elif any(reference < 1 or reference > result_count for reference in references):
-        return "联网回答引用了不存在的来源，请重试。"
+    else:
+        numeric_references = [
+            int(reference.removeprefix("web-"))
+            for reference in references
+            if reference.removeprefix("web-").isdigit()
+        ]
+        if len(numeric_references) != len(references) or any(
+            reference < 1 or reference > result_count for reference in numeric_references
+        ):
+            return "联网回答引用了不存在的来源，请重试。"
     if valid_urls is not None:
         answer_urls = {
             match.rstrip(".,，。") for match in _WEB_URL_RE.findall(content)
@@ -906,7 +916,16 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
     """向模型注入教学证据边界，防止把模型记忆冒充为本轮依据。"""
     gate = teaching.evidence_gate
     lines = [
-        "你正在执行学习模式的一轮教学。只能使用下列证据门允许的来源，不得用模型记忆填补缺口。",
+        (
+            "你正在执行学习模式的一轮教学。证据门未通过，但本轮允许使用模型一般知识"
+            "给出谨慎背景回答；回答开头必须明确说明本轮未联网核实，事实性结论使用"
+            "‘通常’、‘可能’等降调表达，不得伪造来源或引用。"
+            if gate.allow_model_knowledge
+            else (
+                "你正在执行学习模式的一轮教学。只能使用下列证据门允许的来源，"
+                "不得用模型记忆填补缺口。"
+            )
+        ),
         f"证据门状态：{gate.status.value}；理由：{gate.reason}",
         f"本轮可靠回答许可：{'是' if teaching.can_answer_reliably else '否'}",
         "不得仅凭一次自述或一次题目回答宣称用户已掌握；知识状态只能作为待确认候选。",
@@ -925,6 +944,25 @@ def teaching_context(teaching: TeachingTurnProjection) -> str:
     if gate.gap:
         lines.append(f"必须向用户明确说明缺口：{gate.gap}")
     return "\n".join(lines)
+
+
+def ensure_unverified_teaching_prefix(content: str) -> str:
+    """保证未联网核实的教学回答在正文开头有确定性标注。"""
+
+    content = strip_unverified_teaching_references(content)
+    if content.startswith(_UNVERIFIED_TEACHING_PREFIX):
+        return content
+    if not content:
+        return _UNVERIFIED_TEACHING_PREFIX
+    return f"{_UNVERIFIED_TEACHING_PREFIX}\n{content}"
+
+
+def strip_unverified_teaching_references(content: str) -> str:
+    """移除无本轮来源可绑定的联网引用和链接。"""
+
+    return _WEB_URL_RE.sub(
+        "", _ARXIV_CITATION_RE.sub("", _WEB_CITATION_RE.sub("", content))
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1053,7 +1091,7 @@ def capability_route_from(route: dict[str, Any] | None) -> CapabilityRoute | Non
         try:
             decision = RouteDecision.model_validate(route)
         except ValidationError:
-            raise capability_error
+            raise capability_error from None
     status = {
         RouteOperation.GENERATE: RouteStatus.MATCHED,
         RouteOperation.EDIT: RouteStatus.MATCHED,
@@ -1431,6 +1469,7 @@ class TurnOrchestrator:
         )
         web_search_projection: WebSearchProjection | None = None
         arxiv_search_projection: ArxivSearchProjection | None = None
+        allow_model_knowledge_fallback = False
         #: 模型阶段标记：try 前初始化，finally 统一关闭计时（异常路径安全）
         generation_entered = False
         first_token_ms: int | None = None
@@ -2166,8 +2205,12 @@ class TurnOrchestrator:
                     datetime.now(UTC),
                 )
                 thinking = teaching_thinking(thinking, teaching_projection)
+                allow_model_knowledge_fallback = (
+                    teaching_projection.evidence_gate.allow_model_knowledge
+                )
 
-                # 证据门仍未通过时用明确缺口结束本轮，不让模型记忆冒充来源。
+                # 证据门仍未通过且没有可安全降级的路径时，用明确缺口结束本轮。
+                # 搜索失败且没有本地证据时允许进入模型生成，但保留确定性标注。
                 # Issue 06：教学轮次超预算时不再进入模型生成，用明确说明
                 # 交付并保留 mission（进度不丢失，可重试继续）。
                 if budget.expired() and teaching_projection.can_answer_reliably:
@@ -2184,7 +2227,10 @@ class TurnOrchestrator:
                     )
                     thinking = budget_warning_thinking(thinking)
 
-                if not teaching_projection.can_answer_reliably:
+                if (
+                    not teaching_projection.can_answer_reliably
+                    and not allow_model_knowledge_fallback
+                ):
                     safe_response = teaching_projection.gap_response or (
                         "这轮的依据还不够，我先不把不确定内容说成可靠结论。"
                     )
@@ -2702,6 +2748,12 @@ class TurnOrchestrator:
                         error_message=user_facing_error("budget_exceeded"),
                     )
                 return
+            if allow_model_knowledge_fallback:
+                content = ensure_unverified_teaching_prefix(content)
+                self._repo.update_message_content(
+                    account_id, assistant_message_id, content, datetime.now(UTC)
+                )
+                yield StreamEvent(kind="delta", delta=content)
             for event in gateway.stream(
                 CHAT_CAPABILITY_NAME, CHAT_CAPABILITY_VERSION, run_context, payload
             ):
@@ -2742,6 +2794,10 @@ class TurnOrchestrator:
                             1, int((time.monotonic() - generation_started) * 1000)
                         )
                     candidate_content = content + event.delta
+                    if allow_model_knowledge_fallback:
+                        candidate_content = strip_unverified_teaching_references(
+                            candidate_content
+                        )
                     protected_content = restore_protected_regions(
                         owner_query,
                         candidate_content,
@@ -2790,6 +2846,8 @@ class TurnOrchestrator:
                     return
                 elif event.kind == "done":
                     self._persist_lock(account_id, event.lock)
+                    if allow_model_knowledge_fallback:
+                        content = strip_unverified_teaching_references(content)
                     protected_content = restore_protected_regions(
                         owner_query,
                         content,
@@ -2824,20 +2882,27 @@ class TurnOrchestrator:
                         yield self._stage_event(
                             assistant_message_id, RunStage.QUALITY_CHECK, "active"
                         )
-                    if web_search_projection is not None:
+                    verified_web_results = (
+                        [
+                            result
+                            for result in web_search_projection.results
+                            if result.verification in {"verified", "cross_verified"}
+                        ]
+                        if web_search_projection is not None
+                        else []
+                    )
+                    if (
+                        web_search_projection is not None
+                        and verified_web_results
+                        and not allow_model_knowledge_fallback
+                    ):
                         citation_error = web_search_citation_error(
                             content,
                             len(web_search_projection.results),
                             {
-                                result.result_id
-                                for result in web_search_projection.results
-                                if result.verification in {"verified", "cross_verified"}
+                                result.result_id for result in verified_web_results
                             },
-                            {
-                                result.url
-                                for result in web_search_projection.results
-                                if result.verification in {"verified", "cross_verified"}
-                            },
+                            {result.url for result in verified_web_results},
                         )
                         if citation_error is not None:
                             invalid_web_projection = web_search_projection.model_copy(
@@ -2893,7 +2958,10 @@ class TurnOrchestrator:
                                 lock=event.lock,
                             )
                             return
-                    if arxiv_search_projection is not None:
+                    if (
+                        arxiv_search_projection is not None
+                        and not allow_model_knowledge_fallback
+                    ):
                         citation_error = arxiv_citation_error(
                             content, arxiv_search_projection
                         )

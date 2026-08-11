@@ -120,6 +120,10 @@ class TeachingEvidenceGate(BaseModel):
     required_search: TeachingSearchSource = Field(default=TeachingSearchSource.NONE)
     search_status: TeachingCardStatus | None = Field(default=None)
     gap: str | None = Field(default=None, description="仍不能可靠回答的缺口。")
+    allow_model_knowledge: bool = Field(
+        default=False,
+        description="公开证据不可用且没有本地可用证据时，是否允许模型以谨慎方式回答。",
+    )
     recovery_steps: list[str] = Field(default_factory=list)
     checked_at: datetime = Field(description="证据门检查时间。")
 

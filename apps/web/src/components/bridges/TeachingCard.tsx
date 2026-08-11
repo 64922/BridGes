@@ -23,9 +23,9 @@ const statusLabel: Record<string, string> = {
   loading: "正在检查证据",
   recovery: "正在恢复检查",
   ready: "证据检查完成",
-  empty: "暂未找到足够证据",
-  error: "证据检查失败",
-  permission: "证据来源无权限",
+  empty: "证据不足",
+  error: "联网核实失败",
+  permission: "证据来源不可用",
 };
 
 const evidenceLabel: Record<string, string> = {
@@ -40,15 +40,15 @@ const sourceLabel: Record<string, string> = {
   project: "历史材料",
   knowledge_base: "已授权知识库",
   local: "本地材料",
-  duckduckgo: "DuckDuckGo",
+  duckduckgo: "DuckDuckGo 网页搜索",
   arxiv: "arXiv",
 };
 
 const searchSourceLabel: Record<string, string> = {
   none: "无需联网",
-  duckduckgo: "DuckDuckGo",
+  duckduckgo: "DuckDuckGo 网页搜索",
   arxiv: "arXiv",
-  both: "DuckDuckGo + arXiv",
+  both: "DuckDuckGo 网页搜索 + arXiv",
 };
 
 const evaluationLabel: Record<string, string> = {
@@ -72,6 +72,13 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
   const isMissionSetup = mission?.stage === "mission_setup";
   const isBlocked = mission?.stage === "blocked";
   const lessonQuiz = teaching.lesson?.understanding_check ?? teaching.quiz;
+  const fallbackAnswer = gate.allow_model_knowledge && !teaching.can_answer_reliably;
+  const visibleStatus = fallbackAnswer
+    ? "已降级为模型知识回答（本轮未联网核实）"
+    : statusLabel[teaching.status] ?? teaching.status;
+  const visibleEvidence = fallbackAnswer
+    ? `${evidenceLabel[gate.status] ?? gate.status}（本轮未联网核实）`
+    : evidenceLabel[gate.status] ?? gate.status;
 
   return (
     <section
@@ -94,7 +101,7 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
               本轮教学
             </h3>
             <span role={isBusy ? "status" : teaching.status === "error" || teaching.status === "permission" ? "alert" : "status"} style={{ color: statusTone(teaching.status), fontSize: "var(--text-sm)" }}>
-              {statusLabel[teaching.status] ?? teaching.status}
+              {visibleStatus}
             </span>
           </div>
           <p style={{ margin: "var(--space-2) 0 0", color: "var(--color-text-secondary)" }}>
@@ -264,7 +271,7 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
         }}
       >
         <div style={{ display: "flex", justifyContent: "space-between", gap: "var(--space-2)", flexWrap: "wrap" }}>
-          <strong>证据门：{evidenceLabel[gate.status] ?? gate.status}</strong>
+          <strong>证据门：{visibleEvidence}</strong>
           <span style={{ color: "var(--color-text-secondary)", fontSize: "var(--text-sm)" }}>
             补充来源：{searchSourceLabel[gate.required_search] ?? "待确定"}
           </span>

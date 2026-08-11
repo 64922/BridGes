@@ -50702,6 +50702,12 @@
             "title": "Gap",
             "description": "仍不能可靠回答的缺口。"
           },
+          "allow_model_knowledge": {
+            "type": "boolean",
+            "title": "Allow Model Knowledge",
+            "description": "公开证据不可用且没有本地可用证据时，是否允许模型以谨慎方式回答。",
+            "default": false
+          },
           "recovery_steps": {
             "items": {
               "type": "string"
@@ -53025,6 +53031,14 @@
             "title": "Query Summary",
             "description": "本地脱敏后发送的最小查询概述。"
           },
+          "query_history": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Query History",
+            "description": "本轮实际发出的脱敏查询及有限改写轨迹。"
+          },
           "results": {
             "items": {
               "$ref": "#/components/schemas/WebSearchResult"
@@ -53103,7 +53117,7 @@
             "type": "string",
             "title": "Provider Version",
             "description": "提供方合同版本。",
-            "default": "duckduckgo-instant-answer-v1"
+            "default": "duckduckgo-html-v1"
           },
           "rules_version": {
             "type": "string",

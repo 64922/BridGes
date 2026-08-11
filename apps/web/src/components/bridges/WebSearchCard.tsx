@@ -1,6 +1,16 @@
 import { Icon } from "@/components/design-system/Icon";
 import type { WebSearchProjection, WebSearchResult } from "@/lib/api";
 
+const unverifiedSearchSuffix = "；学习模式将标注本轮未联网核实";
+const failureStatusLabel: Record<string, string> = {
+  permission: `公网搜索权限未通过${unverifiedSearchSuffix}`,
+  empty: `没有找到公开网页结果${unverifiedSearchSuffix}`,
+  evidence_insufficient: `来源证据不足${unverifiedSearchSuffix}`,
+  fetch_error: `来源页面抓取失败${unverifiedSearchSuffix}`,
+  source_conflict: "来源存在冲突",
+  error: `联网搜索未完成${unverifiedSearchSuffix}`,
+};
+
 function accessedAt(value: string | null): string {
   if (!value) return "访问时间未知";
   const date = new Date(value);
@@ -86,6 +96,16 @@ function RetryButton({ onRetry }: { onRetry: () => void }) {
       <Icon name="retry" size={14} aria-hidden />
       重试联网搜索
     </button>
+  );
+}
+
+function QueryTrail({ search }: { search: WebSearchProjection }) {
+  const history = search.query_history ?? [];
+  if (history.length <= 1) return null;
+  return (
+    <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
+      本轮执行的脱敏查询：{history.join(" · ")}
+    </span>
   );
 }
 
@@ -181,24 +201,13 @@ export function WebSearchCard({
       >
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
           <Icon name={failed ? "alert" : "info"} size={16} aria-hidden />
-          <strong>
-            {search.status === "permission"
-              ? "公网搜索权限未通过"
-              : search.status === "empty"
-                ? "没有找到公开网页结果"
-                : search.status === "evidence_insufficient"
-                  ? "来源证据不足"
-                  : search.status === "fetch_error"
-                    ? "来源页面抓取失败"
-                    : search.status === "source_conflict"
-                      ? "来源存在冲突"
-                : "联网搜索未完成"}
-          </strong>
+          <strong>{failureStatusLabel[search.status] ?? "联网搜索未完成"}</strong>
           {search.can_retry && <span style={{ marginLeft: "auto" }}><RetryButton onRetry={onRetry} /></span>}
         </div>
         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>
           {search.error_message ?? "请检查网络后重试。"}
         </span>
+        <QueryTrail search={search} />
       </section>
     );
   }
@@ -226,6 +235,7 @@ export function WebSearchCard({
       <span style={{ fontSize: "var(--text-xs)", color: "var(--color-text-tertiary)" }}>
         {search.trigger_reason} · 查询概述：{search.query_summary}
       </span>
+      <QueryTrail search={search} />
       <ul
         role="list"
         aria-label="联网搜索来源"

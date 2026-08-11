@@ -4,30 +4,31 @@ from __future__ import annotations
 
 import os
 from datetime import UTC, datetime
-from threading import Event
+from threading import Event, Lock
+from time import sleep
 
 import httpx
 import pytest
 
+from bridges.chat.turn import web_search_citation_error, web_search_context
 from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction
 from bridges.observability.service import ObservabilityService
 from bridges.storage import BridgesDatabase
 from bridges.web_search.client import DuckDuckGoClient, WebSearchError
 from bridges.web_search.contracts import (
+    WebSearchHealthStatus,
     WebSearchProjection,
     WebSearchResult,
-    WebSearchHealthStatus,
     WebSearchStatus,
 )
+from bridges.web_search.repository import WebSearchCacheRepository
 from bridges.web_search.service import (
     InMemoryWebSearchCache,
     LocalQueryPlanner,
     SearchPlan,
     WebSearchService,
 )
-from bridges.chat.turn import web_search_citation_error, web_search_context
-from bridges.web_search.repository import WebSearchCacheRepository
 
 
 class _FakeSearchClient:
@@ -133,6 +134,31 @@ def test_planner_removes_explicit_names_and_precise_locations() -> None:
     assert "precise_location" in plan.deleted_categories
 
 
+def test_planner_builds_bounded_side_focus_queries_from_scrubbed_terms() -> None:
+    plan = LocalQueryPlanner().plan(
+        "我想学习卷积神经网络的基础知识。我的姓名是 Alice。",
+        ChatMode.STUDY,
+        force=True,
+    )
+
+    assert 2 <= len(plan.queries) <= 4
+    assert plan.query == plan.queries[0]
+    assert all("Alice" not in query for query in plan.queries)
+    assert len(set(plan.queries)) == len(plan.queries)
+
+
+def test_planner_keeps_a_side_focus_when_scrubbed_query_reaches_length_limit() -> None:
+    plan = LocalQueryPlanner().plan(
+        "请联网核实" + "量子计算" * 30,
+        ChatMode.COMPANION,
+    )
+
+    assert len(plan.query) >= 70
+    assert all(len(query) <= 80 for query in plan.queries)
+    assert len(plan.queries) >= 2
+    assert any("核心概念 原理" in query for query in plan.queries[1:])
+
+
 def test_duckduckgo_client_sends_only_minimal_public_query_and_real_links() -> None:
     captured: list[httpx.QueryParams] = []
 
@@ -140,15 +166,12 @@ def test_duckduckgo_client_sends_only_minimal_public_query_and_real_links() -> N
         captured.append(request.url.params)
         return httpx.Response(
             200,
-            json={
-                "Results": [
-                    {
-                        "FirstURL": "https://example.com/news",
-                        "Heading": "公开新闻",
-                        "Text": "公开摘要",
-                    }
-                ]
-            },
+            content=(
+                '<html><body><div class="result">'
+                '<h2><a class="result__a" href="https://example.com/news">公开新闻</a></h2>'
+                '<a class="result__snippet">公开摘要</a>'
+                "</div></body></html>"
+            ).encode(),
         )
 
     results = DuckDuckGoClient(
@@ -156,13 +179,7 @@ def test_duckduckgo_client_sends_only_minimal_public_query_and_real_links() -> N
     ).search("量子 计算")
 
     assert captured[0]["q"] == "量子 计算"
-    assert set(captured[0].keys()) == {
-        "q",
-        "format",
-        "no_html",
-        "no_redirect",
-        "skip_disambig",
-    }
+    assert set(captured[0].keys()) == {"q"}
     assert results[0].url == "https://example.com/news"
     assert results[0].site == "example.com"
     assert results[0].fetched_at is not None
@@ -174,18 +191,14 @@ def test_duckduckgo_client_rejects_private_source_without_fetching_it() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         requested_hosts.append(request.url.host or "")
-        if request.url.host == "api.duckduckgo.com":
+        if request.url.host == "html.duckduckgo.com":
             return httpx.Response(
                 200,
-                json={
-                    "Results": [
-                        {
-                            "FirstURL": "http://127.0.0.1/private",
-                            "Heading": "不安全来源",
-                            "Text": "不应访问",
-                        }
-                    ]
-                },
+                content=(
+                    '<html><body><a class="result__a" '
+                    'href="http://127.0.0.1/private">不安全来源</a>'
+                    "</body></html>"
+                ).encode(),
             )
         raise AssertionError("private source must not be fetched")
 
@@ -194,23 +207,20 @@ def test_duckduckgo_client_rejects_private_source_without_fetching_it() -> None:
     ).search("公开主题")
 
     assert results == []
-    assert requested_hosts == ["api.duckduckgo.com"]
+    assert requested_hosts == ["html.duckduckgo.com"]
 
 
-def test_duckduckgo_client_keeps_aggregators_summary_only() -> None:
+def test_duckduckgo_client_treats_aggregators_as_verified_after_fetch() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
-        if request.url.host == "api.duckduckgo.com":
+        if request.url.host == "html.duckduckgo.com":
             return httpx.Response(
                 200,
-                json={
-                    "Results": [
-                        {
-                            "FirstURL": "https://wikipedia.org/quantum",
-                            "Heading": "聚合来源",
-                            "Text": "可供定位的摘要",
-                        }
-                    ]
-                },
+                content=(
+                    '<html><body><a class="result__a" '
+                    'href="https://wikipedia.org/quantum">聚合来源</a>'
+                    '<a class="result__snippet">可供定位的摘要</a>'
+                    "</body></html>"
+                ).encode(),
             )
         return httpx.Response(200, content=b"<html><body>page content</body></html>")
 
@@ -218,8 +228,65 @@ def test_duckduckgo_client_keeps_aggregators_summary_only() -> None:
         http_client=httpx.Client(transport=httpx.MockTransport(handler))
     ).search("公开主题")
 
-    assert results[0].verification == "summary_only"
-    assert results[0].fetch_error_code == "web_search_aggregated_source"
+    assert results[0].verification == "verified"
+    assert results[0].fetch_error_code is None
+
+
+def test_duckduckgo_client_follows_a_bounded_source_redirect() -> None:
+    requested_paths: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requested_paths.append(request.url.path)
+        if request.url.host == "html.duckduckgo.com":
+            return httpx.Response(
+                200,
+                content=(
+                    '<html><body><a class="result__a" '
+                    'href="https://example.com/redirect">重定向来源</a>'
+                    "</body></html>"
+                ).encode(),
+            )
+        if request.url.path == "/redirect":
+            return httpx.Response(302, headers={"location": "/final"})
+        return httpx.Response(200, content=b"<html><body>final page</body></html>")
+
+    results = DuckDuckGoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    ).search("公开主题")
+
+    assert results[0].verification == "verified"
+    assert results[0].redirect_count == 1
+    assert requested_paths == ["/html/", "/redirect", "/final"]
+
+
+def test_duckduckgo_client_fetches_result_pages_in_parallel() -> None:
+    active = 0
+    max_active = 0
+    lock = Lock()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal active, max_active
+        if request.url.host == "html.duckduckgo.com":
+            links = "".join(
+                f'<a class="result__a" href="https://example.com/source-{index}">来源 {index}</a>'
+                for index in range(5)
+            )
+            return httpx.Response(200, content=f"<html><body>{links}</body></html>".encode())
+        with lock:
+            active += 1
+            max_active = max(max_active, active)
+        sleep(0.03)
+        with lock:
+            active -= 1
+        return httpx.Response(200, content=b"<html><body>page content</body></html>")
+
+    results = DuckDuckGoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler))
+    ).search("公开主题")
+
+    assert len(results) == 5
+    assert max_active >= 2
+    assert all(result.verification == "verified" for result in results)
 
 
 def test_duckduckgo_client_maps_dns_and_oversized_response_failures() -> None:
@@ -340,7 +407,120 @@ def test_service_exposes_empty_error_and_cancelled_states_and_audits_without_que
     cancelled = service.search("acct-1", plan, stop_event=cancelled_event)
     assert cancelled is not None
     assert cancelled.status == WebSearchStatus.CANCELLED
-    assert client.queries == ["公开主题"]
+    assert client.queries == ["公开主题", "公开主题 基础定义 原理"]
+
+
+def test_service_runs_queries_in_parallel_and_rewrites_empty_results() -> None:
+    result = WebSearchResult(
+        result_id="web-rewritten",
+        title="基础定义来源",
+        site="example.com",
+        url="https://example.com/rewrite",
+        snippet="基础定义",
+        accessed_at=datetime.now(UTC),
+    )
+
+    class _RewriteClient:
+        def __init__(self) -> None:
+            self.queries: list[str] = []
+            self.active = 0
+            self.max_active = 0
+            self.lock = Lock()
+
+        def search(self, query: str) -> list[WebSearchResult]:
+            self.queries.append(query)
+            with self.lock:
+                self.active += 1
+                self.max_active = max(self.max_active, self.active)
+            sleep(0.02)
+            with self.lock:
+                self.active -= 1
+            return [result] if "基础定义" in query else []
+
+    client = _RewriteClient()
+    service = WebSearchService(client=client)
+    plan = SearchPlan(
+        True,
+        "卷积 神经 网络",
+        "学习模式本地证据不足",
+        queries=("卷积 神经 网络", "卷积 神经 网络 应用"),
+        max_queries=2,
+        max_retries=1,
+    )
+
+    projection = service.search("acct-1", plan)
+
+    assert projection is not None
+    assert projection.status == WebSearchStatus.SUCCESS
+    assert projection.query_count == 3
+    assert projection.query_history[:2] == list(plan.queries)
+    assert projection.query_history[-1].endswith("基础定义 原理")
+    assert "改写查询 1 次" in projection.trigger_reason
+    assert client.max_active == 2
+
+
+def test_service_rewrites_after_a_bounded_provider_retry() -> None:
+    result = WebSearchResult(
+        result_id="web-rewritten",
+        title="基础定义来源",
+        site="example.com",
+        url="https://example.com/rewrite-after-error",
+        accessed_at=datetime.now(UTC),
+    )
+
+    class _FailThenRewriteClient:
+        def __init__(self) -> None:
+            self.calls: list[str] = []
+
+        def search(self, query: str) -> list[WebSearchResult]:
+            self.calls.append(query)
+            if query == "卷积 神经 网络":
+                raise WebSearchError("web_search_timeout", "超时")
+            return [result]
+
+    client = _FailThenRewriteClient()
+    service = WebSearchService(client=client)
+    plan = SearchPlan(
+        True,
+        "卷积 神经 网络",
+        "学习模式本地证据不足",
+        max_retries=1,
+    )
+
+    projection = service.search("acct-1", plan)
+
+    assert projection is not None
+    assert projection.status == WebSearchStatus.SUCCESS
+    assert client.calls == [
+        "卷积 神经 网络",
+        "卷积 神经 网络",
+        "卷积 神经 网络 基础定义 原理",
+    ]
+    assert projection.query_count == 3
+
+
+def test_service_does_not_retry_non_retryable_provider_errors() -> None:
+    class _OversizedClient:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def search(self, query: str) -> list[WebSearchResult]:
+            self.calls += 1
+            raise WebSearchError(
+                "web_search_response_too_large",
+                "响应过大",
+                retryable=False,
+            )
+
+    client = _OversizedClient()
+    projection = WebSearchService(client=client).search(
+        "acct-1",
+        SearchPlan(True, "公开主题", "需要事实核查"),
+    )
+
+    assert projection is not None
+    assert projection.error_code == "web_search_response_too_large"
+    assert client.calls == 1
 
 
 def test_service_retries_once_then_reuses_account_scoped_cache() -> None:
