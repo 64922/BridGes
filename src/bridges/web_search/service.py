@@ -16,12 +16,15 @@ from bridges.contracts.chat import ChatMode
 from bridges.contracts.observability import AuditAction, AuditResult
 from bridges.observability.service import ObservabilityService
 from bridges.web_search.client import (
+    DEFAULT_PROVIDER_COOLDOWN_SECONDS,
+    DUCKDUCKGO_REQUEST_PROFILE_VERSION,
     DUCKDUCKGO_PROVIDER_VERSION,
     DuckDuckGoClient,
     WebSearchError,
 )
 from bridges.web_search.contracts import (
     WebSearchProjection,
+    WebSearchPageClassification,
     WebSearchResult,
     WebSearchStatus,
 )
@@ -317,6 +320,8 @@ class WebSearchService:
         self._observability = observability
         self._cache = cache or InMemoryWebSearchCache()
         self._clock = clock or (lambda: datetime.now(UTC))
+        self._provider_cooldown_until: datetime | None = None
+        self._provider_state_lock = RLock()
 
     def plan(
         self,
@@ -347,6 +352,7 @@ class WebSearchService:
     ) -> WebSearchProjection | None:
         if not plan.should_search:
             return None
+        started = time.monotonic()
         now = self._clock()
         cached = self._cache.get(account_id, plan, now)
         if cached is not None:
@@ -357,7 +363,7 @@ class WebSearchService:
                     "cache_hit": True,
                 }
             )
-            self._audit(account_id, plan, cached)
+            self._audit(account_id, plan, cached, duration_ms=_elapsed_ms(started))
             return cached
         if stop_event is not None and stop_event.is_set():
             result = self._projection(
@@ -365,7 +371,25 @@ class WebSearchService:
                 status=WebSearchStatus.CANCELLED,
                 error_message="已取消本轮联网搜索。",
             )
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+            return result
+
+        cooldown_until = self._active_provider_cooldown(now)
+        if cooldown_until is not None:
+            result = self._projection(
+                plan,
+                status=WebSearchStatus.ERROR,
+                searched_at=now,
+                error_code="web_search_provider_challenge",
+                error_message=(
+                    "DuckDuckGo 搜索提供方暂时受阻，正在冷却；请稍后显式重试，"
+                    "系统不会在本轮自动重复请求。"
+                ),
+                can_retry=True,
+                page_classification=WebSearchPageClassification.CHALLENGE,
+                cooldown_until=cooldown_until,
+            )
+            self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
             return result
 
         deadline = time.monotonic() + max(0.0, plan.total_timeout_seconds)
@@ -375,6 +399,8 @@ class WebSearchService:
         queries = plan.queries or ((plan.query,) if plan.query else ())
         results: list[WebSearchResult] = []
         errors: list[BaseException] = []
+        page_classification: WebSearchPageClassification | None = None
+        http_status_category: str | None = None
         same_query_retries = 0
         rewrite_attempted = False
         while queries:
@@ -385,22 +411,69 @@ class WebSearchService:
                     query_count=query_count,
                     query_history=query_history,
                 )
-                self._audit(account_id, plan, result)
+                self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
                 return result
             attempts += 1
-            round_results, round_errors, sent_count = self._run_queries(
+            (
+                round_results,
+                round_errors,
+                sent_count,
+                round_page_classifications,
+                round_http_status_categories,
+            ) = self._run_queries(
                 queries,
                 deadline=deadline,
                 stop_event=stop_event,
             )
             query_count += sent_count
             query_history.extend(queries[:sent_count])
+            if round_page_classifications:
+                page_classification = round_page_classifications[-1]
+            if round_http_status_categories:
+                http_status_category = round_http_status_categories[-1]
+            queries = queries[sent_count:]
             results = self._merge_results(results, round_results)
             errors = round_errors
             if results:
                 break
             if stop_event is not None and stop_event.is_set():
                 break
+            challenge_error = next(
+                (
+                    error
+                    for error in errors
+                    if isinstance(error, WebSearchError)
+                    and error.code == "web_search_provider_challenge"
+                ),
+                None,
+            )
+            if challenge_error is not None:
+                cooldown_until = self._activate_provider_cooldown(
+                    self._clock(),
+                    challenge_error.cooldown_seconds
+                    or DEFAULT_PROVIDER_COOLDOWN_SECONDS,
+                )
+                result = self._projection(
+                    plan,
+                    status=WebSearchStatus.ERROR,
+                    searched_at=self._clock(),
+                    error_code=challenge_error.code,
+                    error_message=challenge_error.message,
+                    can_retry=True,
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                    page_classification=(
+                        challenge_error.page_classification
+                        or WebSearchPageClassification.CHALLENGE
+                    ),
+                    http_status_category=challenge_error.http_status_category,
+                    cooldown_until=cooldown_until,
+                )
+                self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
+                return result
+            if queries and not errors:
+                continue
             retryable_errors = any(
                 not isinstance(error, WebSearchError) or error.retryable
                 for error in errors
@@ -431,7 +504,7 @@ class WebSearchService:
                 query_count=query_count,
                 query_history=query_history,
             )
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
             return result
         if stop_event is not None and stop_event.is_set():
             result = self._projection(
@@ -443,7 +516,7 @@ class WebSearchService:
                 query_count=query_count,
                 query_history=query_history,
             )
-            self._audit(account_id, plan, result)
+            self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
             return result
 
         if not results and errors:
@@ -461,6 +534,8 @@ class WebSearchService:
                     attempt_count=attempts,
                     query_count=query_count,
                     query_history=query_history,
+                    page_classification=error.page_classification,
+                    http_status_category=error.http_status_category,
                 )
             else:
                 result = self._projection(
@@ -481,6 +556,8 @@ class WebSearchService:
                 attempts,
                 query_count=query_count,
                 query_history=query_history,
+                page_classification=page_classification,
+                http_status_category=http_status_category,
             )
         if result.status in {WebSearchStatus.SUCCESS, WebSearchStatus.PARTIAL}:
             expires_at = self._clock() + timedelta(
@@ -488,7 +565,7 @@ class WebSearchService:
             )
             result = result.model_copy(update={"cache_expires_at": expires_at})
             self._cache.put(account_id, plan, result, expires_at)
-        self._audit(account_id, plan, result)
+        self._audit(account_id, plan, result, duration_ms=_elapsed_ms(started))
         return result
 
     def _run_queries(
@@ -497,22 +574,34 @@ class WebSearchService:
         *,
         deadline: float,
         stop_event: Event | None,
-    ) -> tuple[list[WebSearchResult], list[BaseException], int]:
+    ) -> tuple[
+        list[WebSearchResult],
+        list[BaseException],
+        int,
+        list[WebSearchPageClassification],
+        list[str],
+    ]:
         """在阶段预算内并行执行一组最小查询。"""
 
         if stop_event is not None and stop_event.is_set():
-            return [], [], 0
+            return [], [], 0, [], []
+        request_queries = (
+            queries[:1] if isinstance(self._client, DuckDuckGoClient) else queries
+        )
         executor = ThreadPoolExecutor(
-            max_workers=min(len(queries), 4), thread_name_prefix="web-search-query"
+            max_workers=min(len(request_queries), 4),
+            thread_name_prefix="web-search-query",
         )
         futures = {
             executor.submit(self._search_one, query, deadline): query
-            for query in queries
+            for query in request_queries
         }
         try:
             done, _ = wait(list(futures), timeout=_remaining_seconds(deadline))
             results: list[WebSearchResult] = []
             errors: list[BaseException] = []
+            page_classifications: list[WebSearchPageClassification] = []
+            http_status_categories: list[str] = []
             for future in futures:
                 if future not in done:
                     errors.append(
@@ -525,7 +614,19 @@ class WebSearchService:
                     errors.append(exc)
                 else:
                     results.extend(value)
-            return results, errors, len(queries)
+                    classification = getattr(value, "page_classification", None)
+                    if classification is not None:
+                        page_classifications.append(classification)
+                    status_category = getattr(value, "http_status_category", None)
+                    if status_category is not None:
+                        http_status_categories.append(status_category)
+            return (
+                results,
+                errors,
+                len(request_queries),
+                page_classifications,
+                http_status_categories,
+            )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
 
@@ -567,6 +668,8 @@ class WebSearchService:
         *,
         query_count: int,
         query_history: list[str],
+        page_classification: WebSearchPageClassification | None = None,
+        http_status_category: str | None = None,
     ) -> WebSearchProjection:
         conflicting = [
             result
@@ -585,6 +688,8 @@ class WebSearchService:
                 attempt_count=attempts,
                 query_count=query_count,
                 query_history=query_history,
+                page_classification=page_classification,
+                http_status_category=http_status_category,
             )
         verified = [
             result
@@ -597,6 +702,20 @@ class WebSearchService:
             if getattr(result, "verification", "verified") == "fetch_failed"
         ]
         if not results:
+            if page_classification == WebSearchPageClassification.NORMAL_RESULTS:
+                return self._projection(
+                    plan,
+                    status=WebSearchStatus.EVIDENCE_INSUFFICIENT,
+                    searched_at=self._clock(),
+                    error_code="web_search_evidence_insufficient",
+                    error_message="搜索页面包含结果节点，但没有可安全引用的公开来源。",
+                    can_retry=True,
+                    attempt_count=attempts,
+                    query_count=query_count,
+                    query_history=query_history,
+                    page_classification=page_classification,
+                    http_status_category=http_status_category,
+                )
             return self._projection(
                 plan,
                 status=WebSearchStatus.EMPTY,
@@ -607,6 +726,8 @@ class WebSearchService:
                 attempt_count=attempts,
                 query_count=query_count,
                 query_history=query_history,
+                page_classification=page_classification,
+                http_status_category=http_status_category,
             )
         if not verified:
             code = "web_search_page_fetch" if failed else "web_search_evidence_insufficient"
@@ -630,6 +751,8 @@ class WebSearchService:
                 attempt_count=attempts,
                 query_count=query_count,
                 query_history=query_history,
+                page_classification=page_classification,
+                http_status_category=http_status_category,
             )
         status = WebSearchStatus.PARTIAL if failed else WebSearchStatus.SUCCESS
         return self._projection(
@@ -642,6 +765,8 @@ class WebSearchService:
             attempt_count=attempts,
             query_count=query_count,
             query_history=query_history,
+            page_classification=page_classification,
+            http_status_category=http_status_category,
         )
 
     @staticmethod
@@ -687,6 +812,9 @@ class WebSearchService:
         query_count: int = 0,
         query_history: list[str] | None = None,
         cache_expires_at: datetime | None = None,
+        page_classification: WebSearchPageClassification | None = None,
+        http_status_category: str | None = None,
+        cooldown_until: datetime | None = None,
     ) -> WebSearchProjection:
         rewrite_count = sum(
             query not in plan.queries for query in (query_history or [])
@@ -703,6 +831,9 @@ class WebSearchService:
             searched_at=searched_at,
             error_code=error_code,
             error_message=error_message,
+            http_status_category=http_status_category,
+            page_classification=page_classification,
+            cooldown_until=cooldown_until,
             can_retry=can_retry,
             can_cancel=can_cancel,
             plan_id=plan.plan_id,
@@ -719,7 +850,12 @@ class WebSearchService:
         )
 
     def _audit(
-        self, account_id: str, plan: SearchPlan, result: WebSearchProjection
+        self,
+        account_id: str,
+        plan: SearchPlan,
+        result: WebSearchProjection,
+        *,
+        duration_ms: int,
     ) -> None:
         if self._observability is None:
             return
@@ -766,9 +902,44 @@ class WebSearchService:
                 ),
                 "cache_hit": result.cache_hit,
                 "status": result.status.value,
+                "http_status_category": result.http_status_category,
+                "page_classification": (
+                    result.page_classification.value
+                    if result.page_classification is not None
+                    else None
+                ),
+                "request_profile_version": DUCKDUCKGO_REQUEST_PROFILE_VERSION,
+                "cooldown_active": result.cooldown_until is not None,
+                "stage_duration_ms": duration_ms,
             },
         )
+
+    def _active_provider_cooldown(self, now: datetime) -> datetime | None:
+        with self._provider_state_lock:
+            cooldown_until = self._provider_cooldown_until
+            if cooldown_until is None:
+                return None
+            if cooldown_until <= now:
+                self._provider_cooldown_until = None
+                return None
+            return cooldown_until
+
+    def _activate_provider_cooldown(
+        self, now: datetime, seconds: int
+    ) -> datetime:
+        cooldown_until = now + timedelta(seconds=max(1, seconds))
+        with self._provider_state_lock:
+            if (
+                self._provider_cooldown_until is None
+                or cooldown_until > self._provider_cooldown_until
+            ):
+                self._provider_cooldown_until = cooldown_until
+            return self._provider_cooldown_until
 
 
 def _remaining_seconds(deadline: float) -> float:
     return max(0.001, deadline - time.monotonic())
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.monotonic() - started) * 1000))

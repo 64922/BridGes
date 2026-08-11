@@ -233,6 +233,10 @@ class TeachingEvidenceGateService:
         local_stale = _local_is_stale(retrieval)
         required = self.required_search(query, None if local_stale else local_status)
         external = _external_sources(required, web_search, arxiv_search)
+        search_error_code = self._search_error_code(
+            web_search, arxiv_search, required
+        )
+        provider_challenge = search_error_code == "web_search_provider_challenge"
 
         if local_status == RetrievalSufficiency.SUFFICIENT and local and not local_stale:
             return TeachingEvidenceGate(
@@ -273,10 +277,15 @@ class TeachingEvidenceGateService:
             }
         )
         if search_status in {TeachingCardStatus.ERROR, TeachingCardStatus.PERMISSION}:
+            blocked_notice = (
+                "DuckDuckGo 提供方受阻，已进入冷却；本轮不会自动重复请求。"
+                if provider_challenge
+                else ""
+            )
             return TeachingEvidenceGate(
                 status=TeachingEvidenceStatus.UNAVAILABLE,
                 reason=(
-                    f"{local_reason}公开补充检索未完成。"
+                    f"{local_reason}{blocked_notice}公开补充检索未完成。"
                     + (
                         "本轮将允许模型用一般知识谨慎回答，并明确标注未联网核实。"
                         if allow_model_knowledge
@@ -287,13 +296,21 @@ class TeachingEvidenceGateService:
                 external_sources=external,
                 required_search=required,
                 search_status=search_status,
+                search_error_code=search_error_code,
                 gap=(
                     _MODEL_KNOWLEDGE_GAP
                     if allow_model_knowledge
                     else "公开补充来源当前不可用，因此本轮不能可靠断言关键科学结论。"
                 ),
                 allow_model_knowledge=allow_model_knowledge,
-                recovery_steps=["检查网络或权限后重试；也可以上传或选择一份可用材料。"],
+                recovery_steps=(
+                    [
+                        "等待提供方冷却结束后显式重试；系统不会在同一轮自动重复请求。",
+                        "也可以上传或选择一份可用材料。",
+                    ]
+                    if provider_challenge
+                    else ["检查网络或权限后重试；也可以上传或选择一份可用材料。"]
+                ),
                 checked_at=_now(),
             )
 
@@ -312,6 +329,7 @@ class TeachingEvidenceGateService:
                 external_sources=external,
                 required_search=required,
                 search_status=None,
+                search_error_code=search_error_code,
                 gap=(
                     _MODEL_KNOWLEDGE_GAP
                     if allow_model_knowledge
@@ -330,6 +348,7 @@ class TeachingEvidenceGateService:
                 external_sources=external,
                 required_search=required,
                 search_status=search_status,
+                search_error_code=search_error_code,
                 gap=_MODEL_KNOWLEDGE_GAP if allow_model_knowledge else (
                     "没有找到能覆盖本轮目标的公开来源，暂不能可靠断言关键结论。"
                 ),
@@ -356,6 +375,7 @@ class TeachingEvidenceGateService:
                 external_sources=external,
                 required_search=required,
                 search_status=search_status,
+                search_error_code=search_error_code,
                 gap=(
                     "本地材料存在冲突；请分别核对来源的定义、适用范围和时间。"
                     if resolved_status == TeachingEvidenceStatus.CONFLICT
@@ -371,6 +391,7 @@ class TeachingEvidenceGateService:
             local_sources=local,
             required_search=required,
             search_status=search_status,
+            search_error_code=search_error_code,
             gap=(
                 "没有找到能覆盖本轮目标的公开来源，暂不能可靠断言关键结论。"
                 if search_status is not None and search_status.value == "empty"
@@ -418,6 +439,25 @@ class TeachingEvidenceGateService:
         if any(status == TeachingCardStatus.EMPTY for status in projections):
             return TeachingCardStatus.EMPTY
         return projections[0] if projections else None
+
+    @staticmethod
+    def _search_error_code(
+        web_search: WebSearchProjection | None,
+        arxiv_search: ArxivSearchProjection | None,
+        required: TeachingSearchSource,
+    ) -> str | None:
+        if (
+            required in {TeachingSearchSource.DUCKDUCKGO, TeachingSearchSource.BOTH}
+            and web_search is not None
+            and web_search.error_code is not None
+        ):
+            return web_search.error_code
+        if (
+            required in {TeachingSearchSource.ARXIV, TeachingSearchSource.BOTH}
+            and arxiv_search is not None
+        ):
+            return arxiv_search.error_code
+        return None
 
 
 class TeachingTurnService:

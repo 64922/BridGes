@@ -106,6 +106,27 @@ def test_missing_external_provider_still_exposes_an_explicit_gap() -> None:
     assert turn.evidence_gate.allow_model_knowledge is True
 
 
+def test_provider_challenge_is_blocked_with_explicit_cooldown_recovery() -> None:
+    challenge = _web(WebSearchStatus.ERROR).model_copy(
+        update={
+            "error_code": "web_search_provider_challenge",
+            "error_message": "提供方当前受阻，请稍后重试。",
+        }
+    )
+
+    turn = TeachingTurnService().prepare(
+        "解释量子纠缠",
+        retrieval=None,
+        web_search=challenge,
+    )
+
+    assert turn.evidence_gate.search_error_code == "web_search_provider_challenge"
+    assert "提供方受阻" in turn.evidence_gate.reason
+    assert any("冷却" in step for step in turn.evidence_gate.recovery_steps)
+    assert turn.evidence_gate.allow_model_knowledge is True
+    assert turn.can_answer_reliably is False
+
+
 def test_sufficient_local_material_skips_external_search_and_creates_one_overview() -> None:
     turn = TeachingTurnService().prepare(
         "解释光合作用",

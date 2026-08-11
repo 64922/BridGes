@@ -277,6 +277,11 @@ _ERROR_MESSAGES: dict[str, str] = {
     "web_search_permission": "当前网络未允许访问公网搜索，请检查网络权限后重试。",
     "web_search_parse": "搜索结果暂时无法解析，请重试。",
     "web_search_request": "公网搜索请求未完成，请重试。",
+    "web_search_provider_challenge": (
+        "DuckDuckGo 搜索提供方暂时受阻，请等待冷却后显式重试；"
+        "系统不会在本轮自动重复请求。"
+    ),
+    "web_search_evidence_insufficient": "搜索页面没有可安全引用的公开来源，请稍后重试。",
     "web_search_no_results": "没有找到可核实的公开网页结果，请修改问题后重试。",
     "web_search_citation_invalid": "联网回答缺少可核实引用，请重试。",
     "arxiv_timeout": "arXiv 搜索超时，请重试。",
@@ -315,6 +320,8 @@ _RETRYABLE_CODES = frozenset(
         "web_search_offline",
         "web_search_parse",
         "web_search_request",
+        "web_search_provider_challenge",
+        "web_search_evidence_insufficient",
         "web_search_no_results",
         "web_search_citation_invalid",
         "arxiv_timeout",
@@ -641,6 +648,8 @@ def web_search_thinking(
         )
     if projection.status == WebSearchStatus.EMPTY:
         tools.append("公网搜索没有返回可核实结果")
+    elif projection.error_code == "web_search_provider_challenge":
+        tools.append("公网搜索提供方受阻，已进入冷却，等待稍后显式重试")
     elif projection.status == WebSearchStatus.PERMISSION:
         tools.append("公网搜索权限未通过")
     else:
@@ -976,8 +985,11 @@ def ensure_unverified_teaching_prefix(content: str) -> str:
     """保证未联网核实的教学回答在正文开头有确定性标注。"""
 
     content = strip_unverified_teaching_references(content)
-    if content.startswith(_UNVERIFIED_TEACHING_PREFIX):
-        return content
+    content = re.sub(
+        rf"(?:{re.escape(_UNVERIFIED_TEACHING_PREFIX)}\s*)+",
+        "",
+        content,
+    ).lstrip()
     if not content:
         return _UNVERIFIED_TEACHING_PREFIX
     return f"{_UNVERIFIED_TEACHING_PREFIX}\n{content}"
@@ -2783,7 +2795,7 @@ class TurnOrchestrator:
                         )
                     candidate_content = content + event.delta
                     if allow_model_knowledge_fallback:
-                        candidate_content = strip_unverified_teaching_references(
+                        candidate_content = ensure_unverified_teaching_prefix(
                             candidate_content
                         )
                     protected_content = restore_protected_regions(
@@ -2835,7 +2847,7 @@ class TurnOrchestrator:
                 elif event.kind == "done":
                     self._persist_lock(account_id, event.lock)
                     if allow_model_knowledge_fallback:
-                        content = strip_unverified_teaching_references(content)
+                        content = ensure_unverified_teaching_prefix(content)
                     protected_content = restore_protected_regions(
                         owner_query,
                         content,

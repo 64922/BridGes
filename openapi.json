@@ -50900,6 +50900,18 @@
               }
             ]
           },
+          "search_error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Search Error Code",
+            "description": "公开搜索失败的稳定错误码，不包含提供方正文。"
+          },
           "gap": {
             "anyOf": [
               {
@@ -53236,6 +53248,17 @@
         "title": "VisualObject",
         "description": "分镜场景中的一个视觉对象。"
       },
+      "WebSearchPageClassification": {
+        "type": "string",
+        "enum": [
+          "normal_results",
+          "normal_empty",
+          "challenge",
+          "invalid"
+        ],
+        "title": "WebSearchPageClassification",
+        "description": "DuckDuckGo 响应页面的确定性分类。"
+      },
       "WebSearchProjection": {
         "properties": {
           "status": {
@@ -53303,6 +53326,42 @@
             ],
             "title": "Error Message",
             "description": "可操作的中文提示。"
+          },
+          "http_status_category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status Category",
+            "description": "提供方 HTTP 状态类别，例如 2xx、4xx。"
+          },
+          "page_classification": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/WebSearchPageClassification"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "提供方页面分类，不保存页面正文。"
+          },
+          "cooldown_until": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cooldown Until",
+            "description": "提供方受阻冷却结束时间。"
           },
           "can_retry": {
             "type": "boolean",

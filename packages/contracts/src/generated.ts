@@ -20934,6 +20934,8 @@ export interface components {
             /** @default none */
             required_search: components["schemas"]["TeachingSearchSource"];
             search_status?: components["schemas"]["TeachingCardStatus"] | null;
+            /** Search Error Code */
+            search_error_code?: string | null;
             /**
              * Gap
              * @description 仍不能可靠回答的缺口。
@@ -22483,6 +22485,21 @@ export interface components {
              */
             error_message?: string | null;
             /**
+             * Http Status Category
+             * @description 提供方 HTTP 状态类别，例如 2xx、4xx。
+             */
+            http_status_category?: string | null;
+            /**
+             * Page Classification
+             * @description 提供方页面分类，不保存页面正文。
+             */
+            page_classification?: components["schemas"]["WebSearchPageClassification"] | null;
+            /**
+             * Cooldown Until
+             * @description 提供方受阻冷却结束时间。
+             */
+            cooldown_until?: string | null;
+            /**
              * Can Retry
              * @description 本轮是否可以重试。
              * @default false
@@ -22638,6 +22655,12 @@ export interface components {
          * @enum {string}
          */
         WebSearchStatus: "loading" | "success" | "partial" | "empty" | "fetch_error" | "evidence_insufficient" | "source_conflict" | "error" | "permission" | "recovery" | "cancelled";
+        /**
+         * WebSearchPageClassification
+         * @description DuckDuckGo 响应页面的确定性分类。
+         * @enum {string}
+         */
+        WebSearchPageClassification: "normal_results" | "normal_empty" | "challenge" | "invalid";
         /**
          * WebSearchVerification
          * @description 单个来源的确定性证据状态。
