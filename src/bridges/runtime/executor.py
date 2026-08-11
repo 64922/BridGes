@@ -49,6 +49,7 @@ from bridges.identity.service import IdentityService
 from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
 from bridges.ingestion.index import VersionedIndex
+from bridges.ingestion.ocr import QwenOcrPort
 from bridges.ingestion.service import IngestionService
 from bridges.learning_projects.migration import ProjectMigrationService
 from bridges.observability.service import ObservabilityService
@@ -154,11 +155,19 @@ class BackgroundExecutor:
                 cassette_dir=settings.qwen_cassette_dir,
                 record_mode=record_mode,
             )
+            ocr = QwenOcrPort(
+                api_key=settings.qwen_api_key,
+                region=settings.qwen_region,
+                workspace_id=settings.qwen_workspace_id,
+                cassette_dir=settings.qwen_cassette_dir,
+                record_mode=record_mode,
+            )
             assert self._database is not None
             self._ingestion = IngestionService(
                 database=self._database,
                 object_repository=repository,
                 embedding=embedding,
+                ocr=ocr,
                 index=VersionedIndex(self._database, embedding),
             )
             self._project_migration = ProjectMigrationService(

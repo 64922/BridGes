@@ -2,8 +2,8 @@
 
 每个解析器产出同一坐标系（归一文本）上的结构跨度：每个跨度携带
 原文中的起始/结束字符偏移、页码（可无）与章节标题（可无），下游哈希
-分块据此保持可追溯。图片优先保留元数据（类型、尺寸、大小），不引入
-独立 OCR 模型；核心多模态理解作为后续能力的接缝，不在本模块强制调用。
+分块据此保持可追溯。图片优先保留元数据（类型、尺寸、大小），OCR 文本
+由上层能力注入；本模块只负责确定性归一，不发起外部调用。
 """
 
 from __future__ import annotations
@@ -109,10 +109,17 @@ PDF_PARSER_VERSION = "pdf-pymupdf-v1"
 DOCX_PARSER_VERSION = "docx-xml-v1"
 TEXT_PARSER_VERSION = "text-utf8-v1"
 MARKDOWN_PARSER_VERSION = "markdown-v1"
-IMAGE_PARSER_VERSION = "image-metadata-v1"
+IMAGE_PARSER_VERSION = "image-ocr-v1"
+IMAGE_OCR_FALLBACK_MARKER = "图片内容未做文字识别"
 
 
-def parse_document(content: bytes, filename: str, media_type: str) -> ParsedDocument:
+def parse_document(
+    content: bytes,
+    filename: str,
+    media_type: str,
+    *,
+    ocr_text: str | None = None,
+) -> ParsedDocument:
     """按媒体类型分发解析；未知类型或解析失败抛中文 ParseError。"""
     if media_type == "application/pdf":
         return _parse_pdf(content, filename)
@@ -123,7 +130,7 @@ def parse_document(content: bytes, filename: str, media_type: str) -> ParsedDocu
     if media_type == "text/markdown":
         return _parse_markdown(content, filename)
     if media_type.startswith("image/"):
-        return _parse_image(content, filename, media_type)
+        return _parse_image(content, filename, media_type, ocr_text)
     raise ParseError(
         f"不支持解析该文件类型（{media_type}），仅支持 PDF、DOCX、TXT、Markdown 与常见图片。"
     )
@@ -345,7 +352,12 @@ def _parse_markdown(content: bytes, filename: str) -> ParsedDocument:
     )
 
 
-def _parse_image(content: bytes, filename: str, media_type: str) -> ParsedDocument:
+def _parse_image(
+    content: bytes,
+    filename: str,
+    media_type: str,
+    ocr_text: str | None = None,
+) -> ParsedDocument:
     width, height = _image_dimensions(content)
     metadata = (
         f"图片：{filename}\n"
@@ -353,10 +365,15 @@ def _parse_image(content: bytes, filename: str, media_type: str) -> ParsedDocume
         f"尺寸：{width}×{height} 像素\n"
         f"大小：{len(content)} 字节\n"
     )
+    normalized_ocr = ocr_text.strip() if ocr_text and ocr_text.strip() else None
+    if normalized_ocr is None:
+        text = f"{metadata}{IMAGE_OCR_FALLBACK_MARKER}\n"
+    else:
+        text = f"{metadata}OCR 文本：\n{normalized_ocr}\n"
     return ParsedDocument(
         title=_stem(filename),
-        text=metadata,
-        spans=(ParsedSpan(0, len(metadata), None, None),),
+        text=text,
+        spans=(ParsedSpan(0, len(text), None, None),),
         page_count=0,
         section_count=0,
         parser_version=IMAGE_PARSER_VERSION,

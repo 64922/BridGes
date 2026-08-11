@@ -196,7 +196,7 @@ def test_docx_missing_document_xml_raises_chinese_error() -> None:
 # ----------------------------------------------------------------------
 
 
-def test_image_parses_metadata_without_ocr() -> None:
+def test_image_parses_metadata_and_marks_missing_ocr() -> None:
     png = (
         b"\x89PNG\r\n\x1a\n"
         + b"\x00\x00\x00\x0dIHDR"
@@ -205,15 +205,38 @@ def test_image_parses_metadata_without_ocr() -> None:
         + b"\x00" * 40
     )
     parsed = parse_document(png, "图表.png", "image/png")
+    assert IMAGE_PARSER_VERSION == "image-ocr-v1"
     assert parsed.parser_version == IMAGE_PARSER_VERSION
     assert parsed.title == "图表"
     assert "800×600 像素" in parsed.text
     assert "image/png" in parsed.text
+    assert "图片内容未做文字识别" in parsed.text
     chunks = chunk_document(parsed)
     assert len(chunks) == 1
     # 尾随换行不属于段落内容；分块内容与原文切片严格一致
     assert chunks[0].end_offset == len(parsed.text.rstrip("\n"))
     assert parsed.text[chunks[0].start_offset : chunks[0].end_offset] == chunks[0].content
+
+
+def test_image_parses_ocr_text_after_metadata() -> None:
+    png = (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\x0dIHDR"
+        + struct.pack(">II", 800, 600)
+        + b"\x08\x06\x00\x00\x00"
+        + b"\x00" * 40
+    )
+    parsed = parse_document(
+        png,
+        "图表.png",
+        "image/png",
+        ocr_text="牛顿第二定律 F=ma",
+    )
+
+    assert "牛顿第二定律 F=ma" in parsed.text
+    assert "图片：图表.png" in parsed.text
+    assert parsed.text.index("图片：图表.png") < parsed.text.index("牛顿第二定律 F=ma")
+    assert "图片内容未做文字识别" not in parsed.text
 
 
 def test_unsupported_type_raises_chinese_error() -> None:

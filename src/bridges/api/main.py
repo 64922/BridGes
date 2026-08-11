@@ -120,6 +120,7 @@ from bridges.health.probe import build_health_projection
 from bridges.identity import IdentityService
 from bridges.image.service import ImageService
 from bridges.ingestion.embedding import QwenEmbeddingPort
+from bridges.ingestion.ocr import QwenOcrPort
 from bridges.ingestion.service import IngestionService
 from bridges.institution import InstitutionService
 from bridges.invalidation import AffectedDownstream, InvalidationService
@@ -1098,10 +1099,29 @@ def create_app(state_store: StateStore | None = None) -> FastAPI:
                     else False
                 ),
             )
+            ocr_port = QwenOcrPort(
+                api_key=(settings.qwen_api_key if settings is not None else None),
+                region=(
+                    settings.qwen_region if settings is not None else "cn-beijing"
+                ),
+                workspace_id=(
+                    settings.qwen_workspace_id if settings is not None else None
+                ),
+                cassette_dir=(
+                    settings.qwen_cassette_dir if settings is not None else None
+                ),
+                record_mode=(
+                    settings.qwen_record_cassettes
+                    and settings.environment.lower() != "production"
+                    if settings is not None
+                    else False
+                ),
+            )
             app.state.ingestion_service = IngestionService(
                 database=bridges_database,
                 object_repository=object_repository,
                 embedding=embedding_port,
+                ocr=ocr_port,
             )
             app.state.learning_project_migration_service = ProjectMigrationService(
                 database=bridges_database,
