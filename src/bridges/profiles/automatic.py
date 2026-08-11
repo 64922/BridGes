@@ -53,12 +53,13 @@ _MAX_SLICE_ITEMS = 6
 
 _PROFILE_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:我(?:的|目前|现在|对|喜欢|计划|想|正在|是|在读|就读)|"
-    r"什么是|如何学|怎么学)"
+    r"(?:给|帮)我规划|什么是|如何学|怎么学)"
 )
 _QUESTION_SIGNAL = re.compile(r"(?:什么是|如何|怎么|为什么|能否|请问|？|\?)")
 _SELF_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:我|我的|目前我|我现在|我对|我喜欢|我计划)"
 )
+_STAGE_GOAL_SELF_SIGNAL = re.compile(r"(?:^|[，。；：\s])(?:给|帮)我规划")
 _FORBIDDEN_SIGNAL = re.compile(
     r"(?:他人|第三方|朋友|同学|同事|他|她|他们|她们|假设|如果我是|扮演|角色扮演|"
     r"引用|据说|有人说|不喜欢|不想|不要|别|没有|不是|焦虑|抑郁|健康|政治|宗教|财务|"
@@ -257,64 +258,68 @@ class RuleBasedAutomaticProfileExtractor:
         if not text or _FORBIDDEN_SIGNAL.search(text):
             return ProfileExtractionOutput(items=[])
 
-        item: dict[str, Any] | None = None
+        items: list[dict[str, Any]] = []
         goal = _extract_value(
             text,
             (
                 r"(?:我的|我这阶段的|我目前的)?目标(?:是|为)?\s*([^。！？!?；;，,]+)",
                 r"我(?:计划|打算)\s*([^。！？!?；;，,]+)",
+                r"(?:给|帮)我规划(?:一下|一份|一个)?\s*([^。！？!?；;，,]+)",
             ),
         )
         if goal is not None:
-            item = {
+            items.append({
                 "dimension": FourDimension.STAGE_GOAL,
                 "normalized_value": goal,
                 "action": ProfileExtractionAction.CREATE,
-            }
-        else:
-            interest = _extract_value(
-                text,
-                (
-                    r"我对\s*([^。！？!?；;，,]+?)\s*(?:很)?感兴趣",
-                    r"我(?:很|比较|特别)?喜欢\s*([^。！？!?；;，,]+)",
-                ),
-            )
-            if interest is not None:
-                dimension = (
-                    FourDimension.KNOWLEDGE_INTEREST
-                    if any(term in interest for term in _KNOWLEDGE_TERMS)
-                    else FourDimension.HOBBY
-                )
-                item = {
-                    "dimension": dimension,
-                    "normalized_value": interest,
-                    "action": ProfileExtractionAction.CREATE,
-                }
-            else:
-                academic = _extract_value(
-                    text,
-                    (r"我(?:现在|目前)?(?:在读|就读|是)\s*([^。！？!?；;，,]+)",),
-                )
-                if academic is not None:
-                    item = {
-                        "dimension": FourDimension.ACADEMIC_STATUS,
-                        "normalized_value": academic,
-                        "action": ProfileExtractionAction.CREATE,
-                    }
+            })
 
-        if item is None and _QUESTION_SIGNAL.search(text):
+        interest = _extract_value(
+            text,
+            (
+                r"我对\s*([^。！？!?；;，,]+?)\s*(?:很)?感兴趣",
+                r"我(?:很|比较|特别)?喜欢\s*([^。！？!?；;，,]+)",
+                r"我想学(?:习)?\s*([^。！？!?；;，,]+)",
+            ),
+        )
+        if interest is not None:
+            dimension = (
+                FourDimension.KNOWLEDGE_INTEREST
+                if re.search(r"我想学(?:习)?", text)
+                or any(term in interest for term in _KNOWLEDGE_TERMS)
+                else FourDimension.HOBBY
+            )
+            items.append({
+                "dimension": dimension,
+                "normalized_value": interest,
+                "action": ProfileExtractionAction.CREATE,
+            })
+
+        academic = _extract_value(
+            text,
+            (r"我(?:现在|目前)?(?:在读|就读|是)\s*([^。！？!?；;，,]+)",),
+        )
+        if academic is not None:
+            items.append({
+                "dimension": FourDimension.ACADEMIC_STATUS,
+                "normalized_value": academic,
+                "action": ProfileExtractionAction.CREATE,
+            })
+
+        if not items and _QUESTION_SIGNAL.search(text):
             topic = next((term for term in _KNOWLEDGE_TERMS if term in text), None)
             if topic is not None:
-                item = {
+                items.append({
                     "dimension": FourDimension.KNOWLEDGE_INTEREST,
                     "normalized_value": topic,
                     "action": ProfileExtractionAction.OBSERVE,
-                }
+                })
 
-        if item is None:
+        if not items:
             return ProfileExtractionOutput(items=[])
-        item.update({"evidence_ref": message_id, "reliability": 0.99})
-        return ProfileExtractionOutput.model_validate({"items": [item]})
+        for item in items:
+            item.update({"evidence_ref": message_id, "reliability": 0.99})
+        return ProfileExtractionOutput.model_validate({"items": items})
 
 
 class GatewayAutomaticProfileExtractor:
@@ -354,7 +359,7 @@ class GatewayAutomaticProfileExtractor:
                         "content": (
                             "只抽取用户关于自己的明确稳定信号。禁止第三方、引用、假设、"
                             "角色扮演、敏感信息与一次性情绪。只输出四维枚举、规范化值、"
-                            "消息证据引用、可靠度和动作。"
+                            "消息证据引用、可靠度和动作。以 JSON 输出结果。"
                         ),
                     },
                     {"role": "user", "content": content},
@@ -365,9 +370,10 @@ class GatewayAutomaticProfileExtractor:
             },
         )
         if result.status != ModelCallStatus.SUCCESS or result.output is None:
-            raise AutomaticProfileError(
-                result.error_code or "profile_extraction_failed"
-            )
+            error_code = result.error_code or "profile_extraction_failed"
+            if result.error_message and error_code not in result.error_message:
+                error_code = f"{error_code}: {result.error_message}"
+            raise AutomaticProfileError(error_code)
         try:
             return ProfileExtractionOutput.model_validate(result.output)
         except Exception as exc:  # noqa: BLE001 - 合同错误进入持久重试
@@ -1170,15 +1176,21 @@ class AutomaticProfileService:
             if not _QUESTION_SIGNAL.search(content):
                 raise AutomaticProfileError("内部观察缺少普通提问依据")
             return
-        if _FORBIDDEN_SIGNAL.search(content) or not _SELF_SIGNAL.search(content):
+        self_signal = _SELF_SIGNAL.search(content)
+        if item.dimension == FourDimension.STAGE_GOAL:
+            self_signal = self_signal or _STAGE_GOAL_SELF_SIGNAL.search(content)
+        if _FORBIDDEN_SIGNAL.search(content) or not self_signal:
             raise AutomaticProfileError("画像抽取缺少明确的用户自述边界")
 
     @staticmethod
     def _is_explicit_self_statement(content: str, dimension: FourDimension) -> bool:
-        if _FORBIDDEN_SIGNAL.search(content) or not _SELF_SIGNAL.search(content):
+        self_signal = _SELF_SIGNAL.search(content)
+        if dimension == FourDimension.STAGE_GOAL:
+            self_signal = self_signal or _STAGE_GOAL_SELF_SIGNAL.search(content)
+        if _FORBIDDEN_SIGNAL.search(content) or not self_signal:
             return False
         if dimension == FourDimension.KNOWLEDGE_INTEREST:
-            return bool(re.search(r"我对.+感兴趣|我喜欢", content))
+            return bool(re.search(r"我对.+感兴趣|我喜欢|我想学(?:习)?", content))
         return True
 
     def compile_chat_slice(

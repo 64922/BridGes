@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 from pydantic import ValidationError
 
+from bridges.ai import ModelGateway
+from bridges.contracts.ai import ModelCallStatus
 from bridges.contracts.profile_extraction import ProfileExtractionOutput
 from bridges.contracts.profiles import FourDimension
 from bridges.profiles import (
     AutomaticProfileService,
     FourDimensionProfileService,
+    GatewayAutomaticProfileExtractor,
     InMemoryAutomaticProfileRepository,
     InMemoryFourDimensionProfileRepository,
     RuleBasedAutomaticProfileExtractor,
@@ -330,6 +335,138 @@ def test_rule_extractor_routes_explicit_self_signals_to_four_dimensions(
     assert [(item.dimension, item.normalized_value) for item in output.items] == [
         (dimension, value)
     ]
+
+
+def test_learning_request_is_committed_as_knowledge_interest_on_first_message() -> None:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我想学习卷积神经网络相关知识",
+        run_id="run-1",
+        mode="study",
+    )
+
+    assert result.run.status == "succeeded"
+    assert [
+        (record.dimension, record.content)
+        for record in target_service.list_records("account-alice")
+    ] == [(FourDimension.KNOWLEDGE_INTEREST, "卷积神经网络相关知识")]
+
+
+def test_compound_academic_and_planning_request_commits_two_dimensions() -> None:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我是一名大三的人工智能专业学生，给我规划一下考研进度",
+        run_id="run-1",
+        mode="study",
+    )
+
+    assert result.run.status == "succeeded"
+    assert {
+        (record.dimension, record.content)
+        for record in target_service.list_records("account-alice")
+    } == {
+        (FourDimension.ACADEMIC_STATUS, "一名大三的人工智能专业学生"),
+        (FourDimension.STAGE_GOAL, "考研进度"),
+    }
+
+
+def test_standalone_planning_request_triggers_stage_goal_extraction() -> None:
+    target_service = FourDimensionProfileService(
+        source_repository=None,  # type: ignore[arg-type]
+        repository=InMemoryFourDimensionProfileRepository(),
+    )
+    service = AutomaticProfileService(
+        four_dimension_service=target_service,
+        repository=InMemoryAutomaticProfileRepository(),
+        extractor=RuleBasedAutomaticProfileExtractor(),
+    )
+
+    result = service.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="给我规划一下考研进度",
+        run_id="run-1",
+        mode="study",
+    )
+
+    assert result.run.status == "succeeded"
+    assert [record.content for record in target_service.list_records("account-alice")] == [
+        "考研进度"
+    ]
+
+
+def test_gateway_profile_prompt_requires_json_and_preserves_upstream_error_message() -> None:
+    class _Gateway:
+        def __init__(self, result: SimpleNamespace) -> None:
+            self.result = result
+            self.payload: dict[str, Any] | None = None
+
+        def invoke(self, *args: object, **kwargs: object) -> SimpleNamespace:
+            del args
+            self.payload = cast(dict[str, Any], kwargs["payload"])
+            return self.result
+
+    success_gateway = _Gateway(
+        SimpleNamespace(
+            status=ModelCallStatus.SUCCESS,
+            output={"items": []},
+            error_code=None,
+            error_message=None,
+        )
+    )
+    GatewayAutomaticProfileExtractor(cast(ModelGateway, success_gateway)).extract(
+        account_id="account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我想学习物理",
+        run_id="run-1",
+    )
+
+    assert success_gateway.payload is not None
+    system_prompt = success_gateway.payload["messages"][0]["content"]
+    assert "json" in system_prompt.lower()
+
+    failed_gateway = _Gateway(
+        SimpleNamespace(
+            status=ModelCallStatus.BLOCKED,
+            output=None,
+            error_code="client_error_400",
+            error_message="Qwen client error (400): messages must contain JSON",
+        )
+    )
+    with pytest.raises(RuntimeError, match="client_error_400.*messages must contain JSON"):
+        GatewayAutomaticProfileExtractor(cast(ModelGateway, failed_gateway)).extract(
+            account_id="account-alice",
+            conversation_id="conversation-1",
+            message_id="message-1",
+            content="我想学习物理",
+            run_id="run-1",
+        )
 
 
 def test_ordinary_question_is_internal_observation_only() -> None:

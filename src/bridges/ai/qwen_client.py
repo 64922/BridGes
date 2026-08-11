@@ -23,6 +23,37 @@ from bridges.ai.adapters import (
     RegionError,
     TransientError,
 )
+from bridges.observability.scrubber import scrub_value
+
+
+def _upstream_error_message(response: httpx.Response) -> str | None:
+    """提取并脱敏供应商错误 message，避免把完整响应写入业务错误。"""
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    error = payload.get("error")
+    candidate: Any = error.get("message") if isinstance(error, dict) else None
+    if not isinstance(candidate, str):
+        candidate = payload.get("message")
+    if not isinstance(candidate, str) or not candidate:
+        return None
+    scrubbed = scrub_value(candidate)
+    return scrubbed[:500] if isinstance(scrubbed, str) else None
+
+
+def _client_error_message(noun: str, response: httpx.Response) -> str:
+    message = f"{noun} client error ({response.status_code})."
+    upstream = _upstream_error_message(response)
+    return f"{message} {upstream}" if upstream else message
+
+
+def _with_upstream_error(message: str, response: httpx.Response) -> str:
+    upstream = _upstream_error_message(response)
+    return f"{message} {upstream}" if upstream else message
 
 
 def first_choice(response_body: dict[str, Any]) -> dict[str, Any]:
@@ -171,16 +202,24 @@ class QwenApiClient:
 
         try:
             with self._client.stream("POST", url, json=request_body, headers=headers) as response:
+                if 400 <= response.status_code < 500:
+                    response.read()
                 if response.status_code == 429:
-                    raise RateLimitError("Qwen rate limit (429).")
+                    raise RateLimitError(
+                        _with_upstream_error("Qwen rate limit (429).", response)
+                    )
                 if response.status_code in (401, 403):
-                    raise AuthError("Qwen authentication/authorization failed.")
+                    raise AuthError(
+                        _with_upstream_error(
+                            "Qwen authentication/authorization failed.", response
+                        )
+                    )
                 if response.status_code >= 500:
                     raise TransientError(f"Qwen server error ({response.status_code}).")
                 if response.status_code >= 400:
                     raise AdapterError(
                         code=f"client_error_{response.status_code}",
-                        message=f"Qwen client error ({response.status_code}).",
+                        message=_client_error_message("Qwen", response),
                         retryable=False,
                     )
                 for line in response.iter_lines():
@@ -309,15 +348,17 @@ class QwenApiClient:
             raise TransientError(f"{noun} HTTP error: {exc}") from exc
 
         if response.status_code == 429:
-            raise RateLimitError(f"{noun} rate limit (429).")
+            raise RateLimitError(_with_upstream_error(f"{noun} rate limit (429).", response))
         if response.status_code in (401, 403):
-            raise AuthError(f"{noun} authentication/authorization failed.")
+            raise AuthError(
+                _with_upstream_error(f"{noun} authentication/authorization failed.", response)
+            )
         if response.status_code >= 500:
             raise TransientError(f"{noun} server error ({response.status_code}).")
         if response.status_code >= 400:
             raise AdapterError(
                 code=f"client_error_{response.status_code}",
-                message=f"{noun} client error ({response.status_code}).",
+                message=_client_error_message(noun, response),
                 retryable=False,
             )
 
@@ -374,15 +415,17 @@ class QwenApiClient:
             raise TransientError(f"{noun} HTTP error: {exc}") from exc
 
         if response.status_code == 429:
-            raise RateLimitError(f"{noun} rate limit (429).")
+            raise RateLimitError(_with_upstream_error(f"{noun} rate limit (429).", response))
         if response.status_code in (401, 403):
-            raise AuthError(f"{noun} authentication/authorization failed.")
+            raise AuthError(
+                _with_upstream_error(f"{noun} authentication/authorization failed.", response)
+            )
         if response.status_code >= 500:
             raise TransientError(f"{noun} server error ({response.status_code}).")
         if response.status_code >= 400:
             raise AdapterError(
                 code=f"client_error_{response.status_code}",
-                message=f"{noun} client error ({response.status_code}).",
+                message=_client_error_message(noun, response),
                 retryable=False,
             )
 
@@ -461,15 +504,17 @@ class QwenApiClient:
             raise TransientError(f"{noun} HTTP error: {exc}") from exc
 
         if response.status_code == 429:
-            raise RateLimitError(f"{noun} rate limit (429).")
+            raise RateLimitError(_with_upstream_error(f"{noun} rate limit (429).", response))
         if response.status_code in (401, 403):
-            raise AuthError(f"{noun} authentication/authorization failed.")
+            raise AuthError(
+                _with_upstream_error(f"{noun} authentication/authorization failed.", response)
+            )
         if response.status_code >= 500:
             raise TransientError(f"{noun} server error ({response.status_code}).")
         if response.status_code >= 400:
             raise AdapterError(
                 code=f"client_error_{response.status_code}",
-                message=f"{noun} client error ({response.status_code}).",
+                message=_client_error_message(noun, response),
                 retryable=False,
             )
 
