@@ -11,7 +11,12 @@ from pydantic import ValidationError
 
 from bridges.ai import ModelGateway
 from bridges.contracts.ai import ModelCallStatus
-from bridges.contracts.profile_extraction import ProfileExtractionOutput
+from bridges.contracts.profile_extraction import (
+    ProfileExtractionOutcome,
+    ProfileExtractionOutput,
+    ProfileExtractionRun,
+    ProfileExtractionStatus,
+)
 from bridges.contracts.profiles import FourDimension
 from bridges.profiles import (
     AutomaticProfileService,
@@ -576,7 +581,8 @@ def test_submission_validation_reuses_precheck_classification() -> None:
     assert extractor.classifications[0].category == (
         ProfileSignalCategory.BEHAVIOR_OBSERVATION
     )
-    assert result.run.status == "pending"
+    assert result.run.status == "exhausted"
+    assert result.run.last_error == "profile_extraction_self_statement_missing"
     assert target_service.list_records("account-alice") == []
 
 
@@ -847,7 +853,8 @@ def test_extractor_cannot_invent_a_forbidden_normalized_value() -> None:
         mode="companion",
     )
 
-    assert result.run.status == "pending"
+    assert result.run.status == "exhausted"
+    assert result.run.last_error == "profile_extraction_forbidden_value"
     assert target_service.list_records("account-alice") == []
 
 
@@ -1106,4 +1113,51 @@ def test_sqlite_retry_queue_recovers_after_restart(tmp_path) -> None:
     task = second_service.list_retry_tasks("account-alice")[0]
     assert task.status == "exhausted"
     assert second_extractor.calls == 3
+    second_database.close()
+
+
+def test_sqlite_restart_recovers_an_inflight_run_without_a_task(tmp_path) -> None:
+    database_path = tmp_path / "inflight.db"
+    first_database = BridgesDatabase(database_path)
+    first_database.initialize()
+    first_repository = SqliteAutomaticProfileRepository(first_database)
+    now = datetime.now(UTC)
+    run = ProfileExtractionRun(
+        extraction_id="inflight-run",
+        account_id="account-alice",
+        message_id="message-1",
+        extractor_version=f"broken-v1+signal-{PROFILE_SIGNAL_CLASSIFIER_VERSION}",
+        source_hash="source-hash",
+        source_snapshot="我的阶段目标是今年通过雅思考试",
+        status=ProfileExtractionStatus.RUNNING,
+        outcome=ProfileExtractionOutcome.PENDING_RETRY,
+        attempts=0,
+        created_at=now,
+        updated_at=now,
+    )
+    first_repository.save_run(run)
+    first_database.close()
+
+    second_database = BridgesDatabase(database_path)
+    second_service = AutomaticProfileService(
+        four_dimension_service=FourDimensionProfileService(
+            source_repository=None,  # type: ignore[arg-type]
+            repository=SqliteFourDimensionProfileRepository(second_database),
+        ),
+        repository=SqliteAutomaticProfileRepository(second_database),
+        extractor=_BrokenExtractor(),
+    )
+
+    tasks = second_service.list_retry_tasks("account-alice")
+    recovered = second_service._repository.get_run(  # type: ignore[attr-defined]
+        "account-alice",
+        "message-1",
+        run.extractor_version,
+        "source-hash",
+    )
+    assert len(tasks) == 1
+    assert tasks[0].status == ProfileExtractionStatus.PENDING
+    assert recovered is not None
+    assert recovered.outcome == ProfileExtractionOutcome.PENDING_RETRY
+    assert recovered.last_error == "profile_extraction_recovered_after_restart"
     second_database.close()

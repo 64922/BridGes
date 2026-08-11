@@ -2604,6 +2604,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/profiles/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Profile Status
+         * @description 仅返回当前账户的抽取与记录状态。
+         */
+        get: operations["profile_status_profiles_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/profiles/four-dimensions/{record_id}": {
         parameters: {
             query?: never;
@@ -16974,6 +16994,26 @@ export interface components {
             };
         };
         /**
+         * ProfilePageStatus
+         * @description 投影到当前账户画像页面的状态。
+         * @enum {string}
+         */
+        ProfilePageStatus: "ready" | "empty" | "pending" | "failed";
+        /**
+         * ProfileStatusProjection
+         * @description 画像页面使用的当前账户最小聚合状态。
+         */
+        ProfileStatusProjection: {
+            status: components["schemas"]["ProfilePageStatus"];
+            /** Has Records */
+            has_records: boolean;
+            /**
+             * Can Retry
+             * @default false
+             */
+            can_retry: boolean;
+        };
+        /**
          * Project
          * @description Public project projection.
          *
@@ -20918,6 +20958,54 @@ export interface components {
          */
         TeachingCardStatus: "loading" | "ready" | "empty" | "error" | "permission" | "recovery";
         /**
+         * TeachingEvidenceCoverage
+         * @description 公开来源覆盖裁决的脱敏观测摘要。
+         */
+        TeachingEvidenceCoverage: {
+            /**
+             * Rules Version
+             * @description 覆盖裁决规则版本。
+             */
+            rules_version: string;
+            /**
+             * Candidate Count
+             * @description 进入裁决的候选来源数。
+             * @default 0
+             */
+            candidate_count: number;
+            /**
+             * Fetched Count
+             * @description 标记为已抓取的候选数。
+             * @default 0
+             */
+            fetched_count: number;
+            /**
+             * Accepted Count
+             * @description 通过覆盖裁决的来源数。
+             * @default 0
+             */
+            accepted_count: number;
+            /**
+             * Rejection Counts
+             * @description 按稳定原因码聚合的拒绝数，不包含来源正文。
+             */
+            rejection_counts?: {
+                [key: string]: number;
+            };
+            /**
+             * Conflict Count
+             * @description 冲突来源数。
+             * @default 0
+             */
+            conflict_count: number;
+            /**
+             * Adjudication Duration Ms
+             * @description 覆盖裁决耗时（毫秒）。
+             * @default 0
+             */
+            adjudication_duration_ms: number;
+        };
+        /**
          * TeachingEvidenceGate
          * @description 每轮教学开始前的结构化证据裁决。
          */
@@ -20954,6 +21042,8 @@ export interface components {
             allow_model_knowledge: boolean;
             /** Recovery Steps */
             recovery_steps?: string[];
+            /** @description 公开来源覆盖裁决的脱敏观测摘要。 */
+            coverage?: components["schemas"]["TeachingEvidenceCoverage"] | null;
             /**
              * Checked At
              * Format: date-time
@@ -31345,6 +31435,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["FourDimensionProfileProjection"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileError"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    profile_status_profiles_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: {
+                bridges_session?: string | null;
+            };
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProfileStatusProjection"];
                 };
             };
             /** @description Unauthorized */

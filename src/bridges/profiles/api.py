@@ -7,6 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from bridges.api.auth import SubjectDep
+from bridges.contracts.profile_extraction import ProfileStatusProjection
 from bridges.contracts.profiles import (
     FourDimensionProfileDeleteRequest,
     FourDimensionProfileModifyRequest,
@@ -15,6 +16,7 @@ from bridges.contracts.profiles import (
     FourDimensionProfileWithdrawRequest,
     ProfileError,
 )
+from bridges.profiles.automatic import AutomaticProfileService
 from bridges.profiles.four_dimensions import (
     FourDimensionProfileError,
     FourDimensionProfileService,
@@ -34,6 +36,20 @@ def _get_four_dimension_profile_service(request: Request) -> FourDimensionProfil
 
 FourDimensionProfileServiceDep = Annotated[
     FourDimensionProfileService, Depends(_get_four_dimension_profile_service)
+]
+
+
+def _get_automatic_profile_service(request: Request) -> AutomaticProfileService:
+    service: AutomaticProfileService | None = getattr(
+        request.app.state, "automatic_profile_service", None
+    )
+    if service is None:
+        raise RuntimeError("AutomaticProfileService not attached to application state.")
+    return service
+
+
+AutomaticProfileServiceDep = Annotated[
+    AutomaticProfileService, Depends(_get_automatic_profile_service)
 ]
 
 
@@ -66,6 +82,25 @@ async def list_four_dimension_records(
 ) -> list[FourDimensionProfileRecord]:
     """列出当前账户的活动四维画像记录。"""
     return service.list_records(subject.account_id)
+
+
+@router.get(
+    "/status",
+    response_model=ProfileStatusProjection,
+    responses={status.HTTP_401_UNAUTHORIZED: {"model": ProfileError}},
+)
+async def profile_status(
+    request: Request,
+    service: AutomaticProfileServiceDep,
+    subject: SubjectDep,
+) -> ProfileStatusProjection:
+    """仅返回当前账户的抽取与记录状态。"""
+
+    projection = service.profile_status(subject.account_id)
+    observability = getattr(request.app.state, "observability_service", None)
+    if observability is not None:
+        observability.record_profile_page_status(projection.status.value)
+    return projection
 
 
 @router.patch(

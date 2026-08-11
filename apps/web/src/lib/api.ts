@@ -4,6 +4,7 @@ import type { components } from "@bridges/contracts";
 
 export type HealthProjection = components["schemas"]["HealthProjection"];
 export type HealthStatus = components["schemas"]["HealthStatus"];
+export type ProfileStatusProjection = components["schemas"]["ProfileStatusProjection"];
 export type Account = components["schemas"]["Account"];
 export type AuthResponse = components["schemas"]["AuthResponse"];
 export type SessionResponse = components["schemas"]["SessionResponse"];
@@ -1368,6 +1369,15 @@ export function statusText(status: HealthStatus): string {
 
 export async function listFourDimensionProfileRecords(): Promise<FourDimensionProfileRecord[]> {
   const res = await fetch(`${API_BASE}/profiles/four-dimensions`, {
+    credentials: "same-origin",
+    cache: "no-store",
+  });
+  if (!res.ok) throw await parseApiError(res);
+  return res.json();
+}
+
+export async function getFourDimensionProfileStatus(): Promise<ProfileStatusProjection> {
+  const res = await fetch(`${API_BASE}/profiles/status`, {
     credentials: "same-origin",
     cache: "no-store",
   });

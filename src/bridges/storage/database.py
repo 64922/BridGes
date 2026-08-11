@@ -2168,6 +2168,24 @@ MIGRATIONS: dict[int, list[str]] = {
         CREATE INDEX idx_web_search_cache_account_expiry
         ON web_search_cache(account_id, expires_at)
         """,
+        (
+            "ALTER TABLE profile_extraction_runs "
+            "ADD COLUMN outcome TEXT NOT NULL DEFAULT 'succeeded_empty'"
+        ),
+        """
+        UPDATE profile_extraction_runs
+        SET outcome = CASE
+            WHEN status IN ('pending', 'running') THEN 'pending_retry'
+            WHEN status = 'exhausted'
+                AND last_error IS NOT NULL
+                AND last_error NOT LIKE '用户已停止%'
+                AND last_error NOT LIKE '原消息已撤回%'
+                THEN 'permanent_failure'
+            WHEN record_ids_json <> '[]' THEN 'succeeded_written'
+            WHEN observed_count > 0 THEN 'succeeded_observed'
+            ELSE 'succeeded_empty'
+        END
+        """,
     ],
 }
 

@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 
 import {
   deleteFourDimensionProfileRecord,
+  getFourDimensionProfileStatus,
   listFourDimensionProfileRecords,
   modifyFourDimensionProfileRecord,
   withdrawFourDimensionProfileRecord,
   type FourDimension,
   type FourDimensionProfileRecord,
+  type ProfileStatusProjection,
 } from "@/lib/api";
 
 import styles from "./FourDimensionProfileCenter.module.css";
@@ -52,19 +54,38 @@ const EMPTY_COPY: Record<FourDimension, string> = {
 };
 
 /** Issue 06：展示四类记录的证据、把握度与最近变化。 */
+const PROFILE_STATUS_COPY: Record<ProfileStatusProjection["status"], string> = {
+  ready: "画像已更新。",
+  empty: "目前还没有可整理的相关信息。",
+  pending: "正在整理，等待重试。",
+  failed: "画像整理暂时不可用，聊天仍可继续。",
+};
+
 export function FourDimensionProfileCenter() {
   const [records, setRecords] = useState<FourDimensionProfileRecord[] | null>(null);
+  const [profileStatus, setProfileStatus] = useState<ProfileStatusProjection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<FourDimensionProfileRecord | null>(null);
   const [draft, setDraft] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = async () => {
-    try {
-      setError(null);
-      setRecords(await listFourDimensionProfileRecords());
-    } catch (reason) {
+    setError(null);
+    const [recordsResult, statusResult] = await Promise.allSettled([
+      listFourDimensionProfileRecords(),
+      getFourDimensionProfileStatus(),
+    ]);
+    if (recordsResult.status === "fulfilled") {
+      setRecords(recordsResult.value);
+    }
+    if (statusResult.status === "fulfilled") {
+      setProfileStatus(statusResult.value);
+    }
+    if (recordsResult.status === "rejected") {
+      const reason = recordsResult.reason;
       setError(reason instanceof Error ? reason.message : "个人信息暂时无法加载，请重试。");
+    } else if (statusResult.status === "rejected") {
+      setError("画像状态暂时无法加载，已有信息仍可用。请稍后重试。");
     }
   };
 
@@ -150,6 +171,14 @@ export function FourDimensionProfileCenter() {
           <button type="button" onClick={() => void load()}>
             重试
           </button>
+        </div>
+      ) : null}
+
+      {profileStatus &&
+      (profileStatus.status === "pending" || profileStatus.status === "failed") ? (
+        <div className={styles.state} role="status" data-testid="profile-status">
+          {PROFILE_STATUS_COPY[profileStatus.status]}
+          {profileStatus.can_retry ? "稍后可以重试。" : ""}
         </div>
       ) : null}
 

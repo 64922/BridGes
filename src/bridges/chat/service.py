@@ -28,7 +28,6 @@ from bridges.arxiv_mcp.service import ArxivSearchService
 from bridges.chat.attachments import ChatAttachmentService
 from bridges.chat.global_writing_policy import GlobalWritingPolicyCompiler
 from bridges.chat.lifecycle import GenerationLifecycle
-from bridges.chat.routing import NaturalLanguageImageRouter, image_request_from_decision
 from bridges.chat.repository import (
     ConversationModeLockConflict,
     ConversationRecord,
@@ -38,6 +37,7 @@ from bridges.chat.repository import (
     MessageRecord,
     ModeEventRecord,
 )
+from bridges.chat.routing import NaturalLanguageImageRouter, image_request_from_decision
 from bridges.chat.selections import (
     ChatSelectionsService,
     SelectionResolution,
@@ -54,6 +54,7 @@ from bridges.chat.turn import (
     attempt_group,
     cancelled_arxiv_search,
     cancelled_web_search,
+    capability_route_from,
     # error_is_retryable / user_facing_error 在此 re-export，保持 api/chat.py
     # 的既有导入路径不变（定义在 chat/turn.py）。
     error_is_retryable,  # noqa: F401 - re-export
@@ -62,7 +63,6 @@ from bridges.chat.turn import (
     initial_thinking,
     owner_user_message,
     result_summary,
-    capability_route_from,
     stopped_teaching_projection,
     stopped_thinking,
     user_facing_error,  # noqa: F401 - re-export
@@ -92,7 +92,6 @@ from bridges.contracts.chat import (
     RemovedPluginSelection,
     VideoRequestPayload,
 )
-from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
 from bridges.contracts.feedback import (
     AnswerFeedback,
     AnswerFeedbackRequest,
@@ -104,11 +103,10 @@ from bridges.contracts.humanizer import (
     HumanizerSkillInput,
 )
 from bridges.contracts.image import ImageTaskKind, ImageTaskProjection
-from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.mcp import McpError
 from bridges.contracts.observability import AuditAction, AuditResult
-from bridges.contracts.profile_extraction import ProfilePreprocessResult
 from bridges.contracts.profiles import ProfileNotification
+from bridges.contracts.routing import RouteDecision, RouteOperation
 from bridges.contracts.speech import ReadAloudProjection
 from bridges.contracts.teaching import TeachingTurnProjection
 from bridges.contracts.teaching_progress import (
@@ -126,6 +124,7 @@ from bridges.profiles.four_dimensions import FourDimensionProfileService
 from bridges.profiles.service import ProfileService
 from bridges.retrieval.decision import capability_route_for_request
 from bridges.retrieval.service import LayeredRetrievalService
+from bridges.routing import CapabilityRoute, MainCapability, NaturalLanguageRouter, RouteStatus
 from bridges.skills.humanizer.intent import route_humanizer_message
 from bridges.web_search.contracts import WebSearchProjection, WebSearchStatus
 from bridges.web_search.service import WebSearchService
@@ -1171,10 +1170,9 @@ class ChatService:
         Issue 02：画像通知作为 profile 事件随运行持久化（started 之后），
         订阅者从游标回放即可即时展示，重开页面不重复下发。
         """
-        automatic_result: ProfilePreprocessResult | None = None
         if self._automatic_profiles is not None:
-            with contextlib.suppress(Exception):
-                automatic_result = self._automatic_profiles.preprocess_message(
+            try:
+                self._automatic_profiles.preprocess_message(
                     account_id,
                     conversation_id=conversation_id,
                     message_id=user_message_id,
@@ -1182,6 +1180,24 @@ class ChatService:
                     run_id=run_id,
                     mode=mode.value,
                 )
+            except Exception as exc:  # noqa: BLE001 - 聊天主流程对画像提取保持 fail-open
+                if self._observability is not None:
+                    error_code = str(
+                        getattr(exc, "code", "profile_extraction_unexpected")
+                    )
+                    audit_result = (
+                        AuditResult.RETRYABLE_FAIL
+                        if bool(getattr(exc, "retryable", True))
+                        else AuditResult.BLOCKED
+                    )
+                    with contextlib.suppress(Exception):
+                        self._observability.log_audit(
+                            actor_account_id=account_id,
+                            action=AuditAction.PROFILE_AUTO_WRITE,
+                            result=audit_result,
+                            reason=error_code,
+                            details={"stage": "preprocess", "outcome": "unhandled"},
+                        )
         elif self._four_dimension_profiles is None and self._profiles is not None:
             with contextlib.suppress(Exception):  # noqa: BLE001 - 辅助路径静默降级
                 self._profiles.process_conversation_message(

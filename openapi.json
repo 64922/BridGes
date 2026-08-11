@@ -12304,6 +12304,66 @@
         }
       }
     },
+    "/profiles/status": {
+      "get": {
+        "tags": [
+          "profiles"
+        ],
+        "summary": "Profile Status",
+        "description": "仅返回当前账户的抽取与记录状态。",
+        "operationId": "profile_status_profiles_status_get",
+        "parameters": [
+          {
+            "name": "bridges_session",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bridges Session"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileStatusProjection"
+                }
+              }
+            }
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileError"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/profiles/four-dimensions/{record_id}": {
       "patch": {
         "tags": [
@@ -44420,6 +44480,40 @@
         "title": "ProfileError",
         "description": "Uniform profile error response."
       },
+      "ProfilePageStatus": {
+        "type": "string",
+        "enum": [
+          "ready",
+          "empty",
+          "pending",
+          "failed"
+        ],
+        "title": "ProfilePageStatus",
+        "description": "投影到当前账户画像页面的状态。"
+      },
+      "ProfileStatusProjection": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/ProfilePageStatus"
+          },
+          "has_records": {
+            "type": "boolean",
+            "title": "Has Records"
+          },
+          "can_retry": {
+            "type": "boolean",
+            "title": "Can Retry",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "has_records"
+        ],
+        "title": "ProfileStatusProjection",
+        "description": "画像页面使用的当前账户最小聚合状态。"
+      },
       "Project": {
         "properties": {
           "id": {
@@ -50877,6 +50971,64 @@
         "title": "TeachingCardStatus",
         "description": "教学卡片的用户可见生命周期状态。"
       },
+      "TeachingEvidenceCoverage": {
+        "properties": {
+          "rules_version": {
+            "type": "string",
+            "title": "Rules Version",
+            "description": "覆盖裁决规则版本。"
+          },
+          "candidate_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Candidate Count",
+            "description": "进入裁决的候选来源数。",
+            "default": 0
+          },
+          "fetched_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Fetched Count",
+            "description": "标记为已抓取的候选数。",
+            "default": 0
+          },
+          "accepted_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Accepted Count",
+            "description": "通过覆盖裁决的来源数。",
+            "default": 0
+          },
+          "rejection_counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Rejection Counts",
+            "description": "按稳定原因码聚合的拒绝数，不包含来源正文。"
+          },
+          "conflict_count": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Conflict Count",
+            "description": "冲突来源数。",
+            "default": 0
+          },
+          "adjudication_duration_ms": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Adjudication Duration Ms",
+            "description": "覆盖裁决耗时（毫秒）。",
+            "default": 0
+          }
+        },
+        "type": "object",
+        "required": [
+          "rules_version"
+        ],
+        "title": "TeachingEvidenceCoverage",
+        "description": "公开来源覆盖裁决的脱敏观测摘要。"
+      },
       "TeachingEvidenceGate": {
         "properties": {
           "status": {
@@ -50952,6 +51104,17 @@
             },
             "type": "array",
             "title": "Recovery Steps"
+          },
+          "coverage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TeachingEvidenceCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "公开来源覆盖裁决的脱敏观测摘要。"
           },
           "checked_at": {
             "type": "string",
