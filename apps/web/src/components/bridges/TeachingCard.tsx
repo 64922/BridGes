@@ -64,21 +64,39 @@ function statusTone(status: string): string {
   return "var(--color-status-error)";
 }
 
+function RecoverySteps({ steps, testId }: { steps: string[]; testId?: string }) {
+  return (
+    <div data-testid={testId} style={{ marginTop: "var(--space-3)", fontSize: "var(--text-sm)" }}>
+      <strong>恢复动作</strong>
+      <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
+        {steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
+      </ul>
+    </div>
+  );
+}
+
 export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: TeachingCardProps) {
   const gate = teaching.evidence_gate;
-  const sources = [...(gate.local_sources ?? []), ...(gate.external_sources ?? [])];
+  const localSources = gate.local_sources ?? [];
+  const externalSources = gate.external_sources ?? [];
+  const sources = [...localSources, ...externalSources];
   const isBusy = teaching.status === "loading" || teaching.status === "recovery";
   const mission = teaching.mission;
   const isMissionSetup = mission?.stage === "mission_setup";
   const isBlocked = mission?.stage === "blocked";
   const lessonQuiz = teaching.lesson?.understanding_check ?? teaching.quiz;
   const fallbackAnswer = gate.allow_model_knowledge && !teaching.can_answer_reliably;
-  const visibleStatus = fallbackAnswer
-    ? "已降级为模型知识回答（本轮未联网核实）"
-    : statusLabel[teaching.status] ?? teaching.status;
-  const visibleEvidence = fallbackAnswer
-    ? `${evidenceLabel[gate.status] ?? gate.status}（本轮未联网核实）`
-    : evidenceLabel[gate.status] ?? gate.status;
+  const providerChallenge = gate.search_error_code === "web_search_provider_challenge";
+  const visibleStatus = providerChallenge
+    ? "公网搜索提供方受阻（本轮未联网核实）"
+    : fallbackAnswer
+      ? "已降级为模型知识回答（本轮未联网核实）"
+      : statusLabel[teaching.status] ?? teaching.status;
+  const visibleEvidence = providerChallenge
+    ? "提供方受阻（本轮未联网核实）"
+    : fallbackAnswer
+      ? `${evidenceLabel[gate.status] ?? gate.status}（本轮未联网核实）`
+      : evidenceLabel[gate.status] ?? gate.status;
 
   return (
     <section
@@ -345,15 +363,17 @@ export function TeachingCard({ teaching, onSkip, onRetry, onBeginnerStart }: Tea
             {gate.gap}
           </p>
         )}
+        {providerChallenge &&
+          localSources.length === 0 &&
+          externalSources.length === 0 &&
+          gate.recovery_steps &&
+          gate.recovery_steps.length > 0 && (
+          <RecoverySteps steps={gate.recovery_steps} testId="teaching-recovery" />
+        )}
       </div>
 
       {isBlocked && mission?.recovery_steps && mission.recovery_steps.length > 0 && (
-        <div style={{ marginTop: "var(--space-3)", fontSize: "var(--text-sm)" }}>
-          <strong>恢复动作</strong>
-          <ul style={{ margin: "var(--space-2) 0 0", paddingLeft: "var(--space-5)", color: "var(--color-text-secondary)" }}>
-            {mission.recovery_steps.map((step, index) => <li key={`${step}-${index}`}>{step}</li>)}
-          </ul>
-        </div>
+        <RecoverySteps steps={mission.recovery_steps} />
       )}
 
       {lessonQuiz && teaching.can_answer_reliably && (

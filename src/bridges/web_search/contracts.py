@@ -24,6 +24,15 @@ class WebSearchStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class WebSearchPageClassification(StrEnum):
+    """DuckDuckGo 响应页面的确定性分类。"""
+
+    NORMAL_RESULTS = "normal_results"
+    NORMAL_EMPTY = "normal_empty"
+    CHALLENGE = "challenge"
+    INVALID = "invalid"
+
+
 class WebSearchVerification(StrEnum):
     """单个来源的确定性证据状态。"""
 
@@ -98,6 +107,15 @@ class WebSearchProjection(BaseModel):
     searched_at: datetime | None = Field(default=None, description="搜索完成时间。")
     error_code: str | None = Field(default=None, description="搜索失败分类码。")
     error_message: str | None = Field(default=None, description="可操作的中文提示。")
+    http_status_category: str | None = Field(
+        default=None, description="提供方 HTTP 状态类别，例如 2xx、4xx。"
+    )
+    page_classification: WebSearchPageClassification | None = Field(
+        default=None, description="提供方页面分类，不保存页面正文。"
+    )
+    cooldown_until: datetime | None = Field(
+        default=None, description="提供方受阻冷却结束时间。"
+    )
     can_retry: bool = Field(default=False, description="本轮是否可以重试。")
     can_cancel: bool = Field(default=False, description="本轮是否可以取消。")
     plan_id: str | None = Field(default=None, description="持久化联网计划标识。")

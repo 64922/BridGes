@@ -18,6 +18,7 @@ from bridges.storage import BridgesDatabase
 from bridges.web_search.client import DuckDuckGoClient, WebSearchError
 from bridges.web_search.contracts import (
     WebSearchHealthStatus,
+    WebSearchPageClassification,
     WebSearchProjection,
     WebSearchResult,
     WebSearchStatus,
@@ -161,9 +162,11 @@ def test_planner_keeps_a_side_focus_when_scrubbed_query_reaches_length_limit() -
 
 def test_duckduckgo_client_sends_only_minimal_public_query_and_real_links() -> None:
     captured: list[httpx.QueryParams] = []
+    headers: list[httpx.Headers] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         captured.append(request.url.params)
+        headers.append(request.headers)
         return httpx.Response(
             200,
             content=(
@@ -180,10 +183,173 @@ def test_duckduckgo_client_sends_only_minimal_public_query_and_real_links() -> N
 
     assert captured[0]["q"] == "量子 计算"
     assert set(captured[0].keys()) == {"q"}
+    assert headers[0]["user-agent"].startswith("Mozilla/")
+    assert "python-httpx" not in headers[0]["user-agent"]
     assert results[0].url == "https://example.com/news"
     assert results[0].site == "example.com"
     assert results[0].fetched_at is not None
     assert results[0].verification == "verified"
+
+
+@pytest.mark.parametrize("status_code", [200, 202])
+def test_duckduckgo_client_classifies_challenge_pages_without_returning_empty(
+    status_code: int,
+) -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            status_code,
+            content=(
+                "<html><head><title>Challenge</title></head><body>"
+                "Please complete the human verification challenge."
+                "</body></html>"
+            ).encode(),
+        )
+
+    client = DuckDuckGoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        fetch_sources=False,
+    )
+
+    with pytest.raises(WebSearchError) as exc_info:
+        client.search("公开主题")
+
+    assert exc_info.value.code == "web_search_provider_challenge"
+    assert exc_info.value.retryable is True
+    assert len(requests) == 1
+
+
+def test_http_202_without_html_is_still_classified_as_challenge() -> None:
+    client = DuckDuckGoClient(
+        http_client=httpx.Client(
+            transport=httpx.MockTransport(
+                lambda request: httpx.Response(202, content=b"challenge pending")
+            )
+        ),
+        fetch_sources=False,
+    )
+
+    with pytest.raises(WebSearchError) as exc_info:
+        client.search("公开主题")
+
+    assert exc_info.value.code == "web_search_provider_challenge"
+    assert exc_info.value.page_classification == WebSearchPageClassification.CHALLENGE
+
+
+def test_duckduckgo_client_only_accepts_explicit_normal_empty_pages() -> None:
+    empty_page = (
+        "<html><body><div class='no-results'>No results found for this query.</div>"
+        "</body></html>"
+    ).encode()
+    invalid_page = "<html><body>unexpected provider response</body></html>".encode()
+    bodies = [empty_page, invalid_page]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, content=bodies.pop(0))
+
+    client = DuckDuckGoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        fetch_sources=False,
+    )
+
+    assert client.search("明确无结果") == []
+    with pytest.raises(WebSearchError) as exc_info:
+        client.search("未知页面")
+    assert exc_info.value.code == "web_search_parse"
+
+
+def test_duckduckgo_health_check_reuses_page_classification_rules() -> None:
+    pages = [
+        (
+            200,
+            "<html><body><div class='no-results'>No results found</div></body></html>",
+            WebSearchHealthStatus.READY,
+            None,
+        ),
+        (
+            200,
+            "<html><body><h1>Complete human verification challenge</h1></body></html>",
+            WebSearchHealthStatus.UPSTREAM_ERROR,
+            "web_search_provider_challenge",
+        ),
+        (
+            200,
+            "<html><body>unknown response</body></html>",
+            WebSearchHealthStatus.UPSTREAM_ERROR,
+            "web_search_parse",
+        ),
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        status_code, body, _, _ = pages.pop(0)
+        return httpx.Response(status_code, content=body.encode())
+
+    client = DuckDuckGoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        fetch_sources=False,
+    )
+
+    for _, _, expected_status, expected_code in pages.copy():
+        health = client.health_check()
+        assert health.status == expected_status
+        assert health.error_code == expected_code
+
+
+def test_service_stops_after_one_challenge_request_and_enters_cooldown() -> None:
+    requests: list[httpx.Request] = []
+    observability = ObservabilityService()
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(
+            200,
+            content=(
+                "<html><body><div id='challenge'>"
+                "Verify you are human before continuing."
+                "</div></body></html>"
+            ).encode(),
+        )
+
+    client = DuckDuckGoClient(
+        http_client=httpx.Client(transport=httpx.MockTransport(handler)),
+        fetch_sources=False,
+    )
+    service = WebSearchService(client=client, observability=observability)
+    plan = SearchPlan(
+        True,
+        "公开主题",
+        "需要事实核查",
+        queries=("公开主题", "公开主题 应用", "公开主题 原理"),
+        max_retries=1,
+    )
+
+    first = service.search("acct-1", plan)
+    second = service.search("acct-1", plan)
+
+    assert first is not None
+    assert first.error_code == "web_search_provider_challenge"
+    assert first.query_count == 1
+    assert first.can_retry is True
+    assert first.cooldown_until is not None
+    assert second is not None
+    assert second.error_code == "web_search_provider_challenge"
+    assert second.query_count == 0
+    assert second.cooldown_until == first.cooldown_until
+    assert len(requests) == 1
+    event = next(iter(observability.list_audit_events(action=AuditAction.WEB_SEARCH)))
+    assert event.details is not None
+    assert event.details["http_status_category"] == "2xx"
+    assert event.details["page_classification"] == "challenge"
+    assert event.details["query_count"] == 1
+    assert event.details["cooldown_active"] is True
+    assert event.details["stage_duration_ms"] >= 0
+    cancelled = Event()
+    cancelled.set()
+    cancelled_projection = service.search("acct-1", plan, stop_event=cancelled)
+    assert cancelled_projection is not None
+    assert cancelled_projection.status == WebSearchStatus.CANCELLED
 
 
 def test_duckduckgo_client_rejects_private_source_without_fetching_it() -> None:
@@ -350,7 +516,13 @@ def test_duckduckgo_health_check_uses_fixed_probe_and_classifies_dns() -> None:
 
     def handler(request: httpx.Request) -> httpx.Response:
         queries.append(request.url.params["q"])
-        return httpx.Response(200, json={})
+        return httpx.Response(
+            200,
+            content=(
+                "<html><body><div class='no-results'>No results found</div>"
+                "</body></html>"
+            ).encode(),
+        )
 
     client = DuckDuckGoClient(
         http_client=httpx.Client(transport=httpx.MockTransport(handler))

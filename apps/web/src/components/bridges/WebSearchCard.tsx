@@ -11,6 +11,9 @@ const failureStatusLabel: Record<string, string> = {
   error: `联网搜索未完成${unverifiedSearchSuffix}`,
 };
 
+const providerChallengeLabel =
+  `公网搜索提供方暂时受阻，请稍后显式重试${unverifiedSearchSuffix}`;
+
 function accessedAt(value: string | null): string {
   if (!value) return "访问时间未知";
   const date = new Date(value);
@@ -201,7 +204,11 @@ export function WebSearchCard({
       >
         <div style={{ display: "flex", alignItems: "center", gap: "var(--space-2)" }}>
           <Icon name={failed ? "alert" : "info"} size={16} aria-hidden />
-          <strong>{failureStatusLabel[search.status] ?? "联网搜索未完成"}</strong>
+          <strong>
+            {search.error_code === "web_search_provider_challenge"
+              ? providerChallengeLabel
+              : failureStatusLabel[search.status] ?? "联网搜索未完成"}
+          </strong>
           {search.can_retry && <span style={{ marginLeft: "auto" }}><RetryButton onRetry={onRetry} /></span>}
         </div>
         <span style={{ fontSize: "var(--text-sm)", color: "var(--color-text-secondary)" }}>

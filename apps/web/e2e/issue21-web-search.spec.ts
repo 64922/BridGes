@@ -28,7 +28,8 @@ function message(
   role: "user" | "assistant",
   content: string,
   status: string,
-  search: unknown = null
+  search: unknown = null,
+  teaching: unknown = null,
 ) {
   return {
     message_id: id,
@@ -41,6 +42,7 @@ function message(
     thinking: null,
     retrieval: null,
     web_search: search,
+    teaching,
     error_code: null,
     error_message: null,
     duration_ms: role === "assistant" ? 90 : null,
@@ -48,6 +50,39 @@ function message(
     run_lock_id: role === "assistant" ? "lock-mock" : null,
     created_at: NOW,
     updated_at: NOW,
+  };
+}
+
+function challengeTeaching() {
+  return {
+    status: "error",
+    mission: null,
+    goal: "解释量子计算最新进展",
+    level_assumption: "暂按初学者处理。",
+    steps: ["说明当前证据状态", "等待提供方冷却后显式重试"],
+    check_method: "本轮不推进教学计划。",
+    evidence_gate: {
+      status: "unavailable",
+      reason: "DuckDuckGo 提供方受阻；本轮不会自动重复请求。",
+      local_sources: [],
+      external_sources: [],
+      required_search: "duckduckgo",
+      search_status: "error",
+      search_error_code: "web_search_provider_challenge",
+      gap: "本轮未联网核实。",
+      recovery_steps: ["等待提供方冷却结束后显式重试。"],
+      checked_at: NOW,
+    },
+    quiz: null,
+    evidence: [],
+    next_prompt: "等待提供方冷却后显式重试。",
+    gap_response: null,
+    can_answer_reliably: false,
+    can_cancel: false,
+    can_retry: true,
+    can_skip: false,
+    can_follow_up: true,
+    can_switch_mode: true,
   };
 }
 
@@ -89,7 +124,7 @@ function installMockChatApi(page: Page) {
   const state = {
     messages: [message("u-0", "user", "你好", "done")],
     counter: 0,
-    nextScenario: "success" as "success" | "error" | "cancel",
+    nextScenario: "success" as "success" | "error" | "challenge" | "cancel",
   };
 
   const history = () => ({
@@ -130,8 +165,21 @@ function installMockChatApi(page: Page) {
         const scenario = state.nextScenario;
         const search = scenario === "error"
           ? webSearch("error", { error_code: "web_search_timeout", error_message: "联网搜索超时，请重试。", can_retry: true })
+          : scenario === "challenge"
+            ? webSearch("error", {
+                error_code: "web_search_provider_challenge",
+                error_message: "DuckDuckGo 搜索提供方暂时受阻，请稍后显式重试。",
+                can_retry: true,
+              })
           : scenario === "cancel" ? webSearch("loading") : successSearch();
-        const assistant = message(`a-${state.counter}`, "assistant", scenario === "success" ? "基于来源回答。" : "", scenario === "success" ? "done" : "streaming", search);
+        const assistant = message(
+          `a-${state.counter}`,
+          "assistant",
+          scenario === "success" ? "基于来源回答。" : scenario === "challenge" ? "本轮未联网核实：暂不推进教学计划。" : "",
+          scenario === "success" || scenario === "challenge" ? "done" : "streaming",
+          search,
+          scenario === "challenge" ? challengeTeaching() : null,
+        );
         state.messages.push(user, assistant);
         if (scenario === "cancel") {
           eventStreams.set(
@@ -214,6 +262,20 @@ test.describe("Issue 21 — DuckDuckGo 隐私搜索", () => {
     await page.getByTestId("web-search-retry").click();
     await expect(page.getByRole("list", { name: "对话消息" })).toContainText("重试后的来源回答");
     await expect(page.getByRole("list", { name: "对话消息" }).getByText("请联网核实量子计算最新进展", { exact: true })).toHaveCount(1);
+  });
+
+  test("挑战页显示提供方受阻、冷却恢复动作且不推进教学计划", async ({ page }) => {
+    const mock = installMockChatApi(page);
+    mock.state.nextScenario = "challenge";
+    await mock.install();
+    await registerAndOpen(page);
+    await page.getByLabel("输入消息").fill("请联网核实量子计算最新进展");
+    await page.getByRole("button", { name: "发送消息" }).click();
+    await expect(page.getByTestId("web-search-card-error")).toContainText("提供方暂时受阻");
+    await expect(page.getByTestId("teaching-card")).toContainText("提供方受阻");
+    await expect(page.getByTestId("teaching-recovery")).toContainText("冷却");
+    await expect(page.getByRole("list", { name: "对话消息" })).toContainText("本轮未联网核实：");
+    await expect(page.getByTestId("teaching-plan-and-lesson")).toHaveCount(0);
   });
 
   test("取消本轮搜索后离开 searching 状态", async ({ page }) => {

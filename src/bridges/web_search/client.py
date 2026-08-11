@@ -20,18 +20,53 @@ import httpx
 from bridges.web_search.contracts import (
     WebSearchHealth,
     WebSearchHealthStatus,
+    WebSearchPageClassification,
     WebSearchResult,
 )
 
 DUCKDUCKGO_ENDPOINT = "https://html.duckduckgo.com/html/"
 DUCKDUCKGO_PROVIDER_VERSION = "duckduckgo-html-v1"
+DUCKDUCKGO_REQUEST_PROFILE_VERSION = "duckduckgo-browser-compat-v1"
+DUCKDUCKGO_REQUEST_HEADERS = {
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Cache-Control": "no-cache",
+    "Pragma": "no-cache",
+    "Upgrade-Insecure-Requests": "1",
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/131.0.0.0 Safari/537.36"
+    ),
+}
 DEFAULT_MAX_RESULTS = 5
 DEFAULT_MAX_RESPONSE_BYTES = 1_000_000
 DEFAULT_MAX_REDIRECTS = 2
+DEFAULT_PROVIDER_COOLDOWN_SECONDS = 30
 _SOURCE_SUMMARY_MAX_CHARS = 4_000
 _PUBLISHED_AT_RE = re.compile(
     r"(?:article:published_time|datePublished|datetime)\s*[\"'=:\s]+"
     r"(20\d{2}-\d{2}-\d{2}(?:[T\s][0-9:+.-]+)?)",
+    re.IGNORECASE,
+)
+_CHALLENGE_MARKERS_RE = re.compile(
+    r"captcha|unusual\s+traffic|verify\s+(?:that\s+)?you(?:'re|\s+are)\s+"
+    r"(?:a\s+)?human|are\s+you\s+(?:a\s+)?robot|checking\s+your\s+browser|"
+    r"automated\s+queries|bot\s+detection|human\s+verification|"
+    r"verification\s+challenge|人机验证|验证码|机器人验证|异常流量|完成验证",
+    re.IGNORECASE,
+)
+_CHALLENGE_CONTAINER_RE = re.compile(
+    r"(?:id|class)\s*=\s*[\"'][^\"']*(?:challenge|captcha|robot|verify)[^\"']*[\"']",
+    re.IGNORECASE,
+)
+_NORMAL_EMPTY_MARKERS_RE = re.compile(
+    r"(?:no\s+results(?:\s+found)?|nothing\s+found|did\s+not\s+match\s+any\s+results|"
+    r"没有找到(?:任何)?(?:相关)?结果|没有结果|未找到(?:任何)?(?:相关)?结果)",
+    re.IGNORECASE,
+)
+_NORMAL_EMPTY_CONTAINER_RE = re.compile(
+    r"(?:id|class)\s*=\s*[\"'][^\"']*(?:no[-_ ]results|results|links)[^\"']*[\"']",
     re.IGNORECASE,
 )
 
@@ -46,12 +81,33 @@ class WebSearchError(Exception):
         *,
         permission: bool = False,
         retryable: bool = True,
+        page_classification: WebSearchPageClassification | None = None,
+        cooldown_seconds: int | None = None,
+        http_status_category: str | None = None,
     ) -> None:
         self.code = code
         self.message = message
         self.permission = permission
         self.retryable = retryable
+        self.page_classification = page_classification
+        self.cooldown_seconds = cooldown_seconds
+        self.http_status_category = http_status_category
         super().__init__(message)
+
+
+class DuckDuckGoResults(list[WebSearchResult]):
+    """带页面分类的结果列表，兼容现有 SearchClient 列表接口。"""
+
+    def __init__(
+        self,
+        results: list[WebSearchResult],
+        *,
+        page_classification: WebSearchPageClassification,
+        http_status_category: str | None = None,
+    ) -> None:
+        super().__init__(results)
+        self.page_classification = page_classification
+        self.http_status_category = http_status_category
 
 
 class DuckDuckGoClient:
@@ -88,6 +144,7 @@ class DuckDuckGoClient:
                 "GET",
                 DUCKDUCKGO_ENDPOINT,
                 params={"q": query},
+                headers=DUCKDUCKGO_REQUEST_HEADERS,
                 follow_redirects=False,
                 timeout=_remaining_timeout(deadline),
             ) as response:
@@ -111,7 +168,11 @@ class DuckDuckGoClient:
             ) from exc
 
         try:
-            results = _parse_results(body, max_results=self._max_results)
+            results = _parse_results(
+                body,
+                status_code=response.status_code,
+                max_results=self._max_results,
+            )
         except WebSearchError:
             raise
         except (ValueError, TypeError) as exc:
@@ -130,10 +191,12 @@ class DuckDuckGoClient:
                 "GET",
                 DUCKDUCKGO_ENDPOINT,
                 params={"q": "bridges-provider-health-check"},
+                headers=DUCKDUCKGO_REQUEST_HEADERS,
                 follow_redirects=False,
             ) as response:
                 self._validate_response(response)
-                _read_bounded(response, self._max_response_bytes)
+                body = _read_bounded(response, self._max_response_bytes)
+                _parse_results(body, status_code=response.status_code, max_results=1)
         except WebSearchError as exc:
             return _health_error(checked_at, exc.code)
         except httpx.TimeoutException:
@@ -158,6 +221,7 @@ class DuckDuckGoClient:
                         "web_search_response_too_large",
                         "公网搜索响应过大，已拒绝处理。",
                         retryable=False,
+                        http_status_category=_http_status_category(response.status_code),
                     )
             except ValueError:
                 pass
@@ -166,25 +230,32 @@ class DuckDuckGoClient:
                 "web_search_redirect",
                 "公网搜索发生了不受控重定向，已拒绝处理。",
                 retryable=False,
+                http_status_category=_http_status_category(response.status_code),
             )
         if response.status_code == 429:
             raise WebSearchError(
-                "web_search_rate_limit", "公网搜索请求过于频繁，请稍后重试。"
+                "web_search_rate_limit",
+                "公网搜索请求过于频繁，请稍后重试。",
+                http_status_category=_http_status_category(response.status_code),
             )
         if response.status_code in {401, 403}:
             raise WebSearchError(
                 "web_search_permission",
                 "当前网络未允许访问公网搜索，请检查网络权限后重试。",
                 permission=True,
+                http_status_category=_http_status_category(response.status_code),
             )
         if response.status_code >= 500:
             raise WebSearchError(
                 "web_search_provider",
                 "公网搜索提供方暂时不可用，请稍后重试。",
+                http_status_category=_http_status_category(response.status_code),
             )
         if response.status_code >= 400:
             raise WebSearchError(
-                "web_search_request", "公网搜索请求未完成，请重试。"
+                "web_search_request",
+                "公网搜索请求未完成，请重试。",
+                http_status_category=_http_status_category(response.status_code),
             )
 
     def _fetch_source(
@@ -314,7 +385,15 @@ class DuckDuckGoClient:
         """用有界线程池并行回抓结果页面，且不等待超出阶段预算的任务。"""
 
         if not results:
-            return []
+            return DuckDuckGoResults(
+                [],
+                page_classification=getattr(
+                    results,
+                    "page_classification",
+                    WebSearchPageClassification.NORMAL_EMPTY,
+                ),
+                http_status_category=getattr(results, "http_status_category", None),
+            )
         executor = ThreadPoolExecutor(
             max_workers=min(len(results), DEFAULT_MAX_RESULTS),
             thread_name_prefix="web-source-fetch",
@@ -357,7 +436,15 @@ class DuckDuckGoClient:
                             }
                         )
                     )
-            return fetched
+            return DuckDuckGoResults(
+                fetched,
+                page_classification=getattr(
+                    results,
+                    "page_classification",
+                    WebSearchPageClassification.NORMAL_RESULTS,
+                ),
+                http_status_category=getattr(results, "http_status_category", None),
+            )
         finally:
             executor.shutdown(wait=False, cancel_futures=True)
 
@@ -401,6 +488,10 @@ def _connection_error_code(exc: httpx.ConnectError) -> str:
     if any(marker in message for marker in ("dns", "name or service", "getaddrinfo", "nodename")):
         return "web_search_dns"
     return "web_search_connect"
+
+
+def _http_status_category(status_code: int) -> str:
+    return f"{status_code // 100}xx"
 
 
 def _unsafe_url_code(url: str) -> str | None:
@@ -479,18 +570,56 @@ class _DuckDuckGoResultParser(HTMLParser):
 
 
 def _parse_results(
-    body: bytes, *, max_results: int = DEFAULT_MAX_RESULTS
-) -> list[WebSearchResult]:
+    body: bytes,
+    *,
+    status_code: int = 200,
+    max_results: int = DEFAULT_MAX_RESULTS,
+) -> DuckDuckGoResults:
     """解析 DDG HTML 真实链接，拒绝无真实 URL 或危险目标的摘要。"""
     text = body.decode("utf-8", errors="replace")
+    if _looks_like_challenge(text, status_code=status_code):
+        raise WebSearchError(
+            "web_search_provider_challenge",
+            "DuckDuckGo 搜索提供方当前要求完成人机验证，已暂时受阻；请稍后显式重试。",
+            page_classification=WebSearchPageClassification.CHALLENGE,
+            cooldown_seconds=DEFAULT_PROVIDER_COOLDOWN_SECONDS,
+            http_status_category=_http_status_category(status_code),
+        )
     if "<html" not in text.lower():
-        raise WebSearchError("web_search_parse", "搜索结果暂时无法解析，请重试。")
+        raise WebSearchError(
+            "web_search_parse",
+            "搜索结果暂时无法解析，请重试。",
+            page_classification=WebSearchPageClassification.INVALID,
+            http_status_category=_http_status_category(status_code),
+        )
     parser = _DuckDuckGoResultParser()
     try:
         parser.feed(text)
         parser.close()
     except (ValueError, TypeError) as exc:
-        raise WebSearchError("web_search_parse", "搜索结果暂时无法解析，请重试。") from exc
+        raise WebSearchError(
+            "web_search_parse",
+            "搜索结果暂时无法解析，请重试。",
+            page_classification=WebSearchPageClassification.INVALID,
+            http_status_category=_http_status_category(status_code),
+        ) from exc
+
+    page_classification = (
+        WebSearchPageClassification.NORMAL_RESULTS
+        if parser.results
+        else (
+            WebSearchPageClassification.NORMAL_EMPTY
+            if _looks_like_normal_empty_page(text)
+            else WebSearchPageClassification.INVALID
+        )
+    )
+    if page_classification == WebSearchPageClassification.INVALID:
+        raise WebSearchError(
+            "web_search_parse",
+            "搜索结果暂时无法解析，请重试。",
+            page_classification=page_classification,
+            http_status_category=_http_status_category(status_code),
+        )
 
     accessed_at = datetime.now(UTC)
     parsed: list[WebSearchResult] = []
@@ -520,10 +649,45 @@ def _parse_results(
             )
         )
     parsed.sort(key=lambda result: (-_authority_rank(result.site), result.site, result.url))
-    return [
-        result.model_copy(update={"result_id": f"web-{index}"})
-        for index, result in enumerate(parsed[:max_results], 1)
-    ]
+    return DuckDuckGoResults(
+        [
+            result.model_copy(update={"result_id": f"web-{index}"})
+            for index, result in enumerate(parsed[:max_results], 1)
+        ],
+        page_classification=page_classification,
+        http_status_category=_http_status_category(status_code),
+    )
+
+
+def _looks_like_challenge(text: str, *, status_code: int) -> bool:
+    """只依据稳定页面信号识别人机验证，不记录或返回挑战正文。"""
+
+    if status_code == 202:
+        return True
+    visible_text = _extract_page_text(text.encode("utf-8", errors="replace"))
+    if _CHALLENGE_CONTAINER_RE.search(text):
+        return True
+    has_result_nodes = bool(re.search(r"result__a", text, re.IGNORECASE))
+    if not has_result_nodes and _CHALLENGE_MARKERS_RE.search(visible_text):
+        return True
+    return False
+
+
+def _looks_like_normal_empty_page(text: str) -> bool:
+    """只接受 DuckDuckGo 明确标记的正常无结果页面。"""
+
+    visible_text = _extract_page_text(text.encode("utf-8", errors="replace"))
+    return bool(
+        re.search(
+            r"(?:id|class)\s*=\s*[\"'][^\"']*no[-_ ]results[^\"']*[\"']",
+            text,
+            re.IGNORECASE,
+        )
+        or (
+            _NORMAL_EMPTY_MARKERS_RE.search(visible_text)
+            and _NORMAL_EMPTY_CONTAINER_RE.search(text)
+        )
+    )
 
 
 def _resolve_search_result_url(value: str) -> str:

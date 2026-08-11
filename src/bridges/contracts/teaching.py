@@ -122,6 +122,9 @@ class TeachingEvidenceGate(BaseModel):
     external_sources: list[TeachingEvidenceSource] = Field(default_factory=list)
     required_search: TeachingSearchSource = Field(default=TeachingSearchSource.NONE)
     search_status: TeachingCardStatus | None = Field(default=None)
+    search_error_code: str | None = Field(
+        default=None, description="公开搜索失败的稳定错误码，不包含提供方正文。"
+    )
     gap: str | None = Field(default=None, description="仍不能可靠回答的缺口。")
     allow_model_knowledge: bool = Field(
         default=False,
