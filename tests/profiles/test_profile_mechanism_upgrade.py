@@ -69,6 +69,56 @@ def test_first_self_statement_is_medium_and_repeated_message_becomes_high() -> N
     assert repeated.evidence_message_id == "message-2"
 
 
+def test_explicit_preference_change_replaces_the_previous_value() -> None:
+    target, automatic = _in_memory_services()
+
+    automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="message-1",
+        content="我喜欢游泳",
+        run_id="run-1",
+        mode="companion",
+    )
+    automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-2",
+        message_id="message-2",
+        content="我现在更喜欢跑步",
+        run_id="run-2",
+        mode="companion",
+    )
+
+    records = target.list_records("account-alice")
+    assert len(records) == 1
+    assert records[0].content == "跑步"
+
+
+def test_question_observations_do_not_upgrade_a_later_self_statement() -> None:
+    target, automatic = _in_memory_services()
+
+    automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-1",
+        message_id="question-1",
+        content="什么是物理？",
+        run_id="run-1",
+        mode="study",
+    )
+    automatic.preprocess_message(
+        "account-alice",
+        conversation_id="conversation-2",
+        message_id="message-1",
+        content="我想学习物理",
+        run_id="run-2",
+        mode="study",
+    )
+
+    records = target.list_records("account-alice")
+    assert len(records) == 1
+    assert records[0].confidence == FourDimensionConfidence.MEDIUM
+
+
 def test_repeated_corrections_lower_confidence_and_stop_recall() -> None:
     target, automatic = _in_memory_services()
     automatic.preprocess_message(
@@ -135,8 +185,17 @@ def test_true_delete_removes_record_and_its_observations(tmp_path: Path) -> None
         mode="study",
     )
     record = target.list_records("account-alice")[0]
+    edited = target.modify_record(
+        "account-alice",
+        record.record_id,
+        FourDimensionProfileModifyRequest(content="我想学习化学", version=record.version),
+    )
+    assert database.connection.execute(
+        "SELECT COUNT(*) FROM profile_extraction_observations "
+        "WHERE account_id = 'account-alice' AND normalized_value = '物理'"
+    ).fetchone()[0] == 0
 
-    target.delete_record("account-alice", record.record_id, record.version)
+    target.delete_record("account-alice", edited.record_id, edited.version)
 
     assert target.list_records("account-alice") == []
     assert database.connection.execute(
@@ -235,3 +294,8 @@ def test_model_context_uses_daily_language_without_internal_terms() -> None:
     assert "物理" in context
     assert "画像" not in context
     assert "把握度" not in context
+
+    confirmation_context = profile_slice_context(
+        profile_slice, requires_confirmation=True
+    )
+    assert "直接向用户确认" in confirmation_context

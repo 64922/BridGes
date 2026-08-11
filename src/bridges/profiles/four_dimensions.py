@@ -32,6 +32,7 @@ from bridges.contracts.profiles import (
     ProfileSensitivityClass,
     ProfileSlice,
     ProfileSliceItem,
+    UnusedSliceItem,
 )
 from bridges.contracts.teaching_progress import PlanAdjustmentTrigger
 from bridges.profiles.adapters import ProfileError
@@ -860,18 +861,24 @@ class FourDimensionProfileService:
         allowed = _CHAT_MODE_DIMENSIONS.get(mode, frozenset())
         per_dimension: dict[FourDimension, int] = {}
         included: list[ProfileSliceItem] = []
-        records = [
+        all_records = [
             record
             for record in self._repository.list_records(account_id)
-            if is_recallable_confidence(record.confidence)
+            if record.dimension in allowed
+        ]
+        records = [
+            record for record in all_records if is_recallable_confidence(record.confidence)
+        ]
+        low_confidence = [
+            record
+            for record in all_records
+            if not is_recallable_confidence(record.confidence)
         ]
         records.sort(
             key=lambda record: (confidence_rank(record.confidence), record.updated_at),
             reverse=True,
         )
         for record in records:
-            if record.dimension not in allowed:
-                continue
             count = per_dimension.get(record.dimension, 0)
             if count >= _MAX_SLICE_ITEMS_PER_DIMENSION:
                 continue
@@ -887,6 +894,15 @@ class FourDimensionProfileService:
                 )
             )
             per_dimension[record.dimension] = count + 1
+        unused = [
+            UnusedSliceItem(
+                assertion_id=record.record_id,
+                dimension=record.dimension.value,
+                value_or_rule=record.content,
+                exclusion_reason="可靠程度不足，暂不用于当前回答",
+            )
+            for record in low_confidence
+        ]
         return ProfileSlice(
             slice_id=_stable_id("slice", account_id, run_id, mode),
             owner_account_id=account_id,
@@ -894,6 +910,7 @@ class FourDimensionProfileService:
             purpose="chat",
             project_id=project_id,
             included_items=included,
+            unused_items=unused,
             sensitivity_classes_allowed=[ProfileSensitivityClass.PREFERENCE],
             compiled_policy_version=MIGRATION_VERSION,
             length_budget=_MAX_SLICE_ITEMS_TOTAL,
@@ -959,6 +976,7 @@ class FourDimensionProfileService:
                 if change_note is not None:
                     existing.change_note = change_note
                 return self._repository.save_record(existing)
+            previous_content = existing.content
             existing.content = normalized
             existing.updated_at = datetime.now(UTC)
             existing.version += 1
@@ -971,7 +989,12 @@ class FourDimensionProfileService:
             existing.evidence_quote = evidence_quote
             existing.evidence_message_id = evidence_message_id
             existing.change_note = change_note or "自动记录已根据新的用户证据更新"
-            return self._repository.save_record(existing)
+            updated = self._repository.save_record(existing)
+            if self._observation_delete_callback is not None:
+                self._observation_delete_callback(
+                    account_id, existing.dimension, previous_content
+                )
+            return updated
 
         now = datetime.now(UTC)
         return self._repository.save_record(
@@ -1014,6 +1037,7 @@ class FourDimensionProfileService:
         with self._repository.transaction():
             record = self._repository.get_record(account_id, record_id)
             self._validate_version(record, request.version)
+            previous_content = record.content
             record.content = request.content.strip()
             if not record.content:
                 raise FourDimensionProfileError("画像内容不合法。")
@@ -1035,6 +1059,13 @@ class FourDimensionProfileService:
                 record.confidence = FourDimensionConfidence.LOW
                 record.change_note = "当前不可信：连续收到多次纠正，暂不再使用"
             updated = self._repository.save_record(record)
+            if (
+                self._observation_delete_callback is not None
+                and previous_content != updated.content
+            ):
+                self._observation_delete_callback(
+                    account_id, updated.dimension, previous_content
+                )
         self._notify_learning_adjustment(
             account_id,
             PlanAdjustmentTrigger.PROFILE_UPDATED,

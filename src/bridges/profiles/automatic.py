@@ -56,6 +56,7 @@ PROFILE_EXTRACTION_MAX_RETRIES = 3
 _KNOWLEDGE_PROMOTION_WINDOW = timedelta(days=90)
 _MAX_SLICE_ITEMS = 6
 _MAX_EVIDENCE_QUOTE_LENGTH = 240
+_MIN_PROMOTION_RELIABILITY = 0.6
 
 _PROFILE_SIGNAL = re.compile(
     r"(?:^|[，。；：\s])(?:我(?:的|目前|现在|对|喜欢|计划|想|正在|是|在读|就读)|"
@@ -344,6 +345,7 @@ class RuleBasedAutomaticProfileExtractor:
             text,
             (
                 r"我对\s*([^。！？!?；;，,]+?)\s*(?:很)?感兴趣",
+                r"我(?:现在|目前)?更喜欢\s*([^。！？!?；;，,]+)",
                 r"我(?:很|比较|特别)?喜欢\s*([^。！？!?；;，,]+)",
                 r"我想学(?:习)?\s*([^。！？!?；;，,]+)",
             ),
@@ -1358,7 +1360,11 @@ class AutomaticProfileService:
                 dimension=item.dimension,
                 normalized_value=item.normalized_value,
                 evidence_ref=item.evidence_ref,
-                reliability=item.reliability,
+                reliability=(
+                    0.0
+                    if item.action == ProfileExtractionAction.OBSERVE
+                    else item.reliability
+                ),
                 created_at=now,
             )
             self._repository.save_observation(observation)
@@ -1371,7 +1377,11 @@ class AutomaticProfileService:
                 item.normalized_value,
                 since=now - _KNOWLEDGE_PROMOTION_WINDOW,
             )
-            unique_messages = {entry.message_id for entry in observations}
+            unique_messages = {
+                entry.message_id
+                for entry in observations
+                if entry.reliability >= _MIN_PROMOTION_RELIABILITY
+            }
             explicit_self_statement = self._is_explicit_self_statement(
                 content, item.dimension
             )
@@ -1396,6 +1406,11 @@ class AutomaticProfileService:
             ):
                 # 学业阶段与阶段目标是当前稳定状态；后来的明确自述
                 # 更新现有记录，避免把冲突陈述并列注入模型。
+                action = ProfileExtractionAction.UPDATE.value
+            if (
+                action == ProfileExtractionAction.CREATE.value
+                and re.search(r"我(?:现在|目前)?更喜欢", content)
+            ):
                 action = ProfileExtractionAction.UPDATE.value
             record = self._four_dimensions.upsert_automatic_record(
                 account_id,
@@ -1441,7 +1456,12 @@ class AutomaticProfileService:
         if _FORBIDDEN_SIGNAL.search(content) or not self_signal:
             return False
         if dimension == FourDimension.KNOWLEDGE_INTEREST:
-            return bool(re.search(r"我对.+感兴趣|我喜欢|我想学(?:习)?", content))
+            return bool(
+                re.search(
+                    r"我对.+感兴趣|我(?:现在|目前)?更喜欢|我喜欢|我想学(?:习)?",
+                    content,
+                )
+            )
         return True
 
     def compile_chat_slice(

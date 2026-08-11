@@ -975,7 +975,9 @@ def strip_unverified_teaching_references(content: str) -> str:
 # 提示、隐藏提示或原始思维链。
 
 
-def profile_slice_context(profile_slice: ProfileSlice) -> str:
+def profile_slice_context(
+    profile_slice: ProfileSlice, *, requires_confirmation: bool = False
+) -> str:
     """构造注入模型的最小画像切片上下文（固定格式，可测试）。
 
     模型只能依据切片内提供的记录回答，不得推断更多画像信息；未确认
@@ -986,6 +988,11 @@ def profile_slice_context(profile_slice: ProfileSlice) -> str:
         "只能据此回答，不得推断或声称知道更多未提供的信息）。如果用户问你记得什么，"
         "请只用日常语言概括相关要点，不要提及系统内部的分类或格式："
     ]
+    if requires_confirmation:
+        lines.append(
+            "如果当前问题需要关于用户的信息而这里没有足够依据，请直接向用户确认，"
+            "不要自行补全。"
+        )
     used = 0
     for index, item in enumerate(profile_slice.included_items, start=1):
         label = dimension_label(item.dimension)
@@ -4950,12 +4957,18 @@ class TurnOrchestrator:
                 [],
                 None,
             )
+        profile_items = list(profile_slice.included_items)
+        requires_confirmation = any(
+            item.exclusion_reason == "可靠程度不足，暂不用于当前回答"
+            for item in profile_slice.unused_items
+        )
         profile_context = (
-            profile_slice_context(profile_slice)
-            if profile_slice.included_items
+            profile_slice_context(
+                profile_slice, requires_confirmation=requires_confirmation
+            )
+            if profile_items or requires_confirmation
             else None
         )
-        profile_items = list(profile_slice.included_items)
         self._audit_slice_usage(
             account_id,
             mode=mode.value,
