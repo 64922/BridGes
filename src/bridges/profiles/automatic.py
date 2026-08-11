@@ -57,13 +57,15 @@ from bridges.profiles.signals import (
 from bridges.runtime.queue import RetryKind, TaskQueue
 from bridges.storage.database import BridgesDatabase
 
-AUTOMATIC_EXTRACTOR_VERSION = "profile-auto-v1"
+AUTOMATIC_EXTRACTOR_VERSION = "profile-auto-v2"
 AUTOMATIC_PRIVACY_NOTICE_VERSION = "profile-privacy-v1"
 AUTOMATIC_PRIVACY_NOTICE_TEXT = (
     "BridGes 会默认从你明确介绍自己的稳定信息中整理四维画像，"
     "仅用于后续相关回答；第三方、假设、敏感信息和一次性情绪不会写入。"
 )
 PROFILE_EXTRACTION_QUEUE = "profile-extraction"
+PROFILE_REPLAY_QUEUE = "profile-replay-v2"
+PROFILE_REPLAY_SOURCE_HASH_PREFIX = ":replay-v1:"
 PROFILE_EXTRACTION_MAX_RETRIES = 3
 _TRANSIENT_PROFILE_ERROR_CODES = frozenset(
     {
@@ -514,7 +516,7 @@ class GatewayAutomaticProfileExtractor:
             account_id=account_id,
             project_id=conversation_id,
             workflow_name="profile-extraction",
-            workflow_version="1",
+            workflow_version="2",
             object_domain=ObjectDomain.PERSONAL_VAULT,
             submitted_at=_now(),
         )
@@ -536,7 +538,7 @@ class GatewayAutomaticProfileExtractor:
                     },
                     {"role": "user", "content": content},
                 ],
-                "output_contract": "profile-extraction-v1",
+                "output_contract": "profile-extraction-v2",
                 "response_format": {"type": "json_object"},
                 "temperature": 0,
                 "max_tokens": 512,
@@ -742,9 +744,10 @@ class InMemoryAutomaticProfileRepository(AutomaticProfileRepository):
 class SqliteAutomaticProfileRepository(AutomaticProfileRepository):
     """SQLite 持久化实现；所有查询显式绑定账户。"""
 
-    def __init__(self, database: BridgesDatabase) -> None:
+    def __init__(self, database: BridgesDatabase, *, initialize: bool = True) -> None:
         self.database = database
-        self.database.initialize()
+        if initialize:
+            self.database.initialize()
 
     def transaction(self) -> AbstractContextManager[None]:
         return self.database.transaction()
@@ -1043,6 +1046,7 @@ class AutomaticProfileService:
         message_reader: Callable[[str, str], Any | None] | None = None,
         classifier: ProfileSignalClassifier | None = None,
         observability_service: ObservabilityService | None = None,
+        queue_name: str = PROFILE_EXTRACTION_QUEUE,
     ) -> None:
         self._four_dimensions = four_dimension_service
         self._repository = repository
@@ -1051,6 +1055,7 @@ class AutomaticProfileService:
         self._slice_repository = slice_repository
         self._message_reader = message_reader
         self._observability = observability_service
+        self._queue_name = queue_name
         self._capability_degraded_reason: str | None = None
         self._queue = (
             TaskQueue(repository.database, default_lease_seconds=60)
@@ -1058,7 +1063,7 @@ class AutomaticProfileService:
             else None
         )
         if self._queue is not None:
-            self._queue.set_lease_seconds(PROFILE_EXTRACTION_QUEUE, 60)
+            self._queue.set_lease_seconds(self._queue_name, 60)
             self._recover_inflight_runs()
 
     @property
@@ -1149,6 +1154,11 @@ class AutomaticProfileService:
         for run in self._repository.list_runs():
             if run.status != ProfileExtractionStatus.RUNNING:
                 continue
+            if (
+                self._queue_name == PROFILE_REPLAY_QUEUE
+                and run.extractor_version != self.extractor_version
+            ):
+                continue
             task = self._repository.get_task(
                 run.account_id, run.message_id, run.extractor_version, run.source_hash
             )
@@ -1182,7 +1192,7 @@ class AutomaticProfileService:
                 self._repository.save_run(run)
                 self._repository.save_task(task)
                 self._queue.enqueue(
-                    PROFILE_EXTRACTION_QUEUE,
+                    self._queue_name,
                     task.task_id,
                     payload={
                         "account_id": run.account_id,
@@ -1508,7 +1518,7 @@ class AutomaticProfileService:
             self._repository.save_task(task)
             if self._queue is not None:
                 self._queue.enqueue(
-                    PROFILE_EXTRACTION_QUEUE,
+                    self._queue_name,
                     task.task_id,
                     payload={
                         "account_id": run.account_id,
@@ -1523,7 +1533,7 @@ class AutomaticProfileService:
     def run_retry_tick(self) -> str:
         if self._queue is not None:
             claim = self._queue.claim_next(
-                PROFILE_EXTRACTION_QUEUE, "profile-extractor"
+                self._queue_name, "profile-extractor"
             )
             if claim is None:
                 return "profile-extraction: 无待处理任务。"
@@ -1589,6 +1599,15 @@ class AutomaticProfileService:
             task.updated_at = _now()
             self._repository.save_task(task)
             return task.status
+        if run.status in {
+            ProfileExtractionStatus.SUCCEEDED,
+            ProfileExtractionStatus.EXHAUSTED,
+        }:
+            task.status = run.status
+            task.last_error = run.last_error
+            task.updated_at = _now()
+            self._repository.save_task(task)
+            return task.status
         if task.extractor_version != self.extractor_version:
             return self._exhaust_task(
                 task, run, "profile_extraction_version_unavailable"
@@ -1601,6 +1620,18 @@ class AutomaticProfileService:
             return self._exhaust_task(task, run, "profile_extraction_source_invalidated")
         if self._repository.is_recording_blocked(task.account_id):
             return self._exhaust_task(task, run, "profile_extraction_privacy_blocked")
+        if self._message_reader is not None:
+            current_message = self._message_reader(task.account_id, task.message_id)
+            if current_message is None:
+                return self._exhaust_task(
+                    task, run, "profile_extraction_source_invalidated"
+                )
+            if self._repository.is_recording_blocked(
+                task.account_id, str(current_message.content)
+            ):
+                return self._exhaust_task(
+                    task, run, "profile_extraction_privacy_blocked"
+                )
         task.status = ProfileExtractionStatus.RUNNING
         task.attempts = attempt
         task.updated_at = _now()
@@ -1687,10 +1718,17 @@ class AutomaticProfileService:
         if self._message_reader is None:
             return True
         message = self._message_reader(account_id, message_id)
+        expected_source_hash = _source_hash(
+            account_id, message_id, "" if message is None else str(message.content)
+        )
         return (
             message is not None
-            and _source_hash(account_id, message_id, str(message.content))
-            == source_hash
+            and (
+                expected_source_hash == source_hash
+                or source_hash.startswith(
+                    f"{expected_source_hash}{PROFILE_REPLAY_SOURCE_HASH_PREFIX}"
+                )
+            )
         )
 
     def _message_content(self, account_id: str, message_id: str, snapshot: str) -> str:

@@ -117,9 +117,16 @@ class DataDirectoryLock:
             return
         fd, self._fd = self._fd, None
         try:
-            _platform_unlock(fd)
+            # 保留锁文件但写入不可运行的 PID；只读探测据此识别已释放的锁，
+            # 同时避免释放后留下当前进程 PID 造成永久误报。
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.ftruncate(fd, 0)
+            os.write(fd, b"pid=0\n")
         finally:
-            os.close(fd)
+            try:
+                _platform_unlock(fd)
+            finally:
+                os.close(fd)
 
     def __enter__(self) -> DataDirectoryLock:
         self.acquire()

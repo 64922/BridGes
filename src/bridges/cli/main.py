@@ -43,6 +43,15 @@ from bridges.credentials.global_credential import (
     is_global_qwen_key_configured,
     require_global_qwen_key,
 )
+from bridges.profiles.replay import (
+    DatabaseIdentity,
+    ProfileReplayCoordinator,
+    ProfileReplayError,
+    create_verified_backup,
+    load_runtime_application_state,
+    resolve_authoritative_database,
+    upgrade_authoritative_schema,
+)
 from bridges.runtime import (
     DEFAULT_EXECUTOR_INTERVAL_SECONDS,
     DEFAULT_SCHEDULER_INTERVAL_SECONDS,
@@ -66,6 +75,127 @@ app = typer.Typer(
     # 避免 Rich 绘制的 Unicode 边框造成 GBK 解码失败。
     rich_markup_mode=None,
 )
+profile_replay_app = typer.Typer(
+    name="profile-replay",
+    help="profile-auto-v2 安全回放",
+    no_args_is_help=True,
+)
+
+
+def _profile_replay_authority(database_path: Path | None) -> DatabaseIdentity:
+    try:
+        return resolve_authoritative_database(
+            settings=get_settings(),
+            explicit_path=database_path,
+            application_state=load_runtime_application_state(),
+        )
+    except ProfileReplayError as exc:
+        typer.echo(
+            json.dumps(
+                {"error": {"code": exc.code, "message": exc.message}},
+                ensure_ascii=False,
+            ),
+            err=True,
+        )
+        raise typer.Exit(2) from exc
+
+
+def _emit_profile_replay(value: object) -> None:
+    typer.echo(json.dumps(value, ensure_ascii=False, indent=2))
+
+
+@profile_replay_app.command("inspect")
+def profile_replay_inspect(
+    database_path: Annotated[Path | None, typer.Option("--db")] = None,
+) -> None:
+    """检查权威数据库身份、schema 和写入者。"""
+    _emit_profile_replay(_profile_replay_authority(database_path).as_dict())
+
+
+@profile_replay_app.command("schema-upgrade")
+def profile_replay_schema_upgrade(
+    database_path: Annotated[Path | None, typer.Option("--db")] = None,
+) -> None:
+    """显式升级数据库 schema；回放本身不会调用此操作。"""
+    authority = _profile_replay_authority(database_path)
+    try:
+        _emit_profile_replay(upgrade_authoritative_schema(authority).as_dict())
+    except ProfileReplayError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
+
+
+@profile_replay_app.command("backup")
+def profile_replay_backup(
+    target: Annotated[Path, typer.Option("--target")],
+    database_path: Annotated[Path | None, typer.Option("--db")] = None,
+) -> None:
+    """创建并验证回放备份。"""
+    authority = _profile_replay_authority(database_path)
+    try:
+        _emit_profile_replay(create_verified_backup(authority, target).as_dict())
+    except ProfileReplayError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
+
+
+@profile_replay_app.command("dry-run")
+def profile_replay_dry_run(
+    database_path: Annotated[Path | None, typer.Option("--db")] = None,
+) -> None:
+    """只读统计候选、分类和安全跳过原因。"""
+    authority = _profile_replay_authority(database_path)
+    try:
+        _emit_profile_replay(ProfileReplayCoordinator(authority).dry_run().as_dict())
+    except ProfileReplayError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
+
+
+@profile_replay_app.command("replay")
+def profile_replay_replay(
+    backup: Annotated[Path, typer.Option("--backup")],
+    confirm: Annotated[str, typer.Option("--confirm")],
+    drain: Annotated[bool, typer.Option("--drain")] = False,
+    max_steps: Annotated[int, typer.Option("--max-steps")] = 100,
+    database_path: Annotated[Path | None, typer.Option("--db")] = None,
+) -> None:
+    """使用已验证备份幂等入队 v2 回放。"""
+    authority = _profile_replay_authority(database_path)
+    try:
+        coordinator = ProfileReplayCoordinator(authority)
+        dry_run_report = coordinator.dry_run()
+        _emit_profile_replay(
+            coordinator.replay(
+                backup=backup,
+                confirmation=confirm,
+                dry_run_report=dry_run_report,
+                drain=drain,
+                max_steps=max_steps,
+            )
+            .as_dict()
+        )
+    except ProfileReplayError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
+
+
+@profile_replay_app.command("worker")
+def profile_replay_worker(
+    max_steps: Annotated[int, typer.Option("--max-steps")] = 100,
+    database_path: Annotated[Path | None, typer.Option("--db")] = None,
+) -> None:
+    """运行 profile-replay-v2 受监督 worker。"""
+    authority = _profile_replay_authority(database_path)
+    try:
+        _emit_profile_replay(
+            ProfileReplayCoordinator(authority)
+            .worker(max_steps=max_steps)
+            .as_dict()
+        )
+    except ProfileReplayError as exc:
+        typer.echo(f"error: {exc.message}", err=True)
+        raise typer.Exit(2) from exc
 
 
 def _repo_root() -> Path:
@@ -773,6 +903,7 @@ def scheduler(
 from bridges.cli.evaluate import evaluate_app  # noqa: E402
 
 app.add_typer(evaluate_app)
+app.add_typer(profile_replay_app)
 
 
 if __name__ == "__main__":

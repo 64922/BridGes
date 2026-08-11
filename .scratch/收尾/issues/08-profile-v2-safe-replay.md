@@ -1,6 +1,6 @@
 # Issue 08：安全升级 profile-auto-v2 并回放存量画像
 
-Status: ready-for-agent
+Status: resolved
 Type: task
 Priority: P0
 User stories: US-03, US-04, US-05
@@ -71,3 +71,7 @@ User stories: US-03, US-04, US-05
 
 - 2026-08-12：只读检查的是仓库根目录样本数据库；执行时必须重新识别运行时权威数据库，不能把该路径写死进工具或运行手册。
 - 本 Issue 是 expand–migrate–verify 工作，不得把部署新代码等同于存量修复完成。
+
+## Answer
+
+2026-08-12：已在 `codex/issue-08-profile-v2-safe-replay` worktree 分支完成 profile-auto-v2 安全回放链路。实现了权威数据库配置解析、显式 schema 门、可验证备份与恢复探针、只读 dry-run、profile-replay-v2 专用队列、v1 来源关联、幂等 run/task/observation/record、墓碑/隐私/撤回/负例门、worker 收敛检查、CLI/脚本入口和运行手册；v1 run 与既有审计保留。目标测试与相关集成测试通过，完整测试仍受仓库已有重复测试模块名和已退役 learning-projects 测试失败阻塞，详见交付说明。

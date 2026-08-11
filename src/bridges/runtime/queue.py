@@ -368,6 +368,18 @@ class TaskQueue:
         ).fetchone()
         return int(row["count"]) if row is not None else 0
 
+    def has_runnable(self, queue_name: str) -> bool:
+        """判断队列是否仍有可被 worker 领取的任务。"""
+        now = _encode(_now())
+        row = self._database.connection.execute(
+            "SELECT 1 FROM task_claims WHERE queue_name = ? "
+            "AND (status IN ('queued', 'claimed') "
+            "OR (status = 'failed' AND next_retry_at IS NOT NULL "
+            "AND next_retry_at <= ?)) LIMIT 1",
+            (queue_name, now),
+        ).fetchone()
+        return row is not None
+
 
 class TaskWorker:
     """薄封装：claim → handler → complete/requeue，异常兜底。
