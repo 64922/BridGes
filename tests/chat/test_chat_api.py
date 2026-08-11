@@ -864,3 +864,34 @@ def test_second_account_cannot_read_thinking_summary(
         ).status_code
         == 404
     )
+
+
+def test_issue06_chat_messages_populate_current_account_profile(
+    client: TestClient, sqlite_app: Any
+) -> None:
+    _register(client, "61")
+    messages = (
+        "大三人工智能专业",
+        "目标考211相关专业/考研",
+        "想学习Transformer",
+        "找Transformer论文",
+    )
+    for content in messages:
+        conversation_id = _create_conversation(client)
+        _send(client, conversation_id, content)
+
+    profile = client.get("/profiles/four-dimensions")
+    assert profile.status_code == 200, profile.text
+    records = profile.json()
+    assert {
+        (record["dimension"], record["content"])
+        for record in records
+    } == {
+        ("academic_status", "大三人工智能专业"),
+        ("stage_goal", "考211相关专业/考研"),
+        ("knowledge_interest", "Transformer"),
+    }
+
+    bob_client = TestClient(sqlite_app)
+    _register(bob_client, "62")
+    assert bob_client.get("/profiles/four-dimensions").json() == []

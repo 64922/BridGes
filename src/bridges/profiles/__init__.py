@@ -25,6 +25,12 @@ from bridges.profiles.automatic import (
     SqliteAutomaticProfileRepository,
 )
 from bridges.contracts.profile_extraction import ProfileExtractionOutput
+from bridges.profiles.signals import (
+    PROFILE_SIGNAL_CLASSIFIER_VERSION,
+    ProfileSignalCategory,
+    ProfileSignalClassification,
+    ProfileSignalClassifier,
+)
 
 __all__ = [
     "ProfileRepository",
@@ -46,4 +52,8 @@ __all__ = [
     "RuleBasedAutomaticProfileExtractor",
     "SqliteAutomaticProfileRepository",
     "ProfileExtractionOutput",
+    "PROFILE_SIGNAL_CLASSIFIER_VERSION",
+    "ProfileSignalCategory",
+    "ProfileSignalClassification",
+    "ProfileSignalClassifier",
 ]
